@@ -221,6 +221,101 @@ We draw from products that prioritize **speed and clarity**:
 - Clear SAVE/CLOSE actions
 - Toast notifications for feedback
 
+## Testing Philosophy - CRITICAL
+
+**⚠️ ALWAYS test your own implementations - NEVER ask the user to test for you**
+
+### Test-Driven Development (TDD) - MANDATORY
+1. **Write tests FIRST**, then implement the feature
+2. **Test EVERYTHING** - especially complex logic with edge cases, error conditions, happy paths
+3. **Verify your work** by running tests before declaring completion
+4. **Create automated tests** whenever possible instead of manual verification
+5. **Use available test commands**:
+   - `bun run test` - Run all tests
+   - `bun run test:watch` - Watch mode for rapid iteration
+   - `npm run build` - Verify build succeeds
+
+### Self-Testing Requirements - NON-NEGOTIABLE
+- **ALL features**: Write automated tests (unit, integration, or E2E)
+- **Complex features**: Write unit tests for business logic BEFORE implementation
+- **API/Route changes**: Write integration tests AND manual API tests
+- **Bug fixes**: Add regression test that would have caught the bug
+- **Before finishing**: Run ALL relevant tests and verify they pass
+- **Build verification**: ALWAYS run `npm run build` and ensure no errors
+
+### Testing Strategies - Choose the Right Approach
+- **Unit tests**: Test individual functions/methods in isolation (preferred for pure logic)
+- **Integration tests**: Test component interactions and API routes
+- **API tests**: For backend routes, create test scripts that hit the endpoint with real data
+  - Example: Create a `test-*.js` script that makes actual HTTP requests
+  - Verify response codes, error handling, edge cases
+  - Clean up test artifacts after completion
+- **E2E tests**: Use Terminator MCP commands to test full workflows
+- **Manual verification**: For UI changes, use `npm run dev` to verify visually (LAST RESORT)
+
+### How to Test Complex Features
+
+#### 1. Backend/API Changes
+```bash
+# Create a test script
+cat > test-my-feature.js << 'EOF'
+#!/usr/bin/env node
+// Test with real HTTP requests
+const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
+
+const response = await fetch('http://localhost:3000/api/my-endpoint', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_PASSWORD}`
+  },
+  body: JSON.stringify({ test: 'data' })
+});
+
+console.log('Status:', response.status);
+console.log('Body:', await response.json());
+// Verify edge cases, error handling, etc.
+EOF
+
+# Run dev server in background
+npm run dev &
+DEV_PID=$!
+
+# Wait for server to start
+sleep 10
+
+# Run test
+node test-my-feature.js
+
+# Clean up
+kill $DEV_PID
+rm test-my-feature.js
+```
+
+#### 2. Complex Logic/Utilities
+```typescript
+// ALWAYS write tests BEFORE implementation
+describe('myComplexFunction', () => {
+  it('should handle edge case X', () => {
+    expect(myComplexFunction(edgeCaseInput)).toBe(expected);
+  });
+
+  it('should throw error on invalid input', () => {
+    expect(() => myComplexFunction(invalid)).toThrow();
+  });
+});
+```
+
+#### 3. Test as Much as Possible
+- **Don't assume it works** - verify with tests
+- **Don't rely on "it should work"** - prove it with tests
+- **Don't skip tests because it's "simple"** - simple code can have bugs
+- **Don't ask user to test** - YOU are the developer, YOU test it
+
+**NEVER say "please test this" or "let me know if it works" - TEST IT YOURSELF FIRST**
+
+**If you can't write an automated test, write a manual test script and run it**
+
 ## Testing & Deployment
 
 ### Pre-Push Checklist
