@@ -44,11 +44,46 @@ describe('vertex-schema-converter', () => {
           }
         }
       };
-      
+
       const result = convertToVertexSchema(input);
-      
+
       expect(result.properties.value.anyOf).toBeUndefined();
       expect(result.properties.value.type).toBe('string');
+    });
+
+    it('should filter out unsupported JSON Schema fields', () => {
+      const input = {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 100
+          },
+          enabled: {
+            type: 'boolean',
+            additionalProperties: false, // Not supported by Vertex AI
+            readOnly: true, // Not supported by Vertex AI
+          }
+        },
+        additionalProperties: true, // Not supported at root level
+        $schema: 'http://json-schema.org/draft-07/schema#'
+      };
+
+      const result = convertToVertexSchema(input);
+
+      // Should keep supported fields
+      expect(result.type).toBe('object');
+      expect(result.properties.name.type).toBe('string');
+      expect(result.properties.name.minLength).toBe(1);
+      expect(result.properties.name.maxLength).toBe(100);
+      expect(result.properties.enabled.type).toBe('boolean');
+
+      // Should remove unsupported fields
+      expect(result.$schema).toBeUndefined();
+      expect(result.additionalProperties).toBeUndefined();
+      expect(result.properties.enabled.additionalProperties).toBeUndefined();
+      expect(result.properties.enabled.readOnly).toBeUndefined();
     });
   });
 
