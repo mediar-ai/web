@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
 import { createClient } from '@supabase/supabase-js';
+import { MEDIAR_ORG_IDS } from './constants';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,7 +59,8 @@ export class GitHubWorkflowManager {
     isDevelopment: boolean = false,
     message?: string,
     createPR: boolean = true,
-    workflowId?: number
+    workflowId?: number,
+    organizationId?: string
   ): Promise<GitHubWorkflowResult> {
     try {
       // Validate YAML
@@ -71,7 +73,7 @@ export class GitHubWorkflowManager {
       // Check if workflow already has a github_folder - if so, preserve it!
       const { data: existingWorkflow } = await supabase
         .from('deployed_workflows')
-        .select('github_folder')
+        .select('github_folder, organization_id')
         .eq('id', workflowId)
         .single();
 
@@ -86,7 +88,13 @@ export class GitHubWorkflowManager {
         console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
       }
 
-      const filePath = `${folderName}/workflow.yaml`;
+      // Determine org prefix for new workflows
+      const effectiveOrgId = organizationId || existingWorkflow?.organization_id;
+      const isMediarOrg = effectiveOrgId && MEDIAR_ORG_IDS.includes(effectiveOrgId);
+      const orgPrefix = (effectiveOrgId && !isMediarOrg) ? `org-${effectiveOrgId}/` : '';
+      const filePath = `${orgPrefix}${folderName}/workflow.yaml`;
+
+      console.log(`📁 File path: ${filePath} (org: ${effectiveOrgId || 'Mediar'})`);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const branchName = `workflow/${folderName}-${timestamp}`;
       const targetBranch = isDevelopment ? this.devBranch : this.baseBranch;

@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
 
     // Find changed workflow folders and their filenames
     const changedWorkflows = new Map<string, string>(); // folder -> filename
+    const workflowOrgPrefixes = new Map<string, string | undefined>(); // folder -> orgPrefix
     const foldersWithJsChanges = new Set<string>(); // folders with only JS changes
     const jsOnlyWorkflows = new Set<string>(); // track which workflows had JS-only changes
     const changedJsFiles = new Map<string, string[]>(); // folder -> list of changed JS files
@@ -82,10 +83,11 @@ export async function POST(request: NextRequest) {
 
       // Process removed files first to detect workflow deletions
       for (const file of removedFiles) {
-        const yamlMatch = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
+        const yamlMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
-          const folderName = yamlMatch[1];
-          const removedFileName = yamlMatch[2];
+          const orgPrefix = yamlMatch[2]; // UUID from "org-{uuid}"
+          const folderName = yamlMatch[3];
+          const removedFileName = yamlMatch[4];
           console.log(`🗑️ Detected YAML file removal: ${folderName}/${removedFileName}`);
 
           // SMART DELETION: Check if OTHER YAML files still exist in the folder
@@ -102,19 +104,21 @@ export async function POST(request: NextRequest) {
 
       for (const file of allFiles) {
         // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
-        const yamlMatch = file.match(/^([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
+        const yamlMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
           const folderName = yamlMatch[1];
           const fileName = yamlMatch[2];
-          // Store the actual filename for this folder
+          // Store the actual filename and org prefix for this folder
           changedWorkflows.set(folderName, fileName);
+          workflowOrgPrefixes.set(folderName, orgPrefix);
           // Remove from JS-only set if it was added there
           foldersWithJsChanges.delete(folderName);
         } else {
           // Match .js files in workflow folders
-          const jsMatch = file.match(/^([^\/]+)\/(.+\.js)$/);
+          const jsMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(.+\.js)$/);
           if (jsMatch) {
-            const folderName = jsMatch[1];
+            const orgPrefix = jsMatch[2];
+            const folderName = jsMatch[3];
             // const jsFileName = jsMatch[2]; // Not used currently but available if needed
 
             // Track specific JS files that changed
@@ -245,7 +249,9 @@ export async function POST(request: NextRequest) {
     for (const [folderName, fileName] of changedWorkflows) {
       try {
         // Get workflow content using the actual filename
-        const filePath = `${folderName}/${fileName}`;
+        const orgPrefix = workflowOrgPrefixes.get(folderName);
+        const orgPrefixPath = orgPrefix ? `org-${orgPrefix}/` : '';
+        const filePath = `${orgPrefixPath}${folderName}/${fileName}`;
         console.log(`📂 Processing folder: ${folderName}, file: ${fileName}`);
         const content = await githubWorkflowManager.getWorkflow(filePath, branch);
 
@@ -484,7 +490,7 @@ export async function POST(request: NextRequest) {
               version: '1.0.0',
               total_versions: 1,
               // Default to primary Mediar organization for all workflows created from GitHub
-              organization_id: MEDIAR_ORG_IDS[0]
+              organization_id: orgPrefix || MEDIAR_ORG_IDS[0]
             })
             .select()
             .single();

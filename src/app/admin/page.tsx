@@ -376,7 +376,15 @@ function AdminPageContent() {
       });
 
       if (response.ok) {
-        toast.success('Organization assignments updated');
+        const data = await response.json();
+        if (data.restart_required) {
+          toast.success('Organization assignments updated. VM restart required for changes to take effect.', {
+            duration: 6000,
+            description: data.restart_message
+          });
+        } else {
+          toast.success('Organization assignments updated');
+        }
         setEditingMachineOrgs(null);
         await fetchMachines();
       } else {
