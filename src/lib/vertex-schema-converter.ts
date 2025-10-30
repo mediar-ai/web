@@ -56,6 +56,27 @@ export function convertToVertexSchema(schema: JsonSchema): any {
 
   const result: any = {};
 
+  // Explicitly allow only Vertex AI-compatible fields
+  // See: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/function-calling#schema
+  const ALLOWED_FIELDS = [
+    'type',
+    'properties',
+    'required',
+    'items',
+    'enum',
+    'description',
+    'format',
+    'default',
+    'nullable',
+    'minimum',
+    'maximum',
+    'minItems',
+    'maxItems',
+    'minLength',
+    'maxLength',
+    'pattern',
+  ];
+
   // Copy type
   if (schema.type) {
     // Vertex AI doesn't support array of types, pick first one
@@ -80,28 +101,20 @@ export function convertToVertexSchema(schema: JsonSchema): any {
     result.items = convertToVertexSchema(schema.items);
   }
 
-  // Copy enum
-  if (schema.enum) {
-    result.enum = schema.enum;
+  // Copy only allowed fields
+  for (const field of ALLOWED_FIELDS) {
+    if (field in schema && schema[field] !== undefined) {
+      // Skip fields already handled above
+      if (['type', 'properties', 'required', 'items'].includes(field)) {
+        continue;
+      }
+      result[field] = schema[field];
+    }
   }
 
-  // Copy description
-  if (schema.description) {
-    result.description = schema.description;
-  }
-
-  // Copy format
-  if (schema.format) {
-    result.format = schema.format;
-  }
-
-  // Copy default
-  if (schema.default !== undefined) {
-    result.default = schema.default;
-  }
-
-  // Explicitly ignore JSON Schema specific fields
-  // $schema, $ref, definitions, anyOf, oneOf, allOf, const are not copied
+  // Explicitly ignore JSON Schema specific fields:
+  // $schema, $ref, definitions, anyOf, oneOf, allOf, const
+  // additionalProperties, nullable (when used as standalone boolean), etc.
 
   return result;
 }
