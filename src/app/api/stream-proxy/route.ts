@@ -128,13 +128,15 @@ export async function POST(req: NextRequest) {
     // Convert tools to Vertex AI function declarations
     // MCP tools use JSON Schema which needs to be converted to Vertex AI format
     const tools = body.tools ? [{
-      functionDeclarations: body.tools.map(tool => 
-        convertMcpToolToVertex({
+      functionDeclarations: body.tools.map(tool => {
+        const converted = convertMcpToolToVertex({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.parameters,
-        }) as FunctionDeclaration
-      )
+        });
+        console.log(`[STREAM-PROXY] Converted tool "${tool.name}":`, JSON.stringify(converted, null, 2));
+        return converted as FunctionDeclaration;
+      })
     }] : undefined;
 
     // Start streaming response

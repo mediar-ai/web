@@ -58,6 +58,7 @@ export function convertToVertexSchema(schema: JsonSchema): any {
 
   // Explicitly allow only Vertex AI-compatible fields
   // See: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/function-calling#schema
+  // NOTE: additionalProperties is NOT supported by Vertex AI
   const ALLOWED_FIELDS = [
     'type',
     'properties',
@@ -101,20 +102,23 @@ export function convertToVertexSchema(schema: JsonSchema): any {
     result.items = convertToVertexSchema(schema.items);
   }
 
-  // Copy only allowed fields
-  for (const field of ALLOWED_FIELDS) {
-    if (field in schema && schema[field] !== undefined) {
-      // Skip fields already handled above
-      if (['type', 'properties', 'required', 'items'].includes(field)) {
-        continue;
-      }
-      result[field] = schema[field];
+  // Copy only allowed fields from the schema object
+  // This filters out unsupported fields at the current level
+  for (const key in schema) {
+    // Skip already processed fields
+    if (['type', 'properties', 'required', 'items', '$schema', '$ref', 'definitions',
+         'anyOf', 'oneOf', 'allOf', 'const'].includes(key)) {
+      continue;
+    }
+
+    // Only copy if it's in allowed list
+    if (ALLOWED_FIELDS.includes(key) && schema[key] !== undefined) {
+      result[key] = schema[key];
     }
   }
 
   // Explicitly ignore JSON Schema specific fields:
-  // $schema, $ref, definitions, anyOf, oneOf, allOf, const
-  // additionalProperties, nullable (when used as standalone boolean), etc.
+  // $schema, $ref, definitions, anyOf, oneOf, allOf, const, additionalProperties
 
   return result;
 }
