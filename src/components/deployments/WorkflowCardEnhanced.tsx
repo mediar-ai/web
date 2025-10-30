@@ -80,9 +80,6 @@ export function WorkflowCardEnhanced({
   const [isDeleting, setIsDeleting] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Debug: Log admin status
-  console.log('[WorkflowCardEnhanced] isMediarAdmin:', isMediarAdmin, 'workflow:', workflow.name);
-
   // Calculate metrics from workflow stats (not from limited executions array)
   const metrics = useMemo(() => {
     // Use current version success rate, default to 100% if not available
