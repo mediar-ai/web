@@ -40,6 +40,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { toast } from 'sonner';
 
 interface WorkflowCardEnhancedProps {
   workflow: WorkflowWithSettings;
@@ -53,6 +54,7 @@ interface WorkflowCardEnhancedProps {
   onToggleCron?: () => void;
   onManageOrganizations?: () => void;
   onUploadVersion?: () => void;
+  onDelete?: (workflowId: number) => Promise<void>;
   isMediarAdmin?: boolean;
   className?: string;
 }
@@ -69,11 +71,13 @@ export function WorkflowCardEnhanced({
   onToggleCron,
   onManageOrganizations,
   onUploadVersion,
+  onDelete,
   isMediarAdmin = false,
   className,
 }: WorkflowCardEnhancedProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [liveCountdown, setLiveCountdown] = useState<string>('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Debug: Log admin status
@@ -206,6 +210,54 @@ export function WorkflowCardEnhanced({
       isEnabled: workflow.cron_enabled
     };
   }, [workflow.cron_expression, workflow.cron_enabled, liveCountdown]);
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (!confirm(`Are you sure you want to delete "${workflow.name}"? This will archive the workflow and preserve execution history.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      if (onDelete) {
+        // Use parent callback
+        await onDelete(workflow.id);
+      } else {
+        // Fallback to inline delete
+        const response = await fetch(`/api/remote-workflows/${workflow.id}`, { method: 'DELETE' });
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to delete workflow');
+        }
+
+        toast.success(`Deleted workflow "${workflow.name}"`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 300);
+      }
+    } catch (err) {
+      setIsDeleting(false);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to delete workflow: ${errorMessage}`);
+    }
+  };
+
+  // Don't render if deleting (fade out)
+  if (isDeleting) {
+    return (
+      <div
+        className={cn(
+          'animate-out fade-out-0 zoom-out-95 duration-200',
+          'overflow-hidden transition-all',
+          className
+        )}
+        style={{ maxHeight: '0px', opacity: 0 }}
+      />
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -467,23 +519,7 @@ export function WorkflowCardEnhanced({
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Are you sure you want to delete "${workflow.name}"? This will archive the workflow and preserve execution history.`)) {
-                            fetch(`/api/remote-workflows/${workflow.id}`, { method: 'DELETE' })
-                              .then(res => res.json())
-                              .then(data => {
-                                if (data.success) {
-                                  window.location.reload();
-                                } else {
-                                  alert(`Failed to delete workflow: ${data.error}`);
-                                }
-                              })
-                              .catch(err => {
-                                alert(`Error deleting workflow: ${err.message}`);
-                              });
-                          }
-                        }}
+                        onClick={handleDeleteClick}
                         className="text-red-600 focus:text-red-600 focus:bg-red-50"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
