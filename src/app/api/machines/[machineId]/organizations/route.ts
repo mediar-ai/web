@@ -169,6 +169,8 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Machine organization assignments updated',
+      restart_required: true,
+      restart_message: 'VM restart required for organization filtering to take effect. Please restart the VM or remount the S3 drive.',
       machine_id: machineId,
       is_global,
       organizations: updatedAssignments || [],
