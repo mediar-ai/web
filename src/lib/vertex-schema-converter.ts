@@ -88,6 +88,11 @@ export function convertToVertexSchema(schema: JsonSchema): any {
   if (schema.properties) {
     result.properties = {};
     for (const [key, value] of Object.entries(schema.properties)) {
+      // Skip properties with literal true/false values (invalid schema)
+      if (typeof value === 'boolean') {
+        console.warn(`[vertex-converter] Skipping property "${key}" with boolean value:`, value);
+        continue;
+      }
       result.properties[key] = convertToVertexSchema(value);
     }
   }
