@@ -776,6 +776,44 @@ function DashboardContent() {
     setUploadVersionOpen(true);
   }, [workflows, posthog]);
 
+  const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    posthog?.capture('dashboard_delete_workflow', {
+      workflow_id: workflowId,
+      workflow_name: workflow.name,
+      timestamp: new Date().toISOString(),
+    });
+
+    try {
+      // Optimistic update - remove from UI immediately
+      setWorkflows(prev => prev.filter(w => w.id !== workflowId));
+      workflowsRef.current = workflowsRef.current.filter(w => w.id !== workflowId);
+
+      // Delete from server
+      const response = await fetch(`/api/remote-workflows/${workflowId}`, { method: 'DELETE' });
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to delete workflow');
+      }
+
+      toast.success(`Deleted workflow "${workflow.name}"`);
+
+      // Refresh workflows and stats after a short delay
+      setTimeout(() => {
+        fetchWorkflows(false);
+      }, 500);
+    } catch (err) {
+      // Revert optimistic update on error
+      await fetchWorkflows(false);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to delete workflow: ${errorMessage}`);
+      throw err;
+    }
+  }, [workflows, fetchWorkflows, posthog]);
+
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
     const initializeData = async () => {
@@ -1089,6 +1127,7 @@ function DashboardContent() {
                       onToggleCron={() => handleToggleCron(workflow.id)}
                       onManageOrganizations={() => handleManageOrganizations(workflow.id)}
                       onUploadVersion={() => handleUploadVersion(workflow.id)}
+                      onDelete={handleDeleteWorkflow}
                       isMediarAdmin={!!isGlobalAdmin}
                     />
                   ))}

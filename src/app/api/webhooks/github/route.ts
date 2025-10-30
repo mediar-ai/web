@@ -106,8 +106,9 @@ export async function POST(request: NextRequest) {
         // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
         const yamlMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
-          const folderName = yamlMatch[1];
-          const fileName = yamlMatch[2];
+          const orgPrefix = yamlMatch[2]; // UUID from "org-{uuid}"
+          const folderName = yamlMatch[3];
+          const fileName = yamlMatch[4];
           // Store the actual filename and org prefix for this folder
           changedWorkflows.set(folderName, fileName);
           workflowOrgPrefixes.set(folderName, orgPrefix);
