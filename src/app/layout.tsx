@@ -61,25 +61,34 @@ export default function RootLayout({
   // Skip Clerk in preview/build when no publishableKey
   const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
+  const content = (
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} ${spaceGrotesk.className}`}>
+        <PHProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            disableTransitionOnChange
+          >
+            <main className="min-h-screen stable-container pt-4">
+              {children}
+            </main>
+            <Toaster />
+            <CrispChat />
+          </ThemeProvider>
+        </PHProvider>
+      </body>
+    </html>
+  );
+
+  // Only wrap with ClerkProvider if key exists (skip in preview builds)
+  if (!clerkPublishableKey) {
+    return content;
+  }
+
   return (
-    <ClerkProvider publishableKey={clerkPublishableKey || undefined}>
-      <html lang="en" suppressHydrationWarning>
-        <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} ${spaceGrotesk.className}`}>
-          <PHProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="light"
-              disableTransitionOnChange
-            >
-              <main className="min-h-screen stable-container pt-4">
-                {children}
-              </main>
-              <Toaster />
-              <CrispChat />
-            </ThemeProvider>
-          </PHProvider>
-        </body>
-      </html>
+    <ClerkProvider publishableKey={clerkPublishableKey}>
+      {content}
     </ClerkProvider>
   );
 }
