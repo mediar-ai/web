@@ -397,17 +397,9 @@ export async function DELETE(
 
     console.log(`🔐 Authorization check passed - User ${authenticatedUserId} can delete workflow ${workflowIdNum}`);
 
-    // Get user email for logging (optional, best effort)
-    let userEmail = '';
-    try {
-      const { clerkClient } = await import('@clerk/nextjs/server');
-      const client = await clerkClient();
-      const user = await client.users.getUser(authenticatedUserId);
-      userEmail = user.emailAddresses?.[0]?.emailAddress || '';
-    } catch (error) {
-      console.warn('⚠️ Failed to get user email from Clerk:', error);
-      // Continue without email - not critical for deletion
-    }
+    // Get user context for commit messages (name + org, not email)
+    const { getUserContext } = await import('@/lib/github-workflow-manager');
+    const userContext = await getUserContext(authenticatedUserId, orgId);
 
     // Check for any running or queued executions
     const { data: activeExecutions, error: executionsError } = await supabase
@@ -441,7 +433,13 @@ export async function DELETE(
       .select('*', { count: 'exact', head: true })
       .eq('workflow_id', workflowIdNum);
 
-    console.log(`🗑️ User ${authenticatedUserId} (${userEmail || 'email unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`);
+    // Build user info string for logging
+    const userInfoStr = [
+      userContext.name || 'Unknown user',
+      userContext.organizationName ? `Org: ${userContext.organizationName}` : null
+    ].filter(Boolean).join(' | ');
+
+    console.log(`🗑️ User ${authenticatedUserId} (${userInfoStr}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`);
 
     // Step 1: Delete from GitHub if workflow has github_folder
     if (workflow.github_folder) {
@@ -467,6 +465,14 @@ export async function DELETE(
           if (Array.isArray(contents)) {
             console.log(`   Found ${contents.length} files to delete`);
 
+            // Build commit message with user context (matching create workflow style)
+            const commitUserInfo = [
+              userContext.name ? `User: ${userContext.name}` : null,
+              userContext.organizationName ? `Org: ${userContext.organizationName}` : null
+            ].filter(Boolean).join(' | ');
+
+            const commitMessage = `Delete workflow.yaml (workflow deletion via UI)\n\n${commitUserInfo}`;
+
             // Delete each file individually
             for (const file of contents) {
               try {
@@ -474,7 +480,7 @@ export async function DELETE(
                   owner,
                   repo,
                   path: file.path,
-                  message: `Delete ${file.name} (workflow deletion via UI by ${userEmail})`,
+                  message: file.name === 'workflow.yaml' ? commitMessage : `Delete ${file.name} (workflow deletion via UI)\n\n${commitUserInfo}`,
                   sha: file.sha,
                 });
                 console.log(`   ✅ Deleted: ${file.path}`);
@@ -530,10 +536,17 @@ export async function DELETE(
     // - Delete workflow from deployed_workflows (CASCADE cleans up other tables)
     console.log(`📦 Archiving workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} executions`);
 
+    // Build archived_by string with user context (no email)
+    const archivedByStr = [
+      `user:${authenticatedUserId}`,
+      userContext.name,
+      userContext.organizationName ? `org:${userContext.organizationName}` : null
+    ].filter(Boolean).join(':');
+
     const { data: archiveResult, error: archiveError } = await supabase
       .rpc('archive_workflow', {
         p_workflow_id: workflowIdNum,
-        p_archived_by: `user:${authenticatedUserId}${userEmail ? `:${userEmail}` : ''}`,
+        p_archived_by: archivedByStr,
         p_deletion_reason: `Manual deletion from UI (Danger Zone)`
       });
 
