@@ -297,9 +297,12 @@ export async function POST(
     // STEP 9: Push to GitHub
     let githubSyncResult = null;
     try {
-      const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
+      const { githubWorkflowManager, getUserContext } = await import('@/lib/github-workflow-manager');
 
       console.log(`📤 Pushing version ${newVersionNumber} to GitHub...`);
+
+      // Fetch user context for enhanced commit message
+      const userContext = await getUserContext(authenticatedUserId, orgId);
 
       githubSyncResult = await githubWorkflowManager.saveWorkflow(
         workflow.name,
@@ -307,7 +310,9 @@ export async function POST(
         false, // Not development
         `Update default values: ${workflow.name} (v${newVersionNumber})`,
         false, // Don't create PR - push directly
-        workflowIdNum
+        workflowIdNum,
+        orgId || undefined,
+        userContext
       );
 
       if (githubSyncResult.success) {
