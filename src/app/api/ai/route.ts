@@ -2,9 +2,12 @@ import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { randomUUID } from 'crypto';
 
 // =================================================================
 // Native Vertex AI (non-streaming) endpoint with optional tools
+// Session-based architecture for multi-turn conversations with
+// client-side tool execution
 // =================================================================
 
 // Auth
@@ -24,6 +27,29 @@ type AllowedModel = (typeof ALLOWED_MODELS)[number];
 
 // Client-side tools: server accepts any tools from client and returns tool calls
 type JSONSchema = Record<string, unknown>;
+
+// Session storage for persistent chat sessions
+interface ChatSession {
+  chat: any; // Vertex AI chat instance
+  createdAt: number;
+  lastAccessedAt: number;
+  model: AllowedModel;
+  system?: string;
+}
+
+const chatSessions = new Map<string, ChatSession>();
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+// Clean up expired sessions periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of chatSessions.entries()) {
+    if (now - session.lastAccessedAt > SESSION_TTL_MS) {
+      console.log(`[AI API] Cleaning up expired session: ${sessionId}`);
+      chatSessions.delete(sessionId);
+    }
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
 
 // Helpers ------------------------------------------------------------
 async function authenticate(request: NextRequest): Promise<boolean> {
@@ -105,43 +131,99 @@ function validateModel(model: string | undefined): model is AllowedModel {
   return !!model && (ALLOWED_MODELS as readonly string[]).includes(model);
 }
 
-// Simple single-turn Vertex call (client handles tool execution) ----
-async function callVertex(params: {
+// Session-based chat handling with tool result continuation ----
+async function handleChatSession(params: {
   vertexAI: VertexAI;
+  sessionId?: string;
   model: AllowedModel;
   system?: string;
-  history?: Array<Record<string, unknown>>;
   functionDeclarations: FunctionDeclaration[];
-  input: string;
+  input?: string;
+  toolResults?: Array<{ name: string; result: any }>;
   generationConfig?: { temperature?: number; maxOutputTokens?: number };
-}) {
+}): Promise<{
+  sessionId: string;
+  text: string;
+  toolCalls: Array<{ name: string; args: Record<string, any> }>;
+  finishReason: 'stop' | 'tool_calls';
+  metrics: { elapsedMs: number; tokens?: any };
+}> {
   const {
     vertexAI,
+    sessionId,
     model,
     system,
-    history = [],
     functionDeclarations,
     input,
+    toolResults,
     generationConfig,
   } = params;
 
   const t0 = Date.now();
 
-  const gm = vertexAI.getGenerativeModel({
-    model,
-    generationConfig: {
-      temperature: generationConfig?.temperature ?? 0.7,
-      maxOutputTokens: generationConfig?.maxOutputTokens ?? 1000,
-    },
-    tools: functionDeclarations.length ? [{ functionDeclarations }] : undefined,
-    systemInstruction: system
-      ? ({ parts: [{ text: system }] } as any)
-      : undefined,
-  });
+  // Get or create session
+  let session: ChatSession;
+  let newSessionId: string;
 
-  const chat = gm.startChat({ history: history as any });
-  const response = await chat.sendMessage(input);
+  if (sessionId && chatSessions.has(sessionId)) {
+    // Use existing session
+    session = chatSessions.get(sessionId)!;
+    session.lastAccessedAt = Date.now();
+    newSessionId = sessionId;
+    console.log(`[AI API] Using existing session: ${sessionId}`);
+  } else {
+    // Create new session
+    newSessionId = randomUUID();
 
+    const gm = vertexAI.getGenerativeModel({
+      model,
+      generationConfig: {
+        temperature: generationConfig?.temperature ?? 0.7,
+        maxOutputTokens: generationConfig?.maxOutputTokens ?? 1000,
+      },
+      tools: functionDeclarations.length ? [{ functionDeclarations }] : undefined,
+      systemInstruction: system
+        ? ({ parts: [{ text: system }] } as any)
+        : undefined,
+    });
+
+    const chat = gm.startChat({ history: [] });
+
+    session = {
+      chat,
+      createdAt: Date.now(),
+      lastAccessedAt: Date.now(),
+      model,
+      system,
+    };
+
+    chatSessions.set(newSessionId, session);
+    console.log(`[AI API] Created new session: ${newSessionId}`);
+  }
+
+  // Send message to chat
+  let response;
+  if (toolResults && toolResults.length > 0) {
+    // Continuing conversation with tool results
+    console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s) to session ${newSessionId}`);
+
+    const functionResponseParts = toolResults.map(tr => ({
+      functionResponse: {
+        name: tr.name,
+        response: tr.result
+      }
+    }));
+
+    response = await session.chat.sendMessage(functionResponseParts as any);
+  } else if (input) {
+    // New user message
+    console.log(`[AI API] 💬 Sending user message to session ${newSessionId}`);
+    response = await session.chat.sendMessage(input);
+  } else {
+    throw new Error('Either input or toolResults must be provided');
+  }
+
+  // Parse response
   const candidate = (response as any)?.response?.candidates?.[0];
   const parts = candidate?.content?.parts || [];
   const textParts = parts
@@ -157,7 +239,7 @@ async function callVertex(params: {
     args: fc.args || {},
   }));
 
-  // Extract usage stats if available
+  // Extract usage stats
   const usageMetadata = (response as any)?.response?.usageMetadata;
   const tokenStats = usageMetadata
     ? {
@@ -169,11 +251,12 @@ async function callVertex(params: {
 
   if (toolCalls.length > 0) {
     console.log(
-      `🛠️ Model requested ${toolCalls.length} tool call(s): [${toolCalls.map((tc: any) => tc.name).join(', ')}]`
+      `[AI API] 🛠️ Model requested ${toolCalls.length} tool call(s): [${toolCalls.map((tc: any) => tc.name).join(', ')}]`
     );
   }
 
   return {
+    sessionId: newSessionId,
     text,
     toolCalls,
     finishReason:
@@ -201,15 +284,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const sessionId = body.sessionId as string | undefined;
     const model = (body.model as string) || 'gemini-2.5-flash';
-    const input = body.input as string;
-    const history = (body.history as Array<Record<string, unknown>>) || [];
+    const input = body.input as string | undefined;
     const system = (body.system as string) || undefined;
     const generationConfig = body.generationConfig as
       | { temperature?: number; maxOutputTokens?: number }
       | undefined;
     const tools = body.tools as
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
+      | undefined;
+    const toolResults = body.toolResults as
+      | Array<{ name: string; result: any }>
       | undefined;
 
     if (!validateModel(model)) {
@@ -218,9 +304,9 @@ export async function POST(request: NextRequest) {
         { status: 400, headers: corsHeaders }
       );
     }
-    if (!input || typeof input !== 'string') {
+    if (!input && !toolResults) {
       return NextResponse.json(
-        { error: 'Missing required field: input (string)' },
+        { error: 'Either input or toolResults must be provided' },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -257,33 +343,34 @@ export async function POST(request: NextRequest) {
 
     // Logs for debugging
     const systemLen = system?.length || 0;
-    const historyLen = history.length;
-    const historyCharLen = JSON.stringify(history).length;
     const toolsCount = functionDeclarations.length;
-    const inputLen = input.length;
+    const inputLen = input?.length || 0;
+    const toolResultsCount = toolResults?.length || 0;
 
     console.log('🤖 Vertex request', {
+      sessionId: sessionId || 'new',
       model,
       systemLen,
-      historyLen,
-      historyCharLen,
-      inputCharLen: inputLen,
+      inputLen,
       toolsCount,
+      toolResultsCount,
       generationConfig,
     });
 
-    const result = await callVertex({
+    const result = await handleChatSession({
       vertexAI,
+      sessionId,
       model,
       system,
-      history,
       functionDeclarations,
       input,
+      toolResults,
       generationConfig,
     });
 
     // Log response stats
     const responseStats: Record<string, any> = {
+      sessionId: result.sessionId,
       textLen: result.text.length,
       toolCallsCount: result.toolCalls.length,
       finishReason: result.finishReason,
