@@ -106,71 +106,7 @@ export function UnifiedWorkflowDialog({
   const [loadingCron, setLoadingCron] = useState(false);
   const [savingCron, setSavingCron] = useState(false);
 
-  const loadVersions = useCallback(async () => {
-    if (!workflow) return;
-
-    setLoadingVersions(true);
-    try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
-      if (!response.ok) throw new Error(`Failed to load versions: ${response.status}`);
-
-      const data = await response.json();
-      if (data.success) {
-        setVersions(data.versions || []);
-        // Find active version and set as default selected version
-        const activeVersion = data.versions?.find((v: WorkflowVersion) => v.is_active);
-        if (activeVersion) {
-          setSelectedVersionNumber(activeVersion.version_number);
-          if (activeVersion?.automation_sequence) {
-            // Check if it's already a string or needs to be converted
-            const yamlContent = typeof activeVersion.automation_sequence === 'string'
-              ? activeVersion.automation_sequence
-              : yaml.dump(activeVersion.automation_sequence);
-            setCurrentYaml(yamlContent);
-          }
-        }
-      } else {
-        throw new Error(data.error || 'Failed to load versions');
-      }
-    } catch (error) {
-      console.error('Error loading versions:', error);
-      setErrorMessage(`Failed to load versions: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoadingVersions(false);
-    }
-  }, [workflow]);
-
-  const loadWorkflowYaml = useCallback(async () => {
-    if (!workflow) return;
-
-    setLoadingYaml(true);
-    try {
-      // Fetch YAML from GitHub (with database fallback for legacy workflows)
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch YAML: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.yaml) {
-        console.log(`📄 Loaded YAML for workflow ${workflow.id} from:`, data.source);
-        setCurrentYaml(data.yaml);
-        setEditedYaml(data.yaml);
-      } else {
-        console.warn('No YAML content found for workflow');
-        setCurrentYaml('');
-      }
-    } catch (error) {
-      console.error('Error loading workflow YAML:', error);
-      setCurrentYaml('');
-    } finally {
-      setLoadingYaml(false);
-    }
-  }, [workflow]);
-
-  // Load YAML for a specific version
+  // Load YAML for a specific version (defined before loadVersions to avoid circular dependency)
   const loadVersionYaml = useCallback(async (versionNumber: string) => {
     if (!workflow) return;
 
@@ -198,6 +134,65 @@ export function UnifiedWorkflowDialog({
     } catch (error) {
       console.error('Error loading version YAML:', error);
       setErrorMessage(`Failed to load version: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingYaml(false);
+    }
+  }, [workflow]);
+
+  const loadVersions = useCallback(async () => {
+    if (!workflow) return;
+
+    setLoadingVersions(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
+      if (!response.ok) throw new Error(`Failed to load versions: ${response.status}`);
+
+      const data = await response.json();
+      if (data.success) {
+        setVersions(data.versions || []);
+        // Find active version and set as default selected version
+        const activeVersion = data.versions?.find((v: WorkflowVersion) => v.is_active);
+        if (activeVersion) {
+          setSelectedVersionNumber(activeVersion.version_number);
+          // Load the active version's YAML from GitHub/database
+          loadVersionYaml(activeVersion.version_number);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to load versions');
+      }
+    } catch (error) {
+      console.error('Error loading versions:', error);
+      setErrorMessage(`Failed to load versions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, [workflow, loadVersionYaml]);
+
+  const loadWorkflowYaml = useCallback(async () => {
+    if (!workflow) return;
+
+    setLoadingYaml(true);
+    try {
+      // Fetch YAML from GitHub (with database fallback for legacy workflows)
+      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch YAML: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.yaml) {
+        console.log(`📄 Loaded YAML for workflow ${workflow.id} from:`, data.source);
+        setCurrentYaml(data.yaml);
+        setEditedYaml(data.yaml);
+      } else {
+        console.warn('No YAML content found for workflow');
+        setCurrentYaml('');
+      }
+    } catch (error) {
+      console.error('Error loading workflow YAML:', error);
+      setCurrentYaml('');
     } finally {
       setLoadingYaml(false);
     }
