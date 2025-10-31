@@ -2,6 +2,7 @@ import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
 import { createClient } from '@supabase/supabase-js';
 import { MEDIAR_ORG_IDS } from './constants';
+import { createClerkClient } from '@clerk/backend';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,6 +18,11 @@ export interface GitHubWorkflowResult {
   prNumber?: number;
   branch?: string;
   workflowId?: number;
+}
+
+export interface UserContext {
+  name?: string;
+  organizationName?: string;
 }
 
 export class GitHubWorkflowManager {
@@ -60,7 +66,8 @@ export class GitHubWorkflowManager {
     message?: string,
     createPR: boolean = true,
     workflowId?: number,
-    organizationId?: string
+    organizationId?: string,
+    userContext?: UserContext
   ): Promise<GitHubWorkflowResult> {
     try {
       // Validate YAML
@@ -153,12 +160,27 @@ export class GitHubWorkflowManager {
 `;
       const fullContent = metadataComment + yamlContent;
 
+      // Build commit message with user context
+      let commitMessage = message || `Add/Update workflow: ${workflowName}`;
+      if (userContext) {
+        const userInfo: string[] = [];
+        if (userContext.name) {
+          userInfo.push(`User: ${userContext.name}`);
+        }
+        if (userContext.organizationName) {
+          userInfo.push(`Org: ${userContext.organizationName}`);
+        }
+        if (userInfo.length > 0) {
+          commitMessage = `${commitMessage}\n\n${userInfo.join(' | ')}`;
+        }
+      }
+
       // Create or update file
       const { data } = await this.octokit.repos.createOrUpdateFileContents({
         owner: this.owner,
         repo: this.repo,
         path: filePath,
-        message: message || `Add/Update workflow: ${workflowName}`,
+        message: commitMessage,
         content: Buffer.from(fullContent).toString('base64'),
         branch: createPR ? branchName : targetBranch,
         ...(existingSha && { sha: existingSha })
@@ -313,6 +335,47 @@ ${message || 'Workflow created via Mediar UI'}
       console.error(`Failed to fetch workflow from GitHub (${this.owner}/${this.repo}/${path}@${ref || this.baseBranch}):`, error);
       return null;
     }
+  }
+}
+
+/**
+ * Fetch user context from Clerk for enhanced commit messages
+ */
+export async function getUserContext(userId: string, orgId?: string | null): Promise<UserContext> {
+  try {
+    if (!process.env.CLERK_SECRET_KEY) {
+      console.warn('CLERK_SECRET_KEY not configured, skipping user context fetch');
+      return {};
+    }
+
+    const clerkClient = createClerkClient({
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
+
+    // Fetch user details
+    const user = await clerkClient.users.getUser(userId);
+    const userName = user.firstName && user.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user.firstName || user.lastName || undefined;
+
+    // Fetch organization name if orgId is provided
+    let organizationName: string | undefined;
+    if (orgId) {
+      try {
+        const org = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+        organizationName = org.name;
+      } catch (orgError) {
+        console.warn(`Failed to fetch organization ${orgId}:`, orgError);
+      }
+    }
+
+    return {
+      name: userName,
+      organizationName,
+    };
+  } catch (error) {
+    console.error('Failed to fetch user context from Clerk:', error);
+    return {};
   }
 }
 

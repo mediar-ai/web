@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { createClient } from '@supabase/supabase-js';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
-import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
 
 // Content sanitization check function
 function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
@@ -470,13 +470,18 @@ export async function POST(request: NextRequest) {
         const isDevelopment = newWorkflow.status === 'draft' ||
                              newWorkflow.workflow_type === 'settings';
 
+        // Fetch user context for enhanced commit message
+        const userContext = await getUserContext(authenticatedUserId, orgId);
+
         const githubResult = await githubWorkflowManager.saveWorkflow(
           newWorkflow.name,
           workflowContent,
           isDevelopment,
           `Create workflow from ZIP upload: ${newWorkflow.name}`,
           false, // Don't create PR - push directly
-          newWorkflow.id // Use newWorkflow.id directly instead of workflowId
+          newWorkflow.id, // Use newWorkflow.id directly instead of workflowId
+          orgId || undefined,
+          userContext
         );
 
         if (githubResult.success) {
@@ -585,13 +590,18 @@ export async function POST(request: NextRequest) {
           const isDevelopment = workflowDetails.status === 'draft' ||
                                workflowDetails.workflow_type === 'settings';
 
+          // Fetch user context for enhanced commit message
+          const userContext = await getUserContext(authenticatedUserId, orgId);
+
           const githubResult = await githubWorkflowManager.saveWorkflow(
             workflowDetails.name,
             workflowContent,
             isDevelopment,
             `Upload new version ${nextVersionNumber} via ZIP`,
             false, // Don't create PR - push directly
-            workflowId
+            workflowId,
+            orgId || undefined,
+            userContext
           );
 
           if (githubResult.success) {

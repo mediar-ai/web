@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
 
 const supabase = createClient(
@@ -18,7 +18,7 @@ export async function POST(
   try {
     // Check authentication
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
 
     if (!userId) {
       return NextResponse.json(
@@ -208,13 +208,18 @@ export async function POST(
       const isDevelopment = newWorkflow.status === 'draft' ||
                            newWorkflow.workflow_type === 'settings';
 
+      // Fetch user context for enhanced commit message
+      const userContext = await getUserContext(userId, orgId);
+
       const githubResult = await githubWorkflowManager.saveWorkflow(
         duplicateName,
         yamlContent,
         isDevelopment,
         `Duplicate workflow from "${originalWorkflow.name}" (ID: ${workflowId})`,
         false, // Don't create PR - push directly
-        newWorkflow.id
+        newWorkflow.id,
+        orgId || undefined,
+        userContext
       );
 
       if (githubResult.success) {

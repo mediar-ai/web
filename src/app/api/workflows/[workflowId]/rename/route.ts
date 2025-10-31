@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
 
 const supabase = createClient(
@@ -18,7 +18,7 @@ export async function PATCH(
   try {
     // Check authentication
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
 
     if (!userId) {
       return NextResponse.json(
@@ -99,13 +99,18 @@ export async function PATCH(
         const isDevelopment = updatedWorkflow.status === 'draft' ||
                              updatedWorkflow.workflow_type === 'settings';
 
+        // Fetch user context for enhanced commit message
+        const userContext = await getUserContext(userId, orgId);
+
         const githubResult = await githubWorkflowManager.saveWorkflow(
           name.trim(),
           yamlContent,
           isDevelopment,
           `Rename workflow: ${updatedWorkflow.name} → ${name.trim()}`,
           false, // Don't create PR - push directly
-          workflowId
+          workflowId,
+          orgId || undefined,
+          userContext
         );
 
         if (githubResult.success) {

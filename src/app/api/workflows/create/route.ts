@@ -1,6 +1,6 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
-import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
@@ -253,13 +253,19 @@ export async function POST(request: NextRequest) {
     // Also save to GitHub for version control
     try {
       const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
+
+      // Fetch user context for enhanced commit message
+      const userContext = await getUserContext(userId, orgId);
+
       const githubResult = await githubWorkflowManager.saveWorkflow(
         body.name,
         yamlContent || yaml.dump(parsedSequence),
         isDevelopment,
         `Create workflow: ${body.name}`,
         false,  // Don't create PR - push directly to main
-        newWorkflow.id  // Pass workflow ID for folder naming
+        newWorkflow.id,  // Pass workflow ID for folder naming
+        effectiveOrgId,
+        userContext
       );
 
       if (githubResult.success) {
