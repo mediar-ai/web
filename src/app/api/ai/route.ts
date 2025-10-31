@@ -2,11 +2,26 @@ import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { createClient } from 'redis';
+import { randomUUID } from 'crypto';
+
+// Redis client initialization
+const getRedisClient = async () => {
+  const client = createClient({
+    url: process.env.REDIS_URL
+  });
+
+  if (!client.isOpen) {
+    await client.connect();
+  }
+
+  return client;
+};
 
 // =================================================================
 // Native Vertex AI (non-streaming) endpoint with optional tools
-// Stateless architecture with history reconstruction for multi-turn
-// conversations with client-side tool execution
+// Supports both stateless (client-side history) and stateful (KV-backed)
+// architectures with native function calling
 // =================================================================
 
 // Auth
@@ -32,6 +47,18 @@ interface VertexMessage {
   role: 'user' | 'model';
   parts: Array<{ text?: string; functionCall?: any; functionResponse?: any }>;
 }
+
+// KV session storage
+interface SessionData {
+  history: VertexMessage[];
+  system?: string;
+  model: AllowedModel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const KV_SESSION_TTL = 60 * 60 * 24; // 24 hours
+const KV_SESSION_PREFIX = 'ai-session:';
 
 // Helpers ------------------------------------------------------------
 async function authenticate(request: NextRequest): Promise<boolean> {
@@ -113,6 +140,41 @@ function validateModel(model: string | undefined): model is AllowedModel {
   return !!model && (ALLOWED_MODELS as readonly string[]).includes(model);
 }
 
+// Redis session management --------------------------------------------
+async function loadSession(sessionId: string): Promise<SessionData | null> {
+  try {
+    const redis = await getRedisClient();
+    const key = `${KV_SESSION_PREFIX}${sessionId}`;
+    const data = await redis.get(key);
+
+    if (data) {
+      const parsed = JSON.parse(data) as SessionData;
+      console.log(`[REDIS] Loaded session ${sessionId} with ${parsed.history.length} messages`);
+      return parsed;
+    }
+    return null;
+  } catch (error) {
+    console.error('[REDIS] Failed to load session:', error);
+    return null;
+  }
+}
+
+async function saveSession(sessionId: string, data: SessionData): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const key = `${KV_SESSION_PREFIX}${sessionId}`;
+    await redis.set(key, JSON.stringify(data), { EX: KV_SESSION_TTL });
+    console.log(`[REDIS] Saved session ${sessionId} with ${data.history.length} messages (TTL: ${KV_SESSION_TTL}s)`);
+  } catch (error) {
+    console.error('[REDIS] Failed to save session:', error);
+    throw error;
+  }
+}
+
+function createSessionId(): string {
+  return randomUUID();
+}
+
 // Stateless chat handling with history reconstruction ----
 async function handleVertexChat(params: {
   vertexAI: VertexAI;
@@ -166,6 +228,7 @@ async function handleVertexChat(params: {
     // Continuing conversation with tool results
     console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s)`);
 
+    // Format function responses for Vertex AI
     const functionResponseParts = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
@@ -242,9 +305,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const sessionId = body.sessionId as string | undefined;
     const model = (body.model as string) || 'gemini-2.5-flash';
     const input = body.input as string | undefined;
-    const history = (body.history as VertexMessage[]) || [];
+    let history = (body.history as VertexMessage[]) || [];
     const system = (body.system as string) || undefined;
     const generationConfig = body.generationConfig as
       | { temperature?: number; maxOutputTokens?: number }
@@ -255,6 +319,28 @@ export async function POST(request: NextRequest) {
     const toolResults = body.toolResults as
       | Array<{ name: string; result: any }>
       | undefined;
+
+    // Load session from KV if sessionId provided
+    let actualSessionId = sessionId;
+    let sessionSystem = system;
+    let sessionModel = validateModel(model) ? model : 'gemini-2.5-flash';
+
+    if (sessionId) {
+      const sessionData = await loadSession(sessionId);
+      if (sessionData) {
+        // Use history from KV, override client-provided history
+        history = sessionData.history;
+        sessionSystem = sessionData.system || system;
+        sessionModel = sessionData.model;
+        console.log(`[AI API] Using KV session ${sessionId} with ${history.length} history message(s)`);
+      } else {
+        console.log(`[AI API] Session ${sessionId} not found in KV, starting fresh`);
+      }
+    } else {
+      // No sessionId provided, create new session for KV storage
+      actualSessionId = createSessionId();
+      console.log(`[AI API] Created new session ${actualSessionId}`);
+    }
 
     if (!validateModel(model)) {
       return NextResponse.json(
@@ -307,7 +393,8 @@ export async function POST(request: NextRequest) {
     const historyLen = history.length;
 
     console.log('🤖 Vertex request', {
-      model,
+      model: sessionModel,
+      sessionId: actualSessionId,
       systemLen,
       inputLen,
       toolsCount,
@@ -318,8 +405,8 @@ export async function POST(request: NextRequest) {
 
     const result = await handleVertexChat({
       vertexAI,
-      model,
-      system,
+      model: sessionModel,
+      system: sessionSystem,
       history,
       functionDeclarations,
       input,
@@ -341,7 +428,71 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Response stats', responseStats);
 
-    return NextResponse.json({ model, ...result }, { headers: corsHeaders });
+    // Update history with new turn and save to KV
+    const updatedHistory = [...history];
+
+    // Add user message to history
+    if (input) {
+      updatedHistory.push({
+        role: 'user',
+        parts: [{ text: input }],
+      });
+    }
+
+    // Add tool results to history if present
+    if (toolResults && toolResults.length > 0) {
+      updatedHistory.push({
+        role: 'user',
+        parts: toolResults.map(tr => ({
+          functionResponse: {
+            name: tr.name,
+            response: tr.result,
+          },
+        })),
+      });
+    }
+
+    // Add model response to history
+    const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+    if (result.text) {
+      modelParts.push({ text: result.text });
+    }
+    if (result.toolCalls.length > 0) {
+      result.toolCalls.forEach(tc => {
+        modelParts.push({
+          functionCall: {
+            name: tc.name,
+            args: tc.args,
+          },
+        });
+      });
+    }
+
+    if (modelParts.length > 0) {
+      updatedHistory.push({
+        role: 'model',
+        parts: modelParts,
+      });
+    }
+
+    // Save updated session to KV
+    if (actualSessionId) {
+      const sessionData: SessionData = {
+        history: updatedHistory,
+        system: sessionSystem,
+        model: sessionModel,
+        createdAt: sessionId
+          ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+          : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveSession(actualSessionId, sessionData);
+    }
+
+    return NextResponse.json(
+      { model: sessionModel, sessionId: actualSessionId, ...result },
+      { headers: corsHeaders }
+    );
   } catch (error: unknown) {
     const err = error as Error;
     console.error('🚨 Vertex AI request failed:', err?.message);
@@ -372,10 +523,12 @@ export async function GET(request: NextRequest) {
         status: 'ok',
         format: 'vertex-native',
         streaming: false,
-        stateless: true,
+        stateless: false,
+        sessionStorage: 'redis',
+        sessionTTL: KV_SESSION_TTL,
         availableModels: ALLOWED_MODELS,
         toolExecution: 'client-side',
-        note: 'Stateless endpoint: client maintains conversation history and sends it with each request. Server accepts tools and returns tool calls for client execution.',
+        note: 'Redis-backed sessions: server stores conversation history with native functionCall/functionResponse. Pass sessionId for multi-turn conversations. Client still executes tools.',
         authentication: 'Authorization: Bearer|Basic',
       },
       { headers: corsHeaders }
