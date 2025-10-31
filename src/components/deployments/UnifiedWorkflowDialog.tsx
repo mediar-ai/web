@@ -352,15 +352,15 @@ export function UnifiedWorkflowDialog({
   // Load data when modal opens
   useEffect(() => {
     if (open && workflow) {
-      loadVersions();
+      loadVersions(); // This already loads the active version's YAML
       loadMachines();
       loadMachineAssignments();
-      loadWorkflowYaml();
+      // Don't call loadWorkflowYaml() here - it would overwrite the active version YAML with latest
       loadCronConfig();
       setEditedName(workflow.name || '');
       setEditedDescription(workflow.description || '');
     }
-  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadWorkflowYaml, loadCronConfig]);
+  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadCronConfig]);
 
   // Clear messages after 3 seconds
   useEffect(() => {
