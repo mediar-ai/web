@@ -105,8 +105,8 @@ export class GitHubWorkflowManager {
 
         // Determine org prefix - ONLY for new workflows
         const effectiveOrgId = organizationId || existingWorkflow?.organization_id;
-        // ALL orgs (including Mediar) should have org prefix: {orgid}/workflowname
-        const orgPrefix = effectiveOrgId ? `${effectiveOrgId}/` : '';
+        // ALL orgs (including Mediar) should have org prefix: org-{orgid}/workflowname
+        const orgPrefix = effectiveOrgId ? `org-${effectiveOrgId}/` : '';
         filePath = `${orgPrefix}${folderName}/workflow.yaml`;
 
         console.log(`📁 New workflow path: ${filePath} (org: ${effectiveOrgId || 'no-org'})`);
