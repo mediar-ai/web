@@ -30,13 +30,9 @@ import { createClient } from '@supabase/supabase-js';
 import { getDirectConnectionUrl } from '@/lib/guacamole-client';
 
 // Security: Require environment variables, no fallbacks
-if (!process.env.GUACAMOLE_URL || !process.env.GUACAMOLE_USERNAME || !process.env.GUACAMOLE_PASSWORD) {
-  throw new Error('Guacamole credentials not configured - set GUACAMOLE_URL, GUACAMOLE_USERNAME, GUACAMOLE_PASSWORD');
-}
-
-const GUACAMOLE_URL = process.env.GUACAMOLE_URL.trim();
-const GUACAMOLE_USERNAME = process.env.GUACAMOLE_USERNAME.trim();
-const GUACAMOLE_PASSWORD = process.env.GUACAMOLE_PASSWORD.trim();
+const GUACAMOLE_URL = process.env.GUACAMOLE_URL?.trim() || '';
+const GUACAMOLE_USERNAME = process.env.GUACAMOLE_USERNAME?.trim() || '';
+const GUACAMOLE_PASSWORD = process.env.GUACAMOLE_PASSWORD?.trim() || '';
 
 interface RdpAccessRequest {
   execution_id?: string;
