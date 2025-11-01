@@ -25,7 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import * as yaml from 'js-yaml';
-import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchive, FileCheck, AlertTriangle, Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 import { toast } from 'sonner';
@@ -432,6 +432,23 @@ export function CreateWorkflowDialog({
               : 'Create a new workflow from scratch using templates or manual YAML definition. The workflow will be created with status "deployed" and be immediately available for execution.'}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Desktop app suggestion banner */}
+        <Alert className="border-2 border-black bg-gray-50">
+          <Download className="h-4 w-4" />
+          <AlertDescription className="ml-2">
+            <span className="font-mono font-bold">Pro tip:</span> Want to create workflows on your computer?{' '}
+            <a
+              href="/download/windows"
+              className="font-mono underline hover:bg-black hover:text-white transition-colors px-1"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Download the Mediar desktop app
+            </a>
+            {' '}to record and automate workflows locally.
+          </AlertDescription>
+        </Alert>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className={`grid w-full ${showTemplatesTab ? 'grid-cols-3' : 'grid-cols-2'}`}>
