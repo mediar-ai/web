@@ -4,15 +4,24 @@ Analyze and extract insights from your Posthog dashboard data.
 
 ## Setup
 
-1. Set your Posthog API key as an environment variable:
+1. **Get your Posthog API key:**
+   - Go to your Posthog dashboard → Settings → Personal API Keys
+   - Create a new personal API key (you provided: `phx_M5E6t8rHuxD9Xc53SEJz6aOBk4qLVfprudlYXI7txJRvESP`)
+   - Copy the key for use below
+
+2. **Set environment variables:**
    ```bash
    export POSTHOG_API_KEY="phx_M5E6t8rHuxD9Xc53SEJz6aOBk4qLVfprudlYXI7txJRvESP"
+   export POSTHOG_PROJECT_ID="your-project-id"  # Find this in your Posthog project settings
+   export POSTHOG_HOST="https://us.i.posthog.com"  # Or your self-hosted URL
    ```
 
-2. Set your Posthog project ID:
-   ```bash
-   export POSTHOG_PROJECT_ID="your-project-id"
-   ```
+3. **Verify the key is active:**
+   - Check that the personal API key hasn't been revoked
+   - Ensure it has the necessary permissions (read access to events, insights, persons)
+   - If the key is invalid, create a new one in your Posthog dashboard
+
+**Note:** If you see authentication errors, the API key may need to be regenerated in your Posthog dashboard.
 
 ## Capabilities
 
