@@ -1,7 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
 import { createClient } from '@supabase/supabase-js';
-import { MEDIAR_ORG_IDS } from './constants';
 import { createClerkClient } from '@clerk/backend';
 
 const supabase = createClient(
@@ -106,11 +105,11 @@ export class GitHubWorkflowManager {
 
         // Determine org prefix - ONLY for new workflows
         const effectiveOrgId = organizationId || existingWorkflow?.organization_id;
-        const isMediarOrg = effectiveOrgId && MEDIAR_ORG_IDS.includes(effectiveOrgId);
-        const orgPrefix = (effectiveOrgId && !isMediarOrg) ? `org-${effectiveOrgId}/` : '';
+        // ALL orgs (including Mediar) should have org prefix: {orgid}/workflowname
+        const orgPrefix = effectiveOrgId ? `${effectiveOrgId}/` : '';
         filePath = `${orgPrefix}${folderName}/workflow.yaml`;
 
-        console.log(`📁 New workflow path: ${filePath} (org: ${effectiveOrgId || 'Mediar'})`);
+        console.log(`📁 New workflow path: ${filePath} (org: ${effectiveOrgId || 'no-org'})`);
       }
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const branchName = `workflow/${folderName}-${timestamp}`;
