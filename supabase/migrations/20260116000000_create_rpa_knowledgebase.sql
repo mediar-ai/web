@@ -128,6 +128,9 @@ CREATE INDEX idx_rpa_kb_outcome_embedding ON rpa_knowledgebase
 CREATE INDEX idx_rpa_kb_current_state ON rpa_knowledgebase USING GIN(current_state);
 CREATE INDEX idx_rpa_kb_expected_outcome ON rpa_knowledgebase USING GIN(expected_outcome);
 
+-- Deduplication index (for finding existing steps by app + element_path + definition)
+CREATE INDEX idx_rpa_kb_dedup ON rpa_knowledgebase(app_name, element_path, definition);
+
 -- ============================================================================
 -- PART 4: CREATE SEARCH FUNCTIONS
 -- ============================================================================
@@ -536,7 +539,7 @@ DO $$
 BEGIN
   RAISE NOTICE 'Migration completed successfully!';
   RAISE NOTICE 'Created table: rpa_knowledgebase';
-  RAISE NOTICE 'Created indexes: 15 total (3 HNSW vector, 2 GIN JSONB, 1 GIN tsvector, 9 B-tree)';
+  RAISE NOTICE 'Created indexes: 16 total (3 HNSW vector, 2 GIN JSONB, 1 GIN tsvector, 1 dedup, 9 B-tree)';
   RAISE NOTICE 'Created functions: 5 (search functions + calculate_ranking + increment_stats)';
   RAISE NOTICE 'Created trigger: 1 (auto-update ranking)';
   RAISE NOTICE 'Created views: 1 (rpa_kb_stats)';
