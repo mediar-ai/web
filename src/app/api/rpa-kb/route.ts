@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateStepEmbeddings } from '@/lib/vertex-embeddings';
+import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,11 +15,23 @@ const supabase = createClient(
 );
 
 /**
+ * OPTIONS /api/rpa-kb
+ * CORS preflight handler
+ */
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
+}
+
+/**
  * POST /api/rpa-kb
  * Create a new step or update existing step stats
  * Deduplicates based on: app_name, element_path, definition
  */
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  
   try {
     const body = await request.json();
 
@@ -39,34 +52,46 @@ export async function POST(request: NextRequest) {
       duration_ms,
     } = body;
 
-    // Validate required fields
-    if (!app_name || !window_title || !element_path || !step_name || !workflow_name) {
-      return NextResponse.json(
+    // Validate only definition is required (all other fields can be blank)
+    if (!definition) {
+      return corsJsonResponse(
         {
-          error: 'Missing required fields',
-          required: ['app_name', 'window_title', 'element_path', 'step_name', 'workflow_name'],
+          error: 'Missing required field: definition',
+          required: ['definition'],
         },
-        { status: 400 }
+        { status: 400 },
+        origin
       );
     }
 
-    console.log('🔍 Checking for existing step:', { app_name, element_path, has_definition: !!definition });
+    // Normalize blanks to empty strings for consistent matching
+    const normalizedApp = app_name || '';
+    const normalizedPath = element_path || '';
+    const normalizedDef = definition;
+
+    console.log('🔍 Checking for existing step:', { 
+      app_name: normalizedApp || '(blank)', 
+      element_path: normalizedPath || '(blank)', 
+      has_definition: true 
+    });
 
     // Check if step already exists (match on app_name, element_path, definition)
+    // Blank values (converted to '') will match other blank values
     const { data: existingStep, error: findError } = await supabase
       .from('rpa_knowledgebase')
       .select('id, succeeded, failed, ranking, last_executed_at')
-      .eq('app_name', app_name)
-      .eq('element_path', element_path)
-      .eq('definition', definition || '')
-      .single();
+      .eq('app_name', normalizedApp)
+      .eq('element_path', normalizedPath)
+      .eq('definition', normalizedDef)
+      .maybeSingle();
 
     if (findError && findError.code !== 'PGRST116') {
       // PGRST116 = no rows found, other errors are real problems
       console.error('❌ Database error while checking for existing step:', findError);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to check for existing step', details: findError.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
@@ -85,9 +110,10 @@ export async function POST(request: NextRequest) {
 
       if (statsError) {
         console.error('❌ Failed to increment stats:', statsError);
-        return NextResponse.json(
+        return corsJsonResponse(
           { error: 'Failed to update step stats', details: statsError.message },
-          { status: 500 }
+          { status: 500 },
+          origin
         );
       }
 
@@ -101,12 +127,12 @@ export async function POST(request: NextRequest) {
       if (fetchError) {
         console.error('⚠️ Failed to fetch updated step:', fetchError);
         // Still return success since stats update worked
-        return NextResponse.json({
+        return corsJsonResponse({
           success: true,
           data: { id: existingStep.id },
           message: 'Step stats updated (existing step)',
           is_new: false,
-        });
+        }, undefined, origin);
       }
 
       console.log('✅ Stats incremented:', {
@@ -115,12 +141,12 @@ export async function POST(request: NextRequest) {
         ranking: updatedStep.ranking,
       });
 
-      return NextResponse.json({
+      return corsJsonResponse({
         success: true,
         data: updatedStep,
         message: 'Step stats updated (existing step)',
         is_new: false,
-      });
+      }, undefined, origin);
     }
 
     // Step doesn't exist - create new entry with embeddings
@@ -137,18 +163,18 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Embeddings generated, inserting into database...');
 
-    // Insert into database with initial stats
+    // Insert into database with initial stats (using normalized values)
     const { data, error } = await supabase
       .from('rpa_knowledgebase')
       .insert({
-        app_name,
-        window_title,
-        element_path,
-        step_name,
-        definition,
+        app_name: normalizedApp,
+        window_title: window_title || '',
+        element_path: normalizedPath,
+        step_name: step_name || '',
+        definition: normalizedDef,
         current_state,
         expected_outcome,
-        workflow_name,
+        workflow_name: workflow_name || '',
         workflow_description,
         terminator_version,
         environment,
@@ -165,28 +191,30 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('❌ Database error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to create step', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
     console.log('✅ New step created successfully:', data.id);
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       data,
       message: 'New step created with embeddings',
       is_new: true,
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to process step:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to process step',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }
@@ -196,6 +224,8 @@ export async function POST(request: NextRequest) {
  * List steps with pagination and basic filtering
  */
 export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  
   try {
     const { searchParams } = new URL(request.url);
     
@@ -236,13 +266,14 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('❌ Database error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to fetch steps', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       data,
       pagination: {
@@ -251,15 +282,16 @@ export async function GET(request: NextRequest) {
         total: count || 0,
         totalPages: Math.ceil((count || 0) / pageSize),
       },
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to fetch steps:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to fetch steps',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }

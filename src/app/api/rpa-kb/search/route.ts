@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
+import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,10 +14,22 @@ const supabase = createClient(
 );
 
 /**
+ * OPTIONS /api/rpa-kb/search
+ * CORS preflight handler
+ */
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
+}
+
+/**
  * POST /api/rpa-kb/search
  * Two-stage search: keyword filtering + vector similarity
  */
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  
   try {
     const body = await request.json();
 
@@ -38,20 +51,22 @@ export async function POST(request: NextRequest) {
 
     // Validate inputs
     if (!search_query && !similarity_query) {
-      return NextResponse.json(
+      return corsJsonResponse(
         {
           error: 'Either search_query or similarity_query is required',
         },
-        { status: 400 }
+        { status: 400 },
+        origin
       );
     }
 
     if (embedding_type && !['definition', 'workflow', 'outcome'].includes(embedding_type)) {
-      return NextResponse.json(
+      return corsJsonResponse(
         {
           error: 'Invalid embedding_type. Must be: definition, workflow, or outcome',
         },
-        { status: 400 }
+        { status: 400 },
+        origin
       );
     }
 
@@ -86,9 +101,10 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('❌ Search error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Search failed', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
@@ -102,7 +118,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       results: data || [],
       metadata: {
@@ -113,15 +129,16 @@ export async function POST(request: NextRequest) {
         stage2_limit,
         result_count: data?.length || 0,
       },
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Search failed:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Search failed',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }
