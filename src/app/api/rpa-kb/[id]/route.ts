@@ -8,11 +8,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateStepEmbeddings } from '@/lib/vertex-embeddings';
+import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+/**
+ * OPTIONS /api/rpa-kb/[id]
+ * CORS preflight handler
+ */
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
+}
 
 /**
  * GET /api/rpa-kb/[id]
@@ -22,6 +33,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const origin = request.headers.get('origin');
+  
   try {
     const { id } = await params;
 
@@ -34,15 +47,17 @@ export async function GET(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return NextResponse.json(
+        return corsJsonResponse(
           { error: 'Step not found' },
-          { status: 404 }
+          { status: 404 },
+          origin
         );
       }
       console.error('❌ Database error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to fetch step', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
@@ -58,18 +73,19 @@ export async function GET(
       }
     })();
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       data,
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to fetch step:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to fetch step',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }
@@ -82,6 +98,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const origin = request.headers.get('origin');
+  
   try {
     const { id } = await params;
     const body = await request.json();
@@ -112,14 +130,16 @@ export async function PATCH(
 
     if (fetchError) {
       if (fetchError.code === 'PGRST116') {
-        return NextResponse.json(
+        return corsJsonResponse(
           { error: 'Step not found' },
-          { status: 404 }
+          { status: 404 },
+          origin
         );
       }
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to fetch step', details: fetchError.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
@@ -182,27 +202,29 @@ export async function PATCH(
 
     if (error) {
       console.error('❌ Update error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to update step', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
     console.log('✅ Step updated:', id);
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       data,
       embeddings_regenerated: needsEmbeddingUpdate,
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to update step:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to update step',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }
@@ -215,6 +237,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const origin = request.headers.get('origin');
+  
   try {
     const { id } = await params;
 
@@ -225,26 +249,28 @@ export async function DELETE(
 
     if (error) {
       console.error('❌ Delete error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to delete step', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
     console.log('✅ Step deleted:', id);
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       message: 'Step deleted successfully',
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to delete step:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to delete step',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }

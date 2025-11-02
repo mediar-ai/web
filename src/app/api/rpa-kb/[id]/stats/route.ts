@@ -5,11 +5,22 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+/**
+ * OPTIONS /api/rpa-kb/[id]/stats
+ * CORS preflight handler
+ */
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
+}
 
 /**
  * POST /api/rpa-kb/[id]/stats
@@ -19,6 +30,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const origin = request.headers.get('origin');
+  
   try {
     const { id } = await params;
     const body = await request.json();
@@ -30,9 +43,10 @@ export async function POST(
 
     // Validate inputs
     if (success === undefined) {
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'success field is required (boolean)' },
-        { status: 400 }
+        { status: 400 },
+        origin
       );
     }
 
@@ -47,9 +61,10 @@ export async function POST(
 
     if (error) {
       console.error('❌ Stats update error:', error);
-      return NextResponse.json(
+      return corsJsonResponse(
         { error: 'Failed to update stats', details: error.message },
-        { status: 500 }
+        { status: 500 },
+        origin
       );
     }
 
@@ -63,27 +78,28 @@ export async function POST(
     if (fetchError) {
       console.error('⚠️ Failed to fetch updated stats:', fetchError);
       // Still return success since update worked
-      return NextResponse.json({
+      return corsJsonResponse({
         success: true,
         message: 'Stats updated successfully',
-      });
+      }, undefined, origin);
     }
 
     console.log('✅ Stats updated:', updatedStep);
 
-    return NextResponse.json({
+    return corsJsonResponse({
       success: true,
       data: updatedStep,
       message: 'Stats updated successfully',
-    });
+    }, undefined, origin);
   } catch (error: any) {
     console.error('❌ Failed to update stats:', error);
-    return NextResponse.json(
+    return corsJsonResponse(
       {
         error: 'Failed to update stats',
         details: error.message || String(error),
       },
-      { status: 500 }
+      { status: 500 },
+      origin
     );
   }
 }
