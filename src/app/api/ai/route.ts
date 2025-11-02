@@ -27,13 +27,8 @@ const getRedisClient = async () => {
 // Auth
 const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 
-// CORS
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Max-Age': '86400',
-};
+// CORS (using shared helper)
+import { getCorsHeaders } from '@/lib/cors';
 
 // Allowed models (per workspace rule)
 const ALLOWED_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'] as const;
@@ -290,12 +285,17 @@ async function handleVertexChat(params: {
 }
 
 // OPTIONS (CORS)
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: corsHeaders });
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
 }
 
 // POST (native, non-streaming)
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+  
   try {
     if (!(await authenticate(request))) {
       return NextResponse.json(
@@ -510,6 +510,9 @@ export async function POST(request: NextRequest) {
 
 // GET (health)
 export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+  
   try {
     if (!(await authenticate(request))) {
       return NextResponse.json(
