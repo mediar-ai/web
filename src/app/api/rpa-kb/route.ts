@@ -15,7 +15,8 @@ const supabase = createClient(
 
 /**
  * POST /api/rpa-kb
- * Create a new step in the knowledgebase with automatic embedding generation
+ * Create a new step or update existing step stats
+ * Deduplicates based on: app_name, element_path, definition
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,8 +35,7 @@ export async function POST(request: NextRequest) {
       terminator_version,
       environment,
       author,
-      succeeded = 0,
-      failed = 0,
+      success, // boolean: did this execution succeed?
       duration_ms,
     } = body;
 
@@ -50,7 +50,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔄 Generating embeddings for step:', step_name);
+    console.log('🔍 Checking for existing step:', { app_name, element_path, has_definition: !!definition });
+
+    // Check if step already exists (match on app_name, element_path, definition)
+    const { data: existingStep, error: findError } = await supabase
+      .from('rpa_knowledgebase')
+      .select('id, succeeded, failed, ranking, last_executed_at')
+      .eq('app_name', app_name)
+      .eq('element_path', element_path)
+      .eq('definition', definition || '')
+      .single();
+
+    if (findError && findError.code !== 'PGRST116') {
+      // PGRST116 = no rows found, other errors are real problems
+      console.error('❌ Database error while checking for existing step:', findError);
+      return NextResponse.json(
+        { error: 'Failed to check for existing step', details: findError.message },
+        { status: 500 }
+      );
+    }
+
+    // If step exists, increment stats instead of creating new entry
+    if (existingStep) {
+      console.log('✅ Found existing step:', existingStep.id, '- incrementing stats');
+
+      // Increment stats using atomic function
+      const { error: statsError } = await supabase.rpc('increment_rpa_kb_stats', {
+        step_id: existingStep.id,
+        is_success: success ?? null,
+        execution_duration: duration_ms || null,
+        increment_appeared: false,
+        increment_read: false,
+      });
+
+      if (statsError) {
+        console.error('❌ Failed to increment stats:', statsError);
+        return NextResponse.json(
+          { error: 'Failed to update step stats', details: statsError.message },
+          { status: 500 }
+        );
+      }
+
+      // Fetch updated step data
+      const { data: updatedStep, error: fetchError } = await supabase
+        .from('rpa_knowledgebase')
+        .select('*')
+        .eq('id', existingStep.id)
+        .single();
+
+      if (fetchError) {
+        console.error('⚠️ Failed to fetch updated step:', fetchError);
+        // Still return success since stats update worked
+        return NextResponse.json({
+          success: true,
+          data: { id: existingStep.id },
+          message: 'Step stats updated (existing step)',
+          is_new: false,
+        });
+      }
+
+      console.log('✅ Stats incremented:', {
+        succeeded: updatedStep.succeeded,
+        failed: updatedStep.failed,
+        ranking: updatedStep.ranking,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: updatedStep,
+        message: 'Step stats updated (existing step)',
+        is_new: false,
+      });
+    }
+
+    // Step doesn't exist - create new entry with embeddings
+    console.log('📝 Creating new step with embeddings:', step_name);
 
     // Generate all three embeddings
     const embeddings = await generateStepEmbeddings({
@@ -63,7 +137,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Embeddings generated, inserting into database...');
 
-    // Insert into database
+    // Insert into database with initial stats
     const { data, error } = await supabase
       .from('rpa_knowledgebase')
       .insert({
@@ -79,8 +153,8 @@ export async function POST(request: NextRequest) {
         terminator_version,
         environment,
         author,
-        succeeded,
-        failed,
+        succeeded: success === true ? 1 : 0,
+        failed: success === false ? 1 : 0,
         duration_ms,
         definition_embedding: embeddings.definition_embedding,
         workflow_embedding: embeddings.workflow_embedding,
@@ -97,18 +171,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ Step created successfully:', data.id);
+    console.log('✅ New step created successfully:', data.id);
 
     return NextResponse.json({
       success: true,
       data,
-      message: 'Step created with embeddings',
+      message: 'New step created with embeddings',
+      is_new: true,
     });
   } catch (error: any) {
-    console.error('❌ Failed to create step:', error);
+    console.error('❌ Failed to process step:', error);
     return NextResponse.json(
       {
-        error: 'Failed to create step',
+        error: 'Failed to process step',
         details: error.message || String(error),
       },
       { status: 500 }
