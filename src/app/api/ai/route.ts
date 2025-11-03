@@ -4,6 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { createClient } from 'redis';
 import { randomUUID } from 'crypto';
+import {
+  serverSideTools,
+  getServerToolDeclarations,
+  executeServerTool,
+  isServerSideTool
+} from '@/lib/server-tools/knowledge-tools';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -355,7 +361,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const functionDeclarations = toFunctionDeclarations(tools);
+    // Merge client tools with server-side tools
+    const clientFunctionDeclarations = toFunctionDeclarations(tools);
+    const serverFunctionDeclarations = getServerToolDeclarations();
+    const functionDeclarations = [...clientFunctionDeclarations, ...serverFunctionDeclarations];
+
+    console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${serverFunctionDeclarations.length} server`);
 
     // Initialize Vertex client
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
@@ -428,7 +439,143 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Response stats', responseStats);
 
-    // Update history with new turn and save to KV
+    // Check if any tool calls are server-side and execute them
+    if (result.toolCalls.length > 0) {
+      const serverToolResults = [];
+      const clientToolCalls = [];
+
+      // Separate server and client tools
+      for (const toolCall of result.toolCalls) {
+        if (isServerSideTool(toolCall.name)) {
+          console.log(`🔧 Executing server-side tool: ${toolCall.name}`);
+          try {
+            const toolResult = await executeServerTool(toolCall.name, toolCall.args);
+            serverToolResults.push({
+              name: toolCall.name,
+              result: toolResult
+            });
+            console.log(`✅ Server tool ${toolCall.name} executed successfully`);
+          } catch (error) {
+            console.error(`❌ Server tool ${toolCall.name} failed:`, error);
+            serverToolResults.push({
+              name: toolCall.name,
+              result: { error: error instanceof Error ? error.message : 'Tool execution failed' }
+            });
+          }
+        } else {
+          // Client-side tool - pass to client
+          clientToolCalls.push(toolCall);
+        }
+      }
+
+      // If we executed server tools, continue conversation automatically
+      if (serverToolResults.length > 0) {
+        console.log(`🔄 Auto-continuing with ${serverToolResults.length} server tool results`);
+
+        // Update history with the tool calls
+        const toolCallParts = serverToolResults.map(tr => ({
+          functionCall: {
+            name: tr.name,
+            args: result.toolCalls.find(tc => tc.name === tr.name)?.args || {}
+          }
+        }));
+
+        const updatedHistoryWithCalls = [...history];
+        if (input) {
+          updatedHistoryWithCalls.push({
+            role: 'user',
+            parts: [{ text: input }],
+          });
+        }
+        updatedHistoryWithCalls.push({
+          role: 'model',
+          parts: toolCallParts,
+        });
+
+        // Add tool results to history
+        updatedHistoryWithCalls.push({
+          role: 'user',
+          parts: serverToolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: tr.result,
+            },
+          })),
+        });
+
+        // Call Vertex again with tool results
+        const continuationResult = await handleVertexChat({
+          vertexAI,
+          model: sessionModel,
+          system: sessionSystem,
+          history: updatedHistoryWithCalls,
+          functionDeclarations,
+          toolResults: serverToolResults,
+          generationConfig
+        });
+
+        console.log('🎯 Continuation result:', {
+          textLen: continuationResult.text.length,
+          toolCallsCount: continuationResult.toolCalls.length,
+          finishReason: continuationResult.finishReason
+        });
+
+        // Merge results
+        const finalHistory = [...updatedHistoryWithCalls];
+        if (continuationResult.text) {
+          const modelParts: Array<{ text?: string; functionCall?: any }> = [
+            { text: continuationResult.text }
+          ];
+
+          // Add any additional tool calls from continuation
+          continuationResult.toolCalls.forEach(tc => {
+            modelParts.push({
+              functionCall: {
+                name: tc.name,
+                args: tc.args,
+              },
+            });
+          });
+
+          finalHistory.push({
+            role: 'model',
+            parts: modelParts,
+          });
+        }
+
+        // Save updated session to KV
+        if (actualSessionId) {
+          const sessionData: SessionData = {
+            history: finalHistory,
+            system: sessionSystem,
+            model: sessionModel,
+            createdAt: sessionId
+              ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+              : new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await saveSession(actualSessionId, sessionData);
+        }
+
+        // Return the final response with remaining client tools
+        return NextResponse.json(
+          {
+            model: sessionModel,
+            sessionId: actualSessionId,
+            text: continuationResult.text,
+            toolCalls: [...clientToolCalls, ...continuationResult.toolCalls],
+            finishReason: continuationResult.finishReason,
+            metrics: continuationResult.metrics,
+          },
+          { headers: corsHeaders }
+        );
+      }
+
+      // If only client tools, continue normal flow
+      result.toolCalls = clientToolCalls;
+    }
+
+    // Update history with new turn and save to KV (normal flow for no server tools)
     const updatedHistory = [...history];
 
     // Add user message to history
@@ -530,8 +677,9 @@ export async function GET(request: NextRequest) {
         sessionStorage: 'redis',
         sessionTTL: KV_SESSION_TTL,
         availableModels: ALLOWED_MODELS,
-        toolExecution: 'client-side',
-        note: 'Redis-backed sessions: server stores conversation history with native functionCall/functionResponse. Pass sessionId for multi-turn conversations. Client still executes tools.',
+        toolExecution: 'hybrid',
+        serverSideTools: Object.keys(serverSideTools),
+        note: 'Hybrid tool execution: Server executes knowledge tools directly, client handles desktop-specific tools. Redis-backed sessions with native functionCall/functionResponse.',
         authentication: 'Authorization: Bearer|Basic',
       },
       { headers: corsHeaders }
