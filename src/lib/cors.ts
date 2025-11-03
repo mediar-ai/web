@@ -11,6 +11,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 // Allowed origins
 const ALLOWED_ORIGINS = [
   'http://localhost:1420', // Tauri dev (desktop app)
+  'http://localhost:1421', // Tauri dev alternative port
   'tauri://localhost',     // Tauri production (built desktop app)
   'http://localhost:3000', // Next.js dev server
   'http://localhost:3001', // Alternative dev port
