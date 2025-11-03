@@ -11,6 +11,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 // Allowed origins
 const ALLOWED_ORIGINS = [
   'http://localhost:1420', // Tauri dev (desktop app)
+  'tauri://localhost',     // Tauri production (built desktop app)
   'http://localhost:3000', // Next.js dev server
   'http://localhost:3001', // Alternative dev port
   'https://screenpipe.ai', // Production domain (if applicable)
@@ -34,7 +35,19 @@ export function getCorsHeaders(origin?: string | null): Record<string, string> {
     };
   }
 
-  // In production, validate origin
+  // Allow tauri:// origins (desktop app in production/built mode)
+  // This handles both tauri://localhost and any other tauri:// protocol origins
+  if (origin?.startsWith('tauri://')) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+      'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Credentials': 'true',
+    };
+  }
+
+  // In production, validate origin against allowed list
   const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 
   return {
@@ -108,6 +121,7 @@ export function corsJsonResponse(
 export function isOriginAllowed(origin: string | null): boolean {
   if (!origin) return false;
   if (isDevelopment) return true; // Allow all in dev
+  if (origin.startsWith('tauri://')) return true; // Allow all tauri:// origins
   return ALLOWED_ORIGINS.includes(origin);
 }
 
