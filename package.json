@@ -22,6 +22,7 @@
   "dependencies": {
     "@ai-sdk/google-vertex": "^3.0.50",
     "@ai-sdk/react": "^2.0.59",
+    "@anthropic-ai/sdk": "^0.68.0",
     "@clerk/nextjs": "^6.23.0",
     "@clickhouse/client": "^1.12.1",
     "@google-cloud/aiplatform": "^4.2.0",
