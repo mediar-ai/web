@@ -5,6 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
+import { SchemaType } from '@google-cloud/vertexai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,18 +32,18 @@ export const serverSideTools = {
   search_similar_workflow_steps: {
     description: 'Search the knowledgebase for similar workflow steps and examples. Returns the BEST matching step from previous workflows. Use this when the user asks to find existing patterns, examples, or similar automation steps.',
     parameters: {
-      type: 'object',
+      type: SchemaType.OBJECT,
       properties: {
         search_query: {
-          type: 'string',
+          type: SchemaType.STRING,
           description: 'Text-based keyword search query. Example: "form submission validation"'
         },
         similarity_query: {
-          type: 'string',
+          type: SchemaType.STRING,
           description: 'Semantic/natural language description of what to find. Example: "submit a web form with error handling". This is the primary search method.'
         },
         embedding_type: {
-          type: 'string',
+          type: SchemaType.STRING,
           enum: ['workflow', 'definition', 'outcome'],
           description: 'Type of content to search. Use "workflow" for complete workflows (default), "definition" for step code definitions, "outcome" for expected outcomes.',
           default: 'workflow'
