@@ -100,8 +100,8 @@ export const ALLOWED_MODELS = {
 } as const;
 
 export function getProviderForModel(model: string): 'vertex' | 'anthropic' | null {
-  if (ALLOWED_MODELS.vertex.includes(model)) return 'vertex';
-  if (ALLOWED_MODELS.anthropic.includes(model)) return 'anthropic';
+  if ((ALLOWED_MODELS.vertex as readonly string[]).includes(model)) return 'vertex';
+  if ((ALLOWED_MODELS.anthropic as readonly string[]).includes(model)) return 'anthropic';
 
   // Check by prefix as fallback
   if (model.startsWith('gemini-')) return 'vertex';

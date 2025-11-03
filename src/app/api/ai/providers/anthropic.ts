@@ -257,7 +257,7 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
   let turnCount = 0;
   const MAX_TURNS = 10;
   let aggregatedText = '';
-  let aggregatedToolCalls: Array<{ name: string; args: any }> = [];
+  const aggregatedToolCalls: Array<{ name: string; args: any; id: string }> = [];
   let usageMetadata: any = null;
 
   while (continueConversation && turnCount < MAX_TURNS) {
