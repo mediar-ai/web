@@ -32,23 +32,28 @@ interface CreateWorkflowRequest {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and organization
-    const { auth } = await import('@clerk/nextjs/server');
-    const { userId, orgId } = await auth();
+    // Check authentication and organization using unified auth helper
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { auth, currentUser } = await import('@clerk/nextjs/server');
 
-    if (!userId) {
+    // Get effective organization (handles both desktop tokens and Clerk auth)
+    const { orgId: effectiveOrgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId();
+
+    if (!effectiveOrgId) {
       return NextResponse.json(
-        { success: false, error: 'Authentication required' },
+        { success: false, error: 'Authentication required - no organization context' },
         { status: 401 }
       );
     }
 
-    // Use user's org if available, otherwise default to primary Mediar org
-    const effectiveOrgId = orgId || MEDIAR_ORG_IDS[0];
+    // Get user ID for logging (try Clerk first, desktop tokens don't provide userId directly)
+    const { userId } = await auth();
+    const user = userId ? await currentUser() : null;
+    const userIdentifier = user?.emailAddresses?.[0]?.emailAddress || userId || 'desktop-user';
 
-    if (!orgId) {
-      console.warn(`⚠️ User ${userId} has no org context, defaulting to Mediar org: ${effectiveOrgId}`);
-    }
+    console.log(`🚀 Creating workflow for org: ${effectiveOrgId} (user: ${userIdentifier}, isMediar: ${isMediarOrg})`);
+
+    // No need for fallback org - getEffectiveOrgId handles this
 
     const body: CreateWorkflowRequest = await request.json();
 
@@ -254,8 +259,8 @@ export async function POST(request: NextRequest) {
     try {
       const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
 
-      // Fetch user context for enhanced commit message
-      const userContext = await getUserContext(userId, orgId);
+      // Fetch user context for enhanced commit message (use actualOrgId from earlier call)
+      const userContext = await getUserContext(userId, actualOrgId);
 
       const githubResult = await githubWorkflowManager.saveWorkflow(
         body.name,
