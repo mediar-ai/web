@@ -976,7 +976,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
             workflowError: workflowContext.workflowError,
             analysis: !executionData
               ? 'This execution failed before any steps could run. This is a pre-execution failure - the workflow never started. Check error_message and orchestrator logs for connectivity/startup issues.'
-              : `Execution ran and completed ${stepsData.length} steps. This is NOT a pre-execution failure.`
+              : `Execution ran and completed ${stepCount} steps. This is NOT a pre-execution failure.`
           };
         }
       }
