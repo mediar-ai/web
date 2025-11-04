@@ -244,7 +244,10 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
         );
 
         for (const toolUse of toolUseBlocks) {
-          toolCallIdMap.set(toolUse.name, toolUse.id);
+          // Only set in map if both name and id are defined
+          if (toolUse.name && toolUse.id) {
+            toolCallIdMap.set(toolUse.name, toolUse.id);
+          }
         }
 
         if (toolUseBlocks.length > 0) {
