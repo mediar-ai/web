@@ -10,6 +10,8 @@ import {
   executeServerTool,
   isServerSideTool
 } from '@/lib/server-tools/knowledge-tools';
+import { handleAnthropicChat } from './providers/anthropic';
+import type { AIProviderRequest } from './providers/types';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -25,7 +27,7 @@ const getRedisClient = async () => {
 };
 
 // =================================================================
-// Native Vertex AI (non-streaming) endpoint with optional tools
+// Multi-Provider AI endpoint (Vertex AI + Anthropic)
 // Supports both stateless (client-side history) and stateful (KV-backed)
 // architectures with native function calling
 // =================================================================
@@ -37,8 +39,12 @@ const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 import { getCorsHeaders } from '@/lib/cors';
 
 // Allowed models (per workspace rule)
-const ALLOWED_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'] as const;
+const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'] as const;
+const ANTHROPIC_MODELS = ['claude-sonnet-4-5-20250929'] as const;
+const ALLOWED_MODELS = [...VERTEX_MODELS, ...ANTHROPIC_MODELS] as const;
 type AllowedModel = (typeof ALLOWED_MODELS)[number];
+type VertexModel = (typeof VERTEX_MODELS)[number];
+type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
 
 // Client-side tools: server accepts any tools from client and returns tool calls
 type JSONSchema = Record<string, unknown>;
@@ -52,6 +58,7 @@ interface VertexMessage {
 // KV session storage
 interface SessionData {
   history: VertexMessage[];
+  provider?: 'vertex' | 'anthropic'; // Track which provider is being used
   system?: string;
   model: AllowedModel;
   createdAt: string;
@@ -141,6 +148,14 @@ function validateModel(model: string | undefined): model is AllowedModel {
   return !!model && (ALLOWED_MODELS as readonly string[]).includes(model);
 }
 
+function isVertexModel(model: string): model is VertexModel {
+  return (VERTEX_MODELS as readonly string[]).includes(model);
+}
+
+function isAnthropicModel(model: string): model is AnthropicModel {
+  return (ANTHROPIC_MODELS as readonly string[]).includes(model);
+}
+
 // Redis session management --------------------------------------------
 async function loadSession(sessionId: string): Promise<SessionData | null> {
   try {
@@ -179,7 +194,7 @@ function createSessionId(): string {
 // Stateless chat handling with history reconstruction ----
 async function handleVertexChat(params: {
   vertexAI: VertexAI;
-  model: AllowedModel;
+  model: VertexModel;
   system?: string;
   history: VertexMessage[];
   functionDeclarations: FunctionDeclaration[];
@@ -221,7 +236,7 @@ async function handleVertexChat(params: {
   // Start chat with provided history
   const chat = gm.startChat({ history: history as any });
 
-  console.log(`[AI API] Created chat with ${history.length} history message(s)`);
+  console.log(`[VERTEX] Created chat with ${history.length} history message(s)`);
 
   // Send message to chat
   let response;
@@ -323,13 +338,31 @@ export async function POST(request: NextRequest) {
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
       | undefined;
     const toolResults = body.toolResults as
-      | Array<{ name: string; result: any }>
+      | Array<{ name: string; result: any; id?: string }>
       | undefined;
+
+    // Validate model first
+    if (!validateModel(model)) {
+      return NextResponse.json(
+        { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+    if (!input && !toolResults) {
+      return NextResponse.json(
+        { error: 'Either input or toolResults must be provided' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Determine provider based on model
+    const provider: 'vertex' | 'anthropic' = isAnthropicModel(model) ? 'anthropic' : 'vertex';
+    console.log(`[AI API] Using provider: ${provider} for model: ${model}`);
 
     // Load session from KV if sessionId provided
     let actualSessionId = sessionId;
     let sessionSystem = system;
-    let sessionModel = validateModel(model) ? model : 'gemini-2.5-flash';
+    let sessionModel: AllowedModel = model;
 
     if (sessionId) {
       const sessionData = await loadSession(sessionId);
@@ -348,19 +381,103 @@ export async function POST(request: NextRequest) {
       console.log(`[AI API] Created new session ${actualSessionId}`);
     }
 
-    if (!validateModel(model)) {
+    // Route to appropriate provider
+    if (provider === 'anthropic') {
+      // Use Anthropic provider
+      console.log(`[AI API] 🤖 Calling Anthropic with model ${sessionModel}`);
+
+      const anthropicRequest: AIProviderRequest = {
+        model: sessionModel,
+        input,
+        history,
+        system: sessionSystem,
+        tools,
+        toolResults,
+        generationConfig,
+        sessionId: actualSessionId,
+      };
+
+      const result = await handleAnthropicChat(anthropicRequest);
+
+      // Log response stats
+      console.log('📊 Anthropic response:', {
+        textLen: result.text.length,
+        toolCallsCount: result.toolCalls.length,
+        finishReason: result.finishReason,
+        elapsedMs: result.metrics.elapsedMs,
+      });
+
+      // Update history with new turn and save to KV
+      const updatedHistory = [...history];
+
+      // Add user message to history
+      if (input) {
+        updatedHistory.push({
+          role: 'user',
+          parts: [{ text: input }],
+        });
+      }
+
+      // Add tool results to history if present
+      if (toolResults && toolResults.length > 0) {
+        updatedHistory.push({
+          role: 'user',
+          parts: toolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: tr.result,
+              ...(tr.id && { id: tr.id }), // Include ID if present
+            },
+          })),
+        });
+      }
+
+      // Add model response to history
+      const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+      if (result.text) {
+        modelParts.push({ text: result.text });
+      }
+      if (result.toolCalls.length > 0) {
+        result.toolCalls.forEach(tc => {
+          modelParts.push({
+            functionCall: {
+              name: tc.name,
+              args: tc.args,
+              ...(tc.id && { id: tc.id }), // Store ID if present
+            },
+          });
+        });
+      }
+
+      if (modelParts.length > 0) {
+        updatedHistory.push({
+          role: 'model',
+          parts: modelParts,
+        });
+      }
+
+      // Save updated session to KV
+      if (actualSessionId) {
+        const sessionData: SessionData = {
+          history: updatedHistory,
+          provider,
+          system: sessionSystem,
+          model: sessionModel,
+          createdAt: sessionId
+            ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+            : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await saveSession(actualSessionId, sessionData);
+      }
+
       return NextResponse.json(
-        { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-    if (!input && !toolResults) {
-      return NextResponse.json(
-        { error: 'Either input or toolResults must be provided' },
-        { status: 400, headers: corsHeaders }
+        { model: sessionModel, sessionId: actualSessionId, ...result },
+        { headers: corsHeaders }
       );
     }
 
+    // Vertex AI provider path
     // Merge client tools with server-side tools
     const clientFunctionDeclarations = toFunctionDeclarations(tools);
     const serverFunctionDeclarations = getServerToolDeclarations();
@@ -416,7 +533,7 @@ export async function POST(request: NextRequest) {
 
     const result = await handleVertexChat({
       vertexAI,
-      model: sessionModel,
+      model: sessionModel as VertexModel,
       system: sessionSystem,
       history,
       functionDeclarations,
@@ -506,7 +623,7 @@ export async function POST(request: NextRequest) {
         // Call Vertex again with tool results
         const continuationResult = await handleVertexChat({
           vertexAI,
-          model: sessionModel,
+          model: sessionModel as VertexModel,
           system: sessionSystem,
           history: updatedHistoryWithCalls,
           functionDeclarations,
@@ -547,6 +664,7 @@ export async function POST(request: NextRequest) {
         if (actualSessionId) {
           const sessionData: SessionData = {
             history: finalHistory,
+            provider,
             system: sessionSystem,
             model: sessionModel,
             createdAt: sessionId
@@ -626,6 +744,7 @@ export async function POST(request: NextRequest) {
     if (actualSessionId) {
       const sessionData: SessionData = {
         history: updatedHistory,
+        provider,
         system: sessionSystem,
         model: sessionModel,
         createdAt: sessionId
@@ -671,15 +790,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         status: 'ok',
-        format: 'vertex-native',
+        format: 'multi-provider',
         streaming: false,
         stateless: false,
         sessionStorage: 'redis',
         sessionTTL: KV_SESSION_TTL,
         availableModels: ALLOWED_MODELS,
-        toolExecution: 'hybrid',
-        serverSideTools: Object.keys(serverSideTools),
-        note: 'Hybrid tool execution: Server executes knowledge tools directly, client handles desktop-specific tools. Redis-backed sessions with native functionCall/functionResponse.',
+        providers: {
+          vertex: {
+            models: VERTEX_MODELS,
+            toolExecution: 'hybrid',
+            serverSideTools: Object.keys(serverSideTools),
+          },
+          anthropic: {
+            models: ANTHROPIC_MODELS,
+            toolExecution: 'client-only',
+          },
+        },
+        note: 'Multi-provider endpoint supporting both Vertex AI (Gemini) and Anthropic (Claude). Provider selected based on model name. Redis-backed sessions with format conversion.',
         authentication: 'Authorization: Bearer|Basic',
       },
       { headers: corsHeaders }
