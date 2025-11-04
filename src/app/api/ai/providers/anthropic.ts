@@ -232,11 +232,44 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
   if (toolResults && toolResults.length > 0) {
     console.log(`[ANTHROPIC] 🔧 Processing ${toolResults.length} tool result(s)`);
 
-    const toolResultContent = toolResults.map(tr => ({
-      type: 'tool_result' as const,
-      tool_use_id: tr.id || tr.name, // Use the ID if provided, fallback to name for backwards compatibility
-      content: typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result),
-    }));
+    // Build a map of tool names to IDs from the last assistant message
+    const toolCallIdMap = new Map<string, string>();
+
+    // Find the last assistant message with tool calls
+    for (let i = anthropicHistory.length - 1; i >= 0; i--) {
+      const msg = anthropicHistory[i];
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        const toolUseBlocks = msg.content.filter(
+          (block: any) => block.type === 'tool_use'
+        );
+
+        for (const toolUse of toolUseBlocks) {
+          toolCallIdMap.set(toolUse.name, toolUse.id);
+        }
+
+        if (toolUseBlocks.length > 0) {
+          break; // Found the assistant message with tool calls, stop searching
+        }
+      }
+    }
+
+    const toolResultContent = toolResults.map(tr => {
+      // Try to get the ID from: 1) provided ID, 2) map lookup by name
+      const toolUseId = tr.id || toolCallIdMap.get(tr.name);
+
+      if (!toolUseId) {
+        console.warn(`[ANTHROPIC] ⚠️ No tool_use_id found for tool: ${tr.name}. This will cause an API error!`);
+        console.warn(`[ANTHROPIC] Available IDs in map:`, Array.from(toolCallIdMap.entries()));
+      } else {
+        console.log(`[ANTHROPIC] ✅ Mapped tool ${tr.name} to ID: ${toolUseId}`);
+      }
+
+      return {
+        type: 'tool_result' as const,
+        tool_use_id: toolUseId || tr.name, // Last resort fallback to name (will likely error)
+        content: typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result),
+      };
+    });
 
     anthropicHistory.push({
       role: 'user',
