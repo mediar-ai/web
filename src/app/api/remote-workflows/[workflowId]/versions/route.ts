@@ -174,8 +174,33 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    // STEP 1: Authenticate
-    const { userId: authenticatedUserId, has, orgId } = await auth();
+    // STEP 1: Authenticate (support both desktop Bearer tokens and Clerk sessions)
+    let authenticatedUserId: string | null = null;
+    let orgId: string | null | undefined = null;
+    let has: any = null;
+
+    // Try desktop token first
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { validateDesktopToken } = await import('@/lib/auth/validateDesktopToken');
+      const validation = await validateDesktopToken(token);
+      
+      if (validation.valid) {
+        authenticatedUserId = validation.userId!;
+        orgId = validation.orgId;
+        has = () => false; // Desktop auth doesn't support Clerk role checks
+        console.log(`[Desktop Auth] Workflow version creation authenticated for user: ${validation.email}`);
+      }
+    }
+
+    // Fall back to Clerk auth if no valid desktop token
+    if (!authenticatedUserId) {
+      const clerkAuth = await auth();
+      authenticatedUserId = clerkAuth.userId;
+      orgId = clerkAuth.orgId;
+      has = clerkAuth.has;
+    }
 
     if (!authenticatedUserId) {
       console.warn('[SECURITY] Unauthenticated request to create workflow version');
