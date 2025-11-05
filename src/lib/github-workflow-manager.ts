@@ -339,11 +339,33 @@ ${message || 'Workflow created via Mediar UI'}
 
 /**
  * Fetch user context from Clerk for enhanced commit messages
+ * Handles both regular Clerk user IDs and desktop token scenarios
  */
-export async function getUserContext(userId: string, orgId?: string | null): Promise<UserContext> {
+export async function getUserContext(userId: string | null | undefined, orgId?: string | null): Promise<UserContext> {
   try {
     if (!process.env.CLERK_SECRET_KEY) {
       console.warn('CLERK_SECRET_KEY not configured, skipping user context fetch');
+      return {};
+    }
+
+    // Skip Clerk API call if userId is invalid or a placeholder
+    // Valid Clerk user IDs start with 'user_'
+    if (!userId || !userId.startsWith('user_')) {
+      console.log(`[getUserContext] Skipping Clerk API call for invalid userId: ${userId}`);
+      
+      // Still fetch organization name if orgId is provided
+      if (orgId) {
+        try {
+          const clerkClient = createClerkClient({
+            secretKey: process.env.CLERK_SECRET_KEY,
+          });
+          const org = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+          return { organizationName: org.name };
+        } catch (orgError) {
+          console.warn(`Failed to fetch organization ${orgId}:`, orgError);
+        }
+      }
+      
       return {};
     }
 

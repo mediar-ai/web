@@ -34,6 +34,8 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
   isMediarOrg: boolean;
   isMediarAdmin: boolean;
   actualOrgId: string | null;
+  userId: string | null; // Added: Clerk user ID from desktop token or Clerk auth
+  email: string | null; // Added: User email from desktop token or Clerk auth
 }> {
   // First, check for desktop token authentication
   const headersList = await headers();
@@ -62,6 +64,8 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
           isMediarOrg: isMediarOrg,
           isMediarAdmin: isDesktopMediarAdmin,
           actualOrgId: validation.orgId || null, // The actual org from desktop token
+          userId: validation.userId || null, // The Clerk user ID from desktop token
+          email: validation.email || null, // The user email from desktop token
         };
       }
     } catch (error) {
@@ -71,7 +75,8 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
   }
 
   // Fall back to Clerk authentication
-  const { orgId: clerkOrgId } = await auth();
+  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
+  const user = clerkUserId ? await currentUser() : null;
   const mediarAdmin = await isMediarAdmin();
 
   // If user is a Mediar admin and provided an override, use it
@@ -85,5 +90,7 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
     isMediarOrg: isMediarOrg, // Only true if the effective org ID is actually a Mediar org
     isMediarAdmin: mediarAdmin,
     actualOrgId: clerkOrgId || null, // The actual Clerk org context
+    userId: clerkUserId || null, // The Clerk user ID
+    email: user?.emailAddresses?.[0]?.emailAddress || null, // The user email
   };
 }
