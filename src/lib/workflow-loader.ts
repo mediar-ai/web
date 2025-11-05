@@ -11,10 +11,12 @@ export interface LoadedWorkflow {
   name: string;
   automation_sequence: any;
   metadata: {
-    source: 'github' | 'supabase';
+    source: 'github' | 'supabase' | 'supabase_latest_version' | 'supabase_active_fallback' | 'supabase_view_fallback';
     github_path?: string;
     github_sha?: string;
     last_synced?: string;
+    version?: string;
+    is_active?: boolean;
   };
 }
 
