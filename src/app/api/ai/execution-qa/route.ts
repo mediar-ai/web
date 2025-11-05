@@ -5,6 +5,7 @@ import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import * as queryTools from '@/lib/execution-query-tools';
+import { loadTerminatorDocs, searchTerminatorDocs as searchDocs } from '@/lib/terminator-docs-service';
 
 // Interface for workflow context
 interface WorkflowContext {
@@ -103,10 +104,8 @@ export async function POST(request: Request) {
         .select('github_folder')
         .eq('id', execution.workflow_id)
         .single(),
-      // Fetch Terminator documentation
-      fetch('https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator-mcp-agent/src/prompt.rs')
-        .then(res => res.ok ? res.text() : null)
-        .catch(() => null)
+      // Load Terminator documentation using shared service
+      loadTerminatorDocs()
     ]);
 
     const fetchDuration = Date.now() - fetchStartTime;
@@ -510,46 +509,8 @@ Answer the user's question helpfully and thoroughly by using the available tools
         execute: async ({ pattern, limit }: { pattern: string; limit: number }) => {
           if (!terminatorDocs) return { error: 'Terminator documentation not available' };
 
-          const searchPattern = pattern.toLowerCase();
-          const lines = terminatorDocs.split('\n');
-          const matches: { section: string; content: string; lineNumber: number }[] = [];
-
-          let currentSection = 'Introduction';
-          let sectionContent: string[] = [];
-          let sectionStartLine = 0;
-
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-
-            // Detect section headers (markdown ## or ###)
-            if (line.startsWith('##')) {
-              // Save previous section if it matches
-              if (sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
-                matches.push({
-                  section: currentSection,
-                  content: sectionContent.join('\n').substring(0, 500), // Limit content length
-                  lineNumber: sectionStartLine
-                });
-                if (matches.length >= limit) break;
-              }
-
-              // Start new section
-              currentSection = line.replace(/^#+\s*/, '');
-              sectionContent = [line];
-              sectionStartLine = i + 1;
-            } else {
-              sectionContent.push(line);
-            }
-          }
-
-          // Check last section
-          if (matches.length < limit && sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
-            matches.push({
-              section: currentSection,
-              content: sectionContent.join('\n').substring(0, 500),
-              lineNumber: sectionStartLine
-            });
-          }
+          // Use shared search function
+          const matches = searchDocs(terminatorDocs, pattern, limit);
 
           return {
             found: matches.length,

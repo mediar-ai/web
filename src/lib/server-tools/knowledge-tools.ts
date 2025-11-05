@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
 import { SchemaType } from '@google-cloud/vertexai';
+import { loadTerminatorDocs, searchTerminatorDocs } from '@/lib/terminator-docs-service';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,6 +129,77 @@ export const serverSideTools = {
           action: 'search_failed',
           query: params.similarity_query,
           error: error instanceof Error ? error.message : 'Unknown error searching knowledgebase'
+        };
+      }
+    }
+  },
+
+  search_terminator_docs: {
+    description: 'Search Terminator desktop automation documentation for tool usage, patterns, best practices, and troubleshooting. Use this when users ask about Terminator tools, browser automation, validation, error handling, or workflow debugging.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        pattern: {
+          type: SchemaType.STRING,
+          description: 'Search pattern or topic (e.g., "click_element", "browser script", "validation", "error handling")'
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: 'Maximum number of matching sections to return (default: 5)',
+          default: 5
+        }
+      },
+      required: ['pattern']
+    },
+    execute: async (params: {
+      pattern: string;
+      limit?: number;
+    }) => {
+      try {
+        console.log('[SERVER-TERMINATOR-DOCS] Searching for:', params.pattern);
+
+        // Load documentation (will use cache if available)
+        const docs = await loadTerminatorDocs();
+
+        if (!docs) {
+          return {
+            action: 'search_failed',
+            query: params.pattern,
+            error: 'Terminator documentation not available. Could not load from GitHub.'
+          };
+        }
+
+        // Search the documentation
+        const matches = searchTerminatorDocs(docs, params.pattern, params.limit || 5);
+
+        console.log(`[SERVER-TERMINATOR-DOCS] Found ${matches.length} matches`);
+
+        if (matches.length === 0) {
+          return {
+            action: 'search_completed',
+            query: params.pattern,
+            found: false,
+            message: `No documentation found for "${params.pattern}". Try searching for: "click", "type", "browser", "validation", "error", "wait", "script", etc.`
+          };
+        }
+
+        return {
+          action: 'search_completed',
+          query: params.pattern,
+          found: true,
+          matchCount: matches.length,
+          matches: matches.map(m => ({
+            section: m.section,
+            content: m.content,
+            lineNumber: m.lineNumber
+          }))
+        };
+      } catch (error) {
+        console.error('[SERVER-TERMINATOR-DOCS] Error:', error);
+        return {
+          action: 'search_failed',
+          query: params.pattern,
+          error: error instanceof Error ? error.message : 'Unknown error searching documentation'
         };
       }
     }
