@@ -77,22 +77,69 @@ export class WorkflowLoader {
         }
       }
 
-      // Fallback to Supabase
-      console.log(`Loading workflow ${workflowId} from Supabase (fallback)`);
+      // Fallback to Supabase - FETCH LATEST VERSION (not active)
+      console.log(`Loading workflow ${workflowId} from Supabase - fetching latest version`);
 
-      // For workflows stored directly with automation_sequence
+      // Fetch LATEST version from deployed_workflow_versions table
+      const { data: latestVersion, error: versionError } = await this.supabase
+        .from('deployed_workflow_versions')
+        .select('version_number, automation_sequence, automation_sequence_yaml, is_active, created_at')
+        .eq('workflow_id', workflowId)
+        .order('created_at', { ascending: false })  // Latest first
+        .limit(1)
+        .single();
+
+      if (!versionError && latestVersion) {
+        const versionStatus = latestVersion.is_active ? 'active' : 'inactive (latest)';
+        console.log(`Loading workflow ${workflowId} v${latestVersion.version_number} (${versionStatus})`);
+        
+        // Prefer YAML format, fallback to JSON
+        let automationSequence;
+        if (latestVersion.automation_sequence_yaml) {
+          try {
+            automationSequence = yaml.load(latestVersion.automation_sequence_yaml);
+            console.log(`Loaded workflow ${workflowId} from YAML format`);
+          } catch (parseError) {
+            console.error('Error parsing YAML, falling back to JSON:', parseError);
+            automationSequence = latestVersion.automation_sequence;
+          }
+        } else if (latestVersion.automation_sequence) {
+          automationSequence = latestVersion.automation_sequence;
+          console.log(`Loaded workflow ${workflowId} from JSON format`);
+        } else {
+          console.error(`Version ${latestVersion.version_number} has no content`);
+          // Fall through to fallback below
+        }
+        
+        if (automationSequence) {
+          return {
+            id: workflow.id,
+            name: workflow.name,
+            automation_sequence: automationSequence,
+            metadata: {
+              source: 'supabase_latest_version',
+              version: latestVersion.version_number,
+              is_active: latestVersion.is_active
+            }
+          };
+        }
+      }
+
+      // Fallback to deployed_workflows table (active version) if no versions found
+      console.log(`No versions found for workflow ${workflowId}, using active version from deployed_workflows table`);
+      
       if (workflow.automation_sequence) {
         return {
           id: workflow.id,
           name: workflow.name,
           automation_sequence: workflow.automation_sequence,
           metadata: {
-            source: 'supabase'
+            source: 'supabase_active_fallback'
           }
         };
       }
 
-      // Try loading from view with sequence
+      // Final fallback: Try loading from view with sequence
       const { data: workflowWithSeq } = await this.supabase
         .from('deployed_workflows_with_sequence')
         .select('*')
@@ -100,12 +147,13 @@ export class WorkflowLoader {
         .single();
 
       if (workflowWithSeq && workflowWithSeq.automation_sequence) {
+        console.log(`Loaded workflow ${workflowId} from deployed_workflows_with_sequence view`);
         return {
           id: workflowWithSeq.id,
           name: workflowWithSeq.name,
           automation_sequence: workflowWithSeq.automation_sequence,
           metadata: {
-            source: 'supabase'
+            source: 'supabase_view_fallback'
           }
         };
       }
