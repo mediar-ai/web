@@ -160,14 +160,22 @@ export async function POST(
     const isCronExecution = request.headers.get('X-Cron-Execution') === 'true';
     const authHeader = request.headers.get('Authorization');
 
+    // Check for Vercel bypass token in various locations
+    const url = new URL(request.url);
+    const bypassTokenFromQuery = url.searchParams.get('x-vercel-protection-bypass');
+    const bypassTokenFromHeader = request.headers.get('x-vercel-protection-bypass');
+    const expectedBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
     let authenticatedUserId: string | null = null;
     let has: any = null;
     let orgId: string | null | undefined = null;
 
     // STEP 1: Authenticate
     if (isCronExecution) {
-      // For cron executions, verify the service role key
+      // For cron executions, verify BOTH the service role key AND bypass token
       const expectedKey = `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
+
+      // Check service role key
       if (authHeader !== expectedKey) {
         console.warn('[SECURITY] Invalid service role key for cron execution');
         return NextResponse.json(
@@ -175,7 +183,24 @@ export async function POST(
           { status: 401 }
         );
       }
-      console.log('[AUTH] Cron execution authenticated via service role key');
+
+      // Additionally check bypass token if it's configured
+      if (expectedBypassToken) {
+        const providedToken = bypassTokenFromQuery || bypassTokenFromHeader;
+        if (providedToken !== expectedBypassToken) {
+          console.warn('[SECURITY] Invalid or missing Vercel bypass token for cron execution');
+          console.warn(`  Expected token present: ${!!expectedBypassToken}`);
+          console.warn(`  Received token in query: ${!!bypassTokenFromQuery}`);
+          console.warn(`  Received token in header: ${!!bypassTokenFromHeader}`);
+          return NextResponse.json(
+            { error: 'Unauthorized - Invalid Vercel bypass token' },
+            { status: 401 }
+          );
+        }
+        console.log('[AUTH] Vercel bypass token validated successfully');
+      }
+
+      console.log('[AUTH] Cron execution authenticated via service role key and bypass token');
       // For cron executions, we skip user-based auth checks
       authenticatedUserId = 'cron-scheduler';
     } else {

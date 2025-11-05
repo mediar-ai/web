@@ -282,34 +282,42 @@ export async function POST(_request: NextRequest) {
         }
 
         // Use public URL with service role key for authentication
-        // Add the Vercel bypass token if available, otherwise fall back to public URL
+        // Add the Vercel bypass token if available
         const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-        
+
         // In production, always use the production URL, not localhost
-        const isProduction = process.env.NODE_ENV === 'production' || 
+        const isProduction = process.env.NODE_ENV === 'production' ||
                            process.env.VERCEL_ENV === 'production' ||
                            process.env.VERCEL;
-        
-        const publicUrl = isProduction 
+
+        const publicUrl = isProduction
           ? 'https://app.mediar.ai'
           : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
 
         let executionUrl = `${publicUrl}/api/remote-workflows/${workflow.id}/execute`;
 
-        // Add bypass token to URL if available  
+        // Add bypass token to URL if available (for compatibility)
         if (vercelBypassToken) {
           executionUrl += `?x-vercel-protection-bypass=${vercelBypassToken}`;
         }
         console.log(`   Calling: ${executionUrl}`);
 
+        // Build headers with bypass token
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'X-Cron-Execution': 'true',
+        };
+
+        // Also add bypass token as header for better security
+        if (vercelBypassToken) {
+          headers['x-vercel-protection-bypass'] = vercelBypassToken;
+        }
+
         // Call the existing workflow execution API
         const executionResponse = await fetch(executionUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-            'X-Cron-Execution': 'true',
-          },
+          headers,
           body: JSON.stringify({
             parameters: {}, // Changed from execution_params to parameters
             client_id: 'cron-scheduler',
