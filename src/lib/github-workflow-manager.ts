@@ -99,7 +99,8 @@ export class GitHubWorkflowManager {
           console.log(`📁 Using existing GitHub folder: ${folderName} (preserving for workflow ${workflowId})`);
         } else {
           // Generate new folder name for workflows without one
-          folderName = this.generateFolderName(workflowName);
+          // Append workflow ID to ensure uniqueness even with duplicate names
+          folderName = `${this.generateFolderName(workflowName)}-${workflowId}`;
           console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
         }
 
@@ -153,6 +154,7 @@ export class GitHubWorkflowManager {
       // Add metadata comment to YAML
       const metadataComment = `# Workflow: ${workflowName}
 # ID: ${workflowId}
+# Folder: ${folderName}
 # Generated: ${new Date().toISOString()}
 # Branch: ${targetBranch}
 # ---
