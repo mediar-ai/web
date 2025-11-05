@@ -72,11 +72,9 @@ export default function DesktopAuthHandler({
           );
         }
 
-        // Also trigger deep-link redirect for immediate callback (hybrid approach)
-        if (data.token) {
-          const redirectUrl = `mediar://auth/callback?token=${data.token}&userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}`;
-          window.location.href = redirectUrl;
-        }
+        // Removed deep-link redirect - auto-polling handles authentication without browser popup
+        // Desktop app polls /api/auth/desktop-session/{sessionId} every 2s and receives the token
+        console.log('[Desktop Auth] Session stored, desktop app will authenticate via polling');
 
         setStatus('success');
       } catch (err) {
