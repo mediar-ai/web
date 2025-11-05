@@ -99,8 +99,8 @@ export class GitHubWorkflowManager {
           console.log(`📁 Using existing GitHub folder: ${folderName} (preserving for workflow ${workflowId})`);
         } else {
           // Generate new folder name for workflows without one
-          // Append workflow ID to ensure uniqueness even with duplicate names
-          folderName = `${this.generateFolderName(workflowName)}-${workflowId}`;
+          // Pattern: {id}_{sanitized-name} - ID first for sorting and clarity
+          folderName = `${workflowId}_${this.generateFolderName(workflowName)}`;
           console.log(`📁 Creating new GitHub folder: ${folderName} (for workflow ${workflowId})`);
         }
 
