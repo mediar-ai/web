@@ -21,7 +21,10 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/analyze-raw-timeline-events(.*)',
   '/api/sync-processed-counts(.*)',
   '/api/process-workflow-step(.*)',
-  '/api/remote-workflows(.*)',
+  // Note: /api/remote-workflows/executions/monitor now requires authentication
+  // Only keep other remote-workflows endpoints public for backward compatibility
+  '/api/remote-workflows/executions/start(.*)',
+  '/api/remote-workflows/executions/update(.*)',
   '/api/cron/scheduler(.*)',
   '/api/cron/health-check-supabase(.*)',
   '/api/cron/process-pending-notifications(.*)',

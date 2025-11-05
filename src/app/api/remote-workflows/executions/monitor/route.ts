@@ -7,6 +7,26 @@ const notificationService = NotificationService.getInstance();
 // Monitor execution updates and trigger alerts if needed
 export async function POST(request: NextRequest) {
   try {
+    // Verify service authentication
+    const authHeader = request.headers.get('authorization');
+    const expectedKey = process.env.MODAL_SERVICE_API_KEY;
+
+    if (!expectedKey) {
+      console.error('MODAL_SERVICE_API_KEY not configured');
+      return NextResponse.json({ error: 'Service misconfigured' }, { status: 500 });
+    }
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.warn('Monitor API called without authentication');
+      return NextResponse.json({ error: 'Missing authentication' }, { status: 401 });
+    }
+
+    const providedKey = authHeader.substring(7);
+    if (providedKey !== expectedKey) {
+      console.warn('Invalid service API key attempt for monitor endpoint');
+      return NextResponse.json({ error: 'Invalid authentication' }, { status: 401 });
+    }
+
     // Handle empty request body
     const body = await request.text();
     if (!body) {
