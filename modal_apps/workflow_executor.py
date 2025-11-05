@@ -240,12 +240,13 @@ image = (
     .add_local_python_source("modal_apps")
 )
 
-# Secrets for database access, MCP endpoint, GitHub, and secrets encryption
+# Secrets for database access, MCP endpoint, GitHub, secrets encryption, and service API
 secrets = [
     modal.Secret.from_name("supabase-secret"),
     modal.Secret.from_name("custom-secret"),
     modal.Secret.from_name("github-token"),
     modal.Secret.from_name("secrets-encryption-key"),
+    modal.Secret.from_name("mediar-service-api-key"),
 ]
 
 
@@ -2887,8 +2888,14 @@ def execute_workflow(
                     app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
                     monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
 
+                    # Add service authentication
+                    headers = {'Content-Type': 'application/json'}
+                    service_api_key = os.environ.get('MEDIAR_SERVICE_API_KEY')
+                    if service_api_key:
+                        headers['Authorization'] = f'Bearer {service_api_key}'
+
                     logger.info(f"Sending alert to {monitor_url}")
-                    response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                    response = requests.post(monitor_url, json=monitor_payload, headers=headers, timeout=5)
                     if response.status_code == 200:
                         logger.info(f"Alert check triggered successfully for failed execution {execution_id}")
                         logger.info(f"Response: {response.text}")
@@ -3087,8 +3094,14 @@ def execute_workflow(
                         app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
                         monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
 
+                        # Add service authentication
+                        headers = {'Content-Type': 'application/json'}
+                        service_api_key = os.environ.get('MEDIAR_SERVICE_API_KEY')
+                        if service_api_key:
+                            headers['Authorization'] = f'Bearer {service_api_key}'
+
                         logger.info(f"Sending exception alert to {monitor_url}")
-                        response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                        response = requests.post(monitor_url, json=monitor_payload, headers=headers, timeout=5)
                         if response.status_code == 200:
                             logger.info(f"Alert check triggered successfully for exception failure {execution_id}")
                         else:
@@ -3251,8 +3264,14 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                     app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
                     monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
 
+                    # Add service authentication
+                    headers = {'Content-Type': 'application/json'}
+                    service_api_key = os.environ.get('MEDIAR_SERVICE_API_KEY')
+                    if service_api_key:
+                        headers['Authorization'] = f'Bearer {service_api_key}'
+
                     logger.info(f"🚨 Triggering alert for auto-cleaned execution {execution_id}")
-                    response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                    response = requests.post(monitor_url, json=monitor_payload, headers=headers, timeout=5)
 
                     if response.status_code == 200:
                         logger.info(f"✅ Alert triggered successfully for auto-cleaned execution {execution_id}")
@@ -3374,8 +3393,14 @@ def cleanup_stale_executions(cur, conn, stale_threshold_minutes: int = 25):
                         app_url = os.environ.get("APP_URL", "https://app.mediar.ai")
                         monitor_url = f"{app_url}/api/remote-workflows/executions/monitor"
 
+                        # Add service authentication
+                        headers = {'Content-Type': 'application/json'}
+                        service_api_key = os.environ.get('MEDIAR_SERVICE_API_KEY')
+                        if service_api_key:
+                            headers['Authorization'] = f'Bearer {service_api_key}'
+
                         logger.info(f"🚨 Triggering alert for NULL logs auto-cleaned execution {execution_id}")
-                        response = requests.post(monitor_url, json=monitor_payload, timeout=5)
+                        response = requests.post(monitor_url, json=monitor_payload, headers=headers, timeout=5)
 
                         if response.status_code == 200:
                             logger.info(f"✅ Alert triggered successfully for NULL logs execution {execution_id}")
