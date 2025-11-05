@@ -21,10 +21,8 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/analyze-raw-timeline-events(.*)',
   '/api/sync-processed-counts(.*)',
   '/api/process-workflow-step(.*)',
-  // Note: /api/remote-workflows/executions/monitor now requires authentication
-  // Only keep other remote-workflows endpoints public for backward compatibility
-  '/api/remote-workflows/executions/start(.*)',
-  '/api/remote-workflows/executions/update(.*)',
+  // Modal executor needs this endpoint to report status (has X-Service-Auth validation)
+  '/api/remote-workflows/executions/monitor(.*)',
   '/api/cron/scheduler(.*)',
   '/api/cron/health-check-supabase(.*)',
   '/api/cron/process-pending-notifications(.*)',
@@ -45,6 +43,7 @@ const isProtectedApiRoute = createRouteMatcher([
   '/api/edit-workflow(.*)',
   '/api/workflows/(.*)',
   '/api/ai/(.*)',  // Add all /api/ai routes as protected
+  '/api/remote-workflows/(.*)',  // Protect all remote-workflows routes (except monitor which is public)
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
