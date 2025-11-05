@@ -1,3 +1,4 @@
+// Force Vercel rebuild - clear cache issue
 import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextRequest, NextResponse } from 'next/server';

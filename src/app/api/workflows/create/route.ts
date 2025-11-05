@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
       const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
 
       // Fetch user context for enhanced commit message (use actualOrgId from earlier call)
-      const userContext = await getUserContext(userId, actualOrgId);
+      const userContext = await getUserContext(userId || 'desktop-user', actualOrgId);
 
       const githubResult = await githubWorkflowManager.saveWorkflow(
         body.name,
