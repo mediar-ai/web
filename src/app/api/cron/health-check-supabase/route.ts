@@ -16,7 +16,25 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  // Verify this is a cron job request (optional security)
+  // Verify this is a Vercel cron job request using bypass token
+  const url = new URL(request.url);
+  const bypassTokenFromQuery = url.searchParams.get('x-vercel-protection-bypass');
+  const bypassTokenFromHeader = request.headers.get('x-vercel-protection-bypass');
+  const expectedBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
+  // Check bypass token if configured
+  if (expectedBypassToken) {
+    const providedToken = bypassTokenFromQuery || bypassTokenFromHeader;
+    if (providedToken !== expectedBypassToken) {
+      console.warn('[SECURITY] Invalid or missing Vercel bypass token for health-check cron');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid Vercel bypass token' },
+        { status: 401 }
+      );
+    }
+  }
+
+  // Also support legacy CRON_SECRET for backward compatibility
   const authHeader = request.headers.get('authorization');
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

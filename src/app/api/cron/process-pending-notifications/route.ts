@@ -38,7 +38,25 @@ async function getOrganizationMembers(orgId: string): Promise<string[]> {
  * Process Pending Notifications Cron Job
  * Called every minute by Vercel Cron to send queued notification emails
  */
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
+  // Verify this is a Vercel cron job request using bypass token
+  const url = new URL(request.url);
+  const bypassTokenFromQuery = url.searchParams.get('x-vercel-protection-bypass');
+  const bypassTokenFromHeader = request.headers.get('x-vercel-protection-bypass');
+  const expectedBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
+  // Check bypass token if configured
+  if (expectedBypassToken) {
+    const providedToken = bypassTokenFromQuery || bypassTokenFromHeader;
+    if (providedToken !== expectedBypassToken) {
+      console.warn('[SECURITY] Invalid or missing Vercel bypass token for notifications cron');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid Vercel bypass token' },
+        { status: 401 }
+      );
+    }
+  }
+
   const startTime = Date.now();
   const currentTime = new Date();
 
