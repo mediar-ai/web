@@ -305,6 +305,51 @@ export async function PATCH(
 
     console.log(`[SUCCESS] Updated workflow ${workflowIdNum} (${workflow.name})`);
 
+    // Sync name change to GitHub if workflow has GitHub path
+    if (body.name && workflow.github_path) {
+      try {
+        console.log(`📤 Syncing name change to GitHub for workflow ${workflowIdNum}...`);
+
+        // Fetch latest YAML version
+        const { data: latestVersion } = await supabase
+          .from('deployed_workflow_versions')
+          .select('automation_sequence_yaml')
+          .eq('workflow_id', workflowIdNum)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (latestVersion?.automation_sequence_yaml) {
+          const { githubWorkflowManager, getUserContext } = await import('@/lib/github-workflow-manager');
+          const userContext = await getUserContext(authenticatedUserId, orgId);
+          
+          // Push to GitHub (saveWorkflow updates metadata comment automatically)
+          const githubResult = await githubWorkflowManager.saveWorkflow(
+            body.name,  // New name - updates metadata comment
+            latestVersion.automation_sequence_yaml,
+            false,      // Not development
+            `Rename workflow: ${workflow.name} → ${body.name}`,
+            false,      // Don't create PR
+            workflowIdNum,
+            workflow.organization_id || undefined,
+            userContext
+          );
+          
+          if (githubResult.success) {
+            console.log(`✅ GitHub metadata updated: ${githubResult.path}`);
+          } else {
+            console.warn(`⚠️ GitHub sync failed: ${githubResult.error}`);
+            // Continue anyway - GitHub sync is optional
+          }
+        } else {
+          console.log(`ℹ️ No YAML version found - skipping GitHub sync`);
+        }
+      } catch (githubError) {
+        console.error('GitHub rename sync error:', githubError);
+        // Don't fail the rename - GitHub sync is supplementary
+      }
+    }
+
     return NextResponse.json({
       success: true,
       workflow: data,
