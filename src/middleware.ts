@@ -24,8 +24,8 @@ const isPublicApiRoute = createRouteMatcher([
   // Modal executor needs this endpoint to report status (has X-Service-Auth validation)
   '/api/remote-workflows/executions/monitor(.*)',
   // Workflow execution endpoints have their own auth (service role key + bypass token for cron, Clerk for users)
-  '/api/remote-workflows/.*/execute$',
-  '/api/remote-workflows/.*/execute-sync$',
+  '/api/remote-workflows/:workflowId/execute',
+  '/api/remote-workflows/:workflowId/execute-sync',
   '/api/cron/scheduler(.*)',
   '/api/cron/health-check-supabase(.*)',
   '/api/cron/process-pending-notifications(.*)',
