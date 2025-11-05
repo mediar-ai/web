@@ -39,7 +39,7 @@ describe.skipIf(SKIP_TESTS)('/api/stream-proxy - Real Vertex AI Integration', ()
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.5-flash', // Updated to stable 2.5 model
         messages: [
           { role: 'user', content: 'What tools do you have available?' }
         ],

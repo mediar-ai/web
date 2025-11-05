@@ -387,12 +387,19 @@ export async function POST(request: NextRequest) {
       // Use Anthropic provider
       console.log(`[AI API] 🤖 Calling Anthropic with model ${sessionModel}`);
 
+      // Merge client tools with server-side tools (same as Vertex)
+      const clientTools = tools || [];
+      const serverToolDeclarations = getServerToolDeclarations();
+      const allTools = [...clientTools, ...serverToolDeclarations];
+
+      console.log(`🛠️ Tools available: ${clientTools.length} client, ${serverToolDeclarations.length} server`);
+
       const anthropicRequest: AIProviderRequest = {
         model: sessionModel,
         input,
         history,
         system: sessionSystem,
-        tools,
+        tools: allTools,  // Pass merged tools to Anthropic
         toolResults,
         generationConfig,
         sessionId: actualSessionId,
@@ -408,7 +415,149 @@ export async function POST(request: NextRequest) {
         elapsedMs: result.metrics.elapsedMs,
       });
 
-      // Update history with new turn and save to KV
+      // Check if any tool calls are server-side and execute them
+      if (result.toolCalls.length > 0) {
+        const serverToolResults = [];
+        const clientToolCalls = [];
+
+        // Separate server and client tools
+        for (const toolCall of result.toolCalls) {
+          if (isServerSideTool(toolCall.name)) {
+            console.log(`🔧 Executing server-side tool: ${toolCall.name}`);
+            try {
+              const toolResult = await executeServerTool(toolCall.name, toolCall.args);
+              serverToolResults.push({
+                name: toolCall.name,
+                result: toolResult,
+                id: toolCall.id  // Preserve ID for Anthropic
+              });
+              console.log(`✅ Server tool ${toolCall.name} executed successfully`);
+            } catch (error) {
+              console.error(`❌ Server tool ${toolCall.name} failed:`, error);
+              serverToolResults.push({
+                name: toolCall.name,
+                result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
+                id: toolCall.id
+              });
+            }
+          } else {
+            // Client-side tool - pass to client
+            clientToolCalls.push(toolCall);
+          }
+        }
+
+        // If we executed server tools, continue conversation automatically
+        if (serverToolResults.length > 0) {
+          console.log(`🔄 Auto-continuing with ${serverToolResults.length} server tool results`);
+
+          // Update history with the tool calls
+          const updatedHistoryWithCalls = [...history];
+          if (input) {
+            updatedHistoryWithCalls.push({
+              role: 'user',
+              parts: [{ text: input }],
+            });
+          }
+
+          // Add model's tool calls to history
+          const toolCallParts = result.toolCalls.map(tc => ({
+            functionCall: {
+              name: tc.name,
+              args: tc.args,
+              ...(tc.id && { id: tc.id })
+            }
+          }));
+
+          updatedHistoryWithCalls.push({
+            role: 'model',
+            parts: toolCallParts,
+          });
+
+          // Add server tool results to history
+          updatedHistoryWithCalls.push({
+            role: 'user',
+            parts: serverToolResults.map(tr => ({
+              functionResponse: {
+                name: tr.name,
+                response: tr.result,
+                ...(tr.id && { id: tr.id })
+              },
+            })),
+          });
+
+          // Call Anthropic again with tool results
+          const continuationResult = await handleAnthropicChat({
+            model: sessionModel,
+            history: updatedHistoryWithCalls,
+            system: sessionSystem,
+            tools: allTools,
+            toolResults: serverToolResults,
+            generationConfig,
+            sessionId: actualSessionId,
+          });
+
+          console.log('🎯 Continuation result:', {
+            textLen: continuationResult.text.length,
+            toolCallsCount: continuationResult.toolCalls.length,
+            finishReason: continuationResult.finishReason
+          });
+
+          // Merge results
+          const finalHistory = [...updatedHistoryWithCalls];
+          if (continuationResult.text || continuationResult.toolCalls.length > 0) {
+            const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+            if (continuationResult.text) {
+              modelParts.push({ text: continuationResult.text });
+            }
+
+            // Add any additional tool calls from continuation
+            continuationResult.toolCalls.forEach(tc => {
+              modelParts.push({
+                functionCall: {
+                  name: tc.name,
+                  args: tc.args,
+                  ...(tc.id && { id: tc.id })
+                },
+              });
+            });
+
+            finalHistory.push({
+              role: 'model',
+              parts: modelParts,
+            });
+          }
+
+          // Save updated session to KV
+          if (actualSessionId) {
+            const sessionData: SessionData = {
+              history: finalHistory,
+              provider,
+              system: sessionSystem,
+              model: sessionModel,
+              createdAt: sessionId
+                ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+                : new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            await saveSession(actualSessionId, sessionData);
+          }
+
+          // Return the final response with remaining client tools
+          return NextResponse.json(
+            {
+              model: sessionModel,
+              sessionId: actualSessionId,
+              text: continuationResult.text,
+              toolCalls: [...clientToolCalls, ...continuationResult.toolCalls],
+              finishReason: continuationResult.toolCalls.length > 0 ? 'tool_calls' : 'stop',
+              metrics: continuationResult.metrics,
+            },
+            { headers: corsHeaders }
+          );
+        }
+      }
+
+      // No server tools executed - standard response path
       const updatedHistory = [...history];
 
       // Add user message to history

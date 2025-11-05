@@ -17,7 +17,7 @@ export function AIChatExample() {
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-1.5-flash');
+  const [model, setModel] = useState('gemini-2.5-flash'); // Updated to stable 2.5 model
   const [useStreaming, setUseStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -138,10 +138,9 @@ export function AIChatExample() {
                 onChange={(e) => setModel(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
               >
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Stable)</option>
+                <option value="gemini-2.5-flash-preview-09-2025">Gemini 2.5 Flash Preview (Latest)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
               </select>
             </div>
           </div>

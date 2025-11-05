@@ -227,7 +227,7 @@ export async function PATCH(
     // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id')
+      .select('id, name, created_by, organization_id, github_path')
       .eq('id', workflowIdNum)
       .single();
 

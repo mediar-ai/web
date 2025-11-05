@@ -242,31 +242,31 @@ export type { GenerateContentRequest, SafetySetting };
 export function getVertexModelName(inputModelName: string): string {
   // Map Google AI Studio model names to Vertex AI model names
   const modelMap: Record<string, string> = {
-    // 🔥 STABLE MODELS (Production Ready)
+    // 🔥 STABLE MODELS (Production Ready - Latest Generation)
     'gemini-2.5-pro': 'gemini-2.5-pro',
     'gemini-2.5-pro-preview-06-05': 'gemini-2.5-pro', // Map preview to stable
     'gemini-2.5-pro-preview-05-06': 'gemini-2.5-pro', // Map preview to stable
     'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro', // Map preview to stable
     
     'gemini-2.5-flash': 'gemini-2.5-flash',
-    'gemini-2.5-flash-preview-05-20': 'gemini-2.5-flash', // Map preview to stable
-    'gemini-2.5-flash-preview-04-17': 'gemini-2.5-flash', // Map preview to stable
-    
-    'gemini-2.0-flash': 'gemini-2.0-flash-001',
-    'gemini-2.0-flash-001': 'gemini-2.0-flash-001',
-    
-    'gemini-2.0-flash-lite': 'gemini-2.0-flash-lite-001',
-    'gemini-2.0-flash-lite-001': 'gemini-2.0-flash-lite-001',
+    'gemini-2.5-flash-preview-09-2025': 'gemini-2.5-flash-preview-09-2025', // Latest preview
+    'gemini-2.5-flash-preview-05-20': 'gemini-2.5-flash', // Map old preview to stable
+    'gemini-2.5-flash-preview-04-17': 'gemini-2.5-flash', // Map old preview to stable
     
     // 🧪 PREVIEW MODELS (Testing Only)
     'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite-preview-06-17',
     'gemini-2.5-flash-lite-preview-06-17': 'gemini-2.5-flash-lite-preview-06-17',
     
-    // 🏚️ LEGACY MODELS (Will be retired)
-    'gemini-1.5-pro': 'gemini-1.5-pro-002',
-    'gemini-1.5-pro-002': 'gemini-1.5-pro-002',
-    'gemini-1.5-flash': 'gemini-1.5-flash-002',
-    'gemini-1.5-flash-002': 'gemini-1.5-flash-002',
+    // 🏚️ LEGACY MODELS (Migrated to 2.5 - Deprecated by Google)
+    'gemini-2.0-flash': 'gemini-2.5-flash', // Migrate 2.0 to 2.5
+    'gemini-2.0-flash-001': 'gemini-2.5-flash', // Migrate 2.0 to 2.5
+    'gemini-2.0-flash-exp': 'gemini-2.5-flash', // Migrate experimental to stable 2.5
+    'gemini-2.0-flash-lite': 'gemini-2.5-flash', // Migrate 2.0 lite to 2.5
+    'gemini-2.0-flash-lite-001': 'gemini-2.5-flash', // Migrate 2.0 lite to 2.5
+    'gemini-1.5-pro': 'gemini-2.5-pro', // Migrate 1.5 to 2.5
+    'gemini-1.5-pro-002': 'gemini-2.5-pro', // Migrate 1.5 to 2.5
+    'gemini-1.5-flash': 'gemini-2.5-flash', // Migrate 1.5 to 2.5
+    'gemini-1.5-flash-002': 'gemini-2.5-flash', // Migrate 1.5 to 2.5
   };
   
   const mappedModel = modelMap[inputModelName];
