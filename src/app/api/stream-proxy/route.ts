@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     const vertexAI = initVertexAI();
     const model = vertexAI.getGenerativeModel({
-      model: body.model || 'gemini-2.0-flash-exp',
+      model: body.model || 'gemini-2.5-flash', // Updated to stable 2.5 model
       generationConfig: {
         temperature: body.temperature ?? 0.7,
         maxOutputTokens: body.maxTokens ?? 8192,
