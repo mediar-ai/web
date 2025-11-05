@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::Utc;
 use std::time::Duration;
 use tokio::time::interval;
 use tracing::{error, info, warn};
@@ -7,24 +8,27 @@ use uuid::Uuid;
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::{McpClient, WorkflowExecutor};
 use crate::models::{ExecutionStatus, WorkflowSequence};
-use crate::services::{GitHubLoader, WorkflowService};
+use crate::services::{GitHubLoader, MonitorClient, WorkflowService};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
     machine_id: String,
     #[allow(dead_code)]
     workflow_service: WorkflowService,
+    monitor_client: MonitorClient,
 }
 
 impl QueueProcessor {
     pub fn new(db_pool: DatabasePool) -> Self {
         let machine_id = Self::generate_machine_id();
         let workflow_service = WorkflowService::new(db_pool.clone());
+        let monitor_client = MonitorClient::new();
 
         Self {
             db_pool,
             machine_id,
             workflow_service,
+            monitor_client,
         }
     }
 
@@ -86,6 +90,20 @@ impl QueueProcessor {
                 )
                 .await?;
 
+                // Notify monitor endpoint about cancellation
+                if let Err(e) = self
+                    .monitor_client
+                    .notify_cancelled(
+                        execution.id,
+                        workflow.id,
+                        Some(workflow.name.clone()),
+                        "Auto-cancelled due to consecutive failures",
+                    )
+                    .await
+                {
+                    warn!("Failed to send monitor notification for cancelled execution: {}", e);
+                }
+
                 return Ok(false);
             }
 
@@ -132,22 +150,28 @@ impl QueueProcessor {
             .await?;
 
             // Execute workflow
+            let start_time = Utc::now();
             let mcp_client = McpClient::from_url(mcp_endpoint);
             // TODO: Get organization_id from workflow when available
             let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id, None);
             let result = executor.execute().await;
 
             // Update execution status based on result
+            let end_time = Utc::now();
+            let execution_time = (end_time - start_time).num_seconds();
+
             match result {
                 Ok(workflow_result) => {
+                    let status = if workflow_result.success {
+                        ExecutionStatus::Completed
+                    } else {
+                        ExecutionStatus::Failed
+                    };
+
                     WorkflowQueries::update_execution_status(
                         &self.db_pool,
                         execution.id,
-                        if workflow_result.success {
-                            ExecutionStatus::Completed
-                        } else {
-                            ExecutionStatus::Failed
-                        },
+                        status.clone(),
                         workflow_result.error.clone(),
                         workflow_result.data.clone(),
                     )
@@ -162,6 +186,35 @@ impl QueueProcessor {
                             "failure"
                         }
                     );
+
+                    // Notify monitor endpoint
+                    // Convert workflow_result.data to JSON Value for formatted_output
+                    let formatted_output = workflow_result.data.as_ref().map(|d| {
+                        serde_json::json!({
+                            "success": workflow_result.success,
+                            "message": workflow_result.message.clone(),
+                            "data": d
+                        })
+                    });
+
+                    if let Err(e) = self
+                        .monitor_client
+                        .notify_execution_status(
+                            execution.id,
+                            workflow.id,
+                            Some(workflow.name.clone()),
+                            status,
+                            workflow_result.error.clone(),
+                            formatted_output,
+                            Some(start_time),
+                            Some(end_time),
+                            Some(execution_time),
+                            "rust_executor",
+                        )
+                        .await
+                    {
+                        warn!("Failed to send monitor notification: {}", e);
+                    }
                 }
                 Err(e) => {
                     error!("Execution {} failed: {}", execution.id, e);
@@ -174,6 +227,26 @@ impl QueueProcessor {
                         None,
                     )
                     .await?;
+
+                    // Notify monitor endpoint about exception
+                    if let Err(monitor_err) = self
+                        .monitor_client
+                        .notify_execution_status(
+                            execution.id,
+                            workflow.id,
+                            Some(workflow.name.clone()),
+                            ExecutionStatus::Failed,
+                            Some(e.to_string()),
+                            None,
+                            Some(start_time),
+                            Some(end_time),
+                            Some(execution_time),
+                            "rust_executor_exception",
+                        )
+                        .await
+                    {
+                        warn!("Failed to send monitor notification for exception: {}", monitor_err);
+                    }
                 }
             }
 
