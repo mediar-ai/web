@@ -126,6 +126,8 @@ mcp.json
 # Test files in root directory (cleanup)
 /test*.py
 /test*.js
+/test*.mjs
+/test*.cjs
 /debug*.py
 /check*.js
 /fix*.js
@@ -134,6 +136,11 @@ mcp.json
 /test-workflow-*.yml
 /test-workflow-processed.yml
 /*.zip
+
+# Temporary documentation files in root
+/*_SUMMARY.md
+/*_FIX*.md
+/*_VERIFICATION.md
 
 # Temporary test directories
 /test-workflow-files/
