@@ -251,13 +251,15 @@ async function handleVertexChat(params: {
     // Continuing conversation with tool results
     console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s)`);
 
-    // Format function responses for Vertex AI
-    // Important: Ensure the response field is properly formatted
+    // Format function responses for Vertex AI SDK
+    // Vertex AI requires: { name, response: { name, content: <actual_result> } }
     const functionResponseParts = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
-        // Ensure response is an object, not nested or array
-        response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result }
+        response: {
+          name: tr.name,  // Name must be repeated in response
+          content: tr.result  // Actual tool result goes in content
+        }
       }
     }));
 
@@ -501,8 +503,10 @@ export async function POST(request: NextRequest) {
             parts: serverToolResults.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                // Ensure response is an object, not nested or array
-                response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
+                response: {
+                  name: tr.name,  // Name must be repeated in response
+                  content: tr.result  // Actual tool result goes in content
+                },
                 ...(tr.id && { id: tr.id })
               },
             })),
@@ -598,8 +602,10 @@ export async function POST(request: NextRequest) {
           parts: toolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              // Ensure response is an object, not nested or array
-              response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
+              response: {
+                name: tr.name,  // Name must be repeated in response
+                content: tr.result  // Actual tool result goes in content
+              },
               ...(tr.id && { id: tr.id }), // Include ID if present
             },
           })),
@@ -811,8 +817,10 @@ export async function POST(request: NextRequest) {
           parts: serverToolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              // Ensure response is an object, not nested or array
-              response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
+              response: {
+                name: tr.name,  // Name must be repeated in response
+                content: tr.result  // Actual tool result goes in content
+              },
             },
           })),
         });
@@ -915,8 +923,10 @@ export async function POST(request: NextRequest) {
             parts: moreServerTools.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                // Ensure response is an object, not nested or array
-                response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
+                response: {
+                  name: tr.name,  // Name must be repeated in response
+                  content: tr.result  // Actual tool result goes in content
+                },
               },
             })),
           });
@@ -1012,8 +1022,10 @@ export async function POST(request: NextRequest) {
         parts: toolResults.map(tr => ({
           functionResponse: {
             name: tr.name,
-            // Ensure response is an object, not nested or array
-            response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
+            response: {
+              name: tr.name,  // Name must be repeated in response
+              content: tr.result  // Actual tool result goes in content
+            },
           },
         })),
       });
