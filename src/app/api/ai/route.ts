@@ -252,13 +252,16 @@ async function handleVertexChat(params: {
     console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s)`);
 
     // Format function responses for Vertex AI
+    // Important: Ensure the response field is properly formatted
     const functionResponseParts = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
-        response: tr.result
+        // Ensure response is an object, not nested or array
+        response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result }
       }
     }));
 
+    // Send as array of parts
     response = await chat.sendMessage(functionResponseParts as any);
   } else if (input) {
     // New user message
@@ -498,7 +501,8 @@ export async function POST(request: NextRequest) {
             parts: serverToolResults.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                response: tr.result,
+                // Ensure response is an object, not nested or array
+                response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
                 ...(tr.id && { id: tr.id })
               },
             })),
@@ -594,7 +598,8 @@ export async function POST(request: NextRequest) {
           parts: toolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              response: tr.result,
+              // Ensure response is an object, not nested or array
+              response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
               ...(tr.id && { id: tr.id }), // Include ID if present
             },
           })),
@@ -806,7 +811,8 @@ export async function POST(request: NextRequest) {
           parts: serverToolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              response: tr.result,
+              // Ensure response is an object, not nested or array
+              response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
             },
           })),
         });
@@ -909,7 +915,8 @@ export async function POST(request: NextRequest) {
             parts: moreServerTools.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                response: tr.result,
+                // Ensure response is an object, not nested or array
+                response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
               },
             })),
           });
@@ -1005,7 +1012,8 @@ export async function POST(request: NextRequest) {
         parts: toolResults.map(tr => ({
           functionResponse: {
             name: tr.name,
-            response: tr.result,
+            // Ensure response is an object, not nested or array
+            response: typeof tr.result === 'object' && tr.result !== null ? tr.result : { result: tr.result },
           },
         })),
       });
