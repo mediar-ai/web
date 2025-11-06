@@ -99,10 +99,10 @@ export const serverSideTools = {
           throw new Error(`Database search failed: ${error.message}`);
         }
 
-        console.log('[SERVER-KNOWLEDGE-SEARCH] Search complete, found:', data?.length || 0, 'results');
+        console.log('[SERVER-KNOWLEDGE-SEARCH] Search complete, found:', Array.isArray(data) ? data.length : 0, 'results');
 
         // Check if search was successful
-        if (!data || data.length === 0) {
+        if (!data || !Array.isArray(data) || data.length === 0) {
           return {
             action: 'search_completed',
             query: params.similarity_query,
