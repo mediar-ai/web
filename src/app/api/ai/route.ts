@@ -753,7 +753,7 @@ export async function POST(request: NextRequest) {
               : await executeKnowledgeTool(toolCall.name, toolArgs);
 
             // Capture workflow data if the workflow was updated
-            if (isWorkflow && toolResult.workflow_updated && toolResult.workflow_data) {
+            if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
               workflowData = toolResult.workflow_data;
               console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
             }
@@ -830,7 +830,7 @@ export async function POST(request: NextRequest) {
 
         // Check if continuation has more server-side tools to execute
         let finalResult = continuationResult;
-        let finalHistory = [...updatedHistoryWithCalls];
+        const finalHistory = [...updatedHistoryWithCalls];
 
         // Keep executing server tools until there are none left
         while (finalResult.toolCalls.length > 0) {
@@ -855,7 +855,7 @@ export async function POST(request: NextRequest) {
                   : await executeKnowledgeTool(toolCall.name, toolArgs);
 
                 // Capture workflow data if the workflow was updated
-                if (isWorkflow && toolResult.workflow_updated && toolResult.workflow_data) {
+                if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
                   workflowData = toolResult.workflow_data;
                   console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
                 }
@@ -1094,7 +1094,7 @@ export async function GET(request: NextRequest) {
           vertex: {
             models: VERTEX_MODELS,
             toolExecution: 'hybrid',
-            serverSideTools: Object.keys(serverSideTools),
+            serverSideTools: [...Object.keys(knowledgeTools), ...Object.keys(serverSideWorkflowTools)],
           },
           anthropic: {
             models: ANTHROPIC_MODELS,
