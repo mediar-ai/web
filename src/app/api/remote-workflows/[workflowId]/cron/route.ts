@@ -82,24 +82,25 @@ export async function PATCH(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow organization admins only for write operations
+    // Modifying cron settings requires write or admin access level
     let hasOrgAccess = false;
     if (orgId && isOrgAdmin) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
-        .select('organization_id')
+        .select('access_level')
         .eq('workflow_id', workflowIdNum)
         .eq('organization_id', orgId)
         .single();
 
-      hasOrgAccess = !!orgAccess;
+      // Only 'write' or 'admin' access levels can modify cron settings
+      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (org admins only)
+    // - User's organization has write/admin access via workflow_organization_access table
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron toggle for workflow ${workflowIdNum}`
@@ -282,24 +283,25 @@ export async function PUT(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // Allow organization admins only for write operations
+    // Modifying cron settings requires write or admin access level
     let hasOrgAccess = false;
     if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
-        .select('organization_id')
+        .select('access_level')
         .eq('workflow_id', workflowIdNum)
         .eq('organization_id', orgId)
         .single();
 
-      hasOrgAccess = !!orgAccess;
+      // Only 'write' or 'admin' access levels can modify cron settings
+      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify any workflow's cron)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (org admins only)
+    // - User's organization has write/admin access via workflow_organization_access table
     if (!isMediarOrgPut && !isMediarAdminPut && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized cron update for workflow ${workflowIdNum}`

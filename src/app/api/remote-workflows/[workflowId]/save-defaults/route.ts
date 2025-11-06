@@ -75,23 +75,25 @@ export async function POST(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
+    // Saving defaults requires write or admin access level
     let hasOrgAccess = false;
     if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
-        .select('organization_id')
+        .select('access_level')
         .eq('workflow_id', workflowIdNum)
         .eq('organization_id', orgId)
         .single();
 
-      hasOrgAccess = !!orgAccess;
+      // Only 'write' or 'admin' access levels can save defaults
+      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify all workflows)
     // - User is the workflow owner
     // - User is org admin in the same org
-    // - User's organization has admin access via workflow_organization_access table
+    // - User's organization has write/admin access via workflow_organization_access table
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !(isOrgAdmin && hasOrgAccess)) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized default save for workflow ${workflowIdNum}`
