@@ -66,7 +66,7 @@ export async function POST(
         .single();
 
       // Only 'write' or 'admin' access levels can activate versions
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // DEBUG: Log authorization details

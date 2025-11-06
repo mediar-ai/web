@@ -341,7 +341,7 @@ export async function PATCH(
         .single();
 
       // Only 'write' or 'admin' access levels can modify workflows
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
@@ -556,7 +556,7 @@ export async function DELETE(
         .single();
 
       // Only 'admin' access level can delete workflows (write cannot delete)
-      hasOrgAccess = orgAccess && orgAccess.access_level === 'admin';
+      hasOrgAccess = !!orgAccess && orgAccess.access_level === 'admin';
     }
 
     // Prevent deletion of public workflows (NULL organization_id) by non-Mediar users

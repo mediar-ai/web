@@ -93,7 +93,7 @@ export async function PATCH(
         .single();
 
       // Only 'write' or 'admin' access levels can modify cron settings
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
@@ -294,7 +294,7 @@ export async function PUT(
         .single();
 
       // Only 'write' or 'admin' access levels can modify cron settings
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
