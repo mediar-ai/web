@@ -432,7 +432,11 @@ export async function GET(request: NextRequest) {
 
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
     } else {
-      // Regular org sees only their workflows and shared workflows
+      // Regular org sees:
+      // 1. Workflows they own
+      // 2. Workflows explicitly shared with them via workflow_organization_access
+      // 3. Globally public workflows (is_shared = true AND organization_id IS NULL)
+
       // Get workflows owned by this org
       const { data: ownedWorkflows, error: ownedError } = await supabase
         .from('deployed_workflows')
@@ -440,17 +444,26 @@ export async function GET(request: NextRequest) {
         .eq('organization_id', orgId)
         .is('parent_workflow_id', null);
 
-      // Get workflows shared with this org
+      // Get workflows explicitly shared with this org
       const { data: sharedAccess, error: sharedError } = await supabase
         .from('workflow_organization_access')
         .select('workflow_id')
         .eq('organization_id', orgId);
 
+      // Get globally public workflows (is_shared = true AND organization_id IS NULL)
+      const { data: publicWorkflows, error: publicError } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('is_shared', true)
+        .is('organization_id', null)
+        .is('parent_workflow_id', null);
+
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
       const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+      const publicIds = (publicWorkflows || []).map(w => w.id);
 
       // Combine and deduplicate
-      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds, ...publicIds])];
     }
 
     if (accessibleWorkflowIds.length === 0 && !(isMediarOrg || (isMediarAdmin && !viewOrgId))) {
