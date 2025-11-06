@@ -372,10 +372,12 @@ export async function POST(request: NextRequest) {
             .single();
 
           // Update workflow to point to new version
+          // NOTE: Don't overwrite 'name' for existing workflows - preserve human-readable names
+          // The name should only be set when creating NEW workflows from GitHub
           const { error } = await supabase
             .from('deployed_workflows')
             .update({
-              name: workflowName,
+              // Removed 'name: workflowName' - preserve existing workflow name
               // Removed 'version' field - it causes constraint violation
               automation_sequence: yaml.load(content.yaml),
               automation_sequence_yaml: content.yaml,  // Store YAML format as well

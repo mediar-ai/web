@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -39,8 +39,8 @@ export function WorkflowActionsDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize form when dialog opens
-  useState(() => {
+  // Initialize form when dialog opens - FIXED: Use useEffect instead of useState
+  useEffect(() => {
     if (open) {
       if (mode === 'rename') {
         setName(currentName);
@@ -51,7 +51,7 @@ export function WorkflowActionsDialog({
       }
       setError(null);
     }
-  });
+  }, [open, mode, currentName, currentDescription]);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
