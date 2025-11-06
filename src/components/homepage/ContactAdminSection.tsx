@@ -148,16 +148,16 @@ export default function ContactAdminSection({
           {/* App Access Options */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Web App */}
-            <Card className="border-2 border-black hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="text-center space-y-4">
-                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                     <Play className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
                     WEB APP
                   </h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
                     Record workflows in your browser
                   </p>
                   <Link href="/web">
@@ -170,10 +170,10 @@ export default function ContactAdminSection({
             </Card>
 
             {/* Desktop App */}
-            <Card className="border-2 border-black hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="text-center space-y-4">
-                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg
                       className="w-6 h-6 text-white"
                       fill="none"
@@ -188,10 +188,10 @@ export default function ContactAdminSection({
                       />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
                     DESKTOP APP
                   </h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
                     Build automated workflows
                   </p>
                   <a
@@ -208,10 +208,10 @@ export default function ContactAdminSection({
             </Card>
 
             {/* Dashboard */}
-            <Card className="border-2 border-black hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="text-center space-y-4">
-                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto">
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg
                       className="w-6 h-6 text-white"
                       fill="none"
@@ -226,10 +226,10 @@ export default function ContactAdminSection({
                       />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
                     DASHBOARD
                   </h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
                     Manage workflows and deployments
                   </p>
                   <Link href="/dashboard">
