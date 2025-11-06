@@ -16,9 +16,9 @@ export async function PATCH(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    // Check authentication
+    // STEP 1: Authenticate
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId, orgId } = await auth();
+    const { userId, orgId, has } = await auth();
 
     if (!userId) {
       return NextResponse.json(
@@ -43,6 +43,57 @@ export async function PATCH(
       return NextResponse.json(
         { success: false, error: 'Name is required' },
         { status: 400 }
+      );
+    }
+
+    // STEP 2: Get workflow ownership and verify authorization
+    const { data: workflowOwnership, error: ownershipError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, created_by, organization_id')
+      .eq('id', workflowId)
+      .single();
+
+    if (ownershipError || !workflowOwnership) {
+      return NextResponse.json(
+        { success: false, error: `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflowOwnership.created_by === userId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId && isOrgAdmin) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowId)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow modification if:
+    // - User is in Mediar org or is a Mediar admin (can modify any workflow)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User is org admin AND organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${userId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized rename of workflow ${workflowId}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have permission to modify this workflow' },
+        { status: 403 }
       );
     }
 

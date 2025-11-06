@@ -16,9 +16,9 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    // Check authentication
+    // STEP 1: Authenticate
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId, orgId } = await auth();
+    const { userId, orgId, has } = await auth();
 
     if (!userId) {
       return NextResponse.json(
@@ -58,6 +58,42 @@ export async function POST(
           error: `Workflow not found: ${fetchError?.message || 'Unknown error'}`,
         },
         { status: 404 }
+      );
+    }
+
+    // STEP 2: AUTHORIZATION - Verify user has READ access to source workflow before duplicating
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    const isOwner = originalWorkflow.created_by === userId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = originalWorkflow.organization_id && originalWorkflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowId)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow duplication if:
+    // - User is in Mediar org or is a Mediar admin (can duplicate any workflow)
+    // - User is the workflow owner
+    // - User is org admin/member in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${userId} (orgId: ${orgId}) attempted unauthorized duplication of workflow ${workflowId}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this workflow' },
+        { status: 403 }
       );
     }
 
