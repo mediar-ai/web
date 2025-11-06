@@ -17,12 +17,53 @@ export class WorkflowDiscovery {
   private lastRefresh = 0;
   private readonly CACHE_TTL = 30000; // 30 seconds
 
-  async discoverWorkflows(): Promise<WorkflowRecord[]> {
+  async discoverWorkflows(orgId?: string, isMediarOrg?: boolean, isMediarAdmin?: boolean): Promise<WorkflowRecord[]> {
     console.log('[FIX] [MCP] Discovering workflows from database...');
     
+    // If no org context provided, return empty (fail-safe)
+    if (!orgId) {
+      console.warn('[FIX] [MCP] No org context - returning empty workflow list');
+      return [];
+    }
+
+    // Get accessible workflow IDs based on org permissions
+    let accessibleWorkflowIds: number[] = [];
+
+    if (isMediarOrg || isMediarAdmin) {
+      // Mediar sees all workflows
+      const { data: allWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id');
+      accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+      console.log(`[FIX] [MCP] Mediar/Admin - accessing ${accessibleWorkflowIds.length} workflows`);
+    } else {
+      // Regular org sees only their workflows and shared workflows
+      const { data: ownedWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('organization_id', orgId);
+
+      const { data: sharedAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id')
+        .eq('organization_id', orgId);
+
+      const ownedIds = (ownedWorkflows || []).map(w => w.id);
+      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+      console.log(`[FIX] [MCP] Org ${orgId} - accessing ${accessibleWorkflowIds.length} workflows (owned: ${ownedIds.length}, shared: ${sharedIds.length})`);
+    }
+
+    if (accessibleWorkflowIds.length === 0) {
+      console.log('[FIX] [MCP] No accessible workflows for org:', orgId);
+      return [];
+    }
+
+    // Fetch only workflows user has access to
     const { data: workflows, error } = await supabase
       .from('deployed_workflows_with_sequence')
       .select('*')
+      .in('id', accessibleWorkflowIds)
       .eq('status', 'deployed')
       .order('created_at', { ascending: false });
 
@@ -31,27 +72,27 @@ export class WorkflowDiscovery {
       throw new Error(`Failed to fetch workflows: ${error.message}`);
     }
 
-    console.log(`[FIX] [MCP] Found ${workflows?.length || 0} workflows`);
+    console.log(`[FIX] [MCP] Found ${workflows?.length || 0} accessible workflows for org: ${orgId}`);
     return workflows || [];
   }
 
-  async getTools(): Promise<Map<string, CachedTool>> {
+  async getTools(orgId?: string, isMediarOrg?: boolean, isMediarAdmin?: boolean): Promise<Map<string, CachedTool>> {
     // Return cached tools if still fresh
     const now = Date.now();
     if (this.toolsCache.size > 0 && (now - this.lastRefresh) < this.CACHE_TTL) {
       return this.toolsCache;
     }
 
-    // Refresh tools
-    await this.refreshTools();
+    // Refresh tools with org filtering
+    await this.refreshTools(orgId, isMediarOrg, isMediarAdmin);
     return this.toolsCache;
   }
 
-  async refreshTools(): Promise<void> {
-    console.log('[FIX] [MCP] Refreshing workflow tools...');
+  async refreshTools(orgId?: string, isMediarOrg?: boolean, isMediarAdmin?: boolean): Promise<void> {
+    console.log('[FIX] [MCP] Refreshing workflow tools for org:', orgId);
     
     try {
-      const workflows = await this.discoverWorkflows();
+      const workflows = await this.discoverWorkflows(orgId, isMediarOrg, isMediarAdmin);
       const newToolsCache = new Map<string, CachedTool>();
 
       for (const workflow of workflows) {

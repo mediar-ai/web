@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // Transform execution_logs to the format expected by the UI
 const transformExecutionLogs = (logs: any): any[] => {
@@ -44,6 +45,17 @@ export async function GET(
   { params }: { params: Promise<{ executionId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to execution logs');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { executionId } = await params;
     const executionIdNum = parseInt(executionId);
 
@@ -56,10 +68,20 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch only execution_logs field for performance
+    // STEP 2: Get execution WITH workflow info for authorization check
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select('id, execution_logs')
+      .select(`
+        id,
+        execution_logs,
+        workflow_id,
+        deployed_workflows!inner(
+          id,
+          name,
+          created_by,
+          organization_id
+        )
+      `)
       .eq('id', executionIdNum)
       .single();
 
@@ -70,6 +92,46 @@ export async function GET(
           error: `Execution ${executionIdNum} not found`,
         },
         { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const workflow = Array.isArray(execution.deployed_workflows)
+      ? execution.deployed_workflows[0]
+      : execution.deployed_workflows;
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', execution.workflow_id)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can view any execution logs)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}) attempted unauthorized access to execution ${executionIdNum} logs`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this execution' },
+        { status: 403 }
       );
     }
 

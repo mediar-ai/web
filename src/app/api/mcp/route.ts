@@ -12,6 +12,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('[FIX] [MCP API] Received request:', body.method);
 
+    // Get user's organization context for filtering (middleware already authenticated)
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    if (!orgId) {
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: body.id,
+        error: {
+          code: -32600,
+          message: 'No organization context - authentication required'
+        }
+      }, { status: 401 });
+    }
+
     // Handle different MCP methods
     switch (body.method) {
       case 'initialize':
@@ -33,9 +48,10 @@ export async function POST(request: NextRequest) {
         });
 
       case 'tools/list':
-        await workflowDiscovery.refreshTools();
+        // Pass org context to workflow discovery for filtering
+        await workflowDiscovery.refreshTools(orgId, isMediarOrg, isMediarAdmin);
         const tools = workflowDiscovery.getToolsList();
-        console.log('[FIX] [MCP API] Serving', tools.length, 'workflow tools');
+        console.log('[FIX] [MCP API] Serving', tools.length, 'workflow tools for org:', orgId);
         
         return NextResponse.json({
           jsonrpc: '2.0',

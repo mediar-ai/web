@@ -1,11 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowDiscovery } from '@/lib/mcp/workflowDiscovery';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Get user's organization context (optional for health check)
+    let orgId: string | null = null;
+    let isMediarOrg = false;
+    let isMediarAdmin = false;
+    
+    try {
+      const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+      const orgContext = await getEffectiveOrgId(null);
+      orgId = orgContext.orgId;
+      isMediarOrg = orgContext.isMediarOrg;
+      isMediarAdmin = orgContext.isMediarAdmin;
+    } catch (e) {
+      // Auth not available - health check will show 0 workflows
+      console.log('[FIX] [MCP Health] No auth context available');
+    }
+
     // Test database connectivity by attempting to discover workflows
     const discovery = getWorkflowDiscovery();
-    const workflows = await discovery.discoverWorkflows();
+    const workflows = orgId 
+      ? await discovery.discoverWorkflows(orgId, isMediarOrg, isMediarAdmin)
+      : [];
     
     return NextResponse.json({
       status: 'healthy',

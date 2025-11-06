@@ -667,8 +667,19 @@ export async function POST(request: NextRequest) {
 /**
  * GET endpoint for cache statistics and health check
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // STEP 1: Authenticate and get org context
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    if (!orgId) {
+      return NextResponse.json(
+        { success: false, error: 'No organization context' },
+        { status: 401 }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
@@ -678,10 +689,52 @@ export async function GET() {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get cache statistics (including both completed and failed executions)
+    // STEP 2: Get workflow IDs this organization has access to
+    let accessibleWorkflowIds: number[] = [];
+
+    if (isMediarOrg || isMediarAdmin) {
+      // Mediar sees all workflows
+      const { data: allWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id');
+      accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
+    } else {
+      // Regular org sees only their workflows and shared workflows
+      const { data: ownedWorkflows } = await supabase
+        .from('deployed_workflows')
+        .select('id')
+        .eq('organization_id', orgId);
+
+      const { data: sharedAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id')
+        .eq('organization_id', orgId);
+
+      const ownedIds = (ownedWorkflows || []).map(w => w.id);
+      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
+      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds])];
+    }
+
+    if (accessibleWorkflowIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        cache_statistics: {
+          total_cacheable_executions: 0,
+          breakdown: { completed_executions: 0, failed_executions: 0 },
+          cacheable_parameter_patterns: 0,
+          potential_cache_hits: 0,
+          cache_hit_potential: '0%',
+          note: 'No accessible workflows for this organization'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // STEP 3: Get cache statistics (filtered by accessible workflows only)
     const { data: stats, error: statsError } = await supabase
       .from('workflow_executions')
       .select('workflow_id, execution_params, status')
+      .in('workflow_id', accessibleWorkflowIds)
       .in('status', ['completed', 'failed']);
 
     if (statsError) {

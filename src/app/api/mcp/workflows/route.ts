@@ -1,12 +1,23 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowDiscovery } from '@/lib/mcp/workflowDiscovery';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Get user's organization context for filtering
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    if (!orgId) {
+      return NextResponse.json(
+        { error: 'No organization context - authentication required' },
+        { status: 401 }
+      );
+    }
+
     const discovery = getWorkflowDiscovery();
-    await discovery.refreshTools(); // Ensure fresh data
+    await discovery.refreshTools(orgId, isMediarOrg, isMediarAdmin); // Ensure fresh data with org filtering
     
-    const toolsMap = await discovery.getTools();
+    const toolsMap = await discovery.getTools(orgId, isMediarOrg, isMediarAdmin);
     const workflows = Array.from(toolsMap.values()).map(cachedTool => ({
       name: cachedTool.tool.name,
       description: cachedTool.tool.description,
