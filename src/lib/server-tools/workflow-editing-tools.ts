@@ -42,7 +42,7 @@ interface CommandStep {
   fallback_id?: string;
 }
 
-interface WorkflowSequence {
+interface _WorkflowSequence {
   steps?: CommandStep[];
   [key: string]: any;
 }
@@ -61,7 +61,11 @@ interface StepUpdate {
 /**
  * Parse workflow content to extract sequence structure
  */
-function parseWorkflowContent(content: string): { parsed: any; isYaml: boolean } {
+function parseWorkflowContent(content: string | null | undefined): { parsed: any; isYaml: boolean } {
+  if (!content) {
+    throw new Error('Workflow content is empty');
+  }
+
   // Try YAML first
   try {
     const parsed = yaml.load(content) as any;
@@ -205,21 +209,22 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Updating step:', params);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Use YAML if available, otherwise use JSON
-        const content = currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence);
+        const content = (currentVersion.automation_sequence_yaml ||
+                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
 
         const { parsed, isYaml } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -236,16 +241,26 @@ export const serverSideWorkflowTools = {
         // Convert back to string
         const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
 
-        // Create new version
+        // Increment version number from current latest
+        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
+          .rpc('increment_version', { version_text: currentVersion.version_number });
+
+        if (incrementError || !nextVersion) {
+          throw new Error(`Failed to increment version: ${incrementError?.message}`);
+        }
+
+        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
+
+        // Create new version (as draft - not auto-activated)
         const { data: newVersion, error: versionError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
           .insert({
             workflow_id: params.workflow_id,
-            version_number: `${Date.now()}`, // Simple timestamp version
+            version_number: nextVersion,
             automation_sequence_yaml: isYaml ? newContent : null,
             automation_sequence: parsed,
             preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: true,
+            is_active: false,
             change_notes: `Updated step: ${params.step_identifier}`
           })
           .select()
@@ -326,21 +341,22 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Adding step:', params);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Use YAML if available, otherwise use JSON
-        const content = currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence);
+        const content = (currentVersion.automation_sequence_yaml ||
+                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
 
         const { parsed, isYaml } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -358,16 +374,26 @@ export const serverSideWorkflowTools = {
         // Convert back to string
         const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
 
-        // Create new version
+        // Increment version number from current latest
+        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
+          .rpc('increment_version', { version_text: currentVersion.version_number });
+
+        if (incrementError || !nextVersion) {
+          throw new Error(`Failed to increment version: ${incrementError?.message}`);
+        }
+
+        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
+
+        // Create new version (as draft - not auto-activated)
         const { data: newVersion, error: versionError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
           .insert({
             workflow_id: params.workflow_id,
-            version_number: `${Date.now()}`, // Simple timestamp version
+            version_number: nextVersion,
             automation_sequence_yaml: isYaml ? newContent : null,
             automation_sequence: parsed,
             preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: true,
+            is_active: false,
             change_notes: `Added step: ${params.step.name}`
           })
           .select()
@@ -432,21 +458,22 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Removing step:', params);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Use YAML if available, otherwise use JSON
-        const content = currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence);
+        const content = (currentVersion.automation_sequence_yaml ||
+                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
 
         const { parsed, isYaml } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -464,16 +491,26 @@ export const serverSideWorkflowTools = {
         // Convert back to string
         const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
 
-        // Create new version
+        // Increment version number from current latest
+        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
+          .rpc('increment_version', { version_text: currentVersion.version_number });
+
+        if (incrementError || !nextVersion) {
+          throw new Error(`Failed to increment version: ${incrementError?.message}`);
+        }
+
+        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
+
+        // Create new version (as draft - not auto-activated)
         const { data: newVersion, error: versionError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
           .insert({
             workflow_id: params.workflow_id,
-            version_number: `${Date.now()}`, // Simple timestamp version
+            version_number: nextVersion,
             automation_sequence_yaml: isYaml ? newContent : null,
             automation_sequence: parsed,
             preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: true,
+            is_active: false,
             change_notes: `Removed step: ${removedStep.name || params.step_identifier}`
           })
           .select()
@@ -530,23 +567,24 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting workflow:', params.workflow_id);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Return YAML if available, otherwise convert JSON to YAML
         const content = currentVersion.automation_sequence_yaml ||
                        yaml.dump(currentVersion.automation_sequence);
 
-        return { content };
+        return { content, version_number: currentVersion.version_number };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
         throw error;
@@ -580,21 +618,22 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting step info:', params);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Use YAML if available, otherwise use JSON
-        const content = currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence);
+        const content = (currentVersion.automation_sequence_yaml ||
+                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
 
         const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -646,21 +685,22 @@ export const serverSideWorkflowTools = {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Reordering steps:', params);
 
-        // Get current workflow version
+        // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence')
+          .select('automation_sequence_yaml, automation_sequence, version_number')
           .eq('workflow_id', params.workflow_id)
-          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
 
         if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no active version`);
+          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
         }
 
         // Use YAML if available, otherwise use JSON
-        const content = currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence);
+        const content = (currentVersion.automation_sequence_yaml ||
+                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
 
         const { parsed, isYaml } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -678,16 +718,26 @@ export const serverSideWorkflowTools = {
         // Convert back to string
         const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
 
-        // Create new version
+        // Increment version number from current latest
+        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
+          .rpc('increment_version', { version_text: currentVersion.version_number });
+
+        if (incrementError || !nextVersion) {
+          throw new Error(`Failed to increment version: ${incrementError?.message}`);
+        }
+
+        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
+
+        // Create new version (as draft - not auto-activated)
         const { data: newVersion, error: versionError } = await getSupabaseClient()
           .from('deployed_workflow_versions')
           .insert({
             workflow_id: params.workflow_id,
-            version_number: `${Date.now()}`, // Simple timestamp version
+            version_number: nextVersion,
             automation_sequence_yaml: isYaml ? newContent : null,
             automation_sequence: parsed,
             preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: true,
+            is_active: false,
             change_notes: `Reordered steps: moved from ${params.from_index} to ${params.to_index}`
           })
           .select()
