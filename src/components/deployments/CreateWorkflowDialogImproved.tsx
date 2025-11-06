@@ -439,7 +439,7 @@ export function CreateWorkflowDialog({
           <AlertDescription className="ml-2">
             <div className="space-y-3">
               <div>
-                <span className="font-mono font-bold text-lg">AI Workflow Builder</span>
+                <span className="font-bold text-lg">AI Workflow Builder</span>
               </div>
               <p className="text-sm text-gray-600">
                 Want to create workflows on your computer? Download the Mediar desktop app to record and automate workflows locally.
