@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { auth } from '@clerk/nextjs/server';
 
 // GET /api/remote-workflows/[workflowId]/github-yaml - Fetch YAML from GitHub
 export async function GET(
@@ -8,6 +9,17 @@ export async function GET(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
+    // STEP 1: Authenticate
+    const { userId: authenticatedUserId, has, orgId } = await auth();
+
+    if (!authenticatedUserId) {
+      console.warn('[SECURITY] Unauthenticated request to workflow YAML');
+      return NextResponse.json(
+        { error: 'Unauthorized - Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
@@ -26,10 +38,10 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get workflow GitHub info
+    // STEP 2: Get workflow info and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, github_folder, github_path, github_ref, github_sha')
+      .select('id, name, created_by, organization_id, github_folder, github_path, github_ref, github_sha')
       .eq('id', workflowIdNum)
       .single();
 
@@ -37,6 +49,43 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: `Workflow ${workflowIdNum} not found` },
         { status: 404 }
+      );
+    }
+
+    // Import auth helper to check for Mediar org/admin status
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
+    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+
+    // Check workflow_organization_access table for organization-based access
+    let hasOrgAccess = false;
+    if (orgId) {
+      const { data: orgAccess } = await supabase
+        .from('workflow_organization_access')
+        .select('organization_id')
+        .eq('workflow_id', workflowIdNum)
+        .eq('organization_id', orgId)
+        .single();
+
+      hasOrgAccess = !!orgAccess;
+    }
+
+    // Allow access if:
+    // - User is in Mediar org or is a Mediar admin (can view any workflow YAML)
+    // - User is the workflow owner
+    // - User is org admin in the same org (legacy organization_id field)
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}) attempted unauthorized access to workflow ${workflowIdNum} YAML`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this workflow' },
+        { status: 403 }
       );
     }
 
