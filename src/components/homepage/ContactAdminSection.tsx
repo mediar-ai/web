@@ -93,15 +93,19 @@ export default function ContactAdminSection({
             {/* Automation Demo - BIG */}
             <AutomationDemo />
 
-            <p className="text-gray-600 mb-4">
-              We&apos;re in early access and things aren&apos;t perfect yet,
-              but we&apos;re here to help you succeed.
+            <p className="text-gray-600 mb-6">
+              We&apos;ve launched public release Beta. If you want to order turn key automation please go here:
             </p>
-            <div className="text-sm text-gray-500 space-y-1">
-              <div>✓ Full dashboard access (stable)</div>
-              <div>✓ Workflow scheduling, deployment & alerts (stable)</div>
-              <div>✓ Desktop recorder (beta - use chat if stuck)</div>
-            </div>
+            <a
+              href="https://mediar.ai/turnkey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block"
+            >
+              <Button className="bg-black text-white hover:bg-gray-800 font-mono">
+                ORDER TURNKEY AUTOMATION
+              </Button>
+            </a>
           </div>
 
           {/* App Access Options */}
