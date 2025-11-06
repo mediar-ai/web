@@ -630,18 +630,18 @@ export async function PUT(
     const machine = Array.isArray(updatedAssignment.remote_machines) 
       ? updatedAssignment.remote_machines[0] 
       : updatedAssignment.remote_machines;
-    const workflow = Array.isArray(updatedAssignment.deployed_workflows) 
+    const workflowInfo = Array.isArray(updatedAssignment.deployed_workflows) 
       ? updatedAssignment.deployed_workflows[0] 
       : updatedAssignment.deployed_workflows;
 
-    console.log(`[SUCCESS] Updated assignment for machine ${machine?.name} on workflow ${workflow?.name}`);
+    console.log(`[SUCCESS] Updated assignment for machine ${machine?.name} on workflow ${workflowInfo?.name}`);
 
     return NextResponse.json({
       success: true,
       assignment: {
         id: updatedAssignment.id,
         workflow_id: updatedAssignment.workflow_id,
-        workflow_name: workflow?.name,
+        workflow_name: workflowInfo?.name,
         machine_id: updatedAssignment.machine_id,
         machine_name: machine?.name,
         assignment_type: updatedAssignment.assignment_type,
