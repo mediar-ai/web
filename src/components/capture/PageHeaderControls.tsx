@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
-import { AlertTriangle, PictureInPicture, RefreshCw, RotateCcw, Zap } from 'lucide-react';
+import { AlertTriangle, PictureInPicture, RefreshCw, RotateCcw, Zap, Wand2 } from 'lucide-react';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
@@ -91,14 +91,19 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
 
       <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
         {!stream ? (
-          <Button onClick={handleStartScreenShare}>
+          <Button onClick={handleStartScreenShare} variant="outline">
             <Zap className="mr-2 h-4 w-4" /> Start Training
           </Button>
         ) : (
-          <Button onClick={handleStopScreenShare} variant="destructive">
+          <Button onClick={handleStopScreenShare} variant="outline" className="border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
             Stop Training
           </Button>
         )}
+        <Button asChild variant="outline">
+          <Link href="https://mediar.ai/turnkey" target="_blank" rel="noopener noreferrer">
+            <Wand2 className="mr-2 h-4 w-4" /> Turn recording into automation
+          </Link>
+        </Button>
         <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
           <PictureInPicture className="h-4 w-4" />
         </Button>
