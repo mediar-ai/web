@@ -305,17 +305,18 @@ export async function PATCH(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // PATCH (modify) requires org ADMIN privileges
+    // PATCH (modify) requires write or admin access level
     let hasOrgAccess = false;
     if (orgId && isOrgAdmin) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
-        .select('organization_id')
+        .select('access_level')
         .eq('workflow_id', workflowIdNum)
         .eq('organization_id', orgId)
         .single();
 
-      hasOrgAccess = !!orgAccess;
+      // Only 'write' or 'admin' access levels can modify workflows
+      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
@@ -519,24 +520,36 @@ export async function DELETE(
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
-    // DELETE requires org ADMIN privileges
+    // DELETE requires admin access level
     let hasOrgAccess = false;
     if (orgId && isOrgAdmin) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
-        .select('organization_id')
+        .select('access_level')
         .eq('workflow_id', workflowIdNum)
         .eq('organization_id', orgId)
         .single();
 
-      hasOrgAccess = !!orgAccess;
+      // Only 'admin' access level can delete workflows (write cannot delete)
+      hasOrgAccess = orgAccess && orgAccess.access_level === 'admin';
+    }
+
+    // Prevent deletion of public workflows (NULL organization_id) by non-Mediar users
+    if (!workflow.organization_id && !isMediarOrgDelete && !isMediarAdminDelete) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} attempted to delete public workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - Public workflows can only be deleted by Mediar administrators' },
+        { status: 403 }
+      );
     }
 
     // Allow deletion if:
     // - User is in Mediar org or is a Mediar admin (can delete any workflow)
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
-    // - User is org admin AND organization has access via workflow_organization_access table
+    // - User is org admin AND organization has admin access via workflow_organization_access table
     if (!isMediarOrgDelete && !isMediarAdminDelete && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized deletion for workflow ${workflowIdNum}`
