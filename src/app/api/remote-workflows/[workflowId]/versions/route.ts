@@ -369,6 +369,17 @@ export async function POST(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg: isMediarOrgPost, isMediarAdmin: isMediarAdminPost } = await getEffectiveOrgId(null);
 
+    // Prevent modification of public workflows (NULL organization_id) by non-Mediar users
+    if (!workflow.organization_id && !isMediarOrgPost && !isMediarAdminPost) {
+      console.warn(
+        `[SECURITY] User ${authenticatedUserId} attempted to create version for public workflow ${workflowIdNum}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - Public workflows can only be modified by Mediar administrators' },
+        { status: 403 }
+      );
+    }
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
