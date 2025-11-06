@@ -115,6 +115,16 @@ export async function GET(
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
 
+    // Check if this is a globally public workflow (is_shared = true AND organization_id IS NULL)
+    const { data: isPublicWorkflow } = await supabase
+      .from('deployed_workflows')
+      .select('is_shared, organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    const isGloballyPublic = isPublicWorkflow?.is_shared === true &&
+                             isPublicWorkflow?.organization_id === null;
+
     // Check workflow_organization_access table for organization-based access
     // Allow ANY member of an organization with access (not just admins)
     let hasOrgAccess = false;
@@ -134,7 +144,8 @@ export async function GET(
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    // - Workflow is globally public (is_shared = true AND organization_id IS NULL)
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess && !isGloballyPublic) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of workflow ${workflowIdNum}`
       );
