@@ -437,16 +437,24 @@ export function CreateWorkflowDialog({
         <Alert className="border-2 border-black bg-gray-50">
           <Download className="h-4 w-4" />
           <AlertDescription className="ml-2">
-            <span className="font-mono font-bold">Pro tip:</span> Want to create workflows on your computer?{' '}
-            <a
-              href="/download/windows"
-              className="font-mono underline hover:bg-black hover:text-white transition-colors px-1"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Download the Mediar desktop app
-            </a>
-            {' '}to record and automate workflows locally.
+            <div className="space-y-3">
+              <div>
+                <span className="font-mono font-bold text-lg">AI Workflow Builder</span>
+              </div>
+              <p className="text-sm text-gray-600">
+                Want to create workflows on your computer? Download the Mediar desktop app to record and automate workflows locally.
+              </p>
+              <a
+                href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/nsis-x86_64"
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button className="bg-black text-white hover:bg-gray-800 font-mono">
+                  DOWNLOAD APP (Windows)
+                </Button>
+              </a>
+            </div>
           </AlertDescription>
         </Alert>
 
