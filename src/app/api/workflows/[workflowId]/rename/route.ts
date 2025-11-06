@@ -64,6 +64,17 @@ export async function PATCH(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
 
+    // Prevent renaming of public workflows (NULL organization_id) by non-Mediar users
+    if (!workflowOwnership.organization_id && !isMediarOrg && !isMediarAdmin) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to rename public workflow ${workflowId}`
+      );
+      return NextResponse.json(
+        { error: 'Forbidden - Public workflows can only be renamed by Mediar administrators' },
+        { status: 403 }
+      );
+    }
+
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflowOwnership.created_by === userId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
