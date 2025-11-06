@@ -8,10 +8,22 @@ import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
 import { SchemaType } from '@google-cloud/vertexai';
 import { loadTerminatorDocs, searchTerminatorDocs } from '@/lib/terminator-docs-service';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-load Supabase client to avoid initialization errors
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
+function getSupabaseClient() {
+  if (!supabaseClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    supabaseClient = createClient(url, key);
+  }
+  return supabaseClient;
+}
 
 interface SearchResult {
   step_id: string;
@@ -69,7 +81,7 @@ export const serverSideTools = {
         }
 
         // Direct database call - no HTTP request needed!
-        const { data, error } = await supabase.rpc('search_rpa_kb_two_stage', {
+        const { data, error } = await getSupabaseClient().rpc('search_rpa_kb_two_stage', {
           search_query: params.search_query || params.similarity_query,
           query_embedding: query_embedding ? `[${query_embedding.join(',')}]` : null,
           embedding_type: params.embedding_type || 'workflow',
