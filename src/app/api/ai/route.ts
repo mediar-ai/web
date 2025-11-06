@@ -6,11 +6,17 @@ import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { createClient } from 'redis';
 import { randomUUID } from 'crypto';
 import {
-  serverSideTools,
-  getServerToolDeclarations,
-  executeServerTool,
-  isServerSideTool
+  serverSideTools as knowledgeTools,
+  getServerToolDeclarations as getKnowledgeToolDeclarations,
+  executeServerTool as executeKnowledgeTool,
+  isServerSideTool as isKnowledgeTool
 } from '@/lib/server-tools/knowledge-tools';
+import {
+  serverSideWorkflowTools,
+  getWorkflowToolDeclarations,
+  executeWorkflowTool,
+  isWorkflowEditingTool
+} from '@/lib/server-tools/workflow-editing-tools';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 
@@ -389,10 +395,12 @@ export async function POST(request: NextRequest) {
 
       // Merge client tools with server-side tools (same as Vertex)
       const clientTools = tools || [];
-      const serverToolDeclarations = getServerToolDeclarations();
+      const knowledgeToolDecls = getKnowledgeToolDeclarations();
+      const workflowToolDecls = getWorkflowToolDeclarations();
+      const serverToolDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
       const allTools = [...clientTools, ...serverToolDeclarations];
 
-      console.log(`🛠️ Tools available: ${clientTools.length} client, ${serverToolDeclarations.length} server`);
+      console.log(`🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
 
       const anthropicRequest: AIProviderRequest = {
         model: sessionModel,
@@ -422,10 +430,21 @@ export async function POST(request: NextRequest) {
 
         // Separate server and client tools
         for (const toolCall of result.toolCalls) {
-          if (isServerSideTool(toolCall.name)) {
-            console.log(`🔧 Executing server-side tool: ${toolCall.name}`);
+          const isKnowledge = isKnowledgeTool(toolCall.name);
+          const isWorkflow = isWorkflowEditingTool(toolCall.name);
+
+          if (isKnowledge || isWorkflow) {
+            console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
             try {
-              const toolResult = await executeServerTool(toolCall.name, toolCall.args);
+              // Add workflow_id to args if it's a workflow tool and we have it in the request
+              let toolArgs = toolCall.args;
+              if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+                toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+              }
+
+              const toolResult = isWorkflow
+                ? await executeWorkflowTool(toolCall.name, toolArgs)
+                : await executeKnowledgeTool(toolCall.name, toolArgs);
               serverToolResults.push({
                 name: toolCall.name,
                 result: toolResult,
@@ -630,10 +649,12 @@ export async function POST(request: NextRequest) {
     // Vertex AI provider path
     // Merge client tools with server-side tools
     const clientFunctionDeclarations = toFunctionDeclarations(tools);
-    const serverFunctionDeclarations = getServerToolDeclarations();
+    const knowledgeToolDecls = getKnowledgeToolDeclarations();
+    const workflowToolDecls = getWorkflowToolDeclarations();
+    const serverFunctionDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
     const functionDeclarations = [...clientFunctionDeclarations, ...serverFunctionDeclarations];
 
-    console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${serverFunctionDeclarations.length} server`);
+    console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
 
     // Initialize Vertex client
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
@@ -706,6 +727,8 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Response stats', responseStats);
 
+    let workflowData = null; // Track workflow modifications across all tool executions
+
     // Check if any tool calls are server-side and execute them
     if (result.toolCalls.length > 0) {
       const serverToolResults = [];
@@ -713,10 +736,28 @@ export async function POST(request: NextRequest) {
 
       // Separate server and client tools
       for (const toolCall of result.toolCalls) {
-        if (isServerSideTool(toolCall.name)) {
-          console.log(`🔧 Executing server-side tool: ${toolCall.name}`);
+        const isKnowledge = isKnowledgeTool(toolCall.name);
+        const isWorkflow = isWorkflowEditingTool(toolCall.name);
+
+        if (isKnowledge || isWorkflow) {
+          console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
           try {
-            const toolResult = await executeServerTool(toolCall.name, toolCall.args);
+            // Add workflow_id to args if it's a workflow tool and we have it in the request
+            let toolArgs = toolCall.args;
+            if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+              toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+            }
+
+            const toolResult = isWorkflow
+              ? await executeWorkflowTool(toolCall.name, toolArgs)
+              : await executeKnowledgeTool(toolCall.name, toolArgs);
+
+            // Capture workflow data if the workflow was updated
+            if (isWorkflow && toolResult.workflow_updated && toolResult.workflow_data) {
+              workflowData = toolResult.workflow_data;
+              console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
+            }
+
             serverToolResults.push({
               name: toolCall.name,
               result: toolResult
@@ -787,15 +828,118 @@ export async function POST(request: NextRequest) {
           finishReason: continuationResult.finishReason
         });
 
-        // Merge results
-        const finalHistory = [...updatedHistoryWithCalls];
-        if (continuationResult.text) {
-          const modelParts: Array<{ text?: string; functionCall?: any }> = [
-            { text: continuationResult.text }
-          ];
+        // Check if continuation has more server-side tools to execute
+        let finalResult = continuationResult;
+        let finalHistory = [...updatedHistoryWithCalls];
 
-          // Add any additional tool calls from continuation
-          continuationResult.toolCalls.forEach(tc => {
+        // Keep executing server tools until there are none left
+        while (finalResult.toolCalls.length > 0) {
+          const moreServerTools = [];
+          const remainingClientTools = [];
+
+          // Check each tool call from continuation
+          for (const toolCall of finalResult.toolCalls) {
+            const isKnowledge = isKnowledgeTool(toolCall.name);
+            const isWorkflow = isWorkflowEditingTool(toolCall.name);
+
+            if (isKnowledge || isWorkflow) {
+              console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
+              try {
+                let toolArgs = toolCall.args;
+                if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+                  toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+                }
+
+                const toolResult = isWorkflow
+                  ? await executeWorkflowTool(toolCall.name, toolArgs)
+                  : await executeKnowledgeTool(toolCall.name, toolArgs);
+
+                // Capture workflow data if the workflow was updated
+                if (isWorkflow && toolResult.workflow_updated && toolResult.workflow_data) {
+                  workflowData = toolResult.workflow_data;
+                  console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
+                }
+
+                moreServerTools.push({
+                  name: toolCall.name,
+                  result: toolResult
+                });
+                console.log(`✅ Additional server tool ${toolCall.name} executed successfully`);
+              } catch (error) {
+                console.error(`❌ Additional server tool ${toolCall.name} failed:`, error);
+                moreServerTools.push({
+                  name: toolCall.name,
+                  result: { error: error instanceof Error ? error.message : 'Tool execution failed' }
+                });
+              }
+            } else {
+              remainingClientTools.push(toolCall);
+            }
+          }
+
+          // If no more server tools, break the loop
+          if (moreServerTools.length === 0) {
+            clientToolCalls.push(...remainingClientTools);
+            break;
+          }
+
+          // Add the model's response with tool calls to history
+          if (finalResult.text || finalResult.toolCalls.length > 0) {
+            const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+            if (finalResult.text) {
+              modelParts.push({ text: finalResult.text });
+            }
+            finalResult.toolCalls.forEach(tc => {
+              modelParts.push({
+                functionCall: {
+                  name: tc.name,
+                  args: tc.args,
+                },
+              });
+            });
+            finalHistory.push({
+              role: 'model',
+              parts: modelParts,
+            });
+          }
+
+          // Add server tool results to history
+          finalHistory.push({
+            role: 'user',
+            parts: moreServerTools.map(tr => ({
+              functionResponse: {
+                name: tr.name,
+                response: tr.result,
+              },
+            })),
+          });
+
+          // Continue conversation with new server tool results
+          console.log(`🔄 Auto-continuing with ${moreServerTools.length} more server tool results`);
+          finalResult = await handleVertexChat({
+            vertexAI,
+            model: sessionModel as VertexModel,
+            system: sessionSystem,
+            history: finalHistory,
+            functionDeclarations,
+            toolResults: moreServerTools,
+            generationConfig
+          });
+
+          console.log('🎯 Additional continuation result:', {
+            textLen: finalResult.text.length,
+            toolCallsCount: finalResult.toolCalls.length,
+            finishReason: finalResult.finishReason
+          });
+        }
+
+        // Add final model response to history
+        if (finalResult.text || finalResult.toolCalls.length > 0) {
+          const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+          if (finalResult.text) {
+            modelParts.push({ text: finalResult.text });
+          }
+          finalResult.toolCalls.forEach(tc => {
             modelParts.push({
               functionCall: {
                 name: tc.name,
@@ -803,7 +947,6 @@ export async function POST(request: NextRequest) {
               },
             });
           });
-
           finalHistory.push({
             role: 'model',
             parts: modelParts,
@@ -830,10 +973,11 @@ export async function POST(request: NextRequest) {
           {
             model: sessionModel,
             sessionId: actualSessionId,
-            text: continuationResult.text,
-            toolCalls: [...clientToolCalls, ...continuationResult.toolCalls],
-            finishReason: continuationResult.finishReason,
-            metrics: continuationResult.metrics,
+            text: finalResult.text,
+            toolCalls: clientToolCalls,  // Only return client tools that haven't been executed
+            finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
+            metrics: finalResult.metrics,
+            ...(workflowData && { workflowData }),  // Include workflow data if present
           },
           { headers: corsHeaders }
         );
@@ -906,7 +1050,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { model: sessionModel, sessionId: actualSessionId, ...result },
+      { model: sessionModel, sessionId: actualSessionId, ...result, ...(workflowData && { workflowData }) },
       { headers: corsHeaders }
     );
   } catch (error: unknown) {
