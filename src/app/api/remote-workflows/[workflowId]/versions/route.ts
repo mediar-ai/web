@@ -386,7 +386,7 @@ export async function POST(
         .single();
 
       // Only 'write' or 'admin' access levels can create versions
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:

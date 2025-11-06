@@ -86,7 +86,7 @@ export async function POST(
         .single();
 
       // Only 'write' or 'admin' access levels can save defaults
-      hasOrgAccess = orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
+      hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
     }
 
     // Allow modification if:
