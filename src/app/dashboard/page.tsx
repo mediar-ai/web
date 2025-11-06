@@ -1093,14 +1093,14 @@ function DashboardContent() {
                   </kbd>
                 </button>
 
-                <Link href="https://mediar.ai/turnkey" target="_blank" rel="noopener noreferrer">
+                <Link href="https://mediar.ai/turnkey" target="_blank" rel="noopener noreferrer" className="inline-block">
                   <button
                     onClick={() => {
                       posthog?.capture('dashboard_turnkey_automation_click', {
                         timestamp: new Date().toISOString(),
                       });
                     }}
-                    className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm"
+                    className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm h-full"
                     aria-label="Turn recording into automation"
                   >
                     <Wand2 className="w-4 h-4" />
