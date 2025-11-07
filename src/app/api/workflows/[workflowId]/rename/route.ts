@@ -64,8 +64,8 @@ export async function PATCH(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
 
-    // Prevent renaming of public workflows (NULL organization_id) by non-Mediar users
-    if (!workflowOwnership.organization_id && !isMediarOrg && !isMediarAdmin) {
+    // Prevent renaming of public workflows (is_public = true) by non-Mediar users
+    if (workflowOwnership.is_public && !isMediarOrg && !isMediarAdmin) {
       console.warn(
         `[SECURITY] User ${userId} attempted to rename public workflow ${workflowId}`
       );

@@ -369,8 +369,8 @@ export async function POST(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg: isMediarOrgPost, isMediarAdmin: isMediarAdminPost } = await getEffectiveOrgId(null);
 
-    // Prevent modification of public workflows (NULL organization_id) by non-Mediar users
-    if (!workflow.organization_id && !isMediarOrgPost && !isMediarAdminPost) {
+    // Prevent modification of public workflows (is_public = true) by non-Mediar users
+    if (workflow.is_public && !isMediarOrgPost && !isMediarAdminPost) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} attempted to create version for public workflow ${workflowIdNum}`
       );
