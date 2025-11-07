@@ -196,8 +196,11 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                         // Only redirect if not already on dashboard
                         if (!window.location.pathname.includes('/dashboard')) {
                           router.push(`/dashboard${query}`);
-                        } else if (query !== window.location.search) {
-                          router.push(`${window.location.pathname}${query}`);
+                        } else {
+                          // On dashboard - always refresh to load new org data
+                          if (query !== window.location.search) {
+                            router.push(`${window.location.pathname}${query}`);
+                          }
                           router.refresh();
                         }
                       } else {
@@ -282,8 +285,9 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                         // Only redirect if not already on dashboard
                         if (!window.location.pathname.includes('/dashboard')) {
                           router.push('/dashboard');
+                        } else {
+                          router.refresh();
                         }
-                        // No need to call router.refresh() - the organization change will trigger re-render
                       } else {
                         setIsOpen(false);
                       }
