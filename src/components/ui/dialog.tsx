@@ -10,20 +10,34 @@ function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   const scrollPositionRef = React.useRef(0);
+  const wasOpenRef = React.useRef(false);
 
-  // Save scroll position when dialog opens
   React.useEffect(() => {
-    if (props.open) {
+    // Dialog is opening
+    if (props.open && !wasOpenRef.current) {
       scrollPositionRef.current = window.scrollY;
+      wasOpenRef.current = true;
     }
-  }, [props.open]);
+    // Dialog is closing
+    else if (!props.open && wasOpenRef.current) {
+      wasOpenRef.current = false;
 
-  // Restore scroll position when dialog closes
-  React.useEffect(() => {
-    if (!props.open && scrollPositionRef.current > 0) {
-      // Use requestAnimationFrame to ensure restoration happens after all DOM updates
+      // Multiple attempts to restore scroll position
+      const restore = () => {
+        if (scrollPositionRef.current > 0) {
+          window.scrollTo(0, scrollPositionRef.current);
+        }
+      };
+
+      // Immediate attempt
+      restore();
+
+      // Backup attempts in case Radix overrides
       requestAnimationFrame(() => {
-        window.scrollTo(0, scrollPositionRef.current);
+        restore();
+        setTimeout(restore, 10);
+        setTimeout(restore, 50);
+        setTimeout(restore, 100);
       });
     }
   }, [props.open]);
