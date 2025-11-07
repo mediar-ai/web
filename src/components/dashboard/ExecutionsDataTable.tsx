@@ -250,7 +250,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       const saved = localStorage.getItem('executions-table-columns');
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          // Always force organization column to be hidden
+          parsed.organization = false;
+          return parsed;
         } catch (e) {
           console.error('Failed to parse saved column visibility:', e);
         }
@@ -263,7 +266,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       workflow_name: true, // Show workflow name by default
       error_message: false,
       machine: true,  // Show machine by default (updated from false)
-      organization: false, // Hide organization by default
+      organization: false, // ALWAYS hide organization by default
       user: false,
       version: false,
     };
