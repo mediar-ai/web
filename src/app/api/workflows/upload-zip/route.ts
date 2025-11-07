@@ -440,6 +440,25 @@ export async function POST(request: NextRequest) {
       workflowId = newWorkflow.id;
       console.log(`✅ Created workflow with ID: ${workflowId}`);
 
+      // Grant owner organization admin access to the workflow
+      if (orgId) {
+        const { error: accessError } = await supabase
+          .from('workflow_organization_access')
+          .insert({
+            workflow_id: workflowId,
+            organization_id: orgId,
+            access_level: 'admin',
+            granted_at: new Date().toISOString()
+          });
+
+        if (accessError) {
+          console.error('⚠️ Failed to grant organization access:', accessError);
+          // Don't fail the whole creation, but log the issue
+        } else {
+          console.log(`✅ Granted ${orgId} admin access to workflow ${workflowId}`);
+        }
+      }
+
       // Create version record
       const versionRecord = {
         workflow_id: workflowId,
