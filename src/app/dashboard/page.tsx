@@ -1165,7 +1165,38 @@ function DashboardContent() {
 
             {/* Workflows List */}
             <div className="mb-4">
-              {workflows.length > 0 ? (
+              {loading ? (
+                // Show skeleton while loading
+                <div className="border-2 border-black divide-y divide-gray-200">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="p-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Name and status */}
+                        <div className="flex items-center gap-2 min-w-[200px] max-w-[320px] flex-shrink">
+                          <Skeleton className="w-32 h-5" />
+                          <Skeleton className="w-12 h-4" />
+                        </div>
+
+                        <div className="text-gray-300">|</div>
+
+                        {/* Metrics */}
+                        <div className="flex items-center gap-2 flex-1">
+                          <Skeleton className="w-16 h-4" />
+                          <Skeleton className="w-12 h-4" />
+                          <Skeleton className="w-12 h-4" />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 ml-auto">
+                          <Skeleton className="w-16 h-8" />
+                          <Skeleton className="w-20 h-8" />
+                          <Skeleton className="w-8 h-8" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : workflows.length > 0 ? (
                 <div className="border-2 border-black divide-y divide-gray-200">
                   {workflows.map((workflow, index) => (
                     <WorkflowCardEnhanced
