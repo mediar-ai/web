@@ -324,7 +324,7 @@ export async function PATCH(
     // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, github_path')
+      .select('id, name, created_by, organization_id, is_public, github_path')
       .eq('id', workflowIdNum)
       .single();
 
@@ -550,7 +550,7 @@ export async function DELETE(
     // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, status, created_by, created_at, github_folder, organization_id')
+      .select('id, name, status, created_by, created_at, github_folder, organization_id, is_public')
       .eq('id', workflowIdNum)
       .single();
 
