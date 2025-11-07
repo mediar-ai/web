@@ -137,6 +137,24 @@ mcp.json
 /test-workflow-processed.yml
 /*.zip
 
+# Test/debug scripts in scripts/ and modal_apps/ (cleanup)
+scripts/test*.py
+scripts/test*.js
+scripts/test*.ts
+scripts/test*.cjs
+scripts/test-*.py
+scripts/test-*.js
+scripts/test-*.ts
+scripts/debug*.py
+scripts/debug*.js
+scripts/check*.py
+scripts/check*.js
+scripts/check*.cjs
+scripts/fix*.py
+modal_apps/test*.py
+modal_apps/check*.py
+modal_apps/fix*.py
+
 # Temporary documentation files in root
 /*_SUMMARY.md
 /*_FIX*.md
