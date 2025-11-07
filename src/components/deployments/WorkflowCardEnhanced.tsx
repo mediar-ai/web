@@ -41,6 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import { cleanupDropdownClose } from '@/lib/ui-fixes';
 
 interface WorkflowCardEnhancedProps {
   workflow: WorkflowWithSettings;
@@ -452,7 +453,15 @@ export function WorkflowCardEnhanced({
               </Button>
 
               {/* Action Menu */}
-              <DropdownMenu>
+              <DropdownMenu
+                modal={false}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    // Clean up when dropdown closes
+                    cleanupDropdownClose();
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
@@ -466,6 +475,7 @@ export function WorkflowCardEnhanced({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
+                    cleanupDropdownClose();
                     onExecute?.();
                   }}>
                     <Play className="mr-2 h-4 w-4" />
@@ -473,6 +483,7 @@ export function WorkflowCardEnhanced({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
+                    cleanupDropdownClose();
                     onView?.();
                   }}>
                     <Eye className="mr-2 h-4 w-4" />
@@ -482,6 +493,7 @@ export function WorkflowCardEnhanced({
                   {workflow.cron_expression && (
                     <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation();
+                      cleanupDropdownClose();
                       onToggleCron?.();
                     }}>
                       {workflow.cron_enabled ? (
@@ -493,6 +505,7 @@ export function WorkflowCardEnhanced({
                   )}
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
+                    cleanupDropdownClose();
                     onDuplicate?.();
                   }}>
                     <Copy className="mr-2 h-4 w-4" />
@@ -500,6 +513,7 @@ export function WorkflowCardEnhanced({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
+                    cleanupDropdownClose();
                     onUploadVersion?.();
                   }}>
                     <Upload className="mr-2 h-4 w-4" />
@@ -509,6 +523,7 @@ export function WorkflowCardEnhanced({
                     <>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
+                        cleanupDropdownClose();
                         onManageOrganizations?.();
                       }}>
                         <Building2 className="mr-2 h-4 w-4" />
@@ -516,7 +531,10 @@ export function WorkflowCardEnhanced({
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={handleDeleteClick}
+                        onClick={(e) => {
+                          cleanupDropdownClose();
+                          handleDeleteClick(e);
+                        }}
                         className="text-red-600 focus:text-red-600 focus:bg-red-50"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
