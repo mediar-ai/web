@@ -184,8 +184,31 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                   <button
                     key={org.id}
                     onClick={async () => {
-                      if (setActive && !isActive) {
-                        setIsOpen(false);
+                      setIsOpen(false);
+
+                      // Special handling when switching FROM "All Orgs" view
+                      if (isViewingAllOrgs) {
+                        // Clear viewOrgId when leaving "All Orgs" view
+                        const current = new URLSearchParams(searchParams.toString());
+                        current.delete('viewOrgId');
+                        const search = current.toString();
+                        const query = search ? `?${search}` : '';
+
+                        // Set the active org if it's different from current
+                        if (setActive && org.id !== organization.id) {
+                          await setActive({ organization: org.id });
+                        }
+
+                        // Always navigate and refresh when leaving "All Orgs" view
+                        if (!window.location.pathname.includes('/dashboard')) {
+                          router.push(`/dashboard${query}`);
+                        } else {
+                          router.push(`${window.location.pathname}${query}`);
+                          // Force refresh to ensure data updates
+                          setTimeout(() => router.refresh(), 50);
+                        }
+                      } else if (setActive && !isActive) {
+                        // Normal org switching (not from "All Orgs")
                         // Clear viewOrgId when switching orgs
                         const current = new URLSearchParams(searchParams.toString());
                         current.delete('viewOrgId');
@@ -203,8 +226,6 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                           }
                           router.refresh();
                         }
-                      } else {
-                        setIsOpen(false);
                       }
                     }}
                     className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
