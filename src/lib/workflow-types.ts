@@ -87,6 +87,7 @@ export interface Workflow {
   updated_at: string;
   // Organization fields (populated for Mediar admins)
   organization_id?: string;
+  is_public?: boolean;  // Whether workflow is publicly accessible to all organizations
   shared_with_orgs?: string[];
 }
 

@@ -115,15 +115,14 @@ export async function GET(
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflowOwnership.organization_id && workflowOwnership.organization_id === orgId;
 
-    // Check if this is a globally public workflow (is_shared = true AND organization_id IS NULL)
+    // Check if this is a globally public workflow (is_public = true)
     const { data: isPublicWorkflow } = await supabase
       .from('deployed_workflows')
-      .select('is_shared, organization_id')
+      .select('is_public')
       .eq('id', workflowIdNum)
       .single();
 
-    const isGloballyPublic = isPublicWorkflow?.is_shared === true &&
-                             isPublicWorkflow?.organization_id === null;
+    const isGloballyPublic = isPublicWorkflow?.is_public === true;
 
     // Check workflow_organization_access table for organization-based access
     // Allow ANY member of an organization with access (not just admins)
@@ -144,7 +143,7 @@ export async function GET(
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
-    // - Workflow is globally public (is_shared = true AND organization_id IS NULL)
+    // - Workflow is globally public (is_public = true)
     if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess && !isGloballyPublic) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of workflow ${workflowIdNum}`
@@ -180,7 +179,7 @@ export async function GET(
       // Permission/Ownership Information
       created_by: workflowOwnership.created_by,
       organization_id: workflowOwnership.organization_id,
-      is_shared: isGloballyPublic,
+      is_public: isGloballyPublic,
 
       // Source information
       source: loadedWorkflow.metadata.source,
@@ -340,8 +339,8 @@ export async function PATCH(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
 
-    // Prevent modification of public workflows (NULL organization_id) by non-Mediar users
-    if (!workflow.organization_id && !isMediarOrg && !isMediarAdmin) {
+    // Prevent modification of public workflows (is_public = true) by non-Mediar users
+    if (workflow.is_public && !isMediarOrg && !isMediarAdmin) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} attempted to modify public workflow ${workflowIdNum}`
       );
@@ -586,8 +585,8 @@ export async function DELETE(
       hasOrgAccess = !!orgAccess && orgAccess.access_level === 'admin';
     }
 
-    // Prevent deletion of public workflows (NULL organization_id) by non-Mediar users
-    if (!workflow.organization_id && !isMediarOrgDelete && !isMediarAdminDelete) {
+    // Prevent deletion of public workflows (is_public = true) by non-Mediar users
+    if (workflow.is_public && !isMediarOrgDelete && !isMediarAdminDelete) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} attempted to delete public workflow ${workflowIdNum}`
       );

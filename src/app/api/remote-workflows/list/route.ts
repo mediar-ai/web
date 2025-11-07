@@ -441,7 +441,7 @@ export async function GET(request: NextRequest) {
       // Regular org sees:
       // 1. Workflows they own
       // 2. Workflows explicitly shared with them via workflow_organization_access
-      // 3. Globally public workflows (is_shared = true AND organization_id IS NULL)
+      // 3. Globally public workflows (is_public = true)
 
       // Get workflows owned by this org
       const { data: ownedWorkflows, error: ownedError } = await supabase
@@ -456,12 +456,11 @@ export async function GET(request: NextRequest) {
         .select('workflow_id')
         .eq('organization_id', orgId);
 
-      // Get globally public workflows (is_shared = true AND organization_id IS NULL)
+      // Get globally public workflows (is_public = true)
       const { data: publicWorkflows, error: publicError } = await supabase
         .from('deployed_workflows')
         .select('id')
-        .eq('is_shared', true)
-        .is('organization_id', null)
+        .eq('is_public', true)
         .is('parent_workflow_id', null);
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
