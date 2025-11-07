@@ -49,7 +49,7 @@ export async function PATCH(
     // STEP 2: Get workflow ownership and verify authorization
     const { data: workflowOwnership, error: ownershipError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id')
+      .select('id, name, created_by, organization_id, is_public')
       .eq('id', workflowId)
       .single();
 

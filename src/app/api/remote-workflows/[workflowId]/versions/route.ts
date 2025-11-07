@@ -354,7 +354,7 @@ export async function POST(
     // STEP 2: Verify workflow exists and check ownership
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, version, total_versions, created_by, organization_id')
+      .select('id, name, version, total_versions, created_by, organization_id, is_public')
       .eq('id', workflowIdNum)
       .single();
 

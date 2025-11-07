@@ -61,7 +61,7 @@ export async function PATCH(
     // STEP 2: Get workflow info and verify ownership (including auto-pause status)
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
+      .select('id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
       .eq('id', workflowIdNum)
       .single();
 
@@ -273,7 +273,7 @@ export async function PUT(
     // STEP 2: Get workflow info and verify ownership (including auto-pause status)
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
+      .select('id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
       .eq('id', workflowIdNum)
       .single();
 

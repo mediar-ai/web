@@ -54,7 +54,7 @@ export async function POST(
     // STEP 2: Get workflow and verify permissions
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, version, created_by, organization_id, current_version_id, total_versions')
+      .select('id, name, version, created_by, organization_id, is_public, current_version_id, total_versions')
       .eq('id', workflowIdNum)
       .single();
 
