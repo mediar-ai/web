@@ -1,6 +1,7 @@
 import { cacheResponse } from '@/lib/responseCache';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { createClerkClient } from '@clerk/backend';
 
 export async function GET(request: NextRequest) {
   try {
@@ -363,7 +364,7 @@ export async function GET(request: NextRequest) {
       }, {});
     }
 
-    // Get organization names for all executions
+    // Get organization names for all executions from Clerk
     const orgIds = [...new Set((executions || [])
       .map((e: any) => {
         const workflow = Array.isArray(e.deployed_workflows)
@@ -375,13 +376,27 @@ export async function GET(request: NextRequest) {
 
     let orgNames: Record<string, string> = {};
     if (orgIds.length > 0) {
-      const { data: orgs } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .in('id', orgIds);
+      // Create Clerk client to fetch organization names
+      const clerkClient = createClerkClient({
+        secretKey: process.env.CLERK_SECRET_KEY,
+      });
 
-      orgNames = (orgs || []).reduce((acc: Record<string, string>, o: any) => {
-        acc[o.id] = o.name;
+      // Fetch each organization's name from Clerk
+      const orgPromises = orgIds.map(async (orgId) => {
+        try {
+          const org = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+          return { id: orgId, name: org.name };
+        } catch (error) {
+          console.warn(`Failed to fetch organization ${orgId} from Clerk:`, error);
+          return { id: orgId, name: null };
+        }
+      });
+
+      const orgs = await Promise.all(orgPromises);
+      orgNames = orgs.reduce((acc: Record<string, string>, o) => {
+        if (o.name) {
+          acc[o.id] = o.name;
+        }
         return acc;
       }, {});
     }
