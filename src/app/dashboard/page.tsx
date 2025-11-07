@@ -27,6 +27,7 @@ import {
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { loadExecutionsFromCache, saveExecutionsToCache } from '@/lib/execution-cache';
 
 function DashboardContent() {
   const { isLoaded, userId } = useAuth();
@@ -60,6 +61,7 @@ function DashboardContent() {
   const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
+  const [isRefreshingExecutions, setIsRefreshingExecutions] = useState(false);
   const [initialExecutionsFetchDone, setInitialExecutionsFetchDone] = useState(false);
   const [_pollCount, setPollCount] = useState(0);
 
@@ -345,14 +347,39 @@ function DashboardContent() {
     pageSizeParam?: number
   ) => {
     try {
-      if (showLoading) setExecutionsLoading(true);
+      // Effective values for this fetch
+      const effectivePageSize = pageSizeParam || pageSize;
+      const effectivePage = page || currentPage;
 
-      // Build query params
+      // HYBRID LOADING: Load from cache immediately if available
+      const cached = loadExecutionsFromCache(
+        viewOrgId,
+        filterWorkflow,
+        filterStatus,
+        filterMachine,
+        searchQuery,
+        searchField,
+        searchMode,
+        effectivePage,
+        effectivePageSize
+      );
+
+      if (cached) {
+        // Show cached data immediately
+        setExecutions(cached.executions);
+        setTotalExecutions(cached.totalExecutions);
+        setInitialExecutionsFetchDone(true);
+        // Show subtle "refreshing" indicator instead of full skeleton
+        setIsRefreshingExecutions(true);
+      } else if (showLoading) {
+        // No cache available, show skeleton
+        setExecutionsLoading(true);
+      }
+
+      // Build query params for fresh data fetch
       const params = new URLSearchParams();
 
       // Pagination
-      const effectivePageSize = pageSizeParam || pageSize;
-      const effectivePage = page || currentPage;
       const offset = (effectivePage - 1) * effectivePageSize;
       params.set('limit', effectivePageSize.toString());
       params.set('offset', offset.toString());
@@ -383,26 +410,47 @@ function DashboardContent() {
         }
       }
 
+      // Fetch fresh data from API
       const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
       const response = await fetch(apiUrl);
       const executionsData = await response.json();
       if (executionsData.success) {
-        // Always update with fresh data from API to ensure UI stays in sync
-        setExecutions(executionsData.executions || []);
-        // Update total count for pagination
-        setTotalExecutions(executionsData.pagination?.total || 0);
-        // Mark initial fetch as complete
+        const freshExecutions = executionsData.executions || [];
+        const freshTotal = executionsData.pagination?.total || 0;
+
+        // Update with fresh data
+        setExecutions(freshExecutions);
+        setTotalExecutions(freshTotal);
         setInitialExecutionsFetchDone(true);
+
+        // Save to cache for next time
+        saveExecutionsToCache(
+          freshExecutions,
+          freshTotal,
+          viewOrgId,
+          filterWorkflow,
+          filterStatus,
+          filterMachine,
+          searchQuery,
+          searchField,
+          searchMode,
+          effectivePage,
+          effectivePageSize
+        );
       }
     } catch (error) {
       console.error('Failed to fetch executions:', error);
-      setExecutions([]);
-      setTotalExecutions(0);
+      // Only clear if no cached data was shown
+      if (!executions.length) {
+        setExecutions([]);
+        setTotalExecutions(0);
+      }
       setInitialExecutionsFetchDone(true);
     } finally {
       if (showLoading) setExecutionsLoading(false);
+      setIsRefreshingExecutions(false);
     }
-  }, [viewOrgId, pageSize, currentPage]);
+  }, [viewOrgId, pageSize, currentPage, executions.length]);
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
@@ -1156,7 +1204,12 @@ function DashboardContent() {
             {initialExecutionsFetchDone && (executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
               <div className="space-y-3 mt-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
+                    {isRefreshingExecutions && (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-black" title="Refreshing..." />
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
