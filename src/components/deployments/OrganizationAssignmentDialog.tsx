@@ -142,16 +142,27 @@ export function OrganizationAssignmentDialog({
 
   const hasChanges = JSON.stringify(selectedOrgs.sort()) !== JSON.stringify(initialOrgs.sort());
 
-  // Filter organizations based on search term
-  const filteredOrganizations = organizations.filter(org => {
-    const searchLower = searchTerm.toLowerCase().trim();
-    if (!searchLower) return true;
+  // Filter and sort organizations
+  const filteredOrganizations = organizations
+    .filter(org => {
+      const searchLower = searchTerm.toLowerCase().trim();
+      if (!searchLower) return true;
 
-    return (
-      org.name.toLowerCase().includes(searchLower) ||
-      org.id.toLowerCase().includes(searchLower)
-    );
-  });
+      return (
+        org.name.toLowerCase().includes(searchLower) ||
+        org.id.toLowerCase().includes(searchLower)
+      );
+    })
+    .sort((a, b) => {
+      // Sort by: 1) Selected first, 2) Alphabetically by name
+      const aSelected = selectedOrgs.includes(a.id);
+      const bSelected = selectedOrgs.includes(b.id);
+
+      if (aSelected && !bSelected) return -1;
+      if (!aSelected && bSelected) return 1;
+
+      return a.name.localeCompare(b.name);
+    });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

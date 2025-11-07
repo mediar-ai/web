@@ -49,14 +49,28 @@ export async function GET(
       throw new Error(`Failed to fetch access list: ${error.message}`);
     }
 
-    // Get all organizations from Clerk
+    // Get all organizations from Clerk (paginated to get all)
     const clerk = await clerkClient();
-    const clerkOrganizations = await clerk.organizations.getOrganizationList({
-      limit: 100,
-    });
+    const allOrganizations = [];
+    let hasMore = true;
+    let offset = 0;
+    const limit = 100;
+
+    while (hasMore) {
+      const clerkOrganizations = await clerk.organizations.getOrganizationList({
+        limit,
+        offset,
+      });
+
+      allOrganizations.push(...clerkOrganizations.data);
+
+      // Check if there are more organizations to fetch
+      hasMore = clerkOrganizations.data.length === limit;
+      offset += limit;
+    }
 
     // Transform Clerk organizations to match our format
-    const organizations = clerkOrganizations.data.map(org => ({
+    const organizations = allOrganizations.map(org => ({
       id: org.id,
       name: org.name
     }));
