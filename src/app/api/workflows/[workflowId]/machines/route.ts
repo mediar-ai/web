@@ -302,7 +302,7 @@ export async function POST(
             machine_assignments: [
               {
                 machine_id: 1,
-                assignment_type: 'preferred',
+                assignment_type: 'exclusive',
                 priority: 5,
                 conditions: {},
                 reason: 'Assigned for testing'
@@ -390,7 +390,7 @@ export async function POST(
         }
 
         // Validate assignment type
-        const validTypes = ['exclusive', 'preferred', 'fallback', 'blocked'];
+        const validTypes = ['exclusive', 'fallback', 'blocked'];
         if (!validTypes.includes(assignment.assignment_type)) {
           errors.push(`Invalid assignment_type: ${assignment.assignment_type}. Must be one of: ${validTypes.join(', ')}`);
           continue;
@@ -610,7 +610,7 @@ export async function PUT(
 
     // Validate assignment type if provided
     if (updateData.assignment_type) {
-      const validTypes = ['exclusive', 'preferred', 'fallback', 'blocked'];
+      const validTypes = ['exclusive', 'fallback', 'blocked'];
       if (!validTypes.includes(updateData.assignment_type as string)) {
         return NextResponse.json(
           { 

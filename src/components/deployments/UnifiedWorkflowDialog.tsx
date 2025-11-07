@@ -42,7 +42,7 @@ interface Machine {
 interface MachineAssignment {
   assignment_id: number;
   machine_id: number;
-  assignment_type: 'exclusive' | 'preferred';
+  assignment_type: 'exclusive';
   priority: number;
   machine_name: string;
 }
@@ -86,7 +86,6 @@ export function UnifiedWorkflowDialog({
   const [machineAssignments, setMachineAssignments] = useState<MachineAssignment[]>([]);
   const [loadingMachines, setLoadingMachines] = useState(false);
   const [selectedMachineId, setSelectedMachineId] = useState<string>('');
-  const [selectedAssignmentType, setSelectedAssignmentType] = useState<'exclusive' | 'preferred'>('preferred');
   const [addingAssignment, setAddingAssignment] = useState(false);
   const [removingAssignment, setRemovingAssignment] = useState<number | null>(null);
 
@@ -441,7 +440,7 @@ export function UnifiedWorkflowDialog({
           machine_assignments: [
             {
               machine_id: parseInt(selectedMachineId),
-              assignment_type: selectedAssignmentType,
+              assignment_type: 'exclusive',
               priority: machineAssignments.length + 1,
               conditions: {},
               reason: 'Assigned via UI'
@@ -965,10 +964,9 @@ export function UnifiedWorkflowDialog({
                         <div className="space-y-2">
                           <div className="text-sm">
                             {(() => {
-                              // Get the highest priority assignment (exclusive > preferred)
+                              // Get the exclusive assignment (only type supported)
                               const exclusiveAssignment = machineAssignments.find(a => a.assignment_type === 'exclusive');
-                              const preferredAssignment = machineAssignments.find(a => a.assignment_type === 'preferred');
-                              const primaryAssignment = exclusiveAssignment || preferredAssignment;
+                              const primaryAssignment = exclusiveAssignment;
 
                               if (primaryAssignment) {
                                 const machineData = availableMachines.find(m => m.id === primaryAssignment.machine_id);
@@ -1342,15 +1340,9 @@ export function UnifiedWorkflowDialog({
                         </SelectContent>
                       </Select>
 
-                      <Select value={selectedAssignmentType} onValueChange={(value: 'exclusive' | 'preferred') => setSelectedAssignmentType(value)}>
-                        <SelectTrigger className="border-black-outline h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="preferred">Preferred</SelectItem>
-                          <SelectItem value="exclusive">Exclusive</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center justify-center h-8 px-3 border-2 border-black rounded bg-black text-white text-xs font-mono">
+                        EXCLUSIVE
+                      </div>
 
                       <Button
                         variant="black-outline"

@@ -28,7 +28,7 @@ interface Machine {
 interface MachineAssignment {
   assignment_id: number;
   machine_id: number;
-  assignment_type: 'exclusive' | 'preferred';
+  assignment_type: 'exclusive';
   priority: number;
   machine_name: string;
 }
@@ -56,7 +56,6 @@ export function WorkflowSettingsModal({
   const [machineAssignments, setMachineAssignments] = useState<MachineAssignment[]>([]);
   const [loadingMachines, setLoadingMachines] = useState(false);
   const [selectedMachineId, setSelectedMachineId] = useState<string>('');
-  const [selectedAssignmentType, setSelectedAssignmentType] = useState<'exclusive' | 'preferred'>('preferred');
   const [addingAssignment, setAddingAssignment] = useState(false);
   const [removingAssignment, setRemovingAssignment] = useState<number | null>(null);
 
@@ -183,13 +182,13 @@ export function WorkflowSettingsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           machine_assignments: [
-            {
-              machine_id: parseInt(selectedMachineId),
-              assignment_type: selectedAssignmentType,
-              priority: machineAssignments.length + 1,
-              conditions: {},
-              reason: 'Assigned via UI'
-            }
+          {
+            machine_id: parseInt(selectedMachineId),
+            assignment_type: 'exclusive',
+            priority: machineAssignments.length + 1,
+            conditions: {},
+            reason: 'Assigned via UI'
+          }
           ]
         })
       });
@@ -418,15 +417,9 @@ export function WorkflowSettingsModal({
                       </SelectContent>
                     </Select>
 
-                    <Select value={selectedAssignmentType} onValueChange={(value: 'exclusive' | 'preferred') => setSelectedAssignmentType(value)}>
-                      <SelectTrigger className="border-black-outline h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="preferred">Preferred</SelectItem>
-                        <SelectItem value="exclusive">Exclusive</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-center h-8 px-3 border-2 border-black rounded bg-black text-white text-xs font-mono">
+                      EXCLUSIVE
+                    </div>
 
                     <Button
                       variant="black-outline"

@@ -57,6 +57,7 @@ export async function POST(_request: NextRequest) {
         `
         id,
         name,
+        organization_id,
         cron_expression,
         cron_timezone,
         cron_enabled,
@@ -124,7 +125,7 @@ export async function POST(_request: NextRequest) {
 
         // Check if workflow should execute at current time
         const shouldExecute = shouldExecuteAt(cronExpression, currentTime, timezone);
-        console.log(`🔍 Checking ${workflow.name}: expression=${cronExpression}, currentTime=${currentTime.toISOString()}, shouldExecute=${shouldExecute}`);
+        console.log(`🔍 Checking ${workflow.name} (org: ${workflow.organization_id || 'none'}): expression=${cronExpression}, currentTime=${currentTime.toISOString()}, shouldExecute=${shouldExecute}`);
         if (shouldExecute) {
           // Check if we haven't already executed this minute
           const lastExecution = workflow.last_scheduled_execution
@@ -192,13 +193,13 @@ export async function POST(_request: NextRequest) {
       try {
         console.log(`🚀 Triggering execution for workflow: ${workflow.name}`);
 
-        // Get machine assignment for this workflow (check exclusive first, then preferred)
-        let preferredMachineId: number | undefined = undefined;
+        // Get exclusive machine assignment for this workflow
+        let assignedMachineId: number | undefined = undefined;
         let shouldSkipExecution = false;
         let skipReason = '';
 
         try {
-          const { data: preferredAssignment } = await supabase
+          const { data: exclusiveAssignment } = await supabase
             .from('workflow_machine_assignments')
             .select(`
               machine_id,
@@ -207,65 +208,53 @@ export async function POST(_request: NextRequest) {
             `)
             .eq('workflow_id', workflow.id)
             .eq('is_active', true)
-            .in('assignment_type', ['exclusive', 'preferred'])
+            .eq('assignment_type', 'exclusive')
             .order('priority', { ascending: true })
             .limit(1)
             .single();
 
-          if (preferredAssignment) {
-            const machine = Array.isArray(preferredAssignment.remote_machines)
-              ? preferredAssignment.remote_machines[0]
-              : preferredAssignment.remote_machines;
-            const assignmentType = preferredAssignment.assignment_type as string;
+          if (exclusiveAssignment) {
+            const machine = Array.isArray(exclusiveAssignment.remote_machines)
+              ? exclusiveAssignment.remote_machines[0]
+              : exclusiveAssignment.remote_machines;
 
             // EXCLUSIVE: Workflow MUST run on this machine only
-            if (assignmentType === 'exclusive') {
-              if (machine && machine.status === 'active') {
-                // Check if machine has available capacity
-                const { data: runningExecutions } = await supabase
-                  .from('workflow_executions')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('assigned_machine_id', preferredAssignment.machine_id)
-                  .in('status', ['queued', 'running']);
+            if (machine && machine.status === 'active') {
+              // Check if machine has available capacity
+              const { data: runningExecutions } = await supabase
+                .from('workflow_executions')
+                .select('id', { count: 'exact', head: true })
+                .eq('assigned_machine_id', exclusiveAssignment.machine_id)
+                .in('status', ['queued', 'running']);
 
-                const { data: machineDetails } = await supabase
-                  .from('remote_machines')
-                  .select('max_concurrent_executions')
-                  .eq('id', preferredAssignment.machine_id)
-                  .single();
+              const { data: machineDetails } = await supabase
+                .from('remote_machines')
+                .select('max_concurrent_executions')
+                .eq('id', exclusiveAssignment.machine_id)
+                .single();
 
-                const maxConcurrent = machineDetails?.max_concurrent_executions || 10;
-                const currentLoad = runningExecutions || 0;
+              const maxConcurrent = machineDetails?.max_concurrent_executions || 10;
+              const currentLoad = runningExecutions || 0;
 
-                if (currentLoad >= maxConcurrent) {
-                  // Exclusive machine at capacity - MUST skip execution
-                  shouldSkipExecution = true;
-                  skipReason = `Exclusive machine ${machine.name} (ID: ${preferredAssignment.machine_id}) at capacity (${currentLoad}/${maxConcurrent})`;
-                  console.log(`   ⏸️  ${skipReason} - execution will be queued until capacity available`);
-                } else {
-                  preferredMachineId = preferredAssignment.machine_id;
-                  console.log(`   ✅ Using EXCLUSIVE machine ${machine.name} (ID: ${preferredMachineId}, capacity: ${currentLoad}/${maxConcurrent})`);
-                }
-              } else {
-                // Exclusive machine inactive - MUST skip execution
+              if (currentLoad >= maxConcurrent) {
+                // Exclusive machine at capacity - MUST skip execution
                 shouldSkipExecution = true;
-                skipReason = `Exclusive machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive`;
-                console.log(`   ⏸️  ${skipReason} - execution cannot proceed without exclusive machine`);
-              }
-            }
-            // PREFERRED: Try this machine, fallback to auto-assignment if unavailable
-            else if (assignmentType === 'preferred') {
-              if (machine && machine.status === 'active') {
-                preferredMachineId = preferredAssignment.machine_id;
-                console.log(`   ✅ Using PREFERRED machine ${machine.name} (ID: ${preferredMachineId}, health: ${machine.health_status})`);
+                skipReason = `Exclusive machine ${machine.name} (ID: ${exclusiveAssignment.machine_id}) at capacity (${currentLoad}/${maxConcurrent})`;
+                console.log(`   ⏸️  ${skipReason} - execution will be queued until capacity available`);
               } else {
-                console.log(`   ⚠️  Preferred machine ${machine?.name} (ID: ${preferredAssignment.machine_id}) is inactive, using auto-assignment`);
+                assignedMachineId = exclusiveAssignment.machine_id;
+                console.log(`   ✅ Using EXCLUSIVE machine ${machine.name} (ID: ${assignedMachineId}, capacity: ${currentLoad}/${maxConcurrent})`);
               }
+            } else {
+              // Exclusive machine inactive - MUST skip execution
+              shouldSkipExecution = true;
+              skipReason = `Exclusive machine ${machine?.name} (ID: ${exclusiveAssignment.machine_id}) is inactive`;
+              console.log(`   ⏸️  ${skipReason} - execution cannot proceed without exclusive machine`);
             }
           }
         } catch (_machineErr) {
-          // No machine assignment - continue with auto-assignment
-          console.log(`   ℹ️  No machine assignment found for workflow ${workflow.id}, using auto-assignment`);
+          // No exclusive assignment - continue with auto-assignment
+          console.log(`   ℹ️  No exclusive assignment found for workflow ${workflow.id}, using auto-assignment`);
         }
 
         // Skip execution if exclusive machine is unavailable
@@ -321,7 +310,7 @@ export async function POST(_request: NextRequest) {
           body: JSON.stringify({
             parameters: {}, // Changed from execution_params to parameters
             client_id: 'cron-scheduler',
-            ...(preferredMachineId && { machine_id: preferredMachineId }), // Include preferred machine if found
+            ...(assignedMachineId && { machine_id: assignedMachineId }), // Include assigned machine if found
           }),
         });
 

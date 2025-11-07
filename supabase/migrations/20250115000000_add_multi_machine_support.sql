@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS public.workflow_machine_assignments (
     machine_id INTEGER REFERENCES public.remote_machines(id) ON DELETE CASCADE,
     
     -- Assignment logic and priority
-    assignment_type VARCHAR(20) DEFAULT 'preferred' CHECK (assignment_type IN ('exclusive', 'preferred', 'fallback', 'blocked')),
+    assignment_type VARCHAR(20) CHECK (assignment_type IN ('exclusive', 'fallback', 'blocked')),
     priority INTEGER DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
     
     -- Conditions for assignment (flexible rule engine)
@@ -294,26 +294,7 @@ BEGIN
     ORDER BY wma.priority, aml.load_percentage
     LIMIT 1;
     
-    -- If no exclusive assignments found, try preferred
-    IF NOT FOUND THEN
-        RETURN QUERY
-        SELECT 
-            rm.id,
-            rm.name,
-            'Preferred assignment' as assignment_reason,
-            aml.load_percentage
-        FROM public.remote_machines rm
-        JOIN public.workflow_machine_assignments wma ON rm.id = wma.machine_id
-        JOIN public.available_machines_with_load aml ON rm.id = aml.id
-        WHERE wma.workflow_id = p_workflow_id 
-        AND wma.assignment_type = 'preferred' 
-        AND wma.is_active = true
-        AND aml.available_capacity > 0
-        ORDER BY wma.priority, aml.load_percentage
-        LIMIT 1;
-    END IF;
-    
-    -- If no preferred assignments found, use any available machine
+    -- If no exclusive assignments found, use any available machine (load balanced)
     IF NOT FOUND THEN
         RETURN QUERY
         SELECT 

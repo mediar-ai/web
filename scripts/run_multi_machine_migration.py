@@ -294,7 +294,7 @@ def display_next_steps():
     print("     -d '{")
     print('       "machine_assignments": [{')
     print('         "machine_id": 2,')
-    print('         "assignment_type": "preferred",')
+    print('         "assignment_type": "exclusive",')
     print('         "priority": 1,')
     print('         "reason": "Testing on Matt\'s endpoint"')
     print("       }]")
