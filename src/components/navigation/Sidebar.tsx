@@ -144,7 +144,7 @@ export function Sidebar() {
   }, [pathname, filteredNav]);
 
   return (
-    <div className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200`}>
+    <div className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200 z-50`}>
       {/* Toggle Button - Inside sidebar at right edge */}
       <button
         onClick={toggleSidebar}
