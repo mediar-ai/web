@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Building2, Users, Crown } from 'lucide-react';
+import { Building2, Users, Crown, Search } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
@@ -43,6 +43,7 @@ export function OrganizationAssignmentDialog({
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
   const [initialOrgs, setInitialOrgs] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Mediar org IDs that must always be selected
   const REQUIRED_ORGS = MEDIAR_ORG_IDS;
@@ -81,6 +82,7 @@ export function OrganizationAssignmentDialog({
       setOrganizations([]);
       setSelectedOrgs([]);
       setInitialOrgs([]);
+      setSearchTerm('');
     }
   }, [open, workflowId, fetchOrganizationAccess]);
 
@@ -140,6 +142,17 @@ export function OrganizationAssignmentDialog({
 
   const hasChanges = JSON.stringify(selectedOrgs.sort()) !== JSON.stringify(initialOrgs.sort());
 
+  // Filter organizations based on search term
+  const filteredOrganizations = organizations.filter(org => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    if (!searchLower) return true;
+
+    return (
+      org.name.toLowerCase().includes(searchLower) ||
+      org.id.toLowerCase().includes(searchLower)
+    );
+  });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl border-2 border-black">
@@ -186,9 +199,35 @@ export function OrganizationAssignmentDialog({
                 </div>
               </div>
 
+              {/* Search bar */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search organizations by name or ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 border-2 border-black rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-black"
+                  >
+                    <span className="font-mono text-xs">CLEAR</span>
+                  </button>
+                )}
+              </div>
+
+              {searchTerm && filteredOrganizations.length !== organizations.length && (
+                <div className="mb-2 text-sm font-mono text-gray-600">
+                  Showing {filteredOrganizations.length} of {organizations.length} organizations
+                </div>
+              )}
+
               <ScrollArea className="h-[400px] border border-gray-200 rounded-lg p-4">
                 <div className="space-y-3">
-                  {organizations.map(org => {
+                  {filteredOrganizations.map(org => {
                     const isMediar = REQUIRED_ORGS.includes(org.id);
                     const isSelected = selectedOrgs.includes(org.id);
                     return (
@@ -237,9 +276,9 @@ export function OrganizationAssignmentDialog({
                     );
                   })}
 
-                  {organizations.length === 0 && (
+                  {filteredOrganizations.length === 0 && (
                     <div className="text-center py-8 text-gray-500 font-mono">
-                      No organizations available
+                      {searchTerm ? 'No organizations match your search' : 'No organizations available'}
                     </div>
                   )}
                 </div>
