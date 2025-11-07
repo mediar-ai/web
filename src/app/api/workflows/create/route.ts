@@ -50,7 +50,18 @@ export async function POST(request: NextRequest) {
 
     console.log(`🚀 Creating workflow for org: ${effectiveOrgId} (user: ${userIdentifier}, isMediar: ${isMediarOrg})`);
 
-    // No need for fallback org - getEffectiveOrgId handles this
+    // Require organization context for workflow creation
+    if (!effectiveOrgId) {
+      console.error(`[Workflow Create] Rejecting workflow creation - no organization context for user: ${userIdentifier}`);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Organization required to create workflows. Please re-authenticate with organization context.',
+          details: 'Workflows must belong to an organization for proper access control.'
+        },
+        { status: 400 }
+      );
+    }
 
     const body: CreateWorkflowRequest = await request.json();
 
@@ -215,6 +226,25 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Created workflow with ID: ${newWorkflow.id}`);
+
+    // Grant owner organization admin access to the workflow
+    if (effectiveOrgId) {
+      const { error: accessError } = await supabase
+        .from('workflow_organization_access')
+        .insert({
+          workflow_id: newWorkflow.id,
+          organization_id: effectiveOrgId,
+          access_level: 'admin',
+          granted_at: new Date().toISOString()
+        });
+
+      if (accessError) {
+        console.error('⚠️ Failed to grant organization access:', accessError);
+        // Don't fail the whole creation, but log the issue
+      } else {
+        console.log(`✅ Granted ${effectiveOrgId} admin access to workflow ${newWorkflow.id}`);
+      }
+    }
 
     // Create the initial version record
     const versionData = {
