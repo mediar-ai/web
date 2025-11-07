@@ -537,13 +537,13 @@ export async function POST(request: NextRequest) {
             })),
           });
 
-          // Call Anthropic again with tool results
+          // Call Anthropic again with tool results (already in history)
           const continuationResult = await handleAnthropicChat({
             model: sessionModel,
             history: updatedHistoryWithCalls,
             system: sessionSystem,
             tools: allTools,
-            toolResults: serverToolResults,
+            // toolResults not needed - already in updatedHistoryWithCalls
             generationConfig,
             sessionId: actualSessionId,
           });
@@ -844,19 +844,8 @@ export async function POST(request: NextRequest) {
           parts: toolCallParts,
         });
 
-        // Add tool results to history
-        updatedHistoryWithCalls.push({
-          role: 'user',
-          parts: serverToolResults.map(tr => ({
-            functionResponse: {
-              name: tr.name,
-              response: {
-                name: tr.name,  // Name must be repeated in response
-                content: tr.result  // Actual tool result goes in content
-              },
-            },
-          })),
-        });
+        // Don't add tool results to history yet - they'll be sent via toolResults parameter
+        // and added to history after the continuation call
 
         // Call Vertex again with tool results
         const continuationResult = await handleVertexChat({
@@ -878,6 +867,20 @@ export async function POST(request: NextRequest) {
         // Check if continuation has more server-side tools to execute
         let finalResult = continuationResult;
         const finalHistory = [...updatedHistoryWithCalls];
+        
+        // Now add the tool results to history for Redis storage
+        finalHistory.push({
+          role: 'user',
+          parts: serverToolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: {
+                name: tr.name,
+                content: tr.result
+              },
+            },
+          })),
+        });
 
         // Keep executing server tools until there are none left
         while (finalResult.toolCalls.length > 0) {
@@ -958,19 +961,7 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // Add server tool results to history
-          finalHistory.push({
-            role: 'user',
-            parts: moreServerTools.map(tr => ({
-              functionResponse: {
-                name: tr.name,
-                response: {
-                  name: tr.name,  // Name must be repeated in response
-                  content: tr.result  // Actual tool result goes in content
-                },
-              },
-            })),
-          });
+          // Don't add tool results to history yet - they'll be sent via toolResults parameter
 
           // Continue conversation with new server tool results
           console.log(`🔄 Auto-continuing with ${moreServerTools.length} more server tool results`);
@@ -988,6 +979,20 @@ export async function POST(request: NextRequest) {
             textLen: finalResult.text.length,
             toolCallsCount: finalResult.toolCalls.length,
             finishReason: finalResult.finishReason
+          });
+          
+          // Now add the tool results to history for Redis storage
+          finalHistory.push({
+            role: 'user',
+            parts: moreServerTools.map(tr => ({
+              functionResponse: {
+                name: tr.name,
+                response: {
+                  name: tr.name,
+                  content: tr.result
+                },
+              },
+            })),
           });
         }
 
