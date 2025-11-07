@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEffectiveOrgId } from '@/lib/mediarAuth';
 import { clerkClient, currentUser } from '@clerk/nextjs/server';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export async function GET(
   request: NextRequest,
@@ -147,13 +146,10 @@ export async function PUT(
       throw new Error(`Failed to remove existing access: ${deleteError.message}`);
     }
 
-    // Ensure Mediar orgs are always included
-    const requiredOrgs = [...MEDIAR_ORG_IDS];
-    const allOrgIds = [...new Set([...requiredOrgs, ...organizationIds])];
-
-    // Add new access entries
-    if (allOrgIds.length > 0) {
-      const accessEntries = allOrgIds.map(orgId => ({
+    // Add new access entries (no longer forcing Mediar orgs)
+    // Mediar admins can see all workflows via org switcher
+    if (organizationIds.length > 0) {
+      const accessEntries = organizationIds.map(orgId => ({
         workflow_id: workflowId,
         organization_id: orgId,
       }));
