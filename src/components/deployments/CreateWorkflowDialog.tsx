@@ -293,7 +293,7 @@ export function CreateWorkflowDialog({
             {selectedTemplate && (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-700 mb-2">
-                  ✅ Template selected: <strong>{templates[selectedTemplate].name}</strong>
+                  Template selected: <strong>{templates[selectedTemplate].name}</strong>
                 </p>
                 <p className="text-xs text-blue-600">
                   Click &quot;Manual Creation&quot; tab to customize the workflow details.

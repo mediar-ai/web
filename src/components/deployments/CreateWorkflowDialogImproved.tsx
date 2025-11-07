@@ -517,7 +517,7 @@ export function CreateWorkflowDialog({
               <div className="mt-4 space-y-4">
                 <div className="p-4 bg-white border-2 border-black rounded-lg">
                   <p className="text-sm text-black mb-2 font-mono">
-                    ✅ Template selected: <strong>{templates[selectedTemplate].name}</strong>
+                    Template selected: <strong>{templates[selectedTemplate].name}</strong>
                   </p>
                   <p className="text-xs text-gray-600">
                     Customize the workflow details below before creating.
