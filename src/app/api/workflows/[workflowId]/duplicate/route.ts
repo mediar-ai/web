@@ -175,6 +175,8 @@ export async function POST(
       cron_max_concurrent: originalWorkflow.cron_expression ? (originalWorkflow.cron_max_concurrent || 1) : null,
       cron_retry_on_failure: originalWorkflow.cron_expression ? (originalWorkflow.cron_retry_on_failure !== false) : null,
       cron_retry_count: originalWorkflow.cron_expression ? (originalWorkflow.cron_retry_count || 3) : null,
+      // Organization ownership - duplicate belongs to current user's organization
+      organization_id: orgId || null,
       // Metadata
       created_by: null, // Clerk user IDs are not compatible with UUID format
       total_versions: 1,
@@ -199,6 +201,25 @@ export async function POST(
     }
 
     console.log(`✅ Created duplicate workflow with ID: ${newWorkflow.id}`);
+
+    // Grant current organization admin access to the duplicate workflow
+    if (orgId) {
+      const { error: accessError } = await supabase
+        .from('workflow_organization_access')
+        .insert({
+          workflow_id: newWorkflow.id,
+          organization_id: orgId,
+          access_level: 'admin',
+          granted_at: new Date().toISOString()
+        });
+
+      if (accessError) {
+        console.error('⚠️ Failed to grant organization access to duplicate:', accessError);
+        // Don't fail the whole duplication, but log the issue
+      } else {
+        console.log(`✅ Granted ${orgId} admin access to duplicate workflow ${newWorkflow.id}`);
+      }
+    }
 
     // Create the initial version for the duplicate
     const duplicateVersionData = {
