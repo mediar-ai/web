@@ -263,6 +263,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       workflow_name: true, // Show workflow name by default
       error_message: false,
       machine: true,  // Show machine by default (updated from false)
+      organization: false, // Hide organization by default
       user: false,
       version: false,
     };
@@ -583,6 +584,19 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           if (!filterValue) return true; // Show all if no filter
           const machineValue = row.original.assigned_machine_name || '';
           return machineValue === filterValue;
+        },
+      },
+      {
+        id: 'organization',
+        accessorFn: (row) => row.workflow_organization_name || '',
+        header: 'Organization',
+        cell: ({ row }) => {
+          const orgName = row.original.workflow_organization_name;
+          return (
+            <span className="font-mono text-[10px] text-gray-600">
+              {orgName || '-'}
+            </span>
+          );
         },
       },
       {

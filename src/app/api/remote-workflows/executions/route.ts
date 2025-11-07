@@ -363,6 +363,29 @@ export async function GET(request: NextRequest) {
       }, {});
     }
 
+    // Get organization names for all executions
+    const orgIds = [...new Set((executions || [])
+      .map((e: any) => {
+        const workflow = Array.isArray(e.deployed_workflows)
+          ? e.deployed_workflows[0]
+          : e.deployed_workflows;
+        return workflow?.organization_id;
+      })
+      .filter(Boolean))] as string[];
+
+    let orgNames: Record<string, string> = {};
+    if (orgIds.length > 0) {
+      const { data: orgs } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+
+      orgNames = (orgs || []).reduce((acc: Record<string, string>, o: any) => {
+        acc[o.id] = o.name;
+        return acc;
+      }, {});
+    }
+
     // Format executions with computed metrics
     const formattedExecutions = (executions || []).map(execution => {
       const executionAny = execution as any;
@@ -388,6 +411,10 @@ export async function GET(request: NextRequest) {
         workflow_id: executionAny.workflow_id,
         workflow_name: workflow?.name || 'Unknown Workflow',
         workflow_category: workflow?.category || 'general',
+        workflow_organization_id: workflow?.organization_id || null,
+        workflow_organization_name: workflow?.organization_id
+          ? orgNames[workflow.organization_id] || null
+          : null,
 
         // Version info
         version_number: executionAny.version_number || executionAny.workflow_version_number,
