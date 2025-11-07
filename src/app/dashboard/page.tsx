@@ -908,16 +908,6 @@ function DashboardContent() {
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
   const canDelete = isGlobalAdmin;
 
-  // Debug: Log admin status
-  console.log('[Dashboard] Admin Check:', {
-    isGlobalAdmin,
-    hasMediarEmail,
-    isMemberOfMediarOrg,
-    userEmails: user?.emailAddresses?.map(e => e.emailAddress),
-    orgIds: userMemberships?.data?.map(m => m.organization.id),
-    currentOrgId: organization?.id,
-  });
-
   // Show loading while Clerk is initializing or while redirecting
   if (!isLoaded || !userId) {
     return (
