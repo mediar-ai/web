@@ -49,7 +49,8 @@ export function cleanSchema(schema: unknown): Record<string, unknown> {
 
   const src = schema as Record<string, unknown>;
   const dst: Record<string, unknown> = {
-    type: (src.type as string) || 'object',
+    // Convert Vertex AI uppercase types (OBJECT, STRING, etc.) to lowercase for Anthropic compatibility
+    type: typeof src.type === 'string' ? (src.type as string).toLowerCase() : 'object',
   };
 
   if (src.properties && typeof src.properties === 'object') {
