@@ -390,9 +390,26 @@ export async function POST(
         .eq('id', machine_id)
         .single();
       if (!machineErr && machine) {
+        // Validate machine status before allowing execution
+        if (machine.status !== 'active') {
+          console.error(
+            `[ERROR] User attempted to select inactive machine ${machine_id}: status=${machine.status}`
+          );
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Machine "${machine.name}" is not active (status: ${machine.status})`,
+              machine_status: machine.status,
+              available_machines_endpoint: '/api/machines?status=active',
+            },
+            { status: 400 }
+          );
+        }
+        
         assigned_machine_id = machine.id;
         mcp_endpoint = machine.mcp_endpoint;
         assignment_reason = `User-selected machine (ID: ${machine_id})`;
+        console.log(`[SUCCESS] User-selected machine validated: ${machine.name} (status: ${machine.status})`);
       } else {
         return NextResponse.json(
           { success: false, error: `Machine ${machine_id} not found` },
