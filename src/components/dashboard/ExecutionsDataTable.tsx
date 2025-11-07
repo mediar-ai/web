@@ -50,6 +50,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Execution, LiveExecutionStatus, WorkflowWithSettings } from '@/lib/workflow-types';
 import { cn } from '@/lib/utils';
+import { cleanupDropdownClose } from '@/lib/ui-fixes';
 
 interface ExecutionsDataTableProps {
   executions: Execution[];
@@ -645,6 +646,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               open={openDropdownId === execution.execution_id}
               onOpenChange={(open) => {
                 setOpenDropdownId(open ? execution.execution_id : null);
+                if (!open) {
+                  cleanupDropdownClose();
+                }
               }}
             >
               <DropdownMenuTrigger asChild>
@@ -662,6 +666,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 <DropdownMenuItem
                   onClick={() => {
                     setOpenDropdownId(null);
+                    cleanupDropdownClose();
                     onViewDetails(execution.execution_id);
                   }}
                   className="font-mono text-sm hover:bg-gray-100"
@@ -673,6 +678,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   <DropdownMenuItem
                     onClick={async () => {
                       setOpenDropdownId(null);
+                      cleanupDropdownClose();
                       if (
                         confirm(
                           `Are you sure you want to ${
@@ -703,6 +709,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   <DropdownMenuItem
                     onClick={async () => {
                       setOpenDropdownId(null);
+                      cleanupDropdownClose();
                       if (
                         confirm(
                           `Are you sure you want to DELETE this execution? This cannot be undone.`
@@ -930,7 +937,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 <RefreshCw className="h-3 w-3" />
               </Button>
             )}
-            <DropdownMenu>
+            <DropdownMenu
+              modal={false}
+              onOpenChange={(open) => {
+                if (!open) {
+                  cleanupDropdownClose();
+                }
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
