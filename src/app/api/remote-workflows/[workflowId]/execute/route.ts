@@ -279,12 +279,14 @@ export async function POST(
     const client_id = body.client_id || `web-${Date.now()}`;
     const execution_mode = body.execution_mode || 'async';
     const include_cache = body.include_cache === true; // New cache parameter
+    const executor_type = body.executor_type || 'python'; // Default to Python executor for backwards compatibility
 
     console.log('[SUCCESS] Extracted execution_params:', execution_params);
     console.log(`[FIX] Cache enabled: ${include_cache}`);
     console.log(
       `🔍 Full detailed response requested: ${full_detailed_response}`
     );
+    console.log(`🚀 Executor type: ${executor_type}`);
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -652,6 +654,8 @@ export async function POST(
                 mcp_endpoint,
                 // 🎯 Include version selection for background execution
                 version_number,
+                // 🎯 Include executor type for routing to Python or Rust executor
+                executor_type,
               })
               .select()
               .single();
@@ -724,7 +728,7 @@ export async function POST(
     }
 
     // Create execution record in database with 'queued' status and machine assignment
-    // The appropriate Modal executor will pick it up based on assigned_machine_id
+    // The appropriate executor (Python/Modal or Rust) will pick it up based on executor_type
     const modal_call_id = `modal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     const executionData = {
@@ -741,6 +745,8 @@ export async function POST(
       mcp_endpoint,
       // 🎯 Include version selection
       version_number,
+      // 🎯 Include executor type for routing to Python or Rust executor
+      executor_type,
     };
 
     const { data: execution, error: executionError } = await supabase
@@ -754,10 +760,10 @@ export async function POST(
     }
 
     console.log(
-      `[SUCCESS] Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by Modal scheduler`
+      `[SUCCESS] Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by ${executor_type} executor`
     );
 
-    // Return immediate response - Modal will process this asynchronously
+    // Return immediate response - executor will process this asynchronously
     const response = {
       success: true,
       execution_id: execution.id,
@@ -768,7 +774,7 @@ export async function POST(
       created_at: new Date().toISOString(),
       execution_mode,
       client_id,
-      message: `Workflow execution queued successfully. Modal will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`,
+      message: `Workflow execution queued successfully. The ${executor_type} executor will process it within 10 seconds. Use execution ID ${execution.id} to monitor progress.`,
       // Include validation info if available
       ...(validationResult && {
         validation: {
