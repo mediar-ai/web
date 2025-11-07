@@ -76,9 +76,13 @@ const KV_SESSION_TTL = 60 * 60 * 24; // 24 hours
 const KV_SESSION_PREFIX = 'ai-session:';
 
 // Helpers ------------------------------------------------------------
-async function authenticate(request: NextRequest): Promise<boolean> {
+async function authenticate(request: NextRequest): Promise<{
+  authenticated: boolean;
+  userId: string | null;
+  orgId: string | null
+}> {
   const authHeader = request.headers.get('authorization');
-  if (!authHeader) return false;
+  if (!authHeader) return { authenticated: false, userId: null, orgId: null };
 
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
@@ -86,7 +90,7 @@ async function authenticate(request: NextRequest): Promise<boolean> {
     // First, check if it's the API password
     if (token === API_PASSWORD) {
       console.log('[AI API] Authenticated with API password');
-      return true;
+      return { authenticated: true, userId: null, orgId: null };
     }
 
     // Otherwise, try to validate as desktop token
@@ -94,23 +98,31 @@ async function authenticate(request: NextRequest): Promise<boolean> {
       const validation = await validateDesktopToken(token);
       if (validation.valid) {
         console.log(`[AI API] Authenticated with desktop token for user: ${validation.email}`);
-        return true;
+        return {
+          authenticated: true,
+          userId: validation.userId || null,
+          orgId: validation.orgId || null
+        };
       }
     } catch (error) {
       console.error('[AI API] Desktop token validation error:', error);
     }
 
     // Token didn't match password or desktop validation failed
-    return false;
+    return { authenticated: false, userId: null, orgId: null };
   }
 
   if (authHeader.startsWith('Basic ')) {
     const decoded = Buffer.from(authHeader.substring(6), 'base64').toString();
     const [, password] = decoded.split(':');
-    return password === API_PASSWORD;
+    return {
+      authenticated: password === API_PASSWORD,
+      userId: null,
+      orgId: null
+    };
   }
 
-  return false;
+  return { authenticated: false, userId: null, orgId: null };
 }
 
 function cleanSchema(schema: unknown): JSONSchema {
@@ -330,12 +342,17 @@ export async function POST(request: NextRequest) {
   const corsHeaders = getCorsHeaders(origin);
   
   try {
-    if (!(await authenticate(request))) {
+    const authResult = await authenticate(request);
+    if (!authResult.authenticated) {
       return NextResponse.json(
         { error: 'Unauthorized. Please provide valid credentials.' },
         { status: 401, headers: corsHeaders }
       );
     }
+
+    // Extract user context for authorization checks
+    const authenticatedUserId = authResult.userId;
+    const orgId = authResult.orgId;
 
     const body = await request.json();
     const sessionId = body.sessionId as string | undefined;
@@ -441,6 +458,11 @@ export async function POST(request: NextRequest) {
           if (isKnowledge || isWorkflow) {
             console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
             try {
+              // Workflow tools require authenticated user context
+              if (isWorkflow && !authenticatedUserId) {
+                throw new Error('Workflow editing requires authentication with a user account');
+              }
+
               // Add workflow_id to args if it's a workflow tool and we have it in the request
               let toolArgs = toolCall.args;
               if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
@@ -448,7 +470,10 @@ export async function POST(request: NextRequest) {
               }
 
               const toolResult = isWorkflow
-                ? await executeWorkflowTool(toolCall.name, toolArgs)
+                ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                    userId: authenticatedUserId!,
+                    orgId: orgId || null
+                  })
                 : await executeKnowledgeTool(toolCall.name, toolArgs);
               serverToolResults.push({
                 name: toolCall.name,
@@ -753,6 +778,11 @@ export async function POST(request: NextRequest) {
         if (isKnowledge || isWorkflow) {
           console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
           try {
+            // Workflow tools require authenticated user context
+            if (isWorkflow && !authenticatedUserId) {
+              throw new Error('Workflow editing requires authentication with a user account');
+            }
+
             // Add workflow_id to args if it's a workflow tool and we have it in the request
             let toolArgs = toolCall.args;
             if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
@@ -760,7 +790,10 @@ export async function POST(request: NextRequest) {
             }
 
             const toolResult = isWorkflow
-              ? await executeWorkflowTool(toolCall.name, toolArgs)
+              ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                  userId: authenticatedUserId!,
+                  orgId: orgId || null
+                })
               : await executeKnowledgeTool(toolCall.name, toolArgs);
 
             // Capture workflow data if the workflow was updated
@@ -859,13 +892,21 @@ export async function POST(request: NextRequest) {
             if (isKnowledge || isWorkflow) {
               console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
               try {
+                // Workflow tools require authenticated user context
+                if (isWorkflow && !authenticatedUserId) {
+                  throw new Error('Workflow editing requires authentication with a user account');
+                }
+
                 let toolArgs = toolCall.args;
                 if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
                   toolArgs = { ...toolArgs, workflow_id: body.workflowId };
                 }
 
                 const toolResult = isWorkflow
-                  ? await executeWorkflowTool(toolCall.name, toolArgs)
+                  ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                      userId: authenticatedUserId!,
+                      orgId: orgId || null
+                    })
                   : await executeKnowledgeTool(toolCall.name, toolArgs);
 
                 // Capture workflow data if the workflow was updated

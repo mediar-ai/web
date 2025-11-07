@@ -59,6 +59,71 @@ interface StepUpdate {
 }
 
 /**
+ * Check if user is authorized to modify a workflow
+ */
+async function checkWorkflowAuthorization(
+  workflowId: number,
+  userContext: { userId: string; orgId: string | null }
+): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  // Get workflow ownership and organization
+  const { data: workflow, error } = await supabase
+    .from('deployed_workflows')
+    .select('created_by, organization_id')
+    .eq('id', workflowId)
+    .single();
+
+  if (error || !workflow) {
+    throw new Error(`Workflow ${workflowId} not found`);
+  }
+
+  // Check if user is Mediar org/admin (using same pattern as API routes)
+  const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+  const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+
+  // Prevent modification of public workflows (NULL organization_id) by non-Mediar users
+  if (!workflow.organization_id && !isMediarOrg && !isMediarAdmin) {
+    console.warn(
+      `[SECURITY] User ${userContext.userId} attempted to modify public workflow ${workflowId} via AI server-side tool`
+    );
+    throw new Error('Forbidden - Public workflows can only be modified by Mediar administrators');
+  }
+
+  // Check ownership/org membership
+  const isOwner = workflow.created_by === userContext.userId;
+  const isSameOrg = workflow.organization_id && workflow.organization_id === userContext.orgId;
+
+  // Check workflow_organization_access table for organization-based access
+  let hasOrgAccess = false;
+  if (userContext.orgId) {
+    const { data: orgAccess } = await supabase
+      .from('workflow_organization_access')
+      .select('access_level')
+      .eq('workflow_id', workflowId)
+      .eq('organization_id', userContext.orgId)
+      .single();
+
+    // Only 'write' or 'admin' access levels can modify workflows
+    hasOrgAccess = !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level as string);
+  }
+
+  // Allow modification if:
+  // - User is in Mediar org or is a Mediar admin (can modify all workflows)
+  // - User is the workflow owner
+  // - User is in the same org (legacy organization_id field)
+  // - User's organization has write/admin access via workflow_organization_access table
+  if (!isMediarOrg && !isMediarAdmin && !isOwner && !isSameOrg && !hasOrgAccess) {
+    console.warn(
+      `[SECURITY] User ${userContext.userId} (orgId: ${userContext.orgId}) attempted unauthorized modification of workflow ${workflowId} via AI server-side tool`
+    );
+    throw new Error('Forbidden - You do not have permission to modify this workflow');
+  }
+
+  console.log(`[AUTH] User ${userContext.userId} authorized to modify workflow ${workflowId}`);
+}
+
+/**
  * Parse workflow content to extract sequence structure
  */
 function parseWorkflowContent(content: string | null | undefined): { parsed: any; isYaml: boolean } {
@@ -201,13 +266,19 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id', 'step_identifier', 'updates']
     },
-    execute: async (params: {
-      workflow_id: number;
-      step_identifier: string | number;
-      updates: StepUpdate;
-    }) => {
+    execute: async (
+      params: {
+        workflow_id: number;
+        step_identifier: string | number;
+        updates: StepUpdate;
+      },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Updating step:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -333,13 +404,19 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id', 'step']
     },
-    execute: async (params: {
-      workflow_id: number;
-      step: CommandStep;
-      position?: number | null;
-    }) => {
+    execute: async (
+      params: {
+        workflow_id: number;
+        step: CommandStep;
+        position?: number | null;
+      },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Adding step:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -451,12 +528,18 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id', 'step_identifier']
     },
-    execute: async (params: {
-      workflow_id: number;
-      step_identifier: string | number;
-    }) => {
+    execute: async (
+      params: {
+        workflow_id: number;
+        step_identifier: string | number;
+      },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Removing step:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -563,9 +646,15 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id']
     },
-    execute: async (params: { workflow_id: number }) => {
+    execute: async (
+      params: { workflow_id: number },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting workflow:', params.workflow_id);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -611,12 +700,18 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id', 'step_identifier']
     },
-    execute: async (params: {
-      workflow_id: number;
-      step_identifier: string | number;
-    }) => {
+    execute: async (
+      params: {
+        workflow_id: number;
+        step_identifier: string | number;
+      },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting step info:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -677,13 +772,19 @@ export const serverSideWorkflowTools = {
       },
       required: ['workflow_id', 'from_index', 'to_index']
     },
-    execute: async (params: {
-      workflow_id: number;
-      from_index: number;
-      to_index: number;
-    }) => {
+    execute: async (
+      params: {
+        workflow_id: number;
+        from_index: number;
+        to_index: number;
+      },
+      userContext: { userId: string; orgId: string | null }
+    ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Reordering steps:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
 
         // Get latest workflow version (not active - we want most recent edits)
         const { data: currentVersion, error: fetchError } = await getSupabaseClient()
@@ -791,12 +892,16 @@ export function getWorkflowToolDeclarations() {
 /**
  * Execute a workflow editing tool by name
  */
-export async function executeWorkflowTool(name: string, args: any) {
+export async function executeWorkflowTool(
+  name: string,
+  args: any,
+  userContext: { userId: string; orgId: string | null }
+) {
   const tool = serverSideWorkflowTools[name as keyof typeof serverSideWorkflowTools];
   if (!tool) {
     throw new Error(`Unknown workflow tool: ${name}`);
   }
-  return await tool.execute(args);
+  return await tool.execute(args, userContext);
 }
 
 /**
