@@ -833,7 +833,7 @@ function DashboardContent() {
     };
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId]);
+  }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId, organization?.id]);
 
   // Polling for workflows and executions - always poll to catch changes
   useEffect(() => {
