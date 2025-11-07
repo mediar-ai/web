@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, Shield, Building, TestTube, Building2 } from 'lucide-react';
-import { useOrganization, useOrganizationList } from '@clerk/nextjs';
+import { ChevronDown, Shield, Building, TestTube, Building2, Globe } from 'lucide-react';
+import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 
 interface Organization {
   id: string;
@@ -27,10 +27,12 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(!adminStatusCache);
   const [currentViewOrg, setCurrentViewOrg] = useState<string | null>(null);
+  const [isMediarAdmin, setIsMediarAdmin] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const { organization } = useOrganization();
+  const { user } = useUser();
 
   const checkAdminStatus = useCallback(async () => {
     // Check if we have valid cached data
@@ -72,6 +74,16 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
     setCurrentViewOrg(viewOrgId);
   }, [searchParams]);
 
+  // Check if user has @mediar.ai email
+  useEffect(() => {
+    if (user) {
+      const hasMediarEmail = user.emailAddresses?.some(
+        email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+      ) || false;
+      setIsMediarAdmin(hasMediarEmail);
+    }
+  }, [user]);
+
 
   const handleOrgSwitch = (orgId: string | null) => {
     const current = new URLSearchParams(searchParams.toString());
@@ -103,6 +115,10 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
   if (inSidebar && !loading) {
     if (!organization || allUserOrgs.length === 0) return null;
 
+    const isViewingAllOrgs = currentViewOrg === 'ALL';
+    const displayName = isViewingAllOrgs ? 'All Orgs' : organization.name;
+    const DisplayIcon = isViewingAllOrgs ? Globe : Building2;
+
     return (
       <div className="relative">
         <button
@@ -110,13 +126,13 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
           className={`w-full flex items-center gap-2 hover:bg-gray-100 transition-colors rounded p-1 ${
             isCollapsed ? 'justify-center' : ''
           }`}
-          title={isCollapsed ? organization.name : undefined}
+          title={isCollapsed ? displayName : undefined}
         >
-          <Building2 className="w-4 h-4 flex-shrink-0" />
+          <DisplayIcon className="w-4 h-4 flex-shrink-0" />
           {!isCollapsed && (
             <>
               <span className="font-mono text-sm truncate flex-1 text-left">
-                {organization.name}
+                {displayName}
               </span>
               <ChevronDown className="w-4 h-4 flex-shrink-0" />
             </>
@@ -136,10 +152,33 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                 Switch Organization
               </div>
 
+              {/* All Orgs option - only for Mediar admins */}
+              {isMediarAdmin && (
+                <>
+                  <button
+                    onClick={() => {
+                      handleOrgSwitch('ALL');
+                    }}
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-100 transition-colors ${
+                      isViewingAllOrgs ? 'bg-gray-100' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-3 h-3" />
+                      <div className="font-mono text-xs font-bold">
+                        All Orgs
+                      </div>
+                      {isViewingAllOrgs && <span className="ml-auto text-xs">✓</span>}
+                    </div>
+                  </button>
+                  <div className="border-t border-gray-200" />
+                </>
+              )}
+
               {/* All user organizations from Clerk */}
               {allUserOrgs.map(membership => {
                 const org = membership.organization;
-                const isActive = org.id === organization.id;
+                const isActive = org.id === organization.id && !isViewingAllOrgs;
 
                 return (
                   <button
@@ -147,12 +186,20 @@ export function MediarOrgSwitcher({ inSidebar = false, isCollapsed = false }: Me
                     onClick={async () => {
                       if (setActive && !isActive) {
                         setIsOpen(false);
+                        // Clear viewOrgId when switching orgs
+                        const current = new URLSearchParams(searchParams.toString());
+                        current.delete('viewOrgId');
+                        const search = current.toString();
+                        const query = search ? `?${search}` : '';
+
                         await setActive({ organization: org.id });
                         // Only redirect if not already on dashboard
                         if (!window.location.pathname.includes('/dashboard')) {
-                          router.push('/dashboard');
+                          router.push(`/dashboard${query}`);
+                        } else if (query !== window.location.search) {
+                          router.push(`${window.location.pathname}${query}`);
+                          router.refresh();
                         }
-                        // No need to call router.refresh() - the organization change will trigger re-render
                       } else {
                         setIsOpen(false);
                       }

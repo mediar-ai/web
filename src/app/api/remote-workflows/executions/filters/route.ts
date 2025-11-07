@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
     const viewOrgId = searchParams.get('viewOrgId');
 
     // Get effective organization context
-    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(viewOrgId);
+    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(
+      viewOrgId === 'ALL' ? null : viewOrgId
+    );
 
     if (!orgId) {
       return NextResponse.json(
@@ -31,13 +33,15 @@ export async function GET(request: NextRequest) {
 
     console.log('[Filters API] orgId:', orgId, 'isMediarOrg:', isMediarOrg, 'isMediarAdmin:', isMediarAdmin);
 
-    // Mediar org sees all workflows, OR Mediar admin not viewing a specific org
-    if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
+    // Show all workflows if Mediar admin explicitly selected "All Orgs"
+    const showAllWorkflows = isMediarAdmin && viewOrgId === 'ALL';
+
+    if (showAllWorkflows) {
       const { data: allWorkflows } = await supabase
         .from('deployed_workflows')
         .select('id');
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
-      console.log('[Filters API] Mediar/Admin - accessible workflows:', accessibleWorkflowIds.length);
+      console.log('[Filters API] Mediar Admin viewing all orgs - accessible workflows:', accessibleWorkflowIds.length);
     } else {
       // Regular org sees only their workflows and shared workflows
       const { data: ownedWorkflows } = await supabase

@@ -397,7 +397,10 @@ export async function GET(request: NextRequest) {
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
 
     // Get effective organization context
-    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId(viewOrgId);
+    // Don't override orgId if viewing "All Orgs" - keep the user's actual org
+    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId(
+      viewOrgId === 'ALL' ? null : viewOrgId
+    );
 
     if (!orgId) {
       return NextResponse.json(
@@ -422,9 +425,12 @@ export async function GET(request: NextRequest) {
     // First, get workflow IDs this organization has access to
     let accessibleWorkflowIds: number[] = [];
 
-    // Mediar org sees all workflows, OR Mediar admin not viewing a specific org
-    if (isMediarOrg || (isMediarAdmin && !viewOrgId)) {
-      // Mediar sees all workflows
+    // Show all workflows if:
+    // 1. Mediar admin explicitly selected "All Orgs" (viewOrgId === 'ALL')
+    const showAllWorkflows = isMediarAdmin && viewOrgId === 'ALL';
+
+    if (showAllWorkflows) {
+      // Show all workflows from all organizations
       const { data: allWorkflows, error: allError } = await supabase
         .from('deployed_workflows')
         .select('id')
@@ -466,8 +472,8 @@ export async function GET(request: NextRequest) {
       accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds, ...publicIds])];
     }
 
-    if (accessibleWorkflowIds.length === 0 && !(isMediarOrg || (isMediarAdmin && !viewOrgId))) {
-      // No workflows accessible to non-Mediar org (unless Mediar admin in their main context)
+    if (accessibleWorkflowIds.length === 0 && !showAllWorkflows) {
+      // No workflows accessible
       return NextResponse.json({
         success: true,
         workflows: [],
