@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { PageHeader } from '@/components/layouts/PageHeader';
 import { DeleteWorkflowDialog } from '@/components/deployments/DeleteWorkflowDialog';
-import { useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
+import { useOrganizationList, useUser, useAuth, useOrganization } from '@clerk/nextjs';
 import { AlertTriangle, Trash2, Calendar, Activity, Clock } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -18,6 +18,7 @@ function DangerZoneContent() {
   const { user } = useUser();
   const { userId } = useAuth();
   const { userMemberships } = useOrganizationList();
+  const { organization, membership } = useOrganization();
   const posthog = usePostHog();
   const searchParams = useSearchParams();
   const viewOrgId = searchParams.get('viewOrgId');
@@ -38,7 +39,23 @@ function DangerZoneContent() {
   ) || false;
 
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
-  const canDelete = isGlobalAdmin;
+  
+  // Check if user is admin or owner of their current organization
+  const isOrgAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
+  
+  // Allow deletion if user is either a global admin OR an admin/owner of their organization
+  const canDelete = isGlobalAdmin || isOrgAdmin;
+  
+  console.log(`[DangerZone] Permission check:`, {
+    hasMediarEmail,
+    isMemberOfMediarOrg,
+    isGlobalAdmin,
+    orgRole: membership?.role,
+    isOrgAdmin,
+    canDelete,
+    organizationId: organization?.id,
+    organizationName: organization?.name
+  });
 
   // Fetch workflows
   const fetchWorkflows = useCallback(async () => {
@@ -161,12 +178,19 @@ function DangerZoneContent() {
                   <li>• Deleting a workflow removes all execution history and logs</li>
                   <li>• All workflow versions will be permanently deleted</li>
                   <li>• Scheduled executions will be cancelled</li>
-                  <li>• This action requires organization admin privileges</li>
+                  <li>• This action requires organization admin or owner privileges</li>
                 </ul>
                 {!canDelete && (
                   <div className="mt-4 p-3 bg-gray-100 border-2 border-gray-400">
                     <p className="font-mono text-sm font-bold">
-                      You do not have permission to delete workflows. Contact your organization administrator.
+                      You do not have permission to delete workflows.
+                    </p>
+                    <p className="font-mono text-sm text-gray-700 mt-2">
+                      {organization ? (
+                        <>Your current role in &quot;{organization.name}&quot;: {membership?.role?.replace('org:', '').toUpperCase() || 'MEMBER'}. Only organization admins and owners can delete workflows.</>
+                      ) : (
+                        <>Please select an organization or contact your organization administrator.</>
+                      )}
                     </p>
                   </div>
                 )}
