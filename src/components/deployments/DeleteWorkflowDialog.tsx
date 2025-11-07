@@ -2,7 +2,6 @@
 
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -10,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { WorkflowWithSettings } from '@/lib/workflow-types';
@@ -38,8 +38,12 @@ export function DeleteWorkflowDialog({
 
   const handleConfirm = async () => {
     if (workflow && isConfirmationValid) {
+      console.log(`[DeleteWorkflowDialog] Confirming deletion for workflow ${workflow.id} (${workflow.name})`);
       await onConfirm(workflow.id);
       setConfirmationText('');
+      console.log(`[DeleteWorkflowDialog] Deletion completed for workflow ${workflow.id}`);
+    } else {
+      console.warn(`[DeleteWorkflowDialog] Confirmation invalid or no workflow selected`);
     }
   };
 
@@ -126,7 +130,7 @@ export function DeleteWorkflowDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+          <Button
             onClick={handleConfirm}
             disabled={!isConfirmationValid || isDeleting}
             className="bg-black hover:bg-gray-800 focus:ring-black text-white border-2 border-black"
@@ -142,7 +146,7 @@ export function DeleteWorkflowDialog({
                 Archive Workflow
               </div>
             )}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

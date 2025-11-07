@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { auth } from '@clerk/nextjs/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -10,15 +11,19 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// GET /api/machines - List all machines with load information
+// GET /api/machines - List machines the user's organization has access to
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'active';
     const include_load = searchParams.get('include_load') === 'true';
     const region = searchParams.get('region');
+    const show_all = searchParams.get('show_all') === 'true'; // Admin override
 
-    console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}`);
+    // Get authenticated user's organization
+    const { userId: authenticatedUserId, orgId } = await auth();
+
+    console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}, org: ${orgId}`);
 
     // Try to use view first for include_load, fallback to table if view fails
     let machines = null;
@@ -75,18 +80,41 @@ export async function GET(request: NextRequest) {
       throw new Error(`Database query failed: ${error.message}`);
     }
 
+    // Filter machines by organization access (unless show_all is true for admins)
+    let accessibleMachines = machines || [];
+
+    if (!show_all && orgId) {
+      // Filter to only machines the organization has access to
+      const filteredMachines = [];
+
+      for (const machine of accessibleMachines) {
+        // Check if organization has access to this machine
+        const { data: hasAccess } = await supabase.rpc('check_machine_access', {
+          p_machine_id: machine.id,
+          p_organization_id: orgId
+        });
+
+        if (hasAccess) {
+          filteredMachines.push(machine);
+        }
+      }
+
+      accessibleMachines = filteredMachines;
+      console.log(`📋 Filtered to ${accessibleMachines.length} accessible machines for org ${orgId}`);
+    }
+
     // Get machine assignments summary if requested
     let assignmentsSummary = null;
     if (include_load) {
       const { data: assignments } = await supabase
         .from('workflow_machine_summary')
         .select('*');
-      
+
       assignmentsSummary = assignments || [];
     }
 
     // Format response
-    const formattedMachines = (machines || []).map(machine => ({
+    const formattedMachines = accessibleMachines.map(machine => ({
       id: machine.id,
       name: machine.name,
       description: machine.description,
@@ -95,6 +123,7 @@ export async function GET(request: NextRequest) {
       health_status: machine.health_status,
       region: machine.region,
       tags: machine.tags,
+      is_global: machine.is_global, // Include global flag for UI display
 
       // Connection details
       endpoints: {

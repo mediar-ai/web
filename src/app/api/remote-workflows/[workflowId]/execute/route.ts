@@ -273,7 +273,7 @@ export async function POST(
     }
 
     const execution_params = body.parameters;
-    const preferred_machine_id = Number.isFinite(body.machine_id)
+    const user_selected_machine_id = Number.isFinite(body.machine_id)
       ? (body.machine_id as number)
       : undefined;
     const client_id = body.client_id || `web-${Date.now()}`;
@@ -364,7 +364,9 @@ export async function POST(
         );
       }
     } else {
-      console.log('[AUTH] Skipping user authorization checks for cron execution');
+      console.log('[AUTH] Cron execution - will validate machine access later');
+      // Note: We still need to validate machine access for cron executions
+      // This will be done after machine assignment
     }
 
     if (workflow.status !== 'deployed') {
@@ -447,17 +449,17 @@ export async function POST(
     let mcp_endpoint: string | undefined = undefined;
 
     // If client selected a specific machine/cluster, honor it
-    if (preferred_machine_id) {
+    if (user_selected_machine_id) {
       const { data: machine, error: machineErr } = await supabase
         .from('remote_machines')
         .select('id, mcp_endpoint, name, status')
-        .eq('id', preferred_machine_id)
+        .eq('id', user_selected_machine_id)
         .single();
       if (!machineErr && machine) {
         // Validate machine status before allowing execution
         if (machine.status !== 'active') {
           console.error(
-            `[ERROR] User attempted to select inactive machine ${preferred_machine_id}: status=${machine.status}`
+            `[ERROR] User attempted to select inactive machine ${user_selected_machine_id}: status=${machine.status}`
           );
           return NextResponse.json(
             {
@@ -472,13 +474,13 @@ export async function POST(
         
         assigned_machine_id = machine.id;
         mcp_endpoint = machine.mcp_endpoint;
-        assignment_reason = `User-selected machine (ID: ${preferred_machine_id})`;
+        assignment_reason = `User-selected machine (ID: ${user_selected_machine_id})`;
         console.log(`[SUCCESS] User-selected machine validated: ${machine.name} (status: ${machine.status})`);
       } else {
         return NextResponse.json(
           {
             success: false,
-            error: `Machine ${preferred_machine_id} not found`,
+            error: `Machine ${user_selected_machine_id} not found`,
           },
           { status: 400 }
         );
@@ -578,7 +580,7 @@ export async function POST(
                 reason:
                   'Exclusive machine is either inactive or at maximum capacity',
                 suggestion:
-                  'Please wait for the exclusive machine to become available, or change the assignment type to "preferred" to allow fallback',
+                  'Please wait for the exclusive machine to become available, or remove the exclusive assignment to allow auto-assignment',
               },
               execution_id: null,
             },
@@ -619,6 +621,57 @@ export async function POST(
         { error: 'No available machine endpoint' },
         { status: 503 }
       );
+    }
+
+    // SECURITY: Validate machine access for the workflow's organization
+    // This is critical for cron executions which bypass user auth checks
+    const { data: workflowOrg } = await supabase
+      .from('deployed_workflows')
+      .select('organization_id')
+      .eq('id', workflowIdNum)
+      .single();
+
+    const workflowOrgId = workflowOrg?.organization_id;
+
+    if (workflowOrgId) {
+      // Check if the organization has access to the assigned machine
+      const { data: hasAccess } = await supabase.rpc('check_machine_access', {
+        p_machine_id: assigned_machine_id,
+        p_organization_id: workflowOrgId
+      });
+
+      if (!hasAccess) {
+        console.error(
+          `[SECURITY] Organization ${workflowOrgId} does not have access to machine ${assigned_machine_id} for workflow ${workflowIdNum}`
+        );
+
+        // Try to find an alternative machine the org has access to
+        const { data: alternativeMachine } = await supabase
+          .from('available_machines_with_load')
+          .select('id, name, mcp_endpoint')
+          .eq('status', 'active')
+          .gt('available_capacity', 0)
+          .order('load_percentage')
+          .limit(1);
+
+        if (!alternativeMachine || alternativeMachine.length === 0) {
+          return NextResponse.json(
+            {
+              error: `Organization ${workflowOrgId} does not have access to machine ${assigned_machine_id}`,
+              details: 'No alternative machines available for this organization'
+            },
+            { status: 403 }
+          );
+        }
+
+        // Use the alternative machine
+        console.log(
+          `[INFO] Switching to alternative machine ${alternativeMachine[0].id} that org ${workflowOrgId} has access to`
+        );
+        assigned_machine_id = alternativeMachine[0].id;
+        mcp_endpoint = alternativeMachine[0].mcp_endpoint;
+        assignment_reason = 'Organization-accessible fallback machine';
+      }
     }
 
     console.log(

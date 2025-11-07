@@ -75,12 +75,16 @@ function DangerZoneContent() {
 
   // Handle delete workflow
   const handleDeleteWorkflow = async (workflowId: number) => {
+    console.log(`[DangerZone] handleDeleteWorkflow called for workflow ID: ${workflowId}`);
+    
     if (!canDelete) {
+      console.warn(`[DangerZone] Delete permission denied for workflow ${workflowId}`);
       toast.error('You do not have permission to delete workflows');
       return;
     }
 
     setIsDeleting(true);
+    console.log(`[DangerZone] Starting deletion process for workflow ${workflowId}`);
 
     try {
       posthog?.capture('danger_zone_delete_workflow', {
@@ -88,18 +92,22 @@ function DangerZoneContent() {
         timestamp: new Date().toISOString(),
       });
 
+      console.log(`[DangerZone] Sending DELETE request to /api/remote-workflows/${workflowId}`);
       const response = await fetch(`/api/remote-workflows/${workflowId}`, {
         method: 'DELETE',
       });
 
       const result = await response.json();
+      console.log(`[DangerZone] DELETE response:`, { status: response.status, result });
+      
       if (result.success) {
+        console.log(`[DangerZone] Workflow ${workflowId} deleted successfully, refreshing workflow list`);
         toast.success('Workflow deleted successfully');
         setDeleteDialogOpen(false);
         setSelectedWorkflow(null);
         fetchWorkflows();
       } else {
-        console.error('Failed to delete workflow:', result.error);
+        console.error('[DangerZone] Failed to delete workflow:', result.error);
         if (response.status === 403) {
           toast.error('This action requires organization admin privileges');
         } else {
@@ -107,9 +115,10 @@ function DangerZoneContent() {
         }
       }
     } catch (error) {
-      console.error('Error deleting workflow:', error);
+      console.error('[DangerZone] Error deleting workflow:', error);
       toast.error('Error deleting workflow');
     } finally {
+      console.log(`[DangerZone] Deletion process completed for workflow ${workflowId}, setting isDeleting=false`);
       setIsDeleting(false);
     }
   };
