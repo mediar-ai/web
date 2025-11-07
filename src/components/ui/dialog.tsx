@@ -9,6 +9,25 @@ import { cn } from "@/lib/utils"
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  const [scrollPosition, setScrollPosition] = React.useState(0);
+
+  // Save scroll position when dialog opens
+  React.useEffect(() => {
+    if (props.open) {
+      setScrollPosition(window.scrollY);
+    }
+  }, [props.open]);
+
+  // Restore scroll position when dialog closes
+  React.useEffect(() => {
+    if (!props.open && scrollPosition > 0) {
+      // Use setTimeout to ensure restoration happens after Radix UI cleanup
+      setTimeout(() => {
+        window.scrollTo(0, scrollPosition);
+      }, 0);
+    }
+  }, [props.open, scrollPosition]);
+
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
