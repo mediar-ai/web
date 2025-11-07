@@ -177,6 +177,11 @@ export async function GET(
       name: loadedWorkflow.name,
       status: status,
 
+      // Permission/Ownership Information
+      created_by: workflowOwnership.created_by,
+      organization_id: workflowOwnership.organization_id,
+      is_shared: isGloballyPublic,
+
       // Source information
       source: loadedWorkflow.metadata.source,
       ...(loadedWorkflow.metadata.github_path && {
