@@ -9,7 +9,14 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [sidebarWidth, setSidebarWidth] = useState('ml-64');
+  // Initialize with correct state from localStorage to prevent flicker
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+      return isCollapsed ? 'ml-16' : 'ml-64';
+    }
+    return 'ml-64';
+  });
   const [isMounted, setIsMounted] = useState(false);
   const { orgId, userId } = useAuth();
   const { userMemberships, setActive, isLoaded } = useOrganizationList({
@@ -75,8 +82,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       setSidebarWidth(isCollapsed ? 'ml-16' : 'ml-64');
     };
 
-    // Check initial state
-    checkSidebarState();
+    // Don't check initial state - already initialized correctly
 
     // Listen for storage events from other tabs
     window.addEventListener('storage', checkSidebarState);
