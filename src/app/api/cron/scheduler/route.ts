@@ -17,6 +17,7 @@ const supabase = createClient(
 interface ScheduledWorkflow {
   id: number;
   name: string;
+  organization_id?: string | null;
   cron_expression: string;
   cron_timezone: string;
   cron_enabled: boolean;
