@@ -223,7 +223,7 @@ async function handleVertexChat(params: {
   generationConfig?: { temperature?: number; maxOutputTokens?: number };
 }): Promise<{
   text: string;
-  toolCalls: Array<{ name: string; args: Record<string, any> }>;
+  toolCalls: Array<{ name: string; args: Record<string, any>; id?: string }>;
   finishReason: 'stop' | 'tool_calls';
   metrics: { elapsedMs: number; tokens?: any };
 }> {
@@ -1113,7 +1113,7 @@ export async function POST(request: NextRequest) {
           functionCall: {
             name: tc.name,
             args: tc.args,
-            // ...(tc.id && { id: tc.id })  // TODO: Preserve ID for Anthropic multi-turn support - needs type update
+            ...(tc.id && { id: tc.id })  // Preserve ID for Anthropic multi-turn support
           },
         });
       });
