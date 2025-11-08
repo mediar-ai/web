@@ -67,6 +67,7 @@ interface SessionData {
   history: VertexMessage[];
   provider?: 'vertex' | 'anthropic'; // Track which provider is being used
   system?: string;
+  tools?: FunctionDeclaration[]; // Cached tool declarations from Turn 1 (client MCP tools + server tools)
   model: AllowedModel;
   createdAt: string;
   updatedAt: string;
@@ -392,6 +393,7 @@ export async function POST(request: NextRequest) {
     let actualSessionId = sessionId;
     let sessionSystem = system;
     let sessionModel: AllowedModel = model;
+    let cachedTools: FunctionDeclaration[] | undefined = undefined;
 
     if (sessionId) {
       const sessionData = await loadSession(sessionId);
@@ -400,7 +402,8 @@ export async function POST(request: NextRequest) {
         history = sessionData.history;
         sessionSystem = sessionData.system || system;
         sessionModel = sessionData.model;
-        console.log(`[AI API] Using KV session ${sessionId} with ${history.length} history message(s)`);
+        cachedTools = sessionData.tools; // Retrieve cached tools from Turn 1
+        console.log(`[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}`);
       } else {
         console.log(`[AI API] Session ${sessionId} not found in KV, starting fresh`);
       }
@@ -416,13 +419,22 @@ export async function POST(request: NextRequest) {
       console.log(`[AI API] 🤖 Calling Anthropic with model ${sessionModel}`);
 
       // Merge client tools with server-side tools (same as Vertex)
-      const clientTools = tools || [];
-      const knowledgeToolDecls = getKnowledgeToolDeclarations();
-      const workflowToolDecls = getWorkflowToolDeclarations();
-      const serverToolDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
-      const allTools = [...clientTools, ...serverToolDeclarations];
-
-      console.log(`🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+      // Use cached tools if available (Turn 2+), otherwise merge fresh (Turn 1)
+      let allTools: Array<{ name: string; description?: string; parameters?: JSONSchema }>;
+      
+      if (cachedTools && cachedTools.length > 0) {
+        // Turn 2+: Use cached tools from session
+        allTools = cachedTools as any;
+        console.log(`🔄 Using ${cachedTools.length} cached tools from session`);
+      } else {
+        // Turn 1: Merge client tools with server-side tools
+        const clientTools = tools || [];
+        const knowledgeToolDecls = getKnowledgeToolDeclarations();
+        const workflowToolDecls = getWorkflowToolDeclarations();
+        const serverToolDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
+        allTools = [...clientTools, ...serverToolDeclarations];
+        console.log(`🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+      }
 
       const anthropicRequest: AIProviderRequest = {
         model: sessionModel,
@@ -585,6 +597,7 @@ export async function POST(request: NextRequest) {
               history: finalHistory,
               provider,
               system: sessionSystem,
+              tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
               model: sessionModel,
               createdAt: sessionId
                 ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
@@ -667,6 +680,7 @@ export async function POST(request: NextRequest) {
           history: updatedHistory,
           provider,
           system: sessionSystem,
+          tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
           model: sessionModel,
           createdAt: sessionId
             ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
@@ -684,13 +698,22 @@ export async function POST(request: NextRequest) {
 
     // Vertex AI provider path
     // Merge client tools with server-side tools
-    const clientFunctionDeclarations = toFunctionDeclarations(tools);
-    const knowledgeToolDecls = getKnowledgeToolDeclarations();
-    const workflowToolDecls = getWorkflowToolDeclarations();
-    const serverFunctionDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
-    const functionDeclarations = [...clientFunctionDeclarations, ...serverFunctionDeclarations];
-
-    console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+    // Use cached tools if available (Turn 2+), otherwise merge fresh (Turn 1)
+    let functionDeclarations: FunctionDeclaration[];
+    
+    if (cachedTools && cachedTools.length > 0) {
+      // Turn 2+: Use cached tools from session
+      functionDeclarations = cachedTools;
+      console.log(`🔄 Using ${cachedTools.length} cached tools from session`);
+    } else {
+      // Turn 1: Merge client tools with server-side tools
+      const clientFunctionDeclarations = toFunctionDeclarations(tools);
+      const knowledgeToolDecls = getKnowledgeToolDeclarations();
+      const workflowToolDecls = getWorkflowToolDeclarations();
+      const serverFunctionDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
+      functionDeclarations = [...clientFunctionDeclarations, ...serverFunctionDeclarations];
+      console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+    }
 
     // Initialize Vertex client
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
@@ -1022,6 +1045,7 @@ export async function POST(request: NextRequest) {
             history: finalHistory,
             provider,
             system: sessionSystem,
+            tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
             model: sessionModel,
             createdAt: sessionId
               ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
@@ -1108,6 +1132,7 @@ export async function POST(request: NextRequest) {
         history: updatedHistory,
         provider,
         system: sessionSystem,
+        tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
         model: sessionModel,
         createdAt: sessionId
           ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
