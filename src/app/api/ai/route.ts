@@ -1113,7 +1113,7 @@ export async function POST(request: NextRequest) {
           functionCall: {
             name: tc.name,
             args: tc.args,
-            ...(tc.id && { id: tc.id })  // Preserve ID for Anthropic multi-turn support
+            // ...(tc.id && { id: tc.id })  // TODO: Preserve ID for Anthropic multi-turn support - needs type update
           },
         });
       });
