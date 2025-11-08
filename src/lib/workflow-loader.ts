@@ -1,5 +1,6 @@
 /**
- * Unified workflow loader that fetches from GitHub with Supabase fallback
+ * Unified workflow loader that fetches from Supabase (source of truth)
+ * GitHub sync happens separately via API routes to keep versions in sync
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -12,8 +13,6 @@ export interface LoadedWorkflow {
   automation_sequence: any;
   metadata: {
     source:
-      | 'github'
-      | 'supabase'
       | 'supabase_latest_version'
       | 'supabase_active_fallback'
       | 'supabase_view_fallback';
@@ -36,7 +35,8 @@ export class WorkflowLoader {
   }
 
   /**
-   * Load workflow with GitHub priority, fallback to Supabase
+   * Load workflow from Supabase (latest version)
+   * GitHub sync happens separately, so we always use Supabase as source of truth
    */
   async loadWorkflow(workflowId: number): Promise<LoadedWorkflow | null> {
     try {
@@ -52,41 +52,8 @@ export class WorkflowLoader {
         return null;
       }
 
-      // Try to load from GitHub if path exists
-      if (workflow.github_path) {
-        console.log(
-          `Loading workflow ${workflowId} from GitHub: ${workflow.github_path}`
-        );
-
-        const githubContent = await githubWorkflowManager.getWorkflow(
-          workflow.github_path,
-          workflow.github_ref
-        );
-
-        if (githubContent) {
-          try {
-            // Parse YAML to JSON
-            const automationSequence = yaml.load(githubContent.yaml);
-
-            return {
-              id: workflow.id,
-              name: workflow.name,
-              automation_sequence: automationSequence,
-              metadata: {
-                source: 'github',
-                github_path: workflow.github_path,
-                github_sha: githubContent.metadata.sha,
-                last_synced: workflow.github_last_synced_at,
-              },
-            };
-          } catch (parseError) {
-            console.error('Error parsing YAML from GitHub:', parseError);
-            // Fall through to Supabase fallback
-          }
-        }
-      }
-
-      // Fallback to Supabase - FETCH LATEST VERSION (not active)
+      // Always load from Supabase - it's the source of truth
+      // GitHub sync ensures Supabase has the latest version
       console.log(
         `Loading workflow ${workflowId} from Supabase - fetching latest version`
       );
@@ -209,33 +176,19 @@ export class WorkflowLoader {
 
     const files: Record<string, string> = {};
 
-    // If loaded from GitHub, also fetch associated files
-    if (
-      workflow.metadata.source === 'github' &&
-      workflow.metadata.github_path
-    ) {
-      // Just load the main workflow file for now
-      const result = await githubWorkflowManager.getWorkflow(
-        workflow.metadata.github_path
-      );
-      if (result) {
-        files['workflow.yaml'] = result.yaml;
-      }
-    } else {
-      // Try to load files from Supabase storage if they exist
-      try {
-        const { data: fileRecords } = await this.supabase
-          .from('workflow_files')
-          .select('file_path, storage_path')
-          .eq('workflow_id', workflowId);
+    // Try to load files from Supabase storage if they exist
+    try {
+      const { data: fileRecords } = await this.supabase
+        .from('workflow_files')
+        .select('file_path, storage_path')
+        .eq('workflow_id', workflowId);
 
-        if (fileRecords && fileRecords.length > 0) {
-          // Would need to fetch from storage, but keeping simple for now
-          console.log(`Found ${fileRecords.length} files in Supabase storage`);
-        }
-      } catch (error) {
-        console.error('Error loading workflow files:', error);
+      if (fileRecords && fileRecords.length > 0) {
+        // Would need to fetch from storage, but keeping simple for now
+        console.log(`Found ${fileRecords.length} files in Supabase storage`);
       }
+    } catch (error) {
+      console.error('Error loading workflow files:', error);
     }
 
     return { workflow, files };
@@ -285,9 +238,26 @@ export class WorkflowLoader {
    */
   async syncFromGitHub(workflowId: number): Promise<boolean> {
     try {
-      const workflow = await this.loadWorkflow(workflowId);
+      // Get workflow metadata to check if it has a GitHub path
+      const { data: workflowMeta } = await this.supabase
+        .from('deployed_workflows')
+        .select('github_path, github_ref')
+        .eq('id', workflowId)
+        .single();
 
-      if (!workflow || workflow.metadata.source !== 'github') {
+      if (!workflowMeta || !workflowMeta.github_path) {
+        console.log(`Workflow ${workflowId} has no GitHub path`);
+        return false;
+      }
+
+      // Fetch from GitHub
+      const githubContent = await githubWorkflowManager.getWorkflow(
+        workflowMeta.github_path,
+        workflowMeta.github_ref
+      );
+
+      if (!githubContent) {
+        console.error(`Failed to fetch workflow ${workflowId} from GitHub`);
         return false;
       }
 
@@ -295,7 +265,7 @@ export class WorkflowLoader {
       const { error } = await this.supabase
         .from('deployed_workflows')
         .update({
-          github_sha: workflow.metadata.github_sha,
+          github_sha: githubContent.metadata.sha,
           github_sync_status: 'synced',
           github_last_synced_at: new Date().toISOString(),
         })
@@ -310,8 +280,8 @@ export class WorkflowLoader {
       await this.supabase.from('github_workflow_sync_log').insert({
         workflow_id: workflowId,
         operation: 'pull',
-        github_path: workflow.metadata.github_path,
-        github_sha: workflow.metadata.github_sha,
+        github_path: workflowMeta.github_path,
+        github_sha: githubContent.metadata.sha,
         status: 'success',
       });
 
