@@ -316,8 +316,9 @@ export const serverSideWorkflowTools = {
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            automation_sequence: parsed,
-            version: result.version?.version_number
+            yaml_content: newYamlContent,
+            step_count: steps.length,
+            last_modified: new Date().toISOString()
           }
         };
       } catch (error) {
@@ -422,8 +423,9 @@ export const serverSideWorkflowTools = {
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            automation_sequence: parsed,
-            version: result.version?.version_number
+            yaml_content: newYamlContent,
+            step_count: steps.length,
+            last_modified: new Date().toISOString()
           }
         };
       } catch (error) {
@@ -511,8 +513,9 @@ export const serverSideWorkflowTools = {
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            automation_sequence: parsed,
-            version: result.version?.version_number
+            yaml_content: newYamlContent,
+            step_count: steps.length,
+            last_modified: new Date().toISOString()
           }
         };
       } catch (error) {
@@ -704,7 +707,7 @@ export const serverSideWorkflowTools = {
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            automation_sequence: parsed,
+            yaml_content: newYamlContent,
             step_count: steps.length,
             last_modified: new Date().toISOString()
           }
