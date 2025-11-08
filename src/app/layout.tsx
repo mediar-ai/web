@@ -1,5 +1,5 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
@@ -21,19 +21,20 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Mediar dashboard",
-  description: "AI-powered desktop automation for browser workflows and data entry",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://mediar.ai'),
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#000000' }
   ],
+};
+
+export const metadata: Metadata = {
+  title: "Mediar dashboard",
+  description: "AI-powered desktop automation for browser workflows and data entry",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://mediar.ai'),
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
