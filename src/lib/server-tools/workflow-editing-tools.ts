@@ -1,31 +1,14 @@
 /**
- * Server-side workflow editing tools that execute directly on the backend
- * No round-trip to client needed - direct database access
+ * Server-side workflow editing tools that call API routes
+ * Ensures GitHub sync happens automatically for all modifications
  *
- * These tools mirror the client-side workflow editing tools but execute
- * server-side during AI processing to eliminate unnecessary API roundtrips.
+ * These tools wrap the existing API routes to ensure all workflow
+ * modifications go through the same code path with proper GitHub sync.
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { SchemaType } from '@google-cloud/vertexai';
 import * as yaml from 'js-yaml';
-
-// Lazy-load Supabase client to avoid initialization errors
-let supabaseClient: ReturnType<typeof createClient> | null = null;
-
-function getSupabaseClient() {
-  if (!supabaseClient) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!url || !key) {
-      throw new Error('Missing Supabase environment variables');
-    }
-
-    supabaseClient = createClient(url, key);
-  }
-  return supabaseClient;
-}
+import { InternalAPIClient } from './internal-api-client';
 
 // Types matching the client-side workflow schema
 interface CommandStep {
@@ -60,12 +43,19 @@ interface StepUpdate {
 
 /**
  * Check if user is authorized to modify a workflow
+ * Note: The API route will also do authorization, but we check here first
+ * to provide better error messages
  */
 async function checkWorkflowAuthorization(
   workflowId: number,
   userContext: { userId: string; orgId: string | null }
 ): Promise<void> {
-  const supabase = getSupabaseClient();
+  // Import Supabase only for authorization check
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   // Get workflow ownership and organization
   const { data: workflow, error } = await supabase
@@ -280,24 +270,17 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
-        const content = (currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
+        const content = currentVersion.yamlContent ||
+                       JSON.stringify(currentVersion.jsonContent || {});
 
-        const { parsed, isYaml } = parseWorkflowContent(content);
+        const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
 
         const stepIndex = findStepIndex(steps, params.step_identifier);
@@ -309,58 +292,29 @@ export const serverSideWorkflowTools = {
         steps[stepIndex] = { ...steps[stepIndex], ...params.updates };
         setSteps(parsed, steps);
 
-        // Convert back to string
-        const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
+        // Convert back to YAML (always use YAML for GitHub sync)
+        const newYamlContent = yaml.dump(parsed);
 
-        // Increment version number from current latest
-        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
-          .rpc('increment_version', { version_text: currentVersion.version_number });
+        // Create new version through API route (ensures GitHub sync)
+        const result = await apiClient.createWorkflowVersion(
+          params.workflow_id,
+          newYamlContent,
+          `Updated step: ${params.step_identifier}`,
+          false // Don't auto-activate
+        );
 
-        if (incrementError || !nextVersion) {
-          throw new Error(`Failed to increment version: ${incrementError?.message}`);
-        }
-
-        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
-
-        // Create new version (as draft - not auto-activated)
-        const { data: newVersion, error: versionError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .insert({
-            workflow_id: params.workflow_id,
-            version_number: nextVersion,
-            automation_sequence_yaml: isYaml ? newContent : null,
-            automation_sequence: parsed,
-            preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: false,
-            change_notes: `Updated step: ${params.step_identifier}`
-          })
-          .select()
-          .single();
-
-        if (versionError) {
-          throw new Error(`Failed to save workflow version: ${versionError.message}`);
-        }
-
-        // Deactivate previous version
-        await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .update({ is_active: false })
-          .eq('workflow_id', params.workflow_id)
-          .neq('id', newVersion.id);
-
-        console.log('[SERVER-WORKFLOW-EDIT] Step updated successfully');
+        console.log('[SERVER-WORKFLOW-EDIT] Step updated successfully, version:', result.version?.version_number);
 
         return {
           action: 'updated',
           step: params.step_identifier,
           changes: params.updates,
-          version_id: newVersion.id,
+          version_id: result.version?.id,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            yaml_content: newContent,
-            step_count: steps.length,
-            last_modified: new Date().toISOString()
+            automation_sequence: parsed,
+            version: result.version?.version_number
           }
         };
       } catch (error) {
@@ -418,24 +372,17 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
-        const content = (currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
+        const content = currentVersion.yamlContent ||
+                       JSON.stringify(currentVersion.jsonContent || {});
 
-        const { parsed, isYaml } = parseWorkflowContent(content);
+        const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
 
         // Add the new step
@@ -448,58 +395,29 @@ export const serverSideWorkflowTools = {
 
         setSteps(parsed, steps);
 
-        // Convert back to string
-        const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
+        // Convert back to YAML (always use YAML for GitHub sync)
+        const newYamlContent = yaml.dump(parsed);
 
-        // Increment version number from current latest
-        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
-          .rpc('increment_version', { version_text: currentVersion.version_number });
+        // Create new version through API route (ensures GitHub sync)
+        const result = await apiClient.createWorkflowVersion(
+          params.workflow_id,
+          newYamlContent,
+          `Added step: ${params.step.name || 'unnamed'}`,
+          false // Don't auto-activate
+        );
 
-        if (incrementError || !nextVersion) {
-          throw new Error(`Failed to increment version: ${incrementError?.message}`);
-        }
-
-        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
-
-        // Create new version (as draft - not auto-activated)
-        const { data: newVersion, error: versionError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .insert({
-            workflow_id: params.workflow_id,
-            version_number: nextVersion,
-            automation_sequence_yaml: isYaml ? newContent : null,
-            automation_sequence: parsed,
-            preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: false,
-            change_notes: `Added step: ${params.step.name}`
-          })
-          .select()
-          .single();
-
-        if (versionError) {
-          throw new Error(`Failed to save workflow version: ${versionError.message}`);
-        }
-
-        // Deactivate previous version
-        await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .update({ is_active: false })
-          .eq('workflow_id', params.workflow_id)
-          .neq('id', newVersion.id);
-
-        console.log('[SERVER-WORKFLOW-EDIT] Step added successfully');
+        console.log('[SERVER-WORKFLOW-EDIT] Step added successfully, version:', result.version?.version_number);
 
         return {
           action: 'added',
           step_name: params.step.name,
           position: params.position ?? 'end',
-          version_id: newVersion.id,
+          version_id: result.version?.id,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            yaml_content: newContent,
-            step_count: steps.length,
-            last_modified: new Date().toISOString()
+            automation_sequence: parsed,
+            version: result.version?.version_number
           }
         };
       } catch (error) {
@@ -541,24 +459,17 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
-        const content = (currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
+        const content = currentVersion.yamlContent ||
+                       JSON.stringify(currentVersion.jsonContent || {});
 
-        const { parsed, isYaml } = parseWorkflowContent(content);
+        const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
 
         const stepIndex = findStepIndex(steps, params.step_identifier);
@@ -571,57 +482,28 @@ export const serverSideWorkflowTools = {
         steps.splice(stepIndex, 1);
         setSteps(parsed, steps);
 
-        // Convert back to string
-        const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
+        // Convert back to YAML (always use YAML for GitHub sync)
+        const newYamlContent = yaml.dump(parsed);
 
-        // Increment version number from current latest
-        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
-          .rpc('increment_version', { version_text: currentVersion.version_number });
+        // Create new version through API route (ensures GitHub sync)
+        const result = await apiClient.createWorkflowVersion(
+          params.workflow_id,
+          newYamlContent,
+          `Removed step: ${removedStep.name || params.step_identifier}`,
+          false // Don't auto-activate
+        );
 
-        if (incrementError || !nextVersion) {
-          throw new Error(`Failed to increment version: ${incrementError?.message}`);
-        }
-
-        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
-
-        // Create new version (as draft - not auto-activated)
-        const { data: newVersion, error: versionError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .insert({
-            workflow_id: params.workflow_id,
-            version_number: nextVersion,
-            automation_sequence_yaml: isYaml ? newContent : null,
-            automation_sequence: parsed,
-            preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: false,
-            change_notes: `Removed step: ${removedStep.name || params.step_identifier}`
-          })
-          .select()
-          .single();
-
-        if (versionError) {
-          throw new Error(`Failed to save workflow version: ${versionError.message}`);
-        }
-
-        // Deactivate previous version
-        await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .update({ is_active: false })
-          .eq('workflow_id', params.workflow_id)
-          .neq('id', newVersion.id);
-
-        console.log('[SERVER-WORKFLOW-EDIT] Step removed successfully');
+        console.log('[SERVER-WORKFLOW-EDIT] Step removed successfully, version:', result.version?.version_number);
 
         return {
           action: 'removed',
           step: params.step_identifier,
-          version_id: newVersion.id,
+          version_id: result.version?.id,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            yaml_content: newContent,
-            step_count: steps.length,
-            last_modified: new Date().toISOString()
+            automation_sequence: parsed,
+            version: result.version?.version_number
           }
         };
       } catch (error) {
@@ -656,24 +538,17 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Return YAML if available, otherwise convert JSON to YAML
-        const content = currentVersion.automation_sequence_yaml ||
-                       yaml.dump(currentVersion.automation_sequence);
+        const content = currentVersion.yamlContent ||
+                       yaml.dump(currentVersion.jsonContent);
 
-        return { content, version_number: currentVersion.version_number };
+        return { content, version_number: currentVersion.versionNumber };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
         throw error;
@@ -713,22 +588,15 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
-        const content = (currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
+        const content = currentVersion.yamlContent ||
+                       JSON.stringify(currentVersion.jsonContent || {});
 
         const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
@@ -786,24 +654,17 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Get latest workflow version (not active - we want most recent edits)
-        const { data: currentVersion, error: fetchError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml, automation_sequence, version_number')
-          .eq('workflow_id', params.workflow_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        // Create API client with user context
+        const apiClient = new InternalAPIClient(userContext);
 
-        if (fetchError || !currentVersion) {
-          throw new Error(`Workflow ${params.workflow_id} not found or no versions`);
-        }
+        // Get latest workflow version
+        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
-        const content = (currentVersion.automation_sequence_yaml ||
-                       JSON.stringify(currentVersion.automation_sequence || {})) as string;
+        const content = currentVersion.yamlContent ||
+                       JSON.stringify(currentVersion.jsonContent || {});
 
-        const { parsed, isYaml } = parseWorkflowContent(content);
+        const { parsed } = parseWorkflowContent(content);
         const steps = getSteps(parsed);
 
         if (params.from_index < 0 || params.from_index >= steps.length ||
@@ -816,56 +677,28 @@ export const serverSideWorkflowTools = {
         steps.splice(params.to_index, 0, movedStep);
         setSteps(parsed, steps);
 
-        // Convert back to string
-        const newContent = isYaml ? yaml.dump(parsed) : JSON.stringify(parsed, null, 2);
+        // Convert back to YAML (always use YAML for GitHub sync)
+        const newYamlContent = yaml.dump(parsed);
 
-        // Increment version number from current latest
-        const { data: nextVersion, error: incrementError } = await getSupabaseClient()
-          .rpc('increment_version', { version_text: currentVersion.version_number });
+        // Create new version through API route (ensures GitHub sync)
+        const result = await apiClient.createWorkflowVersion(
+          params.workflow_id,
+          newYamlContent,
+          `Reordered steps: moved from ${params.from_index} to ${params.to_index}`,
+          false // Don't auto-activate
+        );
 
-        if (incrementError || !nextVersion) {
-          throw new Error(`Failed to increment version: ${incrementError?.message}`);
-        }
-
-        console.log(`[SERVER-WORKFLOW-EDIT] Creating version ${nextVersion} (from ${currentVersion.version_number})`);
-
-        // Create new version (as draft - not auto-activated)
-        const { data: newVersion, error: versionError } = await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .insert({
-            workflow_id: params.workflow_id,
-            version_number: nextVersion,
-            automation_sequence_yaml: isYaml ? newContent : null,
-            automation_sequence: parsed,
-            preferred_format: isYaml ? 'yaml' : 'jsonb',
-            is_active: false,
-            change_notes: `Reordered steps: moved from ${params.from_index} to ${params.to_index}`
-          })
-          .select()
-          .single();
-
-        if (versionError) {
-          throw new Error(`Failed to save workflow version: ${versionError.message}`);
-        }
-
-        // Deactivate previous version
-        await getSupabaseClient()
-          .from('deployed_workflow_versions')
-          .update({ is_active: false })
-          .eq('workflow_id', params.workflow_id)
-          .neq('id', newVersion.id);
-
-        console.log('[SERVER-WORKFLOW-EDIT] Steps reordered successfully');
+        console.log('[SERVER-WORKFLOW-EDIT] Steps reordered successfully, version:', result.version?.version_number);
 
         return {
           action: 'reordered',
           from: params.from_index,
           to: params.to_index,
-          version_id: newVersion.id,
+          version_id: result.version?.id,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
-            yaml_content: newContent,
+            automation_sequence: parsed,
             step_count: steps.length,
             last_modified: new Date().toISOString()
           }
