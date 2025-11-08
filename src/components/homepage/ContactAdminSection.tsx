@@ -90,8 +90,8 @@ export default function ContactAdminSection({
     posthog?.capture('desktop_app_download_clicked', {
       user_id: userId,
       download_url:
-        'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/nsis-x86_64',
-      platform: 'windows',
+        'https://web.crabnebula.cloud/mediar/mediar/releases',
+      platform: 'all',
       source: 'homepage',
       timestamp: new Date().toISOString(),
     });
@@ -195,12 +195,13 @@ export default function ContactAdminSection({
                     Build automated workflows
                   </p>
                   <a
-                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/nsis-x86_64"
-                    download
+                    href="https://web.crabnebula.cloud/mediar/mediar/releases"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     onClick={handleDownloadClick}
                   >
                     <Button className="w-full bg-black text-white hover:bg-gray-800">
-                      DOWNLOAD APP (Windows)
+                      DOWNLOAD APP
                     </Button>
                   </a>
                 </div>
