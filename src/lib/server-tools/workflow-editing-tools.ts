@@ -48,7 +48,7 @@ interface StepUpdate {
  */
 async function checkWorkflowAuthorization(
   workflowId: number,
-  userContext: { userId: string; orgId: string | null }
+  userContext: { userId: string; orgId: string | null; email?: string | null }
 ): Promise<void> {
   // Import Supabase only for authorization check
   const { createClient } = await import('@supabase/supabase-js');
@@ -262,7 +262,7 @@ export const serverSideWorkflowTools = {
         step_identifier: string | number;
         updates: StepUpdate;
       },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Updating step:', params);
@@ -367,7 +367,7 @@ export const serverSideWorkflowTools = {
         step: CommandStep;
         position?: number | null;
       },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Adding step:', params);
@@ -457,7 +457,7 @@ export const serverSideWorkflowTools = {
         workflow_id: number;
         step_identifier: string | number;
       },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Removing step:', params);
@@ -539,7 +539,7 @@ export const serverSideWorkflowTools = {
     },
     execute: async (
       params: { workflow_id: number },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting workflow:', params.workflow_id);
@@ -586,7 +586,7 @@ export const serverSideWorkflowTools = {
         workflow_id: number;
         step_identifier: string | number;
       },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Getting step info:', params);
@@ -649,7 +649,7 @@ export const serverSideWorkflowTools = {
         from_index: number;
         to_index: number;
       },
-      userContext: { userId: string; orgId: string | null }
+      userContext: { userId: string; orgId: string | null; email?: string | null }
     ) => {
       try {
         console.log('[SERVER-WORKFLOW-EDIT] Reordering steps:', params);
@@ -734,7 +734,7 @@ export function getWorkflowToolDeclarations() {
 export async function executeWorkflowTool(
   name: string,
   args: any,
-  userContext: { userId: string; orgId: string | null }
+  userContext: { userId: string; orgId: string | null; email?: string | null }
 ) {
   const tool = serverSideWorkflowTools[name as keyof typeof serverSideWorkflowTools];
   if (!tool) {
