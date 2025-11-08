@@ -3,15 +3,20 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { githubWorkflowManager } from './github-workflow-manager';
 import yaml from 'js-yaml';
+import { githubWorkflowManager } from './github-workflow-manager';
 
 export interface LoadedWorkflow {
   id: number;
   name: string;
   automation_sequence: any;
   metadata: {
-    source: 'github' | 'supabase' | 'supabase_latest_version' | 'supabase_active_fallback' | 'supabase_view_fallback';
+    source:
+      | 'github'
+      | 'supabase'
+      | 'supabase_latest_version'
+      | 'supabase_active_fallback'
+      | 'supabase_view_fallback';
     github_path?: string;
     github_sha?: string;
     last_synced?: string;
@@ -49,7 +54,9 @@ export class WorkflowLoader {
 
       // Try to load from GitHub if path exists
       if (workflow.github_path) {
-        console.log(`Loading workflow ${workflowId} from GitHub: ${workflow.github_path}`);
+        console.log(
+          `Loading workflow ${workflowId} from GitHub: ${workflow.github_path}`
+        );
 
         const githubContent = await githubWorkflowManager.getWorkflow(
           workflow.github_path,
@@ -69,8 +76,8 @@ export class WorkflowLoader {
                 source: 'github',
                 github_path: workflow.github_path,
                 github_sha: githubContent.metadata.sha,
-                last_synced: workflow.github_last_synced_at
-              }
+                last_synced: workflow.github_last_synced_at,
+              },
             };
           } catch (parseError) {
             console.error('Error parsing YAML from GitHub:', parseError);
@@ -80,39 +87,54 @@ export class WorkflowLoader {
       }
 
       // Fallback to Supabase - FETCH LATEST VERSION (not active)
-      console.log(`Loading workflow ${workflowId} from Supabase - fetching latest version`);
+      console.log(
+        `Loading workflow ${workflowId} from Supabase - fetching latest version`
+      );
 
       // Fetch LATEST version from deployed_workflow_versions table
       const { data: latestVersion, error: versionError } = await this.supabase
         .from('deployed_workflow_versions')
-        .select('version_number, automation_sequence, automation_sequence_yaml, is_active, created_at')
+        .select(
+          'version_number, automation_sequence, automation_sequence_yaml, is_active, created_at'
+        )
         .eq('workflow_id', workflowId)
-        .order('created_at', { ascending: false })  // Latest first
+        .order('created_at', { ascending: false }) // Latest first
         .limit(1)
         .single();
 
       if (!versionError && latestVersion) {
-        const versionStatus = latestVersion.is_active ? 'active' : 'inactive (latest)';
-        console.log(`Loading workflow ${workflowId} v${latestVersion.version_number} (${versionStatus})`);
-        
+        const versionStatus = latestVersion.is_active
+          ? 'active'
+          : 'inactive (latest)';
+        console.log(
+          `Loading workflow ${workflowId} v${latestVersion.version_number} (${versionStatus})`
+        );
+
         // Prefer YAML format, fallback to JSON
         let automationSequence;
         if (latestVersion.automation_sequence_yaml) {
           try {
-            automationSequence = yaml.load(latestVersion.automation_sequence_yaml);
+            automationSequence = yaml.load(
+              latestVersion.automation_sequence_yaml
+            );
             console.log(`Loaded workflow ${workflowId} from YAML format`);
           } catch (parseError) {
-            console.error('Error parsing YAML, falling back to JSON:', parseError);
+            console.error(
+              'Error parsing YAML, falling back to JSON:',
+              parseError
+            );
             automationSequence = latestVersion.automation_sequence;
           }
         } else if (latestVersion.automation_sequence) {
           automationSequence = latestVersion.automation_sequence;
           console.log(`Loaded workflow ${workflowId} from JSON format`);
         } else {
-          console.error(`Version ${latestVersion.version_number} has no content`);
+          console.error(
+            `Version ${latestVersion.version_number} has no content`
+          );
           // Fall through to fallback below
         }
-        
+
         if (automationSequence) {
           return {
             id: workflow.id,
@@ -121,23 +143,25 @@ export class WorkflowLoader {
             metadata: {
               source: 'supabase_latest_version',
               version: latestVersion.version_number,
-              is_active: latestVersion.is_active
-            }
+              is_active: latestVersion.is_active,
+            },
           };
         }
       }
 
       // Fallback to deployed_workflows table (active version) if no versions found
-      console.log(`No versions found for workflow ${workflowId}, using active version from deployed_workflows table`);
-      
+      console.log(
+        `No versions found for workflow ${workflowId}, using active version from deployed_workflows table`
+      );
+
       if (workflow.automation_sequence) {
         return {
           id: workflow.id,
           name: workflow.name,
           automation_sequence: workflow.automation_sequence,
           metadata: {
-            source: 'supabase_active_fallback'
-          }
+            source: 'supabase_active_fallback',
+          },
         };
       }
 
@@ -149,20 +173,21 @@ export class WorkflowLoader {
         .single();
 
       if (workflowWithSeq && workflowWithSeq.automation_sequence) {
-        console.log(`Loaded workflow ${workflowId} from deployed_workflows_with_sequence view`);
+        console.log(
+          `Loaded workflow ${workflowId} from deployed_workflows_with_sequence view`
+        );
         return {
           id: workflowWithSeq.id,
           name: workflowWithSeq.name,
           automation_sequence: workflowWithSeq.automation_sequence,
           metadata: {
-            source: 'supabase_view_fallback'
-          }
+            source: 'supabase_view_fallback',
+          },
         };
       }
 
       console.error(`No automation_sequence found for workflow ${workflowId}`);
       return null;
-
     } catch (error) {
       console.error('Error loading workflow:', error);
       return null;
@@ -185,9 +210,14 @@ export class WorkflowLoader {
     const files: Record<string, string> = {};
 
     // If loaded from GitHub, also fetch associated files
-    if (workflow.metadata.source === 'github' && workflow.metadata.github_path) {
+    if (
+      workflow.metadata.source === 'github' &&
+      workflow.metadata.github_path
+    ) {
       // Just load the main workflow file for now
-      const result = await githubWorkflowManager.getWorkflow(workflow.metadata.github_path);
+      const result = await githubWorkflowManager.getWorkflow(
+        workflow.metadata.github_path
+      );
       if (result) {
         files['workflow.yaml'] = result.yaml;
       }
@@ -242,7 +272,7 @@ export class WorkflowLoader {
       return {
         needsSync: workflow.github_sha !== githubContent.metadata.sha,
         localSha: workflow.github_sha,
-        remoteSha: githubContent.metadata.sha
+        remoteSha: githubContent.metadata.sha,
       };
     } catch (error) {
       console.error('Error checking sync status:', error);
@@ -267,7 +297,7 @@ export class WorkflowLoader {
         .update({
           github_sha: workflow.metadata.github_sha,
           github_sync_status: 'synced',
-          github_last_synced_at: new Date().toISOString()
+          github_last_synced_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
 
@@ -277,29 +307,25 @@ export class WorkflowLoader {
       }
 
       // Log sync operation
-      await this.supabase
-        .from('github_workflow_sync_log')
-        .insert({
-          workflow_id: workflowId,
-          operation: 'pull',
-          github_path: workflow.metadata.github_path,
-          github_sha: workflow.metadata.github_sha,
-          status: 'success'
-        });
+      await this.supabase.from('github_workflow_sync_log').insert({
+        workflow_id: workflowId,
+        operation: 'pull',
+        github_path: workflow.metadata.github_path,
+        github_sha: workflow.metadata.github_sha,
+        status: 'success',
+      });
 
       return true;
     } catch (error) {
       console.error('Error syncing from GitHub:', error);
 
       // Log failed sync
-      await this.supabase
-        .from('github_workflow_sync_log')
-        .insert({
-          workflow_id: workflowId,
-          operation: 'pull',
-          status: 'failed',
-          error_message: error instanceof Error ? error.message : 'Unknown error'
-        });
+      await this.supabase.from('github_workflow_sync_log').insert({
+        workflow_id: workflowId,
+        operation: 'pull',
+        status: 'failed',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      });
 
       return false;
     }
