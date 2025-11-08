@@ -1,14 +1,14 @@
 /**
- * Server-side workflow editing tools that call API routes
+ * Server-side workflow editing tools that use shared version service
  * Ensures GitHub sync happens automatically for all modifications
  *
- * These tools wrap the existing API routes to ensure all workflow
- * modifications go through the same code path with proper GitHub sync.
+ * These tools use the WorkflowVersionService directly for fast execution
+ * while maintaining GitHub sync and avoiding API overhead.
  */
 
 import { SchemaType } from '@google-cloud/vertexai';
 import * as yaml from 'js-yaml';
-import { InternalAPIClient } from './internal-api-client';
+import { workflowVersionService } from '@/lib/services/workflow-version-service';
 
 // Types matching the client-side workflow schema
 interface CommandStep {
@@ -270,11 +270,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
         const content = currentVersion.yamlContent ||
@@ -295,13 +292,19 @@ export const serverSideWorkflowTools = {
         // Convert back to YAML (always use YAML for GitHub sync)
         const newYamlContent = yaml.dump(parsed);
 
-        // Create new version through API route (ensures GitHub sync)
-        const result = await apiClient.createWorkflowVersion(
-          params.workflow_id,
-          newYamlContent,
-          `Updated step: ${params.step_identifier}`,
-          false // Don't auto-activate
-        );
+        // Create new version using the service (direct call, no API overhead)
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes: `Updated step: ${params.step_identifier}`,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
 
         console.log('[SERVER-WORKFLOW-EDIT] Step updated successfully, version:', result.version?.version_number);
 
@@ -372,11 +375,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
         const content = currentVersion.yamlContent ||
@@ -398,13 +398,19 @@ export const serverSideWorkflowTools = {
         // Convert back to YAML (always use YAML for GitHub sync)
         const newYamlContent = yaml.dump(parsed);
 
-        // Create new version through API route (ensures GitHub sync)
-        const result = await apiClient.createWorkflowVersion(
-          params.workflow_id,
-          newYamlContent,
-          `Added step: ${params.step.name || 'unnamed'}`,
-          false // Don't auto-activate
-        );
+        // Create new version using the service (direct call, no API overhead)
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes: `Added step: ${params.step.name || 'unnamed'}`,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
 
         console.log('[SERVER-WORKFLOW-EDIT] Step added successfully, version:', result.version?.version_number);
 
@@ -459,11 +465,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
         const content = currentVersion.yamlContent ||
@@ -485,13 +488,19 @@ export const serverSideWorkflowTools = {
         // Convert back to YAML (always use YAML for GitHub sync)
         const newYamlContent = yaml.dump(parsed);
 
-        // Create new version through API route (ensures GitHub sync)
-        const result = await apiClient.createWorkflowVersion(
-          params.workflow_id,
-          newYamlContent,
-          `Removed step: ${removedStep.name || params.step_identifier}`,
-          false // Don't auto-activate
-        );
+        // Create new version using the service (direct call, no API overhead)
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes: `Removed step: ${removedStep.name || params.step_identifier}`,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
 
         console.log('[SERVER-WORKFLOW-EDIT] Step removed successfully, version:', result.version?.version_number);
 
@@ -538,11 +547,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Return YAML if available, otherwise convert JSON to YAML
         const content = currentVersion.yamlContent ||
@@ -588,11 +594,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
         const content = currentVersion.yamlContent ||
@@ -654,11 +657,8 @@ export const serverSideWorkflowTools = {
         // AUTHORIZATION CHECK
         await checkWorkflowAuthorization(params.workflow_id, userContext);
 
-        // Create API client with user context
-        const apiClient = new InternalAPIClient(userContext);
-
-        // Get latest workflow version
-        const currentVersion = await apiClient.getLatestWorkflowVersion(params.workflow_id);
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use YAML if available, otherwise use JSON
         const content = currentVersion.yamlContent ||
@@ -680,13 +680,19 @@ export const serverSideWorkflowTools = {
         // Convert back to YAML (always use YAML for GitHub sync)
         const newYamlContent = yaml.dump(parsed);
 
-        // Create new version through API route (ensures GitHub sync)
-        const result = await apiClient.createWorkflowVersion(
-          params.workflow_id,
-          newYamlContent,
-          `Reordered steps: moved from ${params.from_index} to ${params.to_index}`,
-          false // Don't auto-activate
-        );
+        // Create new version using the service (direct call, no API overhead)
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes: `Reordered steps: moved from ${params.from_index} to ${params.to_index}`,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
 
         console.log('[SERVER-WORKFLOW-EDIT] Steps reordered successfully, version:', result.version?.version_number);
 
