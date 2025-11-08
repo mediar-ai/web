@@ -375,11 +375,18 @@ export async function getUserContext(userId: string | null | undefined, orgId?: 
       secretKey: process.env.CLERK_SECRET_KEY,
     });
 
-    // Fetch user details
-    const user = await clerkClient.users.getUser(userId);
-    const userName = user.firstName && user.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user.firstName || user.lastName || undefined;
+    // Fetch user details (gracefully handle if user doesn't exist in Clerk)
+    let userName: string | undefined;
+    try {
+      const user = await clerkClient.users.getUser(userId);
+      userName = user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user.firstName || user.lastName || undefined;
+    } catch (userError: any) {
+      // User might not exist in Clerk (e.g., desktop auth, service accounts)
+      console.log(`[getUserContext] User ${userId} not found in Clerk, continuing without user details`);
+      // Don't throw - we can still proceed without the user name
+    }
 
     // Fetch organization name if orgId is provided
     let organizationName: string | undefined;

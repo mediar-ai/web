@@ -80,7 +80,8 @@ const KV_SESSION_PREFIX = 'ai-session:';
 async function authenticate(request: NextRequest): Promise<{
   authenticated: boolean;
   userId: string | null;
-  orgId: string | null
+  orgId: string | null;
+  email?: string | null;
 }> {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) return { authenticated: false, userId: null, orgId: null };
@@ -102,7 +103,8 @@ async function authenticate(request: NextRequest): Promise<{
         return {
           authenticated: true,
           userId: validation.userId || null,
-          orgId: validation.orgId || null
+          orgId: validation.orgId || null,
+          email: validation.email || null
         };
       }
     } catch (error) {
@@ -354,6 +356,7 @@ export async function POST(request: NextRequest) {
     // Extract user context for authorization checks
     const authenticatedUserId = authResult.userId;
     const orgId = authResult.orgId;
+    const userEmail = authResult.email;
 
     const body = await request.json();
     const sessionId = body.sessionId as string | undefined;
@@ -815,7 +818,8 @@ export async function POST(request: NextRequest) {
             const toolResult = isWorkflow
               ? await executeWorkflowTool(toolCall.name, toolArgs, {
                   userId: authenticatedUserId!,
-                  orgId: orgId || null
+                  orgId: orgId || null,
+                  email: userEmail || null
                 })
               : await executeKnowledgeTool(toolCall.name, toolArgs);
 
