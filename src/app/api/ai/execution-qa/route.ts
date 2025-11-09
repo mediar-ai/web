@@ -109,6 +109,7 @@ export async function POST(request: Request) {
     ]);
 
     const fetchDuration = Date.now() - fetchStartTime;
+    console.log(`[Q&A API] Data fetch completed in ${fetchDuration}ms`);
     terminatorDocs = terminatorDocsResult;
 
     // Handle workflow loading with error handling
