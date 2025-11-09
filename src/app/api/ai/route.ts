@@ -476,22 +476,26 @@ export async function POST(request: NextRequest) {
           if (isKnowledge || isWorkflow) {
             console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
             try {
-              // Workflow tools require authenticated user context
-              if (isWorkflow && !authenticatedUserId) {
-                throw new Error('Workflow editing requires authentication with a user account');
-              }
+            // Workflow tools require authenticated user context
+            if (isWorkflow && !authenticatedUserId) {
+              throw new Error('Workflow editing requires authentication with a user account');
+            }
 
-              // Add workflow_id to args if it's a workflow tool and we have it in the request
-              let toolArgs = toolCall.args;
-              if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
-                toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+            // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
+            let toolArgs = toolCall.args;
+            if (isWorkflow) {
+              if (!body.workflowId) {
+                throw new Error('workflowId is required in request body for workflow editing tools');
               }
+              toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+              console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
+            }
 
-              const toolResult = isWorkflow
-                ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                    userId: authenticatedUserId!,
-                    orgId: orgId || null
-                  })
+            const toolResult = isWorkflow
+              ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                  userId: authenticatedUserId!,
+                  orgId: orgId || null
+                })
                 : await executeKnowledgeTool(toolCall.name, toolArgs);
 
               // Capture workflow data if the workflow was updated
@@ -596,21 +600,26 @@ export async function POST(request: NextRequest) {
               if (isKnowledge || isWorkflow) {
                 console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
                 try {
-                  // Workflow tools require authenticated user context
-                  if (isWorkflow && !authenticatedUserId) {
-                    throw new Error('Workflow editing requires authentication with a user account');
-                  }
+              // Workflow tools require authenticated user context
+              if (isWorkflow && !authenticatedUserId) {
+                throw new Error('Workflow editing requires authentication with a user account');
+              }
 
-                  let toolArgs = toolCall.args;
-                  if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
-                    toolArgs = { ...toolArgs, workflow_id: body.workflowId };
-                  }
+              // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
+              let toolArgs = toolCall.args;
+              if (isWorkflow) {
+                if (!body.workflowId) {
+                  throw new Error('workflowId is required in request body for workflow editing tools');
+                }
+                toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+                console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
+              }
 
-                  const toolResult = isWorkflow
-                    ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                        userId: authenticatedUserId!,
-                        orgId: orgId || null
-                      })
+              const toolResult = isWorkflow
+                ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                    userId: authenticatedUserId!,
+                    orgId: orgId || null
+                  })
                     : await executeKnowledgeTool(toolCall.name, toolArgs);
 
                   // Capture workflow data if the workflow was updated
@@ -935,10 +944,14 @@ export async function POST(request: NextRequest) {
               throw new Error('Workflow editing requires authentication with a user account');
             }
 
-            // Add workflow_id to args if it's a workflow tool and we have it in the request
+            // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
             let toolArgs = toolCall.args;
-            if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+            if (isWorkflow) {
+              if (!body.workflowId) {
+                throw new Error('workflowId is required in request body for workflow editing tools');
+              }
               toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+              console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
             }
 
             const toolResult = isWorkflow
@@ -1053,9 +1066,14 @@ export async function POST(request: NextRequest) {
                   throw new Error('Workflow editing requires authentication with a user account');
                 }
 
+                // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
                 let toolArgs = toolCall.args;
-                if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+                if (isWorkflow) {
+                  if (!body.workflowId) {
+                    throw new Error('workflowId is required in request body for workflow editing tools');
+                  }
                   toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+                  console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
                 }
 
                 const toolResult = isWorkflow
