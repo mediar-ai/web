@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -71,7 +70,7 @@ export async function POST(request: Request) {
 
         try {
           const result = await pool.query(sql);
-          console.log(`✅ Function ${i + 1} created successfully`);
+          console.log(`✅ Function ${i + 1} created successfully (command: ${result.command}, rows: ${result.rowCount})`);
           results.push({
             index: i + 1,
             success: true,
