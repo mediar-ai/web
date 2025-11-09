@@ -295,7 +295,8 @@ export default function RoleManagementSection({ isOwner, isAdmin, currentUserId 
     if (isAdmin && organization?.id) {
       fetchOrganizationUsers();
     }
-  }, [isAdmin, organization?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, organization?.id]); // Intentionally omit fetchOrganizationUsers to prevent infinite loop
 
   // Don't render if not admin or owner
   if (!isAdmin) {
