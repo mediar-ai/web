@@ -4,26 +4,6 @@
  */
 
 /**
- * Process unified tool result format {success, data?, error?}
- * This eliminates duplicated logic across providers
- */
-export function processToolResult(result: any): {
-  isError: boolean;
-  content: any;
-} {
-  let isError = false;
-  let content = result;
-
-  if (result && typeof result === 'object' && 'success' in result) {
-    // Unified format from workflow tools
-    isError = !result.success;
-    content = result.success ? result.data : { error: result.error };
-  }
-
-  return { isError, content };
-}
-
-/**
  * Format error message consistently across providers
  */
 export function formatErrorMessage(error: unknown, context?: string): string {
