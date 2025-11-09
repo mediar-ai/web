@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
-import { AlertTriangle, PictureInPicture, RefreshCw, RotateCcw, Zap, Wand2 } from 'lucide-react';
+import { AlertTriangle, PictureInPicture, RefreshCw, Zap, Wand2 } from 'lucide-react';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
@@ -20,13 +20,13 @@ interface StatusIndicatorProps {
 
 const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   mainStatus,
-  autoDetectionEnabled,
-  isMonitoring,
-  displayChangePercent,
-  activeAnalysesCount,
+  autoDetectionEnabled: _autoDetectionEnabled,
+  isMonitoring: _isMonitoring,
+  displayChangePercent: _displayChangePercent,
+  activeAnalysesCount: _activeAnalysesCount,
   error,
   streamRef,
-  MAX_PARALLEL_ANALYSES,
+  MAX_PARALLEL_ANALYSES: _MAX_PARALLEL_ANALYSES,
   reconnectRequired,
 }) => {
   if (reconnectRequired) {
