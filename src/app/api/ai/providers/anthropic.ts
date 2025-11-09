@@ -12,7 +12,6 @@ import type {
   VertexMessage
 } from './types';
 import {
-  processToolResult,
   formatErrorMessage,
   calculateElapsedMs,
   cleanSchema,
