@@ -728,12 +728,13 @@ function HomeComponent() {
     if (initialFrameCapturedRef) {
         initialFrameCapturedRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     stream,
     logToUI,
     initialFrameCapturedRef,
     pipWindow,
-  ]); 
+  ]); // Intentionally omit posthog/viewingMode - external refs that don't affect callback logic 
 
   const handleStartScreenShare = useCallback(async () => {
     posthog?.capture('web_app_start_recording', {
@@ -812,7 +813,8 @@ function HomeComponent() {
       streamRef.current = null;
       setMainStatus('Error starting share');
     }
-  }, [stream, logToUI, logError, captureSessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream, logToUI, logError, captureSessionId]); // Intentionally omit posthog/viewingMode - stable refs, read current value when executed
 
   useEffect(() => {
     if (selectedActivity) {
