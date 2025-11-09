@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
 
     // Get effective organization context
-    const { orgId, isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(
+    const { orgId, isMediarOrg: _isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(
       viewOrgId === 'ALL' ? null : viewOrgId
     );
 
