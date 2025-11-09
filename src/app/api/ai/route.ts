@@ -170,7 +170,8 @@ function validateModel(model: string | undefined): model is AllowedModel {
   return !!model && (ALLOWED_MODELS as readonly string[]).includes(model);
 }
 
-function isVertexModel(model: string): model is VertexModel {
+// Reserved for future use when explicit Vertex routing is needed
+function _isVertexModel(model: string): model is VertexModel {
   return (VERTEX_MODELS as readonly string[]).includes(model);
 }
 
@@ -460,6 +461,8 @@ export async function POST(request: NextRequest) {
         elapsedMs: result.metrics.elapsedMs,
       });
 
+      let workflowData = null; // Track workflow modifications across all tool executions
+
       // Check if any tool calls are server-side and execute them
       if (result.toolCalls.length > 0) {
         const serverToolResults = [];
@@ -490,6 +493,13 @@ export async function POST(request: NextRequest) {
                     orgId: orgId || null
                   })
                 : await executeKnowledgeTool(toolCall.name, toolArgs);
+
+              // Capture workflow data if the workflow was updated
+              if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
+                workflowData = toolResult.workflow_data;
+                console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
+              }
+
               serverToolResults.push({
                 name: toolCall.name,
                 result: toolResult,
@@ -569,16 +579,132 @@ export async function POST(request: NextRequest) {
             finishReason: continuationResult.finishReason
           });
 
-          // Merge results
+          // Check if continuation has more server-side tools to execute
+          let finalResult = continuationResult;
           const finalHistory = [...updatedHistoryWithCalls];
-          if (continuationResult.text || continuationResult.toolCalls.length > 0) {
-            const modelParts: Array<{ text?: string; functionCall?: any }> = [];
-            if (continuationResult.text) {
-              modelParts.push({ text: continuationResult.text });
+
+          // Keep executing server tools until there are none left
+          while (finalResult.toolCalls.length > 0) {
+            const moreServerTools = [];
+            const remainingClientTools = [];
+
+            // Check each tool call from continuation
+            for (const toolCall of finalResult.toolCalls) {
+              const isKnowledge = isKnowledgeTool(toolCall.name);
+              const isWorkflow = isWorkflowEditingTool(toolCall.name);
+
+              if (isKnowledge || isWorkflow) {
+                console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
+                try {
+                  // Workflow tools require authenticated user context
+                  if (isWorkflow && !authenticatedUserId) {
+                    throw new Error('Workflow editing requires authentication with a user account');
+                  }
+
+                  let toolArgs = toolCall.args;
+                  if (isWorkflow && body.workflowId && !toolArgs.workflow_id) {
+                    toolArgs = { ...toolArgs, workflow_id: body.workflowId };
+                  }
+
+                  const toolResult = isWorkflow
+                    ? await executeWorkflowTool(toolCall.name, toolArgs, {
+                        userId: authenticatedUserId!,
+                        orgId: orgId || null
+                      })
+                    : await executeKnowledgeTool(toolCall.name, toolArgs);
+
+                  // Capture workflow data if the workflow was updated
+                  if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
+                    workflowData = toolResult.workflow_data;
+                    console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
+                  }
+
+                  moreServerTools.push({
+                    name: toolCall.name,
+                    result: toolResult,
+                    id: toolCall.id
+                  });
+                  console.log(`✅ Additional server tool ${toolCall.name} executed successfully`);
+                } catch (error) {
+                  console.error(`❌ Additional server tool ${toolCall.name} failed:`, error);
+                  moreServerTools.push({
+                    name: toolCall.name,
+                    result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
+                    id: toolCall.id
+                  });
+                }
+              } else {
+                remainingClientTools.push(toolCall);
+              }
             }
 
-            // Add any additional tool calls from continuation
-            continuationResult.toolCalls.forEach(tc => {
+            // If no more server tools, break the loop
+            if (moreServerTools.length === 0) {
+              clientToolCalls.push(...remainingClientTools);
+              break;
+            }
+
+            // Add the model's response with tool calls to history
+            if (finalResult.text || finalResult.toolCalls.length > 0) {
+              const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+              if (finalResult.text) {
+                modelParts.push({ text: finalResult.text });
+              }
+              finalResult.toolCalls.forEach(tc => {
+                modelParts.push({
+                  functionCall: {
+                    name: tc.name,
+                    args: tc.args,
+                    ...(tc.id && { id: tc.id })
+                  },
+                });
+              });
+              finalHistory.push({
+                role: 'model',
+                parts: modelParts,
+              });
+            }
+
+            // Add server tool results to history
+            finalHistory.push({
+              role: 'user',
+              parts: moreServerTools.map(tr => ({
+                functionResponse: {
+                  name: tr.name,
+                  response: {
+                    name: tr.name,
+                    content: tr.result
+                  },
+                  ...(tr.id && { id: tr.id })
+                },
+              })),
+            });
+
+            // Continue conversation with new server tool results
+            console.log(`🔄 Auto-continuing with ${moreServerTools.length} more server tool results`);
+            finalResult = await handleAnthropicChat({
+              model: sessionModel,
+              history: finalHistory,
+              system: sessionSystem,
+              tools: allTools,
+              generationConfig,
+              sessionId: actualSessionId,
+            });
+
+            console.log('🎯 Additional continuation result:', {
+              textLen: finalResult.text.length,
+              toolCallsCount: finalResult.toolCalls.length,
+              finishReason: finalResult.finishReason
+            });
+          }
+
+          // Add final model response to history
+          if (finalResult.text || finalResult.toolCalls.length > 0) {
+            const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+            if (finalResult.text) {
+              modelParts.push({ text: finalResult.text });
+            }
+            finalResult.toolCalls.forEach(tc => {
               modelParts.push({
                 functionCall: {
                   name: tc.name,
@@ -587,7 +713,6 @@ export async function POST(request: NextRequest) {
                 },
               });
             });
-
             finalHistory.push({
               role: 'model',
               parts: modelParts,
@@ -615,10 +740,11 @@ export async function POST(request: NextRequest) {
             {
               model: sessionModel,
               sessionId: actualSessionId,
-              text: continuationResult.text,
-              toolCalls: [...clientToolCalls, ...continuationResult.toolCalls],
-              finishReason: continuationResult.toolCalls.length > 0 ? 'tool_calls' : 'stop',
-              metrics: continuationResult.metrics,
+              text: finalResult.text,
+              toolCalls: clientToolCalls,  // Only return client tools that haven't been executed
+              finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
+              metrics: finalResult.metrics,
+              ...(workflowData && { workflowData }),  // Include workflow data if present
             },
             { headers: corsHeaders }
           );
@@ -694,7 +820,7 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(
-        { model: sessionModel, sessionId: actualSessionId, ...result },
+        { model: sessionModel, sessionId: actualSessionId, ...result, ...(workflowData && { workflowData }) },
         { headers: corsHeaders }
       );
     }
