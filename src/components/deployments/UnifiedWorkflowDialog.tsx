@@ -15,7 +15,6 @@ import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, 
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
-import * as yaml from 'js-yaml';
 import { CronScheduleEditor, type CronConfig } from './CronScheduleEditor';
 
 interface WorkflowVersion {
@@ -167,7 +166,8 @@ export function UnifiedWorkflowDialog({
     }
   }, [workflow, loadVersionYaml]);
 
-  const loadWorkflowYaml = useCallback(async () => {
+  // YAML editing feature currently disabled - moved to separate page
+  const _loadWorkflowYaml = useCallback(async () => {
     if (!workflow) return;
 
     setLoadingYaml(true);
