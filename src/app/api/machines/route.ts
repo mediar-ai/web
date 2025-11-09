@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const show_all = searchParams.get('show_all') === 'true'; // Admin override
 
     // Get authenticated user's organization
-    const { userId: authenticatedUserId, orgId } = await auth();
+    const { userId: _authenticatedUserId, orgId } = await auth();
 
     console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}, org: ${orgId}`);
 
