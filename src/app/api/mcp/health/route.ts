@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkflowDiscovery } from '@/lib/mcp/workflowDiscovery';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Get user's organization context (optional for health check)
     let orgId: string | null = null;
