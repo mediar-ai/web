@@ -254,7 +254,7 @@ export const serverSideWorkflowTools = {
           },
         },
       },
-      required: ['workflow_id', 'step_identifier', 'updates']
+      required: ['step_identifier', 'updates']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: {
@@ -359,8 +359,7 @@ export const serverSideWorkflowTools = {
           type: SchemaType.NUMBER,
           description: 'Position to insert step (0-based index, omit to append)'
         },
-      },
-      required: ['workflow_id', 'step']
+      required: ['step']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: {
@@ -452,7 +451,7 @@ export const serverSideWorkflowTools = {
           description: 'Step ID, name, or numeric index (supports negative indices)'
         },
       },
-      required: ['workflow_id', 'step_identifier']
+      required: ['step_identifier']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: {
@@ -537,8 +536,7 @@ export const serverSideWorkflowTools = {
           type: SchemaType.NUMBER,
           description: 'The workflow ID to retrieve'
         },
-      },
-      required: ['workflow_id']
+      required: []  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: { workflow_id: number },
@@ -582,7 +580,7 @@ export const serverSideWorkflowTools = {
           description: 'Step ID, name, or numeric index'
         },
       },
-      required: ['workflow_id', 'step_identifier']
+      required: ['step_identifier']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: {
@@ -643,8 +641,7 @@ export const serverSideWorkflowTools = {
           type: SchemaType.NUMBER,
           description: 'Target position for step (0-based)'
         },
-      },
-      required: ['workflow_id', 'from_index', 'to_index']
+      required: ['from_index', 'to_index']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
       params: {
