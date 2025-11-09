@@ -667,7 +667,7 @@ export async function POST(request: NextRequest) {
 /**
  * GET endpoint for cache statistics and health check
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // STEP 1: Authenticate and get org context
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
