@@ -382,7 +382,7 @@ export async function getUserContext(userId: string | null | undefined, orgId?: 
       userName = user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}`
         : user.firstName || user.lastName || undefined;
-    } catch (userError: any) {
+    } catch (_userError) {
       // User might not exist in Clerk (e.g., desktop auth, service accounts)
       console.log(`[getUserContext] User ${userId} not found in Clerk, continuing without user details`);
       // Don't throw - we can still proceed without the user name
