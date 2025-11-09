@@ -131,14 +131,16 @@ export default function NotificationsPage() {
       fetchConfigs();
       fetchAlerts();
     }
-  }, [userId, orgId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, orgId]); // Intentionally omit fetchConfigs/fetchAlerts to prevent infinite loop
 
   // Refetch alerts when showOrgAlerts toggle changes
   useEffect(() => {
     if (userId && orgId) {
       fetchAlerts();
     }
-  }, [showOrgAlerts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOrgAlerts]); // Intentionally omit fetchAlerts/userId/orgId - only trigger on toggle change
 
   // Fetch org members when selected config changes
   useEffect(() => {
