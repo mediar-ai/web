@@ -34,11 +34,6 @@ const GUACAMOLE_URL = process.env.GUACAMOLE_URL?.trim() || '';
 const GUACAMOLE_USERNAME = process.env.GUACAMOLE_USERNAME?.trim() || '';
 const GUACAMOLE_PASSWORD = process.env.GUACAMOLE_PASSWORD?.trim() || '';
 
-interface RdpAccessRequest {
-  execution_id?: string;
-  machine_id?: string;
-}
-
 export async function GET(request: NextRequest) {
   try {
     // STEP 1: Authenticate user
