@@ -24,7 +24,7 @@ export async function POST() {
 
     // Update all machines to point to working VM
     for (const machine of machines || []) {
-      const { data, error } = await supabase
+      const { data: _data, error } = await supabase
         .from('remote_machines')
         .update({
           ip_address: WORKING_VM_IP,
