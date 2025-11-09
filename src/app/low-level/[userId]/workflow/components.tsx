@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import React from 'react';
 
@@ -153,9 +152,9 @@ export const AiThinkingBubble = () => (
 // ----------------------------------------------------------------------------------
 export const AnalysisProgressBubble = ({
   status,
-  progress,
+  progress: _progress, // Passed from parent but progress bar UI removed
   elapsedTime,
-  batchInfo,
+  batchInfo: _batchInfo, // Passed from parent but batch info UI removed
 }: {
   status: string;
   progress: number;
