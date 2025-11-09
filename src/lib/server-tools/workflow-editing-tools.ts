@@ -640,7 +640,8 @@ export const serverSideWorkflowTools = {
         to_index: {
           type: SchemaType.NUMBER,
           description: 'Target position for step (0-based)'
-        },
+        }
+      },
       required: ['from_index', 'to_index']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
