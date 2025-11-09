@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       for (const file of removedFiles) {
         const yamlMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
-          const orgPrefix = yamlMatch[2]; // UUID from "org-{uuid}"
+          const _orgPrefix = yamlMatch[2]; // Reserved for future multi-org folder structure
           const folderName = yamlMatch[3];
           const removedFileName = yamlMatch[4];
           console.log(`🗑️ Detected YAML file removal: ${folderName}/${removedFileName}`);
@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
         // Match pattern: onedriveautomation/workflow.yaml or terminator.yml
         const yamlMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(workflow\.ya?ml|terminator\.ya?ml)$/);
         if (yamlMatch) {
-          const orgPrefix = yamlMatch[2]; // UUID from "org-{uuid}"
+          // Stored in Map, retrieved later at line 253, used at line 496
+          const orgPrefix = yamlMatch[2];
           const folderName = yamlMatch[3];
           const fileName = yamlMatch[4];
           // Store the actual filename and org prefix for this folder
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
           // Match .js files in workflow folders
           const jsMatch = file.match(/^(org-([^\/]+)\/)?([^\/]+)\/(.+\.js)$/);
           if (jsMatch) {
-            const orgPrefix = jsMatch[2];
+            const _orgPrefix = jsMatch[2]; // Reserved for future multi-org support
             const folderName = jsMatch[3];
             // const jsFileName = jsMatch[2]; // Not used currently but available if needed
 
