@@ -6,10 +6,13 @@
 
 BEGIN;
 
--- Step 1: Add missing columns to deleted_workflows
+-- Step 1: Add missing columns to all archive tables
 ALTER TABLE public.deleted_workflows
     ADD COLUMN IF NOT EXISTS typescript_metadata JSONB,
     ADD COLUMN IF NOT EXISTS is_public BOOLEAN;
+
+ALTER TABLE public.deleted_workflow_versions
+    ADD COLUMN IF NOT EXISTS typescript_metadata JSONB;
 
 -- Step 2: Rename is_shared to match current schema (if it exists)
 -- Note: If is_shared was already renamed, this will fail gracefully
@@ -56,12 +59,12 @@ BEGIN
     INSERT INTO public.deleted_workflow_versions (
         id, workflow_id, version_number, automation_sequence, is_active, 
         created_at, created_by, change_notes, automation_sequence_yaml, 
-        preferred_format, updated_at, archived_at
+        preferred_format, updated_at, typescript_metadata, archived_at
     )
     SELECT 
         id, workflow_id, version_number, automation_sequence, is_active, 
         created_at, created_by, change_notes, automation_sequence_yaml, 
-        preferred_format, updated_at, NOW()
+        preferred_format, updated_at, typescript_metadata, NOW()
     FROM public.deployed_workflow_versions
     WHERE workflow_id = p_workflow_id;
 
@@ -70,11 +73,13 @@ BEGIN
     -- Step 2: Archive files (before CASCADE deletes them)
     INSERT INTO public.deleted_workflow_files (
         id, workflow_id, version_number, file_path, storage_path, 
-        file_size, content_type, uploaded_at, checksum, archived_at
+        file_hash, file_size, content_type, created_at, last_accessed_at, 
+        metadata, archived_at
     )
     SELECT 
         id, workflow_id, version_number, file_path, storage_path, 
-        file_size, content_type, uploaded_at, checksum, NOW()
+        file_hash, file_size, content_type, created_at, last_accessed_at, 
+        metadata, NOW()
     FROM public.workflow_files
     WHERE workflow_id = p_workflow_id;
 
