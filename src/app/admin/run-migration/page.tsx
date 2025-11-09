@@ -108,10 +108,10 @@ export default function RunMigrationPage() {
 
       // Try to execute via RPC
       console.log('Executing Function 1: get_workflow_version_history');
-      const { data: data1, error: error1 } = await supabase.rpc('exec_sql', { query: sql1 });
+      const { data: _data1, error: error1 } = await supabase.rpc('exec_sql', { query: sql1 });
 
       console.log('Executing Function 2: activate_workflow_version');
-      const { data: data2, error: error2 } = await supabase.rpc('exec_sql', { query: sql2 });
+      const { data: _data2, error: error2 } = await supabase.rpc('exec_sql', { query: sql2 });
 
       if (error1 || error2) {
         throw new Error(`RPC Error: ${error1?.message || error2?.message}`);
