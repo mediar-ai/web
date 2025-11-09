@@ -1,7 +1,6 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
 import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
 
     // Get effective organization (handles both desktop tokens and Clerk auth)
-    const { orgId: effectiveOrgId, isMediarOrg, isMediarAdmin, actualOrgId, userId, email } = await getEffectiveOrgId();
+    const { orgId: effectiveOrgId, isMediarOrg, isMediarAdmin: _isMediarAdmin, actualOrgId, userId, email } = await getEffectiveOrgId();
 
     if (!effectiveOrgId) {
       return NextResponse.json(
