@@ -398,7 +398,7 @@ export async function GET(request: NextRequest) {
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
-    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId } = await getEffectiveOrgId(
+    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId: _actualOrgId } = await getEffectiveOrgId(
       viewOrgId === 'ALL' ? null : viewOrgId
     );
 
@@ -436,6 +436,9 @@ export async function GET(request: NextRequest) {
         .select('id')
         .is('parent_workflow_id', null);
 
+      if (allError) {
+        console.error('[Workflows List] Error fetching all workflows:', allError);
+      }
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
     } else {
       // Regular org sees:
@@ -450,11 +453,19 @@ export async function GET(request: NextRequest) {
         .eq('organization_id', orgId)
         .is('parent_workflow_id', null);
 
+      if (ownedError) {
+        console.error('[Workflows List] Error fetching owned workflows:', ownedError);
+      }
+
       // Get workflows explicitly shared with this org
       const { data: sharedAccess, error: sharedError } = await supabase
         .from('workflow_organization_access')
         .select('workflow_id')
         .eq('organization_id', orgId);
+
+      if (sharedError) {
+        console.error('[Workflows List] Error fetching shared workflows:', sharedError);
+      }
 
       // Get globally public workflows (is_public = true)
       const { data: publicWorkflows, error: publicError } = await supabase
@@ -462,6 +473,10 @@ export async function GET(request: NextRequest) {
         .select('id')
         .eq('is_public', true)
         .is('parent_workflow_id', null);
+
+      if (publicError) {
+        console.error('[Workflows List] Error fetching public workflows:', publicError);
+      }
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
       const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
