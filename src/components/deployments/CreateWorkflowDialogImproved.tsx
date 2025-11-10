@@ -445,12 +445,11 @@ export function CreateWorkflowDialog({
                 Want to create workflows on your computer? Download the Mediar desktop app to record and automate workflows locally.
               </p>
               <a
-                href="https://web.crabnebula.cloud/mediar/mediar/releases"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
+                download
               >
                 <Button className="bg-black text-white hover:bg-gray-800 font-mono">
-                  DOWNLOAD APP
+                  DOWNLOAD APP (Windows)
                 </Button>
               </a>
             </div>
