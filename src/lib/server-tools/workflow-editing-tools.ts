@@ -358,7 +358,8 @@ export const serverSideWorkflowTools = {
         position: {
           type: SchemaType.NUMBER,
           description: 'Position to insert step (0-based index, omit to append)'
-        },
+        }
+      },
       required: ['step']  // workflow_id removed - injected by backend from request context
     },
     execute: async (
@@ -535,7 +536,8 @@ export const serverSideWorkflowTools = {
         workflow_id: {
           type: SchemaType.NUMBER,
           description: 'The workflow ID to retrieve'
-        },
+        }
+      },
       required: []  // workflow_id removed - injected by backend from request context
     },
     execute: async (
