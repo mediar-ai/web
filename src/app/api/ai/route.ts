@@ -214,6 +214,101 @@ function createSessionId(): string {
   return randomUUID();
 }
 
+// Helper to capture workflow data from tool results
+function captureWorkflowData(
+  toolResult: any,
+  currentWorkflowData: any
+): any {
+  if ('workflow_updated' in toolResult && 
+      toolResult.workflow_updated && 
+      'workflow_data' in toolResult && 
+      toolResult.workflow_data) {
+    console.log(`📦 Captured updated workflow data for workflow ID: ${toolResult.workflow_data.id}`);
+    return toolResult.workflow_data;
+  }
+  return currentWorkflowData;
+}
+
+// Helper to execute a single server-side tool (workflow or knowledge)
+async function executeServerTool(
+  toolCall: { name: string; args: any; id?: string },
+  context: {
+    authenticatedUserId: string | null;
+    orgId: string | null;
+    email?: string | null;
+    workflowId?: number;
+  },
+  options: {
+    preserveId: boolean; // Anthropic needs IDs, Vertex doesn't
+    isAdditional?: boolean; // For logging (initial vs additional)
+  }
+): Promise<{
+  name: string;
+  result: any;
+  id?: string;
+  workflowData?: any;
+} | null> {
+  const isKnowledge = isKnowledgeTool(toolCall.name);
+  const isWorkflow = isWorkflowEditingTool(toolCall.name);
+  
+  // Not a server-side tool
+  if (!isKnowledge && !isWorkflow) {
+    return null;
+  }
+  
+  const toolType = isWorkflow ? 'workflow' : 'knowledge';
+  const prefix = options.isAdditional ? 'additional server-side' : 'server-side';
+  console.log(`🔧 Executing ${prefix} ${toolType} tool: ${toolCall.name}`);
+  
+  try {
+    // Workflow tools require authenticated user context
+    if (isWorkflow && !context.authenticatedUserId) {
+      throw new Error('Workflow editing requires authentication with a user account');
+    }
+    
+    // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
+    let toolArgs = toolCall.args;
+    if (isWorkflow) {
+      if (!context.workflowId) {
+        throw new Error('workflowId is required in request body for workflow editing tools');
+      }
+      toolArgs = { ...toolArgs, workflow_id: context.workflowId };
+      console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${context.workflowId}`);
+    }
+    
+    // Execute the tool
+    const toolResult = isWorkflow
+      ? await executeWorkflowTool(toolCall.name, toolArgs, {
+          userId: context.authenticatedUserId!,
+          orgId: context.orgId || null,
+          ...(context.email && { email: context.email })
+        })
+      : await executeKnowledgeTool(toolCall.name, toolArgs);
+    
+    // Extract workflow data if present
+    const workflowData = isWorkflow
+      ? captureWorkflowData(toolResult, null)
+      : undefined;
+    
+    const logPrefix = options.isAdditional ? 'Additional server' : 'Server';
+    console.log(`✅ ${logPrefix} tool ${toolCall.name} executed successfully`);
+    
+    return {
+      name: toolCall.name,
+      result: toolResult,
+      ...(options.preserveId && toolCall.id && { id: toolCall.id }),
+      ...(workflowData && { workflowData })
+    };
+  } catch (error) {
+    console.error(`❌ Server tool ${toolCall.name} failed:`, error);
+    return {
+      name: toolCall.name,
+      result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
+      ...(options.preserveId && toolCall.id && { id: toolCall.id })
+    };
+  }
+}
+
 // Stateless chat handling with history reconstruction ----
 async function handleVertexChat(params: {
   vertexAI: VertexAI;
@@ -470,54 +565,26 @@ export async function POST(request: NextRequest) {
 
         // Separate server and client tools
         for (const toolCall of result.toolCalls) {
-          const isKnowledge = isKnowledgeTool(toolCall.name);
-          const isWorkflow = isWorkflowEditingTool(toolCall.name);
+          const executed = await executeServerTool(
+            toolCall,
+            {
+              authenticatedUserId,
+              orgId,
+              workflowId: body.workflowId
+            },
+            { preserveId: true } // Anthropic needs IDs
+          );
 
-          if (isKnowledge || isWorkflow) {
-            console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
-            try {
-            // Workflow tools require authenticated user context
-            if (isWorkflow && !authenticatedUserId) {
-              throw new Error('Workflow editing requires authentication with a user account');
+          if (executed) {
+            // Server-side tool
+            if (executed.workflowData) {
+              workflowData = executed.workflowData;
             }
-
-            // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
-            let toolArgs = toolCall.args;
-            if (isWorkflow) {
-              if (!body.workflowId) {
-                throw new Error('workflowId is required in request body for workflow editing tools');
-              }
-              toolArgs = { ...toolArgs, workflow_id: body.workflowId };
-              console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
-            }
-
-            const toolResult = isWorkflow
-              ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                  userId: authenticatedUserId!,
-                  orgId: orgId || null
-                })
-                : await executeKnowledgeTool(toolCall.name, toolArgs);
-
-              // Capture workflow data if the workflow was updated
-              if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
-                workflowData = toolResult.workflow_data;
-                console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
-              }
-
-              serverToolResults.push({
-                name: toolCall.name,
-                result: toolResult,
-                id: toolCall.id  // Preserve ID for Anthropic
-              });
-              console.log(`✅ Server tool ${toolCall.name} executed successfully`);
-            } catch (error) {
-              console.error(`❌ Server tool ${toolCall.name} failed:`, error);
-              serverToolResults.push({
-                name: toolCall.name,
-                result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
-                id: toolCall.id
-              });
-            }
+            serverToolResults.push({
+              name: executed.name,
+              result: executed.result,
+              ...(executed.id && { id: executed.id })
+            });
           } else {
             // Client-side tool - pass to client
             clientToolCalls.push(toolCall);
@@ -594,55 +661,28 @@ export async function POST(request: NextRequest) {
 
             // Check each tool call from continuation
             for (const toolCall of finalResult.toolCalls) {
-              const isKnowledge = isKnowledgeTool(toolCall.name);
-              const isWorkflow = isWorkflowEditingTool(toolCall.name);
+              const executed = await executeServerTool(
+                toolCall,
+                {
+                  authenticatedUserId,
+                  orgId,
+                  workflowId: body.workflowId
+                },
+                { preserveId: true, isAdditional: true } // Anthropic needs IDs
+              );
 
-              if (isKnowledge || isWorkflow) {
-                console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
-                try {
-              // Workflow tools require authenticated user context
-              if (isWorkflow && !authenticatedUserId) {
-                throw new Error('Workflow editing requires authentication with a user account');
-              }
-
-              // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
-              let toolArgs = toolCall.args;
-              if (isWorkflow) {
-                if (!body.workflowId) {
-                  throw new Error('workflowId is required in request body for workflow editing tools');
+              if (executed) {
+                // Server-side tool
+                if (executed.workflowData) {
+                  workflowData = executed.workflowData;
                 }
-                toolArgs = { ...toolArgs, workflow_id: body.workflowId };
-                console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
-              }
-
-              const toolResult = isWorkflow
-                ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                    userId: authenticatedUserId!,
-                    orgId: orgId || null
-                  })
-                    : await executeKnowledgeTool(toolCall.name, toolArgs);
-
-                  // Capture workflow data if the workflow was updated
-                  if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
-                    workflowData = toolResult.workflow_data;
-                    console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
-                  }
-
-                  moreServerTools.push({
-                    name: toolCall.name,
-                    result: toolResult,
-                    id: toolCall.id
-                  });
-                  console.log(`✅ Additional server tool ${toolCall.name} executed successfully`);
-                } catch (error) {
-                  console.error(`❌ Additional server tool ${toolCall.name} failed:`, error);
-                  moreServerTools.push({
-                    name: toolCall.name,
-                    result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
-                    id: toolCall.id
-                  });
-                }
+                moreServerTools.push({
+                  name: executed.name,
+                  result: executed.result,
+                  ...(executed.id && { id: executed.id })
+                });
               } else {
+                // Client-side tool
                 remainingClientTools.push(toolCall);
               }
             }
@@ -933,53 +973,26 @@ export async function POST(request: NextRequest) {
 
       // Separate server and client tools
       for (const toolCall of result.toolCalls) {
-        const isKnowledge = isKnowledgeTool(toolCall.name);
-        const isWorkflow = isWorkflowEditingTool(toolCall.name);
+        const executed = await executeServerTool(
+          toolCall,
+          {
+            authenticatedUserId,
+            orgId,
+            email: userEmail,
+            workflowId: body.workflowId
+          },
+          { preserveId: false } // Vertex doesn't need IDs
+        );
 
-        if (isKnowledge || isWorkflow) {
-          console.log(`🔧 Executing server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
-          try {
-            // Workflow tools require authenticated user context
-            if (isWorkflow && !authenticatedUserId) {
-              throw new Error('Workflow editing requires authentication with a user account');
-            }
-
-            // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
-            let toolArgs = toolCall.args;
-            if (isWorkflow) {
-              if (!body.workflowId) {
-                throw new Error('workflowId is required in request body for workflow editing tools');
-              }
-              toolArgs = { ...toolArgs, workflow_id: body.workflowId };
-              console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
-            }
-
-            const toolResult = isWorkflow
-              ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                  userId: authenticatedUserId!,
-                  orgId: orgId || null,
-                  email: userEmail || null
-                })
-              : await executeKnowledgeTool(toolCall.name, toolArgs);
-
-            // Capture workflow data if the workflow was updated
-            if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
-              workflowData = toolResult.workflow_data;
-              console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
-            }
-
-            serverToolResults.push({
-              name: toolCall.name,
-              result: toolResult
-            });
-            console.log(`✅ Server tool ${toolCall.name} executed successfully`);
-          } catch (error) {
-            console.error(`❌ Server tool ${toolCall.name} failed:`, error);
-            serverToolResults.push({
-              name: toolCall.name,
-              result: { error: error instanceof Error ? error.message : 'Tool execution failed' }
-            });
+        if (executed) {
+          // Server-side tool
+          if (executed.workflowData) {
+            workflowData = executed.workflowData;
           }
+          serverToolResults.push({
+            name: executed.name,
+            result: executed.result
+          });
         } else {
           // Client-side tool - pass to client
           clientToolCalls.push(toolCall);
@@ -1055,53 +1068,27 @@ export async function POST(request: NextRequest) {
 
           // Check each tool call from continuation
           for (const toolCall of finalResult.toolCalls) {
-            const isKnowledge = isKnowledgeTool(toolCall.name);
-            const isWorkflow = isWorkflowEditingTool(toolCall.name);
+            const executed = await executeServerTool(
+              toolCall,
+              {
+                authenticatedUserId,
+                orgId,
+                workflowId: body.workflowId
+              },
+              { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
+            );
 
-            if (isKnowledge || isWorkflow) {
-              console.log(`🔧 Executing additional server-side ${isWorkflow ? 'workflow' : 'knowledge'} tool: ${toolCall.name}`);
-              try {
-                // Workflow tools require authenticated user context
-                if (isWorkflow && !authenticatedUserId) {
-                  throw new Error('Workflow editing requires authentication with a user account');
-                }
-
-                // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
-                let toolArgs = toolCall.args;
-                if (isWorkflow) {
-                  if (!body.workflowId) {
-                    throw new Error('workflowId is required in request body for workflow editing tools');
-                  }
-                  toolArgs = { ...toolArgs, workflow_id: body.workflowId };
-                  console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${body.workflowId}`);
-                }
-
-                const toolResult = isWorkflow
-                  ? await executeWorkflowTool(toolCall.name, toolArgs, {
-                      userId: authenticatedUserId!,
-                      orgId: orgId || null
-                    })
-                  : await executeKnowledgeTool(toolCall.name, toolArgs);
-
-                // Capture workflow data if the workflow was updated
-                if (isWorkflow && 'workflow_updated' in toolResult && toolResult.workflow_updated && 'workflow_data' in toolResult && toolResult.workflow_data) {
-                  workflowData = toolResult.workflow_data;
-                  console.log(`📦 Captured updated workflow data for workflow ID: ${workflowData.id}`);
-                }
-
-                moreServerTools.push({
-                  name: toolCall.name,
-                  result: toolResult
-                });
-                console.log(`✅ Additional server tool ${toolCall.name} executed successfully`);
-              } catch (error) {
-                console.error(`❌ Additional server tool ${toolCall.name} failed:`, error);
-                moreServerTools.push({
-                  name: toolCall.name,
-                  result: { error: error instanceof Error ? error.message : 'Tool execution failed' }
-                });
+            if (executed) {
+              // Server-side tool
+              if (executed.workflowData) {
+                workflowData = executed.workflowData;
               }
+              moreServerTools.push({
+                name: executed.name,
+                result: executed.result
+              });
             } else {
+              // Client-side tool
               remainingClientTools.push(toolCall);
             }
           }
