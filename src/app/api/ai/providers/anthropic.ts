@@ -89,11 +89,48 @@ function convertToAnthropicTools(tools: any[]): AnthropicTool[] {
 
 /**
  * Convert Vertex format history to Anthropic format
+ * CRITICAL: Vertex uses name-based matching, Anthropic uses ID-based matching
+ * We need to generate consistent IDs for paired tool calls and results
  */
 export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): AnthropicMessage[] {
+  console.log('[ANTHROPIC] Converting Vertex history to Anthropic format');
+  
+  // PHASE 1: Build a mapping of tool calls to generated IDs
+  // This ensures that when we encounter a functionCall and its corresponding functionResponse,
+  // they both use the same ID (required by Anthropic)
+  
+  const toolCallIdMap = new Map<string, string>(); // key: "messageIndex_toolName_callIndex", value: generated ID
+  let callCounter = 0; // Global counter for unique IDs
+  
+  // First pass: identify all tool calls and assign them IDs
+  vertexHistory.forEach((msg, msgIndex) => {
+    if (msg.role === 'model') {
+      const functionCalls = msg.parts.filter(p => p.functionCall);
+      functionCalls.forEach((fc, fcIndex) => {
+        // If ID already exists, use it; otherwise generate a new one
+        const existingId = fc.functionCall.id;
+        const generatedId = existingId || `toolu_${callCounter.toString().padStart(6, '0')}_${fc.functionCall.name}`;
+        
+        // Create a key that can be matched later when we see the response
+        // We'll match responses to calls by scanning backwards for the most recent call with the same name
+        const mapKey = `${msgIndex}_${fc.functionCall.name}_${fcIndex}`;
+        toolCallIdMap.set(mapKey, generatedId);
+        
+        console.log(`[ANTHROPIC] Mapped tool call at msg ${msgIndex}: ${fc.functionCall.name} → ${generatedId}`);
+        callCounter++;
+      });
+    }
+  });
+  
+  // PHASE 2: Build Anthropic messages, using the ID map for consistency
   const anthropicMessages: AnthropicMessage[] = [];
-
-  for (const msg of vertexHistory) {
+  
+  // Track which tool calls we've seen, to match responses
+  const pendingToolCalls: Array<{ name: string; id: string; msgIndex: number }> = [];
+  
+  for (let msgIndex = 0; msgIndex < vertexHistory.length; msgIndex++) {
+    const msg = vertexHistory[msgIndex];
+    
     if (msg.role === 'user') {
       // Convert user messages
       const textParts = msg.parts.filter(p => p.text).map(p => p.text).join('');
@@ -103,11 +140,31 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
 
       if (functionResponses.length > 0) {
         // This is a tool result message
-        const toolResults = functionResponses.map(fr => ({
-          type: 'tool_result' as const,
-          tool_use_id: fr.functionResponse.id || fr.functionResponse.name, // Use ID if available, fallback to name
-          content: JSON.stringify(fr.functionResponse.response),
-        }));
+        // Match each response to its corresponding call by name (most recent first)
+        const toolResults = functionResponses.map(fr => {
+          const toolName = fr.functionResponse.name;
+          
+          // Find the most recent pending tool call with this name and remove it
+          const matchingCallIndex = pendingToolCalls.findIndex(pc => pc.name === toolName);
+          let toolUseId: string;
+          
+          if (matchingCallIndex >= 0) {
+            // Found a matching call - use its ID
+            toolUseId = pendingToolCalls[matchingCallIndex].id;
+            pendingToolCalls.splice(matchingCallIndex, 1); // Remove from pending
+            console.log(`[ANTHROPIC] Matched tool result ${toolName} → ${toolUseId}`);
+          } else {
+            // No matching call found - use the response's own ID or fallback to name
+            toolUseId = fr.functionResponse.id || toolName;
+            console.warn(`[ANTHROPIC] ⚠️ No matching tool call found for response: ${toolName}, using fallback ID: ${toolUseId}`);
+          }
+          
+          return {
+            type: 'tool_result' as const,
+            tool_use_id: toolUseId,
+            content: JSON.stringify(fr.functionResponse.response),
+          };
+        });
 
         anthropicMessages.push({
           role: 'user',
@@ -135,15 +192,25 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
 
       // Add function calls (tool uses)
       const functionCalls = msg.parts.filter(p => p.functionCall);
-      for (const fc of functionCalls) {
+      functionCalls.forEach((fc, fcIndex) => {
+        // Get the ID from our map
+        const mapKey = `${msgIndex}_${fc.functionCall.name}_${fcIndex}`;
+        const toolUseId = toolCallIdMap.get(mapKey) || fc.functionCall.id || `toolu_fallback_${fc.functionCall.name}`;
+        
         content.push({
           type: 'tool_use',
-          // Use existing ID if available, otherwise generate one
-          id: fc.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+          id: toolUseId,
           name: fc.functionCall.name,
           input: fc.functionCall.args || {},
         });
-      }
+        
+        // Add to pending calls so we can match the response later
+        pendingToolCalls.push({
+          name: fc.functionCall.name,
+          id: toolUseId,
+          msgIndex
+        });
+      });
 
       if (content.length > 0) {
         anthropicMessages.push({
@@ -153,6 +220,14 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
       }
     }
   }
+  
+  // Log any unmatched tool calls (responses never came)
+  if (pendingToolCalls.length > 0) {
+    console.warn(`[ANTHROPIC] ⚠️ ${pendingToolCalls.length} tool call(s) without matching responses:`, 
+      pendingToolCalls.map(pc => pc.name));
+  }
+  
+  console.log(`[ANTHROPIC] Converted ${vertexHistory.length} Vertex messages → ${anthropicMessages.length} Anthropic messages`);
 
   return anthropicMessages;
 }
