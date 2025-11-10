@@ -493,6 +493,7 @@ export async function POST(request: NextRequest) {
     let sessionSystem = system;
     let sessionModel: AllowedModel = model;
     let cachedTools: FunctionDeclaration[] | undefined = undefined;
+    let sessionProvider: 'vertex' | 'anthropic' | undefined = undefined;
 
     if (sessionId) {
       const sessionData = await loadSession(sessionId);
@@ -500,7 +501,26 @@ export async function POST(request: NextRequest) {
         // Use history from KV, override client-provided history
         history = sessionData.history;
         sessionSystem = sessionData.system || system;
-        sessionModel = sessionData.model;
+        sessionProvider = sessionData.provider;
+        
+        // CRITICAL: Allow model switching mid-session (e.g., Gemini → Claude)
+        // Client's requested model takes precedence over stored model
+        const requestedProvider = isAnthropicModel(model) ? 'anthropic' : 'vertex';
+        const storedProvider = sessionData.provider || 'vertex';
+        
+        if (requestedProvider !== storedProvider) {
+          // Provider switch detected - use client's requested model
+          console.log(`[AI API] 🔄 Provider switch detected: ${storedProvider} → ${requestedProvider}`);
+          console.log(`[AI API] Switching model from ${sessionData.model} → ${model}`);
+          sessionModel = model; // Use client's requested model
+          
+          // When switching providers, we'll convert history format on-demand in provider-specific code
+          // The vertexToAnthropicHistory function will handle Vertex → Anthropic conversion
+        } else {
+          // Same provider - use stored model (maintain consistency within provider)
+          sessionModel = sessionData.model;
+        }
+        
         cachedTools = sessionData.tools; // Retrieve cached tools from Turn 1
         console.log(`[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}`);
       } else {
