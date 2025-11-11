@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -29,6 +29,7 @@
     "@google-cloud/vertexai": "^1.10.0",
     "@google/generative-ai": "^0.24.1",
     "@mastra/core": "^0.21.1",
+    "@mediar-ai/terminator": "^0.22.18",
     "@modelcontextprotocol/sdk": "^1.16.0",
     "@octokit/rest": "^22.0.0",
     "@playwright/test": "^1.52.0",
