@@ -314,6 +314,7 @@ function AdminPageContent() {
         await fetchMachines();
         setEditingMachine(null);
         setEditedMachineData({});
+        toast.success('Machine updated successfully');
       } else {
         const error = await response.json();
         toast.error(`Failed to update machine: ${error.error}`);
