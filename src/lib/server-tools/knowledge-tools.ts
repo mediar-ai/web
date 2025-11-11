@@ -237,13 +237,13 @@ export const serverSideTools = {
       try {
         console.log('[SERVER-TERMINATOR-API] Getting full API docs');
         
-        // Inline implementation - direct file read without require.resolve to avoid bundler issues
-        const fs = require('fs');
-        const path = require('path');
+        // Dynamic imports - bundler ignores these, executed at runtime
+        const { readFileSync, statSync } = await import('fs');
+        const { join, dirname } = await import('path');
         
         // Use direct path - avoid require.resolve() which triggers webpack bundling
-        const dtsPath = path.join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
-        const docs = fs.readFileSync(dtsPath, 'utf-8');
+        const dtsPath = join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
+        const docs = readFileSync(dtsPath, 'utf-8');
         console.log(`[TERMINATOR-API] Read ${docs.length} chars from ${dtsPath}`);
         
         const result: any = {
@@ -254,11 +254,11 @@ export const serverSideTools = {
         };
         
         if (params.includeMetadata) {
-          const stats = fs.statSync(dtsPath);
+          const stats = statSync(dtsPath);
           let version: string | undefined;
           try {
-            const packageJsonPath = path.join(path.dirname(dtsPath), 'package.json');
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+            const packageJsonPath = join(dirname(dtsPath), 'package.json');
+            const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
             version = packageJson.version;
           } catch {}
           
@@ -311,13 +311,13 @@ export const serverSideTools = {
       try {
         console.log('[SERVER-TERMINATOR-API] Searching for:', params.pattern);
         
-        // Inline implementation - direct file read without require.resolve to avoid bundler issues
-        const fs = require('fs');
-        const path = require('path');
+        // Dynamic imports - bundler ignores these, executed at runtime
+        const { readFileSync } = await import('fs');
+        const { join } = await import('path');
         
         // Use direct path - avoid require.resolve() which triggers webpack bundling
-        const dtsPath = path.join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
-        const content = fs.readFileSync(dtsPath, 'utf-8');
+        const dtsPath = join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
+        const content = readFileSync(dtsPath, 'utf-8');
         
         // Search logic
         const lines = content.split('\n');
