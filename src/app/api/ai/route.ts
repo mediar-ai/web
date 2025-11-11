@@ -493,7 +493,6 @@ export async function POST(request: NextRequest) {
     let sessionSystem = system;
     let sessionModel: AllowedModel = model;
     let cachedTools: FunctionDeclaration[] | undefined = undefined;
-    let sessionProvider: 'vertex' | 'anthropic' | undefined = undefined;
 
     if (sessionId) {
       const sessionData = await loadSession(sessionId);
@@ -501,7 +500,6 @@ export async function POST(request: NextRequest) {
         // Use history from KV, override client-provided history
         history = sessionData.history;
         sessionSystem = sessionData.system || system;
-        sessionProvider = sessionData.provider;
         
         // CRITICAL: Allow model switching mid-session (e.g., Gemini → Claude)
         // Client's requested model takes precedence over stored model
