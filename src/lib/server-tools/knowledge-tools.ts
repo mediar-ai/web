@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
 import { SchemaType } from '@google-cloud/vertexai';
 import { loadTerminatorDocs, searchTerminatorDocs } from '@/lib/terminator-docs-service';
+// NOTE: terminator-api-service functions are inlined below to avoid Turbopack chunking issues with fs/path
 
 // Lazy-load Supabase client to avoid initialization errors
 let supabaseClient: ReturnType<typeof createClient> | null = null;
@@ -212,6 +213,182 @@ export const serverSideTools = {
           action: 'search_failed',
           query: params.pattern,
           error: error instanceof Error ? error.message : 'Unknown error searching documentation'
+        };
+      }
+    }
+  },
+
+  get_terminator_api_docs: {
+    description: 'Get the complete Terminator API documentation from TypeScript declarations. Returns the full .d.ts file with all type definitions, interfaces, and JSDoc comments. Use this when you need to see the complete API or browse available tools.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        includeMetadata: {
+          type: SchemaType.BOOLEAN,
+          description: 'Include file metadata (path, size, version)',
+          default: false
+        }
+      },
+      required: []
+    },
+    execute: async (params: {
+      includeMetadata?: boolean;
+    }) => {
+      try {
+        console.log('[SERVER-TERMINATOR-API] Getting full API docs');
+        
+        // Inline implementation - direct file read without require.resolve to avoid bundler issues
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Use direct path - avoid require.resolve() which triggers webpack bundling
+        const dtsPath = path.join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
+        const docs = fs.readFileSync(dtsPath, 'utf-8');
+        console.log(`[TERMINATOR-API] Read ${docs.length} chars from ${dtsPath}`);
+        
+        const result: any = {
+          action: 'docs_retrieved',
+          docs,
+          lineCount: docs.split('\n').length,
+          charCount: docs.length
+        };
+        
+        if (params.includeMetadata) {
+          const stats = fs.statSync(dtsPath);
+          let version: string | undefined;
+          try {
+            const packageJsonPath = path.join(path.dirname(dtsPath), 'package.json');
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+            version = packageJson.version;
+          } catch {}
+          
+          result.metadata = {
+            path: dtsPath,
+            size: stats.size,
+            lineCount: docs.split('\n').length,
+            version
+          };
+        }
+        
+        return result;
+      } catch (error) {
+        console.error('[SERVER-TERMINATOR-API] Error:', error);
+        return {
+          action: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error reading API docs'
+        };
+      }
+    }
+  },
+
+  search_terminator_api: {
+    description: 'Search Terminator TypeScript API documentation with surrounding context. Returns matched lines with configurable context window. Use this when searching for specific tools, parameters, or type definitions.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        pattern: {
+          type: SchemaType.STRING,
+          description: 'Search pattern (e.g., "click", "ClickElementParams", "browser", "type_text")'
+        },
+        contextLines: {
+          type: SchemaType.NUMBER,
+          description: 'Number of lines to show before and after each match (default: 10)',
+          default: 10
+        },
+        maxMatches: {
+          type: SchemaType.NUMBER,
+          description: 'Maximum number of matches to return (default: 10)',
+          default: 10
+        }
+      },
+      required: ['pattern']
+    },
+    execute: async (params: {
+      pattern: string;
+      contextLines?: number;
+      maxMatches?: number;
+    }) => {
+      try {
+        console.log('[SERVER-TERMINATOR-API] Searching for:', params.pattern);
+        
+        // Inline implementation - direct file read without require.resolve to avoid bundler issues
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Use direct path - avoid require.resolve() which triggers webpack bundling
+        const dtsPath = path.join(process.cwd(), 'node_modules/@mediar-ai/terminator/index.d.ts');
+        const content = fs.readFileSync(dtsPath, 'utf-8');
+        
+        // Search logic
+        const lines = content.split('\n');
+        const matches: Array<{ lineNumber: number; matchedLine: string; context: string; section?: string }> = [];
+        const searchPattern = params.pattern.toLowerCase();
+        const contextLines = params.contextLines || 10;
+        const maxMatches = params.maxMatches || 10;
+        
+        for (let i = 0; i < lines.length && matches.length < maxMatches; i++) {
+          const line = lines[i];
+          
+          if (line.toLowerCase().includes(searchPattern)) {
+            const startLine = Math.max(0, i - contextLines);
+            const endLine = Math.min(lines.length - 1, i + contextLines);
+            const contextLines_arr = lines.slice(startLine, endLine + 1);
+            const context = contextLines_arr.join('\n');
+            
+            // Find section name
+            let section: string | undefined;
+            for (let j = i; j >= Math.max(0, i - 50); j--) {
+              const l = lines[j].trim();
+              const interfaceMatch = l.match(/(?:export\s+)?interface\s+(\w+)/);
+              if (interfaceMatch) {
+                section = interfaceMatch[1];
+                break;
+              }
+              const typeMatch = l.match(/(?:export\s+)?type\s+(\w+)/);
+              if (typeMatch) {
+                section = typeMatch[1];
+                break;
+              }
+              const functionMatch = l.match(/(?:export\s+)?function\s+(\w+)/);
+              if (functionMatch) {
+                section = functionMatch[1];
+                break;
+              }
+            }
+            
+            matches.push({
+              lineNumber: i + 1,
+              matchedLine: line.trim(),
+              context,
+              section
+            });
+          }
+        }
+        
+        console.log(`[TERMINATOR-API] Found ${matches.length} matches for "${params.pattern}"`);
+        
+        if (matches.length === 0) {
+          return {
+            action: 'search_completed',
+            query: params.pattern,
+            found: false,
+            message: `No matches found for "${params.pattern}". Try searching for tool names like "click", "type", "browser", or parameter interfaces like "ClickElementParams".`
+          };
+        }
+        
+        return {
+          action: 'search_completed',
+          query: params.pattern,
+          found: true,
+          matchCount: matches.length,
+          matches
+        };
+      } catch (error) {
+        console.error('[SERVER-TERMINATOR-API] Error:', error);
+        return {
+          action: 'search_failed',
+          query: params.pattern,
+          error: error instanceof Error ? error.message : 'Unknown error searching API docs'
         };
       }
     }
