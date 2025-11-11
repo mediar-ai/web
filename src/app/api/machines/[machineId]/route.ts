@@ -230,7 +230,7 @@ export async function PUT(
 
     // Prepare update data (only allow certain fields to be updated)
     const allowedFields = [
-      'description', 'max_concurrent_executions', 'priority', 'status',
+      'name', 'description', 'max_concurrent_executions', 'priority', 'status',
       'region', 'tags', 'capabilities', 'health_endpoint'
     ];
     
