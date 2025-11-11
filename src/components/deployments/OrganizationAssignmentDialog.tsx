@@ -12,10 +12,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Building2, Users, Crown, Search } from 'lucide-react';
+import { Building2, Users, Search } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
 
 interface OrganizationAssignmentDialogProps {
@@ -45,9 +44,6 @@ export function OrganizationAssignmentDialog({
   const [initialOrgs, setInitialOrgs] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Mediar org IDs that must always be selected
-  const REQUIRED_ORGS = MEDIAR_ORG_IDS;
-
   const fetchOrganizationAccess = useCallback(async () => {
     try {
       setLoading(true);
@@ -59,18 +55,16 @@ export function OrganizationAssignmentDialog({
 
       const data = await response.json();
       setOrganizations(data.organizations || []);
-      // Ensure Mediar orgs are always selected
       const assignedOrgs = data.assignedOrganizations || [];
-      const orgsWithRequired = [...new Set([...REQUIRED_ORGS, ...assignedOrgs])];
-      setSelectedOrgs(orgsWithRequired);
-      setInitialOrgs(orgsWithRequired);
+      setSelectedOrgs(assignedOrgs);
+      setInitialOrgs(assignedOrgs);
     } catch (error) {
       console.error('Failed to fetch organization access:', error);
       toast.error('Failed to load organization access');
     } finally {
       setLoading(false);
     }
-  }, [workflowId, REQUIRED_ORGS]);
+  }, [workflowId]);
 
   useEffect(() => {
     if (open) {
@@ -119,11 +113,6 @@ export function OrganizationAssignmentDialog({
   };
 
   const handleToggleOrg = (orgId: string) => {
-    // Don't allow deselecting Mediar orgs
-    if (REQUIRED_ORGS.includes(orgId)) {
-      return;
-    }
-
     setSelectedOrgs(prev =>
       prev.includes(orgId)
         ? prev.filter(id => id !== orgId)
@@ -136,8 +125,7 @@ export function OrganizationAssignmentDialog({
   };
 
   const handleDeselectAll = () => {
-    // Keep Mediar orgs selected
-    setSelectedOrgs(REQUIRED_ORGS);
+    setSelectedOrgs([]);
   };
 
   const hasChanges = JSON.stringify(selectedOrgs.sort()) !== JSON.stringify(initialOrgs.sort());
@@ -239,42 +227,28 @@ export function OrganizationAssignmentDialog({
               <ScrollArea className="h-[400px] border border-gray-200 rounded-lg p-4">
                 <div className="space-y-3">
                   {filteredOrganizations.map(org => {
-                    const isMediar = REQUIRED_ORGS.includes(org.id);
                     const isSelected = selectedOrgs.includes(org.id);
                     return (
                       <div
                         key={org.id}
-                        className={`flex items-center space-x-3 p-3 rounded-lg border ${
+                        className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer ${
                           isSelected
                             ? 'border-black bg-gray-50'
                             : 'border-gray-200 hover:border-gray-400'
-                        } transition-colors ${
-                          isMediar ? 'opacity-75' : 'cursor-pointer'
-                        }`}
-                        onClick={() => !isMediar && handleToggleOrg(org.id)}
+                        } transition-colors`}
+                        onClick={() => handleToggleOrg(org.id)}
                       >
                         <Checkbox
                           checked={isSelected}
-                          disabled={isMediar}
-                          onCheckedChange={() => !isMediar && handleToggleOrg(org.id)}
-                          className={`border-2 border-black ${
-                            isMediar ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
+                          onCheckedChange={() => handleToggleOrg(org.id)}
+                          className="border-2 border-black"
                         />
                         <div className="flex-1">
                           <Label
                             htmlFor={org.id}
-                            className={`font-mono text-sm flex items-center gap-2 ${
-                              isMediar ? '' : 'cursor-pointer'
-                            }`}
+                            className="font-mono text-sm flex items-center gap-2 cursor-pointer"
                           >
                             {org.name}
-                            {isMediar && (
-                              <span title="Required - Cannot be removed" className="flex items-center gap-1">
-                                <Crown className="w-4 h-4 text-black" />
-                                <span className="text-xs text-gray-500">(Required)</span>
-                              </span>
-                            )}
                           </Label>
                           <div className="text-xs text-gray-500 font-mono mt-1">
                             ID: {org.id}
