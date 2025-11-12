@@ -10,7 +10,7 @@ export interface AIProviderRequest {
   history: any[]; // Provider-specific format (Vertex or Anthropic)
   system?: string;
   tools?: any[]; // Provider-specific tool format
-  toolResults?: Array<{ name: string; result: any; id?: string }>;
+  toolResults?: Array<{ id: string; name: string; result: any }>; // id is required for proper matching
   generationConfig?: {
     temperature?: number;
     maxOutputTokens?: number;
@@ -21,7 +21,7 @@ export interface AIProviderRequest {
 // Common response format from all AI providers
 export interface AIProviderResponse {
   text: string;
-  toolCalls: Array<{ name: string; args: Record<string, any>; id?: string }>;
+  toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; // id is required for proper matching
   finishReason: 'stop' | 'tool_calls';
   metrics: {
     elapsedMs: number;

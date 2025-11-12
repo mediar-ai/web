@@ -1,29 +1,29 @@
 // Force Vercel rebuild - clear cache issue
-import type { FunctionDeclaration } from '@google-cloud/vertexai';
-import { VertexAI } from '@google-cloud/vertexai';
-import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
-import { createClient } from 'redis';
-import { randomUUID } from 'crypto';
 import {
-  serverSideTools as knowledgeTools,
-  getServerToolDeclarations as getKnowledgeToolDeclarations,
   executeServerTool as executeKnowledgeTool,
-  isServerSideTool as isKnowledgeTool
+  getServerToolDeclarations as getKnowledgeToolDeclarations,
+  isServerSideTool as isKnowledgeTool,
+  serverSideTools as knowledgeTools,
 } from '@/lib/server-tools/knowledge-tools';
 import {
-  serverSideWorkflowTools,
-  getWorkflowToolDeclarations,
   executeWorkflowTool,
-  isWorkflowEditingTool
+  getWorkflowToolDeclarations,
+  isWorkflowEditingTool,
+  serverSideWorkflowTools,
 } from '@/lib/server-tools/workflow-editing-tools';
+import type { FunctionDeclaration } from '@google-cloud/vertexai';
+import { VertexAI } from '@google-cloud/vertexai';
+import { randomUUID } from 'crypto';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from 'redis';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 
 // Redis client initialization
 const getRedisClient = async () => {
   const client = createClient({
-    url: process.env.REDIS_URL
+    url: process.env.REDIS_URL,
   });
 
   if (!client.isOpen) {
@@ -99,12 +99,14 @@ async function authenticate(request: NextRequest): Promise<{
     try {
       const validation = await validateDesktopToken(token);
       if (validation.valid) {
-        console.log(`[AI API] Authenticated with desktop token for user: ${validation.email}`);
+        console.log(
+          `[AI API] Authenticated with desktop token for user: ${validation.email}`
+        );
         return {
           authenticated: true,
           userId: validation.userId || null,
           orgId: validation.orgId || null,
-          email: validation.email || null
+          email: validation.email || null,
         };
       }
     } catch (error) {
@@ -121,7 +123,7 @@ async function authenticate(request: NextRequest): Promise<{
     return {
       authenticated: password === API_PASSWORD,
       userId: null,
-      orgId: null
+      orgId: null,
     };
   }
 
@@ -188,7 +190,9 @@ async function loadSession(sessionId: string): Promise<SessionData | null> {
 
     if (data) {
       const parsed = JSON.parse(data) as SessionData;
-      console.log(`[REDIS] Loaded session ${sessionId} with ${parsed.history.length} messages`);
+      console.log(
+        `[REDIS] Loaded session ${sessionId} with ${parsed.history.length} messages`
+      );
       return parsed;
     }
     return null;
@@ -198,12 +202,17 @@ async function loadSession(sessionId: string): Promise<SessionData | null> {
   }
 }
 
-async function saveSession(sessionId: string, data: SessionData): Promise<void> {
+async function saveSession(
+  sessionId: string,
+  data: SessionData
+): Promise<void> {
   try {
     const redis = await getRedisClient();
     const key = `${KV_SESSION_PREFIX}${sessionId}`;
     await redis.set(key, JSON.stringify(data), { EX: KV_SESSION_TTL });
-    console.log(`[REDIS] Saved session ${sessionId} with ${data.history.length} messages (TTL: ${KV_SESSION_TTL}s)`);
+    console.log(
+      `[REDIS] Saved session ${sessionId} with ${data.history.length} messages (TTL: ${KV_SESSION_TTL}s)`
+    );
   } catch (error) {
     console.error('[REDIS] Failed to save session:', error);
     throw error;
@@ -215,15 +224,16 @@ function createSessionId(): string {
 }
 
 // Helper to capture workflow data from tool results
-function captureWorkflowData(
-  toolResult: any,
-  currentWorkflowData: any
-): any {
-  if ('workflow_updated' in toolResult && 
-      toolResult.workflow_updated && 
-      'workflow_data' in toolResult && 
-      toolResult.workflow_data) {
-    console.log(`📦 Captured updated workflow data for workflow ID: ${toolResult.workflow_data.id}`);
+function captureWorkflowData(toolResult: any, currentWorkflowData: any): any {
+  if (
+    'workflow_updated' in toolResult &&
+    toolResult.workflow_updated &&
+    'workflow_data' in toolResult &&
+    toolResult.workflow_data
+  ) {
+    console.log(
+      `📦 Captured updated workflow data for workflow ID: ${toolResult.workflow_data.id}`
+    );
     return toolResult.workflow_data;
   }
   return currentWorkflowData;
@@ -250,63 +260,177 @@ async function executeServerTool(
 } | null> {
   const isKnowledge = isKnowledgeTool(toolCall.name);
   const isWorkflow = isWorkflowEditingTool(toolCall.name);
-  
+
   // Not a server-side tool
   if (!isKnowledge && !isWorkflow) {
     return null;
   }
-  
+
   const toolType = isWorkflow ? 'workflow' : 'knowledge';
-  const prefix = options.isAdditional ? 'additional server-side' : 'server-side';
+  const prefix = options.isAdditional
+    ? 'additional server-side'
+    : 'server-side';
   console.log(`🔧 Executing ${prefix} ${toolType} tool: ${toolCall.name}`);
-  
+
   try {
     // Workflow tools require authenticated user context
     if (isWorkflow && !context.authenticatedUserId) {
-      throw new Error('Workflow editing requires authentication with a user account');
+      throw new Error(
+        'Workflow editing requires authentication with a user account'
+      );
     }
-    
+
     // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
     let toolArgs = toolCall.args;
     if (isWorkflow) {
       if (!context.workflowId) {
-        throw new Error('workflowId is required in request body for workflow editing tools');
+        throw new Error(
+          'workflowId is required in request body for workflow editing tools'
+        );
       }
       toolArgs = { ...toolArgs, workflow_id: context.workflowId };
-      console.log(`[SECURITY] Overriding workflow_id with authenticated context: ${context.workflowId}`);
+      console.log(
+        `[SECURITY] Overriding workflow_id with authenticated context: ${context.workflowId}`
+      );
     }
-    
+
     // Execute the tool
     const toolResult = isWorkflow
       ? await executeWorkflowTool(toolCall.name, toolArgs, {
           userId: context.authenticatedUserId!,
           orgId: context.orgId || null,
-          ...(context.email && { email: context.email })
+          ...(context.email && { email: context.email }),
         })
       : await executeKnowledgeTool(toolCall.name, toolArgs);
-    
+
     // Extract workflow data if present
     const workflowData = isWorkflow
       ? captureWorkflowData(toolResult, null)
       : undefined;
-    
+
     const logPrefix = options.isAdditional ? 'Additional server' : 'Server';
     console.log(`✅ ${logPrefix} tool ${toolCall.name} executed successfully`);
-    
+
     return {
       name: toolCall.name,
       result: toolResult,
       ...(options.preserveId && toolCall.id && { id: toolCall.id }),
-      ...(workflowData && { workflowData })
+      ...(workflowData && { workflowData }),
     };
   } catch (error) {
     console.error(`❌ Server tool ${toolCall.name} failed:`, error);
     return {
       name: toolCall.name,
-      result: { error: error instanceof Error ? error.message : 'Tool execution failed' },
-      ...(options.preserveId && toolCall.id && { id: toolCall.id })
+      result: {
+        error: error instanceof Error ? error.message : 'Tool execution failed',
+      },
+      ...(options.preserveId && toolCall.id && { id: toolCall.id }),
     };
   }
+}
+
+// Helper function to determine if an error is retryable
+function isRetryableError(error: any): boolean {
+  // Check for HTTP status codes that are retryable
+  const errorMessage = error?.message || String(error);
+  const errorString = errorMessage.toLowerCase();
+
+  // Retryable: 503 Service Unavailable, 429 Too Many Requests, 500 Internal Server Error
+  // Also retry on timeout/network errors
+  const retryablePatterns = [
+    '503',
+    'service unavailable',
+    '429',
+    'too many requests',
+    'rate limit',
+    '500',
+    'internal server error',
+    'timeout',
+    'econnreset',
+    'enotfound',
+    'unavailable',
+    'visibility check was unavailable', // Specific Google error
+  ];
+
+  return retryablePatterns.some(pattern => errorString.includes(pattern));
+}
+
+// Helper function to retry Vertex AI sendMessage with exponential backoff
+async function sendMessageWithRetry(
+  chat: any,
+  message: any,
+  options: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    messageType?: string;
+  } = {}
+): Promise<any> {
+  const {
+    maxRetries = 3,
+    baseDelayMs = 1000,
+    messageType = 'message',
+  } = options;
+
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Calculate exponential backoff delay: baseDelay * 2^(attempt-1)
+        const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+        console.log(
+          `[VERTEX-RETRY] Attempt ${attempt + 1}/${maxRetries + 1} - waiting ${delayMs}ms before retry...`
+        );
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      console.log(
+        `[VERTEX-HTTP] Sending ${messageType} to Vertex AI (attempt ${attempt + 1}/${maxRetries + 1})`
+      );
+      const response = await chat.sendMessage(message);
+
+      if (attempt > 0) {
+        console.log(`[VERTEX-RETRY] ✅ Success after ${attempt} retries`);
+      }
+
+      return response;
+    } catch (error: any) {
+      lastError = error;
+
+      const isRetryable = isRetryableError(error);
+      const errorDetails = {
+        attempt: attempt + 1,
+        maxRetries: maxRetries + 1,
+        errorType: error?.constructor?.name || 'Unknown',
+        errorMessage: error?.message || String(error),
+        isRetryable,
+      };
+
+      console.error(`[VERTEX-HTTP] API error:`, errorDetails);
+
+      // If it's not retryable or we've exhausted retries, throw immediately
+      if (!isRetryable) {
+        console.error(
+          `[VERTEX-HTTP] Non-retryable error detected, failing immediately`
+        );
+        throw error;
+      }
+
+      if (attempt >= maxRetries) {
+        console.error(
+          `[VERTEX-HTTP] Max retries (${maxRetries + 1}) exhausted`
+        );
+        throw new Error(
+          `Vertex AI request failed after ${maxRetries + 1} attempts: ${error?.message || String(error)}`
+        );
+      }
+
+      console.log(`[VERTEX-HTTP] Retryable error detected, will retry...`);
+    }
+  }
+
+  // This should never be reached, but TypeScript needs it
+  throw lastError;
 }
 
 // Stateless chat handling with history reconstruction ----
@@ -354,9 +478,11 @@ async function handleVertexChat(params: {
   // Start chat with provided history
   const chat = gm.startChat({ history: history as any });
 
-  console.log(`[VERTEX] Created chat with ${history.length} history message(s)`);
+  console.log(
+    `[VERTEX] Created chat with ${history.length} history message(s)`
+  );
 
-  // Send message to chat
+  // Send message to chat with retry logic
   let response;
   if (toolResults && toolResults.length > 0) {
     // Continuing conversation with tool results
@@ -368,18 +494,28 @@ async function handleVertexChat(params: {
       functionResponse: {
         name: tr.name,
         response: {
-          name: tr.name,  // Name must be repeated in response
-          content: tr.result  // Actual tool result goes in content
-        }
-      }
+          name: tr.name, // Name must be repeated in response
+          content: tr.result, // Actual tool result goes in content
+        },
+      },
     }));
 
-    // Send as array of parts
-    response = await chat.sendMessage(functionResponseParts as any);
+    // Send as array of parts with retry logic
+    response = await sendMessageWithRetry(chat, functionResponseParts as any, {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      messageType: 'tool results',
+    });
   } else if (input) {
     // New user message
     console.log(`[AI API] 💬 Sending user message (${input.length} chars)`);
-    response = await chat.sendMessage(input);
+
+    // Send with retry logic
+    response = await sendMessageWithRetry(chat, input, {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      messageType: 'user message',
+    });
   } else {
     throw new Error('Either input or toolResults must be provided');
   }
@@ -439,7 +575,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
-  
+
   try {
     const authResult = await authenticate(request);
     if (!authResult.authenticated) {
@@ -460,6 +596,7 @@ export async function POST(request: NextRequest) {
     const input = body.input as string | undefined;
     let history = (body.history as VertexMessage[]) || [];
     const system = (body.system as string) || undefined;
+    const workflowId = body.workflowId as number | undefined; // For server-side workflow editing
     const generationConfig = body.generationConfig as
       | { temperature?: number; maxOutputTokens?: number }
       | undefined;
@@ -485,7 +622,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine provider based on model
-    const provider: 'vertex' | 'anthropic' = isAnthropicModel(model) ? 'anthropic' : 'vertex';
+    const provider: 'vertex' | 'anthropic' = isAnthropicModel(model)
+      ? 'anthropic'
+      : 'vertex';
     console.log(`[AI API] Using provider: ${provider} for model: ${model}`);
 
     // Load session from KV if sessionId provided
@@ -500,29 +639,39 @@ export async function POST(request: NextRequest) {
         // Use history from KV, override client-provided history
         history = sessionData.history;
         sessionSystem = sessionData.system || system;
-        
+
         // CRITICAL: Allow model switching mid-session (e.g., Gemini → Claude)
         // Client's requested model takes precedence over stored model
-        const requestedProvider = isAnthropicModel(model) ? 'anthropic' : 'vertex';
+        const requestedProvider = isAnthropicModel(model)
+          ? 'anthropic'
+          : 'vertex';
         const storedProvider = sessionData.provider || 'vertex';
-        
+
         if (requestedProvider !== storedProvider) {
           // Provider switch detected - use client's requested model
-          console.log(`[AI API] 🔄 Provider switch detected: ${storedProvider} → ${requestedProvider}`);
-          console.log(`[AI API] Switching model from ${sessionData.model} → ${model}`);
+          console.log(
+            `[AI API] 🔄 Provider switch detected: ${storedProvider} → ${requestedProvider}`
+          );
+          console.log(
+            `[AI API] Switching model from ${sessionData.model} → ${model}`
+          );
           sessionModel = model; // Use client's requested model
-          
+
           // When switching providers, we'll convert history format on-demand in provider-specific code
           // The vertexToAnthropicHistory function will handle Vertex → Anthropic conversion
         } else {
           // Same provider - use stored model (maintain consistency within provider)
           sessionModel = sessionData.model;
         }
-        
+
         cachedTools = sessionData.tools; // Retrieve cached tools from Turn 1
-        console.log(`[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}`);
+        console.log(
+          `[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}`
+        );
       } else {
-        console.log(`[AI API] Session ${sessionId} not found in KV, starting fresh`);
+        console.log(
+          `[AI API] Session ${sessionId} not found in KV, starting fresh`
+        );
       }
     } else {
       // No sessionId provided, create new session for KV storage
@@ -537,8 +686,12 @@ export async function POST(request: NextRequest) {
 
       // Merge client tools with server-side tools (same as Vertex)
       // Use cached tools if available (Turn 2+), otherwise merge fresh (Turn 1)
-      let allTools: Array<{ name: string; description?: string; parameters?: JSONSchema }>;
-      
+      let allTools: Array<{
+        name: string;
+        description?: string;
+        parameters?: JSONSchema;
+      }>;
+
       if (cachedTools && cachedTools.length > 0) {
         // Turn 2+: Use cached tools from session
         allTools = cachedTools as any;
@@ -548,9 +701,14 @@ export async function POST(request: NextRequest) {
         const clientTools = tools || [];
         const knowledgeToolDecls = getKnowledgeToolDeclarations();
         const workflowToolDecls = getWorkflowToolDeclarations();
-        const serverToolDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
+        const serverToolDeclarations = [
+          ...knowledgeToolDecls,
+          ...workflowToolDecls,
+        ];
         allTools = [...clientTools, ...serverToolDeclarations];
-        console.log(`🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+        console.log(
+          `🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`
+        );
       }
 
       const anthropicRequest: AIProviderRequest = {
@@ -558,7 +716,7 @@ export async function POST(request: NextRequest) {
         input,
         history,
         system: sessionSystem,
-        tools: allTools,  // Pass merged tools to Anthropic
+        tools: allTools, // Pass merged tools to Anthropic
         toolResults,
         generationConfig,
         sessionId: actualSessionId,
@@ -588,7 +746,7 @@ export async function POST(request: NextRequest) {
             {
               authenticatedUserId,
               orgId,
-              workflowId: body.workflowId
+              workflowId,
             },
             { preserveId: true } // Anthropic needs IDs
           );
@@ -601,7 +759,7 @@ export async function POST(request: NextRequest) {
             serverToolResults.push({
               name: executed.name,
               result: executed.result,
-              ...(executed.id && { id: executed.id })
+              ...(executed.id && { id: executed.id }),
             });
           } else {
             // Client-side tool - pass to client
@@ -611,7 +769,9 @@ export async function POST(request: NextRequest) {
 
         // If we executed server tools, continue conversation automatically
         if (serverToolResults.length > 0) {
-          console.log(`🔄 Auto-continuing with ${serverToolResults.length} server tool results`);
+          console.log(
+            `🔄 Auto-continuing with ${serverToolResults.length} server tool results`
+          );
 
           // Update history with the tool calls
           const updatedHistoryWithCalls = [...history];
@@ -627,8 +787,8 @@ export async function POST(request: NextRequest) {
             functionCall: {
               name: tc.name,
               args: tc.args,
-              ...(tc.id && { id: tc.id })
-            }
+              ...(tc.id && { id: tc.id }),
+            },
           }));
 
           updatedHistoryWithCalls.push({
@@ -643,10 +803,10 @@ export async function POST(request: NextRequest) {
               functionResponse: {
                 name: tr.name,
                 response: {
-                  name: tr.name,  // Name must be repeated in response
-                  content: tr.result  // Actual tool result goes in content
+                  name: tr.name, // Name must be repeated in response
+                  content: tr.result, // Actual tool result goes in content
                 },
-                ...(tr.id && { id: tr.id })
+                ...(tr.id && { id: tr.id }),
               },
             })),
           });
@@ -665,7 +825,7 @@ export async function POST(request: NextRequest) {
           console.log('🎯 Continuation result:', {
             textLen: continuationResult.text.length,
             toolCallsCount: continuationResult.toolCalls.length,
-            finishReason: continuationResult.finishReason
+            finishReason: continuationResult.finishReason,
           });
 
           // Check if continuation has more server-side tools to execute
@@ -684,7 +844,7 @@ export async function POST(request: NextRequest) {
                 {
                   authenticatedUserId,
                   orgId,
-                  workflowId: body.workflowId
+                  workflowId,
                 },
                 { preserveId: true, isAdditional: true } // Anthropic needs IDs
               );
@@ -697,7 +857,7 @@ export async function POST(request: NextRequest) {
                 moreServerTools.push({
                   name: executed.name,
                   result: executed.result,
-                  ...(executed.id && { id: executed.id })
+                  ...(executed.id && { id: executed.id }),
                 });
               } else {
                 // Client-side tool
@@ -713,7 +873,8 @@ export async function POST(request: NextRequest) {
 
             // Add the model's response with tool calls to history
             if (finalResult.text || finalResult.toolCalls.length > 0) {
-              const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+              const modelParts: Array<{ text?: string; functionCall?: any }> =
+                [];
               if (finalResult.text) {
                 modelParts.push({ text: finalResult.text });
               }
@@ -722,7 +883,7 @@ export async function POST(request: NextRequest) {
                   functionCall: {
                     name: tc.name,
                     args: tc.args,
-                    ...(tc.id && { id: tc.id })
+                    ...(tc.id && { id: tc.id }),
                   },
                 });
               });
@@ -740,15 +901,17 @@ export async function POST(request: NextRequest) {
                   name: tr.name,
                   response: {
                     name: tr.name,
-                    content: tr.result
+                    content: tr.result,
                   },
-                  ...(tr.id && { id: tr.id })
+                  ...(tr.id && { id: tr.id }),
                 },
               })),
             });
 
             // Continue conversation with new server tool results
-            console.log(`🔄 Auto-continuing with ${moreServerTools.length} more server tool results`);
+            console.log(
+              `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
+            );
             finalResult = await handleAnthropicChat({
               model: sessionModel,
               history: finalHistory,
@@ -761,7 +924,7 @@ export async function POST(request: NextRequest) {
             console.log('🎯 Additional continuation result:', {
               textLen: finalResult.text.length,
               toolCallsCount: finalResult.toolCalls.length,
-              finishReason: finalResult.finishReason
+              finishReason: finalResult.finishReason,
             });
           }
 
@@ -776,7 +939,7 @@ export async function POST(request: NextRequest) {
                 functionCall: {
                   name: tc.name,
                   args: tc.args,
-                  ...(tc.id && { id: tc.id })
+                  ...(tc.id && { id: tc.id }),
                 },
               });
             });
@@ -795,7 +958,8 @@ export async function POST(request: NextRequest) {
               tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
               model: sessionModel,
               createdAt: sessionId
-                ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+                ? (await loadSession(sessionId))?.createdAt ||
+                  new Date().toISOString()
                 : new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
@@ -808,10 +972,10 @@ export async function POST(request: NextRequest) {
               model: sessionModel,
               sessionId: actualSessionId,
               text: finalResult.text,
-              toolCalls: clientToolCalls,  // Only return client tools that haven't been executed
+              toolCalls: clientToolCalls, // Only return client tools that haven't been executed
               finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
               metrics: finalResult.metrics,
-              ...(workflowData && { workflowData }),  // Include workflow data if present
+              ...(workflowData && { workflowData }), // Include workflow data if present
             },
             { headers: corsHeaders }
           );
@@ -837,8 +1001,8 @@ export async function POST(request: NextRequest) {
             functionResponse: {
               name: tr.name,
               response: {
-                name: tr.name,  // Name must be repeated in response
-                content: tr.result  // Actual tool result goes in content
+                name: tr.name, // Name must be repeated in response
+                content: tr.result, // Actual tool result goes in content
               },
               ...(tr.id && { id: tr.id }), // Include ID if present
             },
@@ -879,7 +1043,8 @@ export async function POST(request: NextRequest) {
           tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
           model: sessionModel,
           createdAt: sessionId
-            ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+            ? (await loadSession(sessionId))?.createdAt ||
+              new Date().toISOString()
             : new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -887,7 +1052,12 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(
-        { model: sessionModel, sessionId: actualSessionId, ...result, ...(workflowData && { workflowData }) },
+        {
+          model: sessionModel,
+          sessionId: actualSessionId,
+          ...result,
+          ...(workflowData && { workflowData }),
+        },
         { headers: corsHeaders }
       );
     }
@@ -896,7 +1066,7 @@ export async function POST(request: NextRequest) {
     // Merge client tools with server-side tools
     // Use cached tools if available (Turn 2+), otherwise merge fresh (Turn 1)
     let functionDeclarations: FunctionDeclaration[];
-    
+
     if (cachedTools && cachedTools.length > 0) {
       // Turn 2+: Use cached tools from session
       functionDeclarations = cachedTools;
@@ -906,9 +1076,17 @@ export async function POST(request: NextRequest) {
       const clientFunctionDeclarations = toFunctionDeclarations(tools);
       const knowledgeToolDecls = getKnowledgeToolDeclarations();
       const workflowToolDecls = getWorkflowToolDeclarations();
-      const serverFunctionDeclarations = [...knowledgeToolDecls, ...workflowToolDecls];
-      functionDeclarations = [...clientFunctionDeclarations, ...serverFunctionDeclarations];
-      console.log(`🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`);
+      const serverFunctionDeclarations = [
+        ...knowledgeToolDecls,
+        ...workflowToolDecls,
+      ];
+      functionDeclarations = [
+        ...clientFunctionDeclarations,
+        ...serverFunctionDeclarations,
+      ];
+      console.log(
+        `🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`
+      );
     }
 
     // Initialize Vertex client
@@ -997,7 +1175,7 @@ export async function POST(request: NextRequest) {
             authenticatedUserId,
             orgId,
             email: userEmail,
-            workflowId: body.workflowId
+            workflowId,
           },
           { preserveId: false } // Vertex doesn't need IDs
         );
@@ -1009,7 +1187,7 @@ export async function POST(request: NextRequest) {
           }
           serverToolResults.push({
             name: executed.name,
-            result: executed.result
+            result: executed.result,
           });
         } else {
           // Client-side tool - pass to client
@@ -1019,14 +1197,16 @@ export async function POST(request: NextRequest) {
 
       // If we executed server tools, continue conversation automatically
       if (serverToolResults.length > 0) {
-        console.log(`🔄 Auto-continuing with ${serverToolResults.length} server tool results`);
+        console.log(
+          `🔄 Auto-continuing with ${serverToolResults.length} server tool results`
+        );
 
         // Update history with the tool calls
         const toolCallParts = serverToolResults.map(tr => ({
           functionCall: {
             name: tr.name,
-            args: result.toolCalls.find(tc => tc.name === tr.name)?.args || {}
-          }
+            args: result.toolCalls.find(tc => tc.name === tr.name)?.args || {},
+          },
         }));
 
         const updatedHistoryWithCalls = [...history];
@@ -1052,19 +1232,19 @@ export async function POST(request: NextRequest) {
           history: updatedHistoryWithCalls,
           functionDeclarations,
           toolResults: serverToolResults,
-          generationConfig
+          generationConfig,
         });
 
         console.log('🎯 Continuation result:', {
           textLen: continuationResult.text.length,
           toolCallsCount: continuationResult.toolCalls.length,
-          finishReason: continuationResult.finishReason
+          finishReason: continuationResult.finishReason,
         });
 
         // Check if continuation has more server-side tools to execute
         let finalResult = continuationResult;
         const finalHistory = [...updatedHistoryWithCalls];
-        
+
         // Now add the tool results to history for Redis storage
         finalHistory.push({
           role: 'user',
@@ -1073,7 +1253,7 @@ export async function POST(request: NextRequest) {
               name: tr.name,
               response: {
                 name: tr.name,
-                content: tr.result
+                content: tr.result,
               },
             },
           })),
@@ -1091,7 +1271,7 @@ export async function POST(request: NextRequest) {
               {
                 authenticatedUserId,
                 orgId,
-                workflowId: body.workflowId
+                workflowId,
               },
               { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
             );
@@ -1103,7 +1283,7 @@ export async function POST(request: NextRequest) {
               }
               moreServerTools.push({
                 name: executed.name,
-                result: executed.result
+                result: executed.result,
               });
             } else {
               // Client-side tool
@@ -1140,7 +1320,9 @@ export async function POST(request: NextRequest) {
           // Don't add tool results to history yet - they'll be sent via toolResults parameter
 
           // Continue conversation with new server tool results
-          console.log(`🔄 Auto-continuing with ${moreServerTools.length} more server tool results`);
+          console.log(
+            `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
+          );
           finalResult = await handleVertexChat({
             vertexAI,
             model: sessionModel as VertexModel,
@@ -1148,15 +1330,15 @@ export async function POST(request: NextRequest) {
             history: finalHistory,
             functionDeclarations,
             toolResults: moreServerTools,
-            generationConfig
+            generationConfig,
           });
 
           console.log('🎯 Additional continuation result:', {
             textLen: finalResult.text.length,
             toolCallsCount: finalResult.toolCalls.length,
-            finishReason: finalResult.finishReason
+            finishReason: finalResult.finishReason,
           });
-          
+
           // Now add the tool results to history for Redis storage
           finalHistory.push({
             role: 'user',
@@ -1165,7 +1347,7 @@ export async function POST(request: NextRequest) {
                 name: tr.name,
                 response: {
                   name: tr.name,
-                  content: tr.result
+                  content: tr.result,
                 },
               },
             })),
@@ -1201,7 +1383,8 @@ export async function POST(request: NextRequest) {
             tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
             model: sessionModel,
             createdAt: sessionId
-              ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+              ? (await loadSession(sessionId))?.createdAt ||
+                new Date().toISOString()
               : new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -1214,10 +1397,10 @@ export async function POST(request: NextRequest) {
             model: sessionModel,
             sessionId: actualSessionId,
             text: finalResult.text,
-            toolCalls: clientToolCalls,  // Only return client tools that haven't been executed
+            toolCalls: clientToolCalls, // Only return client tools that haven't been executed
             finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
             metrics: finalResult.metrics,
-            ...(workflowData && { workflowData }),  // Include workflow data if present
+            ...(workflowData && { workflowData }), // Include workflow data if present
           },
           { headers: corsHeaders }
         );
@@ -1246,10 +1429,10 @@ export async function POST(request: NextRequest) {
           functionResponse: {
             name: tr.name,
             response: {
-              name: tr.name,  // Name must be repeated in response
-              content: tr.result  // Actual tool result goes in content
+              name: tr.name, // Name must be repeated in response
+              content: tr.result, // Actual tool result goes in content
             },
-            ...(tr.id && { id: tr.id })  // Preserve ID for Anthropic multi-turn support
+            ...(tr.id && { id: tr.id }), // Preserve ID for Anthropic multi-turn support
           },
         })),
       });
@@ -1266,7 +1449,7 @@ export async function POST(request: NextRequest) {
           functionCall: {
             name: tc.name,
             args: tc.args,
-            ...(tc.id && { id: tc.id })  // Preserve ID for Anthropic multi-turn support
+            ...(tc.id && { id: tc.id }), // Preserve ID for Anthropic multi-turn support
           },
         });
       });
@@ -1288,7 +1471,8 @@ export async function POST(request: NextRequest) {
         tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
         model: sessionModel,
         createdAt: sessionId
-          ? (await loadSession(sessionId))?.createdAt || new Date().toISOString()
+          ? (await loadSession(sessionId))?.createdAt ||
+            new Date().toISOString()
           : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1296,7 +1480,12 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { model: sessionModel, sessionId: actualSessionId, ...result, ...(workflowData && { workflowData }) },
+      {
+        model: sessionModel,
+        sessionId: actualSessionId,
+        ...result,
+        ...(workflowData && { workflowData }),
+      },
       { headers: corsHeaders }
     );
   } catch (error: unknown) {
@@ -1318,7 +1507,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
-  
+
   try {
     if (!(await authenticate(request))) {
       return NextResponse.json(
@@ -1340,7 +1529,10 @@ export async function GET(request: NextRequest) {
           vertex: {
             models: VERTEX_MODELS,
             toolExecution: 'hybrid',
-            serverSideTools: [...Object.keys(knowledgeTools), ...Object.keys(serverSideWorkflowTools)],
+            serverSideTools: [
+              ...Object.keys(knowledgeTools),
+              ...Object.keys(serverSideWorkflowTools),
+            ],
           },
           anthropic: {
             models: ANTHROPIC_MODELS,
