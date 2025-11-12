@@ -1,6 +1,90 @@
 import { getVertexGenAI } from '@/lib/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Helper function to determine if an error is retryable
+function isRetryableError(error: any): boolean {
+  const errorMessage = error?.message || String(error);
+  const errorString = errorMessage.toLowerCase();
+  
+  const retryablePatterns = [
+    '503',
+    'service unavailable',
+    '429',
+    'too many requests',
+    'rate limit',
+    '500',
+    'internal server error',
+    'timeout',
+    'econnreset',
+    'enotfound',
+    'unavailable',
+    'visibility check was unavailable',
+  ];
+  
+  return retryablePatterns.some(pattern => errorString.includes(pattern));
+}
+
+// Helper function to retry Vertex AI generateContent with exponential backoff
+async function generateContentWithRetry(
+  model: any,
+  params: any,
+  options: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+  } = {}
+): Promise<any> {
+  const { maxRetries = 3, baseDelayMs = 1000 } = options;
+  
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+        console.log(`[SEARCH-RETRY] Attempt ${attempt + 1}/${maxRetries + 1} - waiting ${delayMs}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+      
+      console.log(`[SEARCH-HTTP] Calling Vertex AI generateContent (attempt ${attempt + 1}/${maxRetries + 1})`);
+      const result = await model.generateContent(params);
+      
+      if (attempt > 0) {
+        console.log(`[SEARCH-RETRY] ✅ Success after ${attempt} retries`);
+      }
+      
+      return result;
+      
+    } catch (error: any) {
+      lastError = error;
+      
+      const isRetryable = isRetryableError(error);
+      console.error(`[SEARCH-HTTP] API error:`, {
+        attempt: attempt + 1,
+        maxRetries: maxRetries + 1,
+        errorType: error?.constructor?.name || 'Unknown',
+        errorMessage: error?.message || String(error),
+        isRetryable,
+      });
+      
+      if (!isRetryable) {
+        console.error(`[SEARCH-HTTP] Non-retryable error detected, failing immediately`);
+        throw error;
+      }
+      
+      if (attempt >= maxRetries) {
+        console.error(`[SEARCH-HTTP] Max retries (${maxRetries + 1}) exhausted`);
+        throw new Error(
+          `Vertex AI request failed after ${maxRetries + 1} attempts: ${error?.message || String(error)}`
+        );
+      }
+      
+      console.log(`[SEARCH-HTTP] Retryable error detected, will retry...`);
+    }
+  }
+  
+  throw lastError;
+}
+
 interface SearchResults {
   found: boolean;
   keyword: string;
@@ -120,12 +204,19 @@ Event ${i + 1}:
       model: 'gemini-2.5-pro'
     });
 
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: actualPrompt }] }],
-      generationConfig: {
-        temperature: 0.7,
+    const result = await generateContentWithRetry(
+      model,
+      {
+        contents: [{ role: 'user', parts: [{ text: actualPrompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+        },
       },
-    });
+      {
+        maxRetries: 3,
+        baseDelayMs: 1000,
+      }
+    );
 
     const aiResponse = result.response;
     const aiAnalysis = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
