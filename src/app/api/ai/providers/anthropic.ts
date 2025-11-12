@@ -223,10 +223,40 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
   
   // Log any unmatched tool calls (responses never came)
   if (pendingToolCalls.length > 0) {
-    console.warn(`[ANTHROPIC] ⚠️ ${pendingToolCalls.length} tool call(s) without matching responses:`, 
+    console.warn(`[ANTHROPIC] ⚠️ ${pendingToolCalls.length} tool call(s) without matching responses:`,
       pendingToolCalls.map(pc => pc.name));
+
+    // DEFENSIVE CLEANUP: Remove trailing assistant messages with orphaned tool_use blocks
+    // This prevents "tool_use must be immediately followed by tool_result" errors
+    console.log('[ANTHROPIC] 🧹 Cleaning up orphaned tool_use messages from history...');
+
+    // Find the last message with orphaned tool calls
+    let cleanedCount = 0;
+    while (anthropicMessages.length > 0) {
+      const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+
+      // Check if it's an assistant message with tool_use blocks
+      if (lastMsg.role === 'assistant' && Array.isArray(lastMsg.content)) {
+        const hasToolUse = lastMsg.content.some((block: any) => block.type === 'tool_use');
+
+        if (hasToolUse) {
+          // Remove this orphaned message
+          anthropicMessages.pop();
+          cleanedCount++;
+          console.log(`[ANTHROPIC] 🗑️ Removed orphaned assistant message with tool_use blocks`);
+        } else {
+          break; // No tool_use in this message, stop cleaning
+        }
+      } else {
+        break; // Not an assistant message, stop cleaning
+      }
+    }
+
+    if (cleanedCount > 0) {
+      console.log(`[ANTHROPIC] ✅ Cleaned ${cleanedCount} orphaned message(s) from history`);
+    }
   }
-  
+
   console.log(`[ANTHROPIC] Converted ${vertexHistory.length} Vertex messages → ${anthropicMessages.length} Anthropic messages`);
 
   return anthropicMessages;
@@ -237,7 +267,7 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
  */
 export function anthropicToVertexMessage(
   text: string,
-  toolCalls: Array<{ name: string; args: any; id?: string }>,
+  toolCalls: Array<{ id: string; name: string; args: any }>,
   role: 'user' | 'model' = 'model'
 ): VertexMessage {
   const parts: any[] = [];
@@ -331,14 +361,18 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
     }
 
     const toolResultContent = toolResults.map(tr => {
-      // Try to get the ID from: 1) provided ID, 2) map lookup by name
+      // IMPORTANT: As of the desktop app fix, tr.id is ALWAYS provided by the client
+      // Fallback to name-based lookup only for backward compatibility with old clients
       const toolUseId = tr.id || toolCallIdMap.get(tr.name);
 
       if (!toolUseId) {
-        console.warn(`[ANTHROPIC] ⚠️ No tool_use_id found for tool: ${tr.name}. This will cause an API error!`);
-        console.warn(`[ANTHROPIC] Available IDs in map:`, Array.from(toolCallIdMap.entries()));
+        console.error(`[ANTHROPIC] ❌ CRITICAL: No tool_use_id found for tool: ${tr.name}!`);
+        console.error(`[ANTHROPIC] Provided ID: ${tr.id}, Name: ${tr.name}`);
+        console.error(`[ANTHROPIC] Available IDs in map:`, Array.from(toolCallIdMap.entries()));
+        console.error(`[ANTHROPIC] This indicates client is not sending tool call IDs properly!`);
+        // This will cause Anthropic API to reject with "messages: tool_use must be immediately followed by tool_result"
       } else {
-        console.log(`[ANTHROPIC] ✅ Mapped tool ${tr.name} to ID: ${toolUseId}`);
+        console.log(`[ANTHROPIC] ✅ Matched tool result ${tr.name} to ID: ${toolUseId}${tr.id ? ' (from client)' : ' (from fallback lookup)'}`);
       }
 
       return {

@@ -308,11 +308,21 @@ export const serverSideWorkflowTools = {
 
         console.log('[SERVER-WORKFLOW-EDIT] Step updated successfully, version:', result.version?.version_number);
 
+        const updatedStep = steps[stepIndex];
+        const changedFields = Object.keys(params.updates).join(', ');
+
         return {
+          success: true,
+          message: `Successfully updated step "${updatedStep.name || updatedStep.id || 'unnamed'}" at position ${stepIndex + 1}. Changed fields: ${changedFields}.`,
           action: 'updated',
-          step: params.step_identifier,
+          step_name: updatedStep.name || updatedStep.id || 'unnamed',
+          step_index: stepIndex,
+          step_identifier_used: params.step_identifier,
           changes: params.updates,
+          updated_step: updatedStep,
+          total_step_count: steps.length,
           version_id: result.version?.id,
+          version_number: result.version?.version_number,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
@@ -400,9 +410,16 @@ export const serverSideWorkflowTools = {
         console.log('[SERVER-WORKFLOW-EDIT] Step removed successfully, version:', result.version?.version_number);
 
         return {
+          success: true,
+          message: `Successfully removed step "${removedStep.name || removedStep.id || 'unnamed'}" (was at position ${stepIndex + 1}). Workflow now has ${steps.length} step${steps.length !== 1 ? 's' : ''}.`,
           action: 'removed',
-          step: params.step_identifier,
+          removed_step_name: removedStep.name || removedStep.id || 'unnamed',
+          removed_step_index: stepIndex,
+          removed_step_tool: removedStep.tool_name,
+          step_identifier_used: params.step_identifier,
+          remaining_step_count: steps.length,
           version_id: result.version?.id,
+          version_number: result.version?.version_number,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
@@ -593,10 +610,15 @@ export const serverSideWorkflowTools = {
         console.log('[SERVER-WORKFLOW-EDIT] Steps reordered successfully, version:', result.version?.version_number);
 
         return {
+          success: true,
+          message: `Successfully moved step "${movedStep.name || movedStep.id || 'unnamed'}" from position ${params.from_index + 1} to position ${params.to_index + 1}.`,
           action: 'reordered',
-          from: params.from_index,
-          to: params.to_index,
+          moved_step_name: movedStep.name || movedStep.id || 'unnamed',
+          from_index: params.from_index,
+          to_index: params.to_index,
+          total_step_count: steps.length,
           version_id: result.version?.id,
+          version_number: result.version?.version_number,
           workflow_updated: true,
           workflow_data: {
             id: params.workflow_id,
