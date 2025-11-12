@@ -604,7 +604,7 @@ export async function POST(request: NextRequest) {
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
       | undefined;
     const toolResults = body.toolResults as
-      | Array<{ name: string; result: any; id?: string }>
+      | Array<{ id: string; name: string; result: any }>
       | undefined;
 
     // Validate model first
