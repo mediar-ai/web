@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     const { error: sessionError } = await supabase
       .from('mediar_desktop_polling_sessions')
-      .insert({
+      .upsert({
         session_id: sessionId,
         token,
         clerk_user_id: userId,
@@ -143,6 +143,8 @@ export async function POST(request: NextRequest) {
         org_name: orgName,
         status: 'completed',
         expires_at: sessionExpiresAt.toISOString(),
+      }, {
+        onConflict: 'session_id'
       });
 
     if (sessionError) {
