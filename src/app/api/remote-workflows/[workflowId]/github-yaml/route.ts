@@ -117,26 +117,37 @@ export async function GET(
           version: versionNumber
         });
       } else {
-        // Get active version from database
-        const { data: activeVersion, error: activeError } = await supabase
+        // Check if we should use latest version (for desktop) or active version (for web/production)
+        const useLatest = versionNumber === 'latest';
+
+        let versionQuery = supabase
           .from('deployed_workflow_versions')
           .select('automation_sequence_yaml, version_number')
-          .eq('workflow_id', workflowIdNum)
-          .eq('is_active', true)
-          .single();
+          .eq('workflow_id', workflowIdNum);
 
-        if (activeError || !activeVersion) {
+        if (useLatest) {
+          // Desktop app behavior - get the latest version by creation date
+          versionQuery = versionQuery.order('created_at', { ascending: false }).limit(1);
+        } else {
+          // Web app/production behavior - get the active version
+          versionQuery = versionQuery.eq('is_active', true);
+        }
+
+        const { data: selectedVersion, error: versionError } = await versionQuery.single();
+
+        if (versionError || !selectedVersion) {
+          const errorMessage = useLatest ? 'No versions found' : 'No active version found';
           return NextResponse.json(
-            { success: false, error: 'No active version found' },
+            { success: false, error: errorMessage },
             { status: 404 }
           );
         }
 
         return NextResponse.json({
           success: true,
-          yaml: activeVersion.automation_sequence_yaml,
+          yaml: selectedVersion.automation_sequence_yaml,
           source: 'database',
-          version: activeVersion.version_number
+          version: selectedVersion.version_number
         });
       }
     }

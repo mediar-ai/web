@@ -395,6 +395,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
+    const versionParam = searchParams.get('version'); // 'latest' for desktop app
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
@@ -563,6 +564,15 @@ export async function GET(request: NextRequest) {
     const automationSequences: Record<number, any> = {};
     const cronData: Record<number, any> = {};
 
+    // Determine which view to use based on version parameter
+    const viewName = versionParam === 'latest'
+      ? 'deployed_workflows_with_sequence_latest'
+      : 'deployed_workflows_with_sequence';
+
+    if (versionParam === 'latest') {
+      console.log('[API] Using LATEST view for desktop app');
+    }
+
     if (workflowIds.length > 0) {
       // First, fetch cron data and other config directly from deployed_workflows table
       // (deployed_workflows_with_sequence view doesn't have all fields)
@@ -621,7 +631,7 @@ export async function GET(request: NextRequest) {
 
       // Then fetch automation sequences
       const { data: sequences, error: sequencesError } = await supabase
-        .from('deployed_workflows_with_sequence')
+        .from(viewName)
         .select(
           `
           id,
@@ -660,7 +670,7 @@ export async function GET(request: NextRequest) {
 
     if (workflowIds.length > 0) {
       const { data: settings, error: settingsError } = await supabase
-        .from('deployed_workflows_with_sequence')
+        .from(viewName)  // Use the same view as for execution workflows
         .select(
           `
           id,
