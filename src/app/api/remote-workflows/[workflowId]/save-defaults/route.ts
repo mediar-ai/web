@@ -32,6 +32,10 @@ export async function POST(
     const { workflowId } = await params;
     const workflowIdNum = parseInt(workflowId);
 
+    // Get version from query params
+    const { searchParams } = new URL(request.url);
+    const versionParam = searchParams.get('version');
+
     const body = await request.json();
     const { dynamic_parameters } = body;
 
@@ -115,17 +119,30 @@ export async function POST(
       );
     }
 
-    // STEP 4: Get active version content (YAML or JSONB)
-    const { data: activeVersion, error: versionError } = await supabase
+    // STEP 4: Get version content (YAML or JSONB) - latest for desktop, active for web
+    const useLatest = versionParam === 'latest';
+
+    let versionQuery = supabase
       .from('deployed_workflow_versions')
       .select('id, version_number, automation_sequence_yaml, automation_sequence')
-      .eq('workflow_id', workflowIdNum)
-      .eq('is_active', true)
-      .single();
+      .eq('workflow_id', workflowIdNum);
+
+    if (useLatest) {
+      // Desktop app behavior - get the latest version by creation date
+      versionQuery = versionQuery.order('created_at', { ascending: false }).limit(1);
+      console.log(`[SAVE-DEFAULTS] Using latest version for workflow ${workflowIdNum} (desktop mode)`);
+    } else {
+      // Web app/production behavior - get the active version
+      versionQuery = versionQuery.eq('is_active', true);
+      console.log(`[SAVE-DEFAULTS] Using active version for workflow ${workflowIdNum} (web mode)`);
+    }
+
+    const { data: activeVersion, error: versionError } = await versionQuery.single();
 
     if (versionError || !activeVersion) {
+      const errorMessage = useLatest ? 'No versions found' : 'Active workflow version not found';
       return NextResponse.json(
-        { success: false, error: 'Active workflow version not found' },
+        { success: false, error: errorMessage },
         { status: 404 }
       );
     }

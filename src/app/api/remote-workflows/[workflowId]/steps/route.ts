@@ -120,30 +120,41 @@ export async function GET(
         dataSource = 'jsonb';
       }
     } else {
-      // Get active version from database (both YAML and JSONB)
-      const { data: activeVersion, error: activeError } = await supabase
+      // Check if we should use latest version (for desktop) or active version (for web/production)
+      const useLatest = versionNumber === 'latest';
+
+      let versionQuery = supabase
         .from('deployed_workflow_versions')
         .select('automation_sequence_yaml, automation_sequence, version_number')
-        .eq('workflow_id', workflowIdNum)
-        .eq('is_active', true)
-        .single();
+        .eq('workflow_id', workflowIdNum);
 
-      if (activeError || !activeVersion) {
+      if (useLatest) {
+        // Desktop app behavior - get the latest version by creation date
+        versionQuery = versionQuery.order('created_at', { ascending: false }).limit(1);
+      } else {
+        // Web app/production behavior - get the active version
+        versionQuery = versionQuery.eq('is_active', true);
+      }
+
+      const { data: selectedVersion, error: versionError } = await versionQuery.single();
+
+      if (versionError || !selectedVersion) {
+        const errorMessage = useLatest ? 'No versions found' : 'No active version found';
         return NextResponse.json(
-          { success: false, error: 'No active version found' },
+          { success: false, error: errorMessage },
           { status: 404 }
         );
       }
 
       // Prefer YAML, fallback to JSONB
-      if (activeVersion.automation_sequence_yaml) {
-        workflowData = activeVersion.automation_sequence_yaml;
+      if (selectedVersion.automation_sequence_yaml) {
+        workflowData = selectedVersion.automation_sequence_yaml;
         dataSource = 'yaml';
-      } else if (activeVersion.automation_sequence) {
-        workflowData = activeVersion.automation_sequence;
+      } else if (selectedVersion.automation_sequence) {
+        workflowData = selectedVersion.automation_sequence;
         dataSource = 'jsonb';
       }
-      resolvedVersion = activeVersion.version_number;
+      resolvedVersion = selectedVersion.version_number;
     }
 
     if (!workflowData) {
