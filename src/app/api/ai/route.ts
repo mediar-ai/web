@@ -289,10 +289,10 @@ async function executeServerTool(
 
     // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
     let toolArgs = toolCall.args;
-    if (isWorkflow) {
+    if (isWorkflow || isDevLog) {
       if (!context.workflowId) {
         throw new Error(
-          'workflowId is required in request body for workflow editing tools'
+          'workflowId is required in request body for workflow editing and dev log tools'
         );
       }
       toolArgs = { ...toolArgs, workflow_id: context.workflowId };

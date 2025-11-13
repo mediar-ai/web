@@ -16,10 +16,10 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID (you already know this from the conversation context)'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         }
       },
-      required: ['workflow_id']
+      required: []
     }
   },
 
@@ -31,7 +31,7 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         },
         pattern: {
           type: SchemaType.STRING,
@@ -42,7 +42,7 @@ export const serverSideDevLogTools = {
           description: 'Maximum number of results to return (default: 50)'
         }
       },
-      required: ['workflow_id', 'pattern']
+      required: ['pattern']
     }
   },
 
@@ -54,14 +54,14 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         },
         stepId: {
           type: SchemaType.STRING,
           description: 'Step index number (0, 1, 2, etc.) or step name'
         }
       },
-      required: ['workflow_id', 'stepId']
+      required: ['stepId']
     }
   },
 
@@ -73,10 +73,10 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         }
       },
-      required: ['workflow_id']
+      required: []
     }
   },
 
@@ -88,14 +88,14 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         },
         limit: {
           type: SchemaType.NUMBER,
           description: 'Maximum number of errors to return (default: 20)'
         }
       },
-      required: ['workflow_id']
+      required: []
     }
   },
 
@@ -107,10 +107,10 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         }
       },
-      required: ['workflow_id']
+      required: []
     }
   },
 
@@ -122,10 +122,10 @@ export const serverSideDevLogTools = {
       properties: {
         workflow_id: {
           type: SchemaType.NUMBER,
-          description: 'The workflow ID'
+          description: 'The workflow ID (automatically provided from request context - you do not need to specify this)'
         }
       },
-      required: ['workflow_id']
+      required: []
     }
   }
 };
