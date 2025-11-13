@@ -12,6 +12,11 @@ import {
   isWorkflowEditingTool,
   serverSideWorkflowTools,
 } from '@/lib/server-tools/workflow-editing-tools';
+import {
+  executeDevLogTool,
+  getDevLogToolDeclarations,
+  isDevLogTool,
+} from '@/lib/server-tools/dev-log-tools';
 import type { FunctionDeclaration } from '@google-cloud/vertexai';
 import { VertexAI } from '@google-cloud/vertexai';
 import { randomUUID } from 'crypto';
@@ -260,23 +265,24 @@ async function executeServerTool(
 } | null> {
   const isKnowledge = isKnowledgeTool(toolCall.name);
   const isWorkflow = isWorkflowEditingTool(toolCall.name);
+  const isDevLog = isDevLogTool(toolCall.name);
 
   // Not a server-side tool
-  if (!isKnowledge && !isWorkflow) {
+  if (!isKnowledge && !isWorkflow && !isDevLog) {
     return null;
   }
 
-  const toolType = isWorkflow ? 'workflow' : 'knowledge';
+  const toolType = isWorkflow ? 'workflow' : isDevLog ? 'dev-log' : 'knowledge';
   const prefix = options.isAdditional
     ? 'additional server-side'
     : 'server-side';
   console.log(`🔧 Executing ${prefix} ${toolType} tool: ${toolCall.name}`);
 
   try {
-    // Workflow tools require authenticated user context
-    if (isWorkflow && !context.authenticatedUserId) {
+    // Workflow and dev log tools require authenticated user context
+    if ((isWorkflow || isDevLog) && !context.authenticatedUserId) {
       throw new Error(
-        'Workflow editing requires authentication with a user account'
+        'Workflow editing and dev log tools require authentication with a user account'
       );
     }
 
@@ -297,6 +303,12 @@ async function executeServerTool(
     // Execute the tool
     const toolResult = isWorkflow
       ? await executeWorkflowTool(toolCall.name, toolArgs, {
+          userId: context.authenticatedUserId!,
+          orgId: context.orgId || null,
+          ...(context.email && { email: context.email }),
+        })
+      : isDevLog
+      ? await executeDevLogTool(toolCall.name, toolArgs, {
           userId: context.authenticatedUserId!,
           orgId: context.orgId || null,
           ...(context.email && { email: context.email }),
@@ -701,9 +713,11 @@ export async function POST(request: NextRequest) {
         const clientTools = tools || [];
         const knowledgeToolDecls = getKnowledgeToolDeclarations();
         const workflowToolDecls = getWorkflowToolDeclarations();
+        const devLogToolDecls = getDevLogToolDeclarations();
         const serverToolDeclarations = [
           ...knowledgeToolDecls,
           ...workflowToolDecls,
+          ...devLogToolDecls,
         ];
         allTools = [...clientTools, ...serverToolDeclarations];
         console.log(
@@ -1076,16 +1090,18 @@ export async function POST(request: NextRequest) {
       const clientFunctionDeclarations = toFunctionDeclarations(tools);
       const knowledgeToolDecls = getKnowledgeToolDeclarations();
       const workflowToolDecls = getWorkflowToolDeclarations();
+      const devLogToolDecls = getDevLogToolDeclarations();
       const serverFunctionDeclarations = [
         ...knowledgeToolDecls,
         ...workflowToolDecls,
+        ...devLogToolDecls,
       ];
       functionDeclarations = [
         ...clientFunctionDeclarations,
         ...serverFunctionDeclarations,
       ];
       console.log(
-        `🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`
+        `🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow, ${devLogToolDecls.length} dev-logs`
       );
     }
 
