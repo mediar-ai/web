@@ -185,7 +185,7 @@ export default function ContactAdminSection({
                     download
                     onClick={handleDownloadClick}
                   >
-                    <Button className="w-full bg-black text-white hover:bg-gray-800">
+                    <Button className="w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2">
                       DOWNLOAD APP (Windows)
                     </Button>
                   </a>
