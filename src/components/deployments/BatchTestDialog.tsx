@@ -714,7 +714,12 @@ export function BatchTestDialog({
                             disabled={false}
                             className="text-xs py-1"
                           >
-                            {statusIndicator} {machine.name}{statusText} {jobsInfo} jobs
+                            <div className="flex items-center gap-1 max-w-[400px]">
+                              <span className="flex-shrink-0">{statusIndicator}</span>
+                              <span className="truncate" title={machine.name}>{machine.name}</span>
+                              <span className="flex-shrink-0 text-muted-foreground">{statusText}</span>
+                              <span className="flex-shrink-0 text-muted-foreground">{jobsInfo} jobs</span>
+                            </div>
                           </SelectItem>
                         );
                       })}
