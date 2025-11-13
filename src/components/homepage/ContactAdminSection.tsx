@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { UserButton, useAuth, useOrganizationList } from '@clerk/nextjs';
-import { Play } from 'lucide-react';
+import { Play, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { usePostHog } from 'posthog-js/react';
 import { useEffect, useState } from 'react';
@@ -129,24 +129,10 @@ export default function ContactAdminSection({
             <h1 className="text-4xl font-bold text-black mb-8 font-mono">
               Welcome to Mediar Beta!
             </h1>
-
-            <p className="text-gray-600 mb-6">
-              If you want to order turn key automation please go here:
-            </p>
-            <a
-              href="https://mediar.ai/turnkey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block"
-            >
-              <Button className="bg-black text-white hover:bg-gray-800 font-mono">
-                ORDER TURNKEY AUTOMATION
-              </Button>
-            </a>
           </div>
 
           {/* App Access Options */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Web App */}
             <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
               <CardContent className="pt-6 h-full">
@@ -237,6 +223,35 @@ export default function ContactAdminSection({
                       OPEN DASHBOARD
                     </Button>
                   </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Turnkey Service - B2B offering */}
+            <Card className="border-2 border-dashed border-black bg-gray-50 hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Briefcase className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold text-black font-mono mb-2">
+                    TURNKEY SERVICE
+                  </h3>
+                  <p className="text-xs text-gray-500 font-mono uppercase mb-3">
+                    B2B Consulting
+                  </p>
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
+                    We build the automation for you
+                  </p>
+                  <a
+                    href="https://mediar.ai/turnkey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button className="w-full bg-white text-black border-2 border-black hover:bg-black hover:text-white transition-colors">
+                      REQUEST CONSULTATION
+                    </Button>
+                  </a>
                 </div>
               </CardContent>
             </Card>
