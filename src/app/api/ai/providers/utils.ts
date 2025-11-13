@@ -94,3 +94,94 @@ export function getProviderForModel(model: string): 'vertex' | 'anthropic' | nul
 export function isModelAllowed(model: string): boolean {
   return getProviderForModel(model) !== null;
 }
+
+/**
+ * Check tool results for large payloads and image data
+ * Logs warnings for results that might cause token limit issues
+ */
+export function analyzeToolResults(
+  toolResults: Array<{ name: string; result: any; id?: string }>,
+  providerName: string = 'AI'
+): void {
+  toolResults.forEach((tr, idx) => {
+    const resultStr = typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result);
+    const sizeKB = resultStr.length / 1024;
+
+    console.log(`[${providerName}] Tool result ${idx + 1} (${tr.name}): ${sizeKB.toFixed(1)}KB`);
+
+    // Warn if very large (>100KB)
+    if (sizeKB > 100) {
+      console.warn(`[${providerName}] ⚠️ Large tool result detected: ${tr.name} is ${sizeKB.toFixed(1)}KB`);
+
+      // Check if it contains base64 image data
+      if (resultStr.includes('data:image') || resultStr.includes('iVBORw0KGgo')) {
+        console.warn(`[${providerName}] ⚠️ Tool result contains image data (likely screenshot)`);
+      }
+    }
+  });
+}
+
+/**
+ * Estimate token count for a message history
+ * Uses rough approximation: 4 characters ≈ 1 token
+ */
+export function estimateTokens(content: any): number {
+  const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+  return Math.round(contentStr.length / 4);
+}
+
+/**
+ * Check if approaching token limit and log warnings
+ * Returns true if within safe limits, false if approaching/exceeding limit
+ */
+export function checkTokenLimit(
+  history: any,
+  providerName: string = 'AI',
+  maxTokens: number = 200000,
+  warningThreshold: number = 150000
+): boolean {
+  const historyStr = JSON.stringify(history);
+  const historySizeMB = historyStr.length / 1024 / 1024;
+  const estimatedTokens = estimateTokens(historyStr);
+
+  console.log(
+    `[${providerName}] Message history size: ${historySizeMB.toFixed(2)}MB (~${estimatedTokens.toLocaleString()} tokens)`
+  );
+
+  if (estimatedTokens > warningThreshold) {
+    console.warn(
+      `[${providerName}] ⚠️ Approaching token limit! Estimated: ${estimatedTokens.toLocaleString()} tokens (max: ${maxTokens.toLocaleString()})`
+    );
+  }
+
+  if (estimatedTokens > maxTokens) {
+    console.error(
+      `[${providerName}] ❌ Token limit exceeded! Estimated: ${estimatedTokens.toLocaleString()} tokens (max: ${maxTokens.toLocaleString()})`
+    );
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Log diagnostic information about provider configuration
+ */
+export function logProviderDiagnostics(
+  providerName: string,
+  config: {
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+    toolCount?: number;
+    historyLength?: number;
+  }
+): void {
+  console.log(`[${providerName}] Configuration:`, {
+    model: config.model || 'default',
+    maxTokens: config.maxTokens || 'default',
+    temperature: config.temperature || 'default',
+    tools: config.toolCount || 0,
+    historyMessages: config.historyLength || 0,
+  });
+}

@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from 'redis';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
+import { analyzeToolResults, checkTokenLimit, logProviderDiagnostics } from './providers/utils';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -494,11 +495,26 @@ async function handleVertexChat(params: {
     `[VERTEX] Created chat with ${history.length} history message(s)`
   );
 
+  // Log provider configuration
+  logProviderDiagnostics('VERTEX', {
+    model,
+    maxTokens: generationConfig?.maxOutputTokens || 1000,
+    temperature: generationConfig?.temperature || 0.7,
+    toolCount: functionDeclarations.length,
+    historyLength: history.length,
+  });
+
+  // Check token limits
+  checkTokenLimit(history, 'VERTEX', 200000, 150000);
+
   // Send message to chat with retry logic
   let response;
   if (toolResults && toolResults.length > 0) {
     // Continuing conversation with tool results
     console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s)`);
+
+    // Analyze tool results for potential issues
+    analyzeToolResults(toolResults, 'VERTEX');
 
     // Format function responses for Vertex AI SDK
     // Vertex AI requires: { name, response: { name, content: <actual_result> } }

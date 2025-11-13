@@ -15,7 +15,10 @@ import {
   formatErrorMessage,
   calculateElapsedMs,
   cleanSchema,
-  logToolCalls
+  logToolCalls,
+  analyzeToolResults,
+  checkTokenLimit,
+  logProviderDiagnostics
 } from './utils';
 
 /**
@@ -223,38 +226,9 @@ export function vertexToAnthropicHistory(vertexHistory: VertexMessage[]): Anthro
   
   // Log any unmatched tool calls (responses never came)
   if (pendingToolCalls.length > 0) {
-    console.warn(`[ANTHROPIC] ⚠️ ${pendingToolCalls.length} tool call(s) without matching responses:`,
+    console.warn(`[ANTHROPIC] ⚠️ ${pendingToolCalls.length} tool call(s) without matching responses in history:`,
       pendingToolCalls.map(pc => pc.name));
-
-    // DEFENSIVE CLEANUP: Remove trailing assistant messages with orphaned tool_use blocks
-    // This prevents "tool_use must be immediately followed by tool_result" errors
-    console.log('[ANTHROPIC] 🧹 Cleaning up orphaned tool_use messages from history...');
-
-    // Find the last message with orphaned tool calls
-    let cleanedCount = 0;
-    while (anthropicMessages.length > 0) {
-      const lastMsg = anthropicMessages[anthropicMessages.length - 1];
-
-      // Check if it's an assistant message with tool_use blocks
-      if (lastMsg.role === 'assistant' && Array.isArray(lastMsg.content)) {
-        const hasToolUse = lastMsg.content.some((block: any) => block.type === 'tool_use');
-
-        if (hasToolUse) {
-          // Remove this orphaned message
-          anthropicMessages.pop();
-          cleanedCount++;
-          console.log(`[ANTHROPIC] 🗑️ Removed orphaned assistant message with tool_use blocks`);
-        } else {
-          break; // No tool_use in this message, stop cleaning
-        }
-      } else {
-        break; // Not an assistant message, stop cleaning
-      }
-    }
-
-    if (cleanedCount > 0) {
-      console.log(`[ANTHROPIC] ✅ Cleaned ${cleanedCount} orphaned message(s) from history`);
-    }
+    console.log(`[ANTHROPIC] This is normal when toolResults are being sent in the request body`);
   }
 
   console.log(`[ANTHROPIC] Converted ${vertexHistory.length} Vertex messages → ${anthropicMessages.length} Anthropic messages`);
@@ -336,6 +310,9 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
   if (toolResults && toolResults.length > 0) {
     console.log(`[ANTHROPIC] 🔧 Processing ${toolResults.length} tool result(s)`);
 
+    // Analyze tool results for potential token issues
+    analyzeToolResults(toolResults, 'ANTHROPIC');
+
     // Build a map of tool names to IDs from the last assistant message
     const toolCallIdMap = new Map<string, string>();
 
@@ -396,6 +373,15 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
 
   console.log(`[ANTHROPIC] Starting chat with ${anthropicHistory.length} messages`);
 
+  // Log provider configuration
+  logProviderDiagnostics('ANTHROPIC', {
+    model: model || 'claude-sonnet-4-5-20250929',
+    maxTokens: generationConfig.maxOutputTokens || 8192,
+    temperature: generationConfig.temperature || 0.7,
+    toolCount: anthropicTools.length,
+    historyLength: anthropicHistory.length,
+  });
+
   // Multi-turn conversation loop
   let continueConversation = true;
   let turnCount = 0;
@@ -407,6 +393,9 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
   while (continueConversation && turnCount < MAX_TURNS) {
     turnCount++;
     console.log(`[ANTHROPIC] Turn ${turnCount}: Creating message...`);
+
+    // Check token limits before sending
+    checkTokenLimit(anthropicHistory, 'ANTHROPIC', 200000, 150000);
 
     try {
       // Create message with Anthropic SDK
