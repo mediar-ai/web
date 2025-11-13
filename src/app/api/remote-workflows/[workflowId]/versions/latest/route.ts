@@ -42,7 +42,7 @@ export async function DELETE(
     if (!authenticatedUserId) {
       const clerkAuth = await auth();
       authenticatedUserId = clerkAuth.userId;
-      orgId = clerkAuth.orgId;
+      orgId = clerkAuth.orgId ?? null;
       has = clerkAuth.has;
     }
 
