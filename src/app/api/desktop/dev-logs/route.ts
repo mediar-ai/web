@@ -6,25 +6,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getRedisClient } from '@/lib/redis-client';
+import { getCorsHeaders } from '@/lib/cors';
 
 const DEV_LOG_TTL = 60 * 60 * 48; // 48 hours
+
+/**
+ * OPTIONS: Handle CORS preflight
+ */
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+  return new NextResponse(null, { status: 200, headers });
+}
 
 /**
  * POST: Store dev execution logs from desktop app
  */
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   try {
     // 1. Authenticate desktop app
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
 
     const token = authHeader.substring(7);
     const validation = await validateDesktopToken(token);
 
     if (!validation.valid) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401, headers: corsHeaders });
     }
 
     const userId = validation.userId!;
@@ -46,7 +59,7 @@ export async function POST(request: NextRequest) {
     if (!execution_id || !workflow_id || !workflowExecutionLogs) {
       return NextResponse.json(
         { error: 'Missing required fields: execution_id, workflow_id, workflowExecutionLogs' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -94,13 +107,13 @@ export async function POST(request: NextRequest) {
       execution_id,
       ttl_hours: 48,
       message: 'Execution logs stored successfully'
-    });
+    }, { headers: corsHeaders });
 
   } catch (error) {
     console.error('[DEV LOGS] Error storing execution:', error);
     return NextResponse.json(
       { error: 'Failed to store execution logs', details: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -109,18 +122,21 @@ export async function POST(request: NextRequest) {
  * GET: List recent dev executions for the authenticated user
  */
 export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   try {
     // 1. Authenticate
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
 
     const token = authHeader.substring(7);
     const validation = await validateDesktopToken(token);
 
     if (!validation.valid) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401, headers: corsHeaders });
     }
 
     const userId = validation.userId!;
@@ -131,7 +147,7 @@ export async function GET(request: NextRequest) {
     const executionIds = await redis.zRange(userListKey, 0, 49, { REV: true });
 
     if (executionIds.length === 0) {
-      return NextResponse.json({ executions: [] });
+      return NextResponse.json({ executions: [] }, { headers: corsHeaders });
     }
 
     // 3. Load metadata for each execution
@@ -166,13 +182,13 @@ export async function GET(request: NextRequest) {
 
     console.log(`[DEV LOGS] Returning ${executions.length} recent executions for user ${userId}`);
 
-    return NextResponse.json({ executions });
+    return NextResponse.json({ executions }, { headers: corsHeaders });
 
   } catch (error) {
     console.error('[DEV LOGS] Error listing executions:', error);
     return NextResponse.json(
       { error: 'Failed to list executions', details: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
