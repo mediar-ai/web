@@ -122,7 +122,7 @@ fn build_router(db_pool: DatabasePool) -> Result<Router> {
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .layer(sentry_tower::NewSentryLayer::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::enable_transaction())
+        .layer(sentry_tower::SentryHttpLayer::new().enable_transaction())
         .with_state(db_pool);
 
     Ok(app)
