@@ -352,7 +352,7 @@ export async function POST(request: NextRequest) {
                 github_folder: folderName,
                 github_path: filePath,
                 github_ref: branch,
-                github_sync_status: 'parsing',
+                github_sync_status: 'pending',
                 github_last_synced_at: new Date().toISOString(),
                 preferred_format: 'typescript',
                 automation_sequence: {}, // Empty object for TypeScript workflows
@@ -375,7 +375,7 @@ export async function POST(request: NextRequest) {
               .from('deployed_workflows')
               .update({
                 github_last_synced_at: new Date().toISOString(),
-                github_sync_status: 'parsing',
+                github_sync_status: 'pending',
                 github_path: filePath,
               })
               .eq('id', workflowId);
@@ -443,7 +443,7 @@ export async function POST(request: NextRequest) {
             await supabase
               .from('deployed_workflows')
               .update({
-                github_sync_status: 'parse_failed',
+                github_sync_status: 'failed',
               })
               .eq('id', workflowId);
 
