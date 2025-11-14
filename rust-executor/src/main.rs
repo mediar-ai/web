@@ -122,7 +122,7 @@ fn build_router(db_pool: DatabasePool) -> Result<Router> {
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .layer(sentry_tower::NewSentryLayer::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        .layer(sentry_tower::SentryHttpLayer::enable_transaction())
         .with_state(db_pool);
 
     Ok(app)
@@ -139,7 +139,6 @@ fn init_tracing() {
 
     // Initialize Sentry if DSN is provided
     let sentry_layer = Some("https://f5832483657723604d167b937d0dfaaf@o4507617161314304.ingest.us.sentry.io/4510365180362752".to_string())
-        .ok()
         .and_then(|dsn| {
             if dsn.is_empty() {
                 None
