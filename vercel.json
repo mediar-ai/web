@@ -14,9 +14,6 @@
     },
     "src/app/api/cron/process-pending-notifications/route.ts": {
       "maxDuration": 60
-    },
-    "src/app/api/cron/sync-notion-to-apollo/route.ts": {
-      "maxDuration": 60
     }
   },
   "crons": [
@@ -31,10 +28,6 @@
     {
       "path": "/api/cron/process-pending-notifications",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/sync-notion-to-apollo",
-      "schedule": "*/15 * * * *"
     }
   ]
 } 
