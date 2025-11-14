@@ -41,7 +41,6 @@ import {
   Clock,
   BarChart3,
   Workflow,
-  Settings,
   GitBranch,
   Server,
   Activity,
