@@ -181,10 +181,14 @@ export function BatchTestDialog({
   useEffect(() => {
     if (open && workflow) {
       // Check if workflow has changed
-      const workflowChanged = prevWorkflowIdRef.current !== null && prevWorkflowIdRef.current !== workflow.id;
+      const workflowChanged =
+        prevWorkflowIdRef.current !== null &&
+        prevWorkflowIdRef.current !== workflow.id;
 
       if (workflowChanged) {
-        console.log(`[BatchTestDialog] Workflow changed from ${prevWorkflowIdRef.current} to ${workflow.id}, resetting state`);
+        console.log(
+          `[BatchTestDialog] Workflow changed from ${prevWorkflowIdRef.current} to ${workflow.id}, resetting state`
+        );
         // Reset ALL state when workflow changes
         setSelectedVersionNumber('');
         setAvailableVersions([]);
@@ -216,35 +220,54 @@ export function BatchTestDialog({
           const data = await response.json();
 
           if (!response.ok) {
-            console.error('[ERROR] Failed to load accessible machines:', data.error);
+            console.error(
+              '[ERROR] Failed to load accessible machines:',
+              data.error
+            );
             setAvailableMachines([]);
             return;
           }
 
           if (data.success && data.machines && data.machines.length > 0) {
             setAvailableMachines(data.machines);
-            console.log('📋 Loaded accessible machines for testing:', data.machines);
+            console.log(
+              '📋 Loaded accessible machines for testing:',
+              data.machines
+            );
 
             // Set initial selection to first machine if no machine is selected yet
             if (!selectedMachineId && data.machines.length > 0) {
               // Sort machines by priority (active & healthy first, then by load)
-              const sortedMachines = [...data.machines].sort((a: Machine, b: Machine) => {
-                // First prioritize active status
-                if (a.status === 'active' && b.status !== 'active') return -1;
-                if (a.status !== 'active' && b.status === 'active') return 1;
+              const sortedMachines = [...data.machines].sort(
+                (a: Machine, b: Machine) => {
+                  // First prioritize active status
+                  if (a.status === 'active' && b.status !== 'active') return -1;
+                  if (a.status !== 'active' && b.status === 'active') return 1;
 
-                // Then prioritize healthy machines
-                if (a.health_status === 'healthy' && b.health_status !== 'healthy') return -1;
-                if (a.health_status !== 'healthy' && b.health_status === 'healthy') return 1;
+                  // Then prioritize healthy machines
+                  if (
+                    a.health_status === 'healthy' &&
+                    b.health_status !== 'healthy'
+                  )
+                    return -1;
+                  if (
+                    a.health_status !== 'healthy' &&
+                    b.health_status === 'healthy'
+                  )
+                    return 1;
 
-                // Finally sort by available capacity (higher is better)
-                const aCapacity = a.load_info?.available_capacity || 0;
-                const bCapacity = b.load_info?.available_capacity || 0;
-                return bCapacity - aCapacity;
-              });
+                  // Finally sort by available capacity (higher is better)
+                  const aCapacity = a.load_info?.available_capacity || 0;
+                  const bCapacity = b.load_info?.available_capacity || 0;
+                  return bCapacity - aCapacity;
+                }
+              );
 
               setSelectedMachineId(sortedMachines[0].id.toString());
-              console.log('📋 Auto-selected first priority machine:', sortedMachines[0].name);
+              console.log(
+                '📋 Auto-selected first priority machine:',
+                sortedMachines[0].name
+              );
             }
 
             // After loading machines, fetch optimal machine to potentially override default
@@ -253,7 +276,10 @@ export function BatchTestDialog({
               await fetchOptimalMachine(data.machines);
             }
           } else {
-            console.warn('[WARNING] No accessible machines available:', data.message);
+            console.warn(
+              '[WARNING] No accessible machines available:',
+              data.message
+            );
             setAvailableMachines([]);
           }
         } catch (error) {
@@ -449,7 +475,9 @@ export function BatchTestDialog({
     const loadWorkflowSteps = async () => {
       setLoadingSteps(true);
       try {
-        const versionParam = !selectedVersionNumber ? 'active' : selectedVersionNumber;
+        const versionParam = !selectedVersionNumber
+          ? 'active'
+          : selectedVersionNumber;
         const response = await fetch(
           `/api/remote-workflows/${workflow.id}/steps?version=${versionParam}`
         );
@@ -457,7 +485,9 @@ export function BatchTestDialog({
 
         if (data.success && data.steps) {
           setWorkflowSteps(data.steps);
-          console.log(`[SUCCESS] Loaded ${data.steps.length} steps for workflow ${workflow.id}`);
+          console.log(
+            `[SUCCESS] Loaded ${data.steps.length} steps for workflow ${workflow.id}`
+          );
         } else {
           console.warn('[WARN] Failed to load workflow steps:', data.error);
           setWorkflowSteps([]);
@@ -489,31 +519,50 @@ export function BatchTestDialog({
     if (!workflow) return;
 
     // For workflows with no parameters, allow a single execution
-    const effectiveTotalCombinations = totalCombinations === 0 &&
-      (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
-      ? 1 : totalCombinations;
+    const effectiveTotalCombinations =
+      totalCombinations === 0 &&
+      (!workflow.input_parameters ||
+        Object.keys(workflow.input_parameters).length === 0)
+        ? 1
+        : totalCombinations;
 
     if (effectiveTotalCombinations === 0) return;
 
     console.log('🚀 BatchTestDialog: Submitting batch with spec:', batchSpec);
-    console.log('🔢 BatchTestDialog: Total combinations:', effectiveTotalCombinations);
+    console.log(
+      '🔢 BatchTestDialog: Total combinations:',
+      effectiveTotalCombinations
+    );
     console.log('🎯 BatchTestDialog: Selected machine ID:', selectedMachineId);
     console.log(
       '📋 BatchTestDialog: Selected version:',
       selectedVersionNumber || 'active version'
     );
-    console.log('🔍 BatchTestDialog: dynamic_parameters:', JSON.stringify(batchSpec.dynamic_parameters, null, 2));
-    console.log('🔍 BatchTestDialog: static_parameters:', JSON.stringify(batchSpec.static_parameters, null, 2));
+    console.log(
+      '🔍 BatchTestDialog: dynamic_parameters:',
+      JSON.stringify(batchSpec.dynamic_parameters, null, 2)
+    );
+    console.log(
+      '🔍 BatchTestDialog: static_parameters:',
+      JSON.stringify(batchSpec.static_parameters, null, 2)
+    );
 
     setIsSubmitting(true);
     try {
       // For workflows with no parameters, send an empty batch spec
-      const effectiveBatchSpec = totalCombinations === 0 ?
-        { static_parameters: {}, dynamic_parameters: {} } : batchSpec;
+      const effectiveBatchSpec =
+        totalCombinations === 0
+          ? { static_parameters: {}, dynamic_parameters: {} }
+          : batchSpec;
 
       // Include machine_id, version_number, executor_type, and partial execution parameters in the request body
-      const parsedMachineId = selectedMachineId ? parseInt(selectedMachineId, 10) : NaN;
-      const validMachineId = !isNaN(parsedMachineId) && parsedMachineId > 0 ? parsedMachineId : undefined;
+      const parsedMachineId = selectedMachineId
+        ? parseInt(selectedMachineId, 10)
+        : NaN;
+      const validMachineId =
+        !isNaN(parsedMachineId) && parsedMachineId > 0
+          ? parsedMachineId
+          : undefined;
 
       const requestBody = {
         ...effectiveBatchSpec,
@@ -521,13 +570,22 @@ export function BatchTestDialog({
         version_number: selectedVersionNumber || undefined, // Send version or undefined for active
         executor_type: executorType, // 'python' or 'rust'
         // Partial execution parameters
-        start_from_step: showPartialExecution && startFromStep ? startFromStep : undefined,
+        start_from_step:
+          showPartialExecution && startFromStep ? startFromStep : undefined,
         end_at_step: showPartialExecution && endAtStep ? endAtStep : undefined,
         follow_fallback: showPartialExecution ? followFallback : undefined,
-        execute_jumps_at_end: showPartialExecution ? executeJumpsAtEnd : undefined,
+        execute_jumps_at_end: showPartialExecution
+          ? executeJumpsAtEnd
+          : undefined,
       };
 
-      console.log('📤 BatchTestDialog: Request body machine_id:', requestBody.machine_id, '(parsed from selectedMachineId:', selectedMachineId, ')');
+      console.log(
+        '📤 BatchTestDialog: Request body machine_id:',
+        requestBody.machine_id,
+        '(parsed from selectedMachineId:',
+        selectedMachineId,
+        ')'
+      );
 
       const response = await fetch(
         `/api/remote-workflows/${workflow.id}/batch-execute`,
@@ -586,7 +644,7 @@ export function BatchTestDialog({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            dynamic_parameters: batchSpec.dynamic_parameters
+            dynamic_parameters: batchSpec.dynamic_parameters,
           }),
         }
       );
@@ -596,7 +654,10 @@ export function BatchTestDialog({
 
       if (data.success) {
         console.log('[SUCCESS] Defaults saved:', data.version);
-        toast.success(data.message || `Saved as default (version ${data.version.version_number})`);
+        toast.success(
+          data.message ||
+            `Saved as default (version ${data.version.version_number})`
+        );
 
         // Close dialog after successful save
         onOpenChange(false);
@@ -648,7 +709,9 @@ export function BatchTestDialog({
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4 py-3 px-3">
               <div className="space-y-1.5">
-                <Label htmlFor="machine-select" className="text-xs">Target Machine</Label>
+                <Label htmlFor="machine-select" className="text-xs">
+                  Target Machine
+                </Label>
                 {loadingMachines ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -660,7 +723,8 @@ export function BatchTestDialog({
                       No remote machines available for your organization.
                     </p>
                     <p className="text-xs text-muted-foreground mb-2">
-                      Your organization needs access to at least one remote machine to execute workflows.
+                      Your organization needs access to at least one remote
+                      machine to execute workflows.
                     </p>
                     <a
                       href="https://mediar.ai/contact"
@@ -674,12 +738,16 @@ export function BatchTestDialog({
                 ) : (
                   <Select
                     value={selectedMachineId}
-                    onValueChange={(value) => {
+                    onValueChange={value => {
                       setSelectedMachineId(value);
                       userSelectedMachineRef.current = true; // Mark that user has made a manual selection
                     }}
                   >
-                    <SelectTrigger id="machine-select" className="h-7 text-xs px-2">
+                    <SelectTrigger
+                      id="machine-select"
+                      className="h-7 text-xs px-2"
+                      title={selectedMachine?.name}
+                    >
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
@@ -687,8 +755,13 @@ export function BatchTestDialog({
                         // Determine machine status for display
                         const isActive = machine.status === 'active';
                         const now = new Date();
-                        const lastCheck = machine.last_health_check ? new Date(machine.last_health_check) : null;
-                        const isHealthy = lastCheck && (now.getTime() - lastCheck.getTime()) < 5 * 60 * 1000 && machine.health_status === 'healthy';
+                        const lastCheck = machine.last_health_check
+                          ? new Date(machine.last_health_check)
+                          : null;
+                        const isHealthy =
+                          lastCheck &&
+                          now.getTime() - lastCheck.getTime() < 5 * 60 * 1000 &&
+                          machine.health_status === 'healthy';
 
                         // Show different indicators based on machine state
                         let statusIndicator = '⚫'; // Default unknown
@@ -705,7 +778,9 @@ export function BatchTestDialog({
                           : '0/1';
 
                         // Show machine status in display text
-                        const statusText = !isActive ? ` (${machine.status})` : '';
+                        const statusText = !isActive
+                          ? ` (${machine.status})`
+                          : '';
 
                         return (
                           <SelectItem
@@ -714,11 +789,22 @@ export function BatchTestDialog({
                             disabled={false}
                             className="text-xs py-1"
                           >
-                            <div className="flex items-center gap-1 max-w-[400px]">
-                              <span className="flex-shrink-0">{statusIndicator}</span>
-                              <span className="truncate" title={machine.name}>{machine.name}</span>
-                              <span className="flex-shrink-0 text-muted-foreground">{statusText}</span>
-                              <span className="flex-shrink-0 text-muted-foreground">{jobsInfo} jobs</span>
+                            <div className="flex items-center gap-1 w-full min-w-0">
+                              <span className="flex-shrink-0">
+                                {statusIndicator}
+                              </span>
+                              <span
+                                className="truncate min-w-0"
+                                title={machine.name}
+                              >
+                                {machine.name}
+                              </span>
+                              <span className="flex-shrink-0 text-muted-foreground whitespace-nowrap">
+                                {statusText}
+                              </span>
+                              <span className="flex-shrink-0 text-muted-foreground whitespace-nowrap">
+                                {jobsInfo} jobs
+                              </span>
                             </div>
                           </SelectItem>
                         );
@@ -741,7 +827,9 @@ export function BatchTestDialog({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="version-select" className="text-xs">Workflow Version</Label>
+                <Label htmlFor="version-select" className="text-xs">
+                  Workflow Version
+                </Label>
                 {loadingVersions ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -756,7 +844,10 @@ export function BatchTestDialog({
                     value={selectedVersionNumber}
                     onValueChange={setSelectedVersionNumber}
                   >
-                    <SelectTrigger id="version-select" className="h-7 text-xs px-2">
+                    <SelectTrigger
+                      id="version-select"
+                      className="h-7 text-xs px-2"
+                    >
                       <SelectValue placeholder="Active version" />
                     </SelectTrigger>
                     <SelectContent>
@@ -828,14 +919,31 @@ export function BatchTestDialog({
               {/* Executor Type Selection (Mediar Team Only) */}
               {isMediarTeam && (
                 <div className="col-span-2 space-y-1.5 mt-2 pt-2 border-t border-gray-200">
-                  <Label htmlFor="executor-select" className="font-mono text-xs uppercase">Executor Type</Label>
-                  <Select value={executorType} onValueChange={(value) => setExecutorType(value as 'python' | 'rust')}>
-                    <SelectTrigger id="executor-select" className="h-7 text-xs px-2">
+                  <Label
+                    htmlFor="executor-select"
+                    className="font-mono text-xs uppercase"
+                  >
+                    Executor Type
+                  </Label>
+                  <Select
+                    value={executorType}
+                    onValueChange={value =>
+                      setExecutorType(value as 'python' | 'rust')
+                    }
+                  >
+                    <SelectTrigger
+                      id="executor-select"
+                      className="h-7 text-xs px-2"
+                    >
                       <SelectValue placeholder="Select executor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="python" className="text-xs py-1">Python Executor (Default)</SelectItem>
-                      <SelectItem value="rust" className="text-xs py-1">Rust Executor (Experimental)</SelectItem>
+                      <SelectItem value="python" className="text-xs py-1">
+                        Python Executor (Default)
+                      </SelectItem>
+                      <SelectItem value="rust" className="text-xs py-1">
+                        Rust Executor (Experimental)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="text-xs text-muted-foreground">
@@ -852,11 +960,18 @@ export function BatchTestDialog({
                   <Checkbox
                     id="partial-execution-toggle"
                     checked={showPartialExecution}
-                    onCheckedChange={(checked) => setShowPartialExecution(checked as boolean)}
+                    onCheckedChange={checked =>
+                      setShowPartialExecution(checked as boolean)
+                    }
                   />
-                  <Label htmlFor="partial-execution-toggle" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="partial-execution-toggle"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <Bug className="w-4 h-4" />
-                    <span className="font-medium">Partial Execution (Debug Mode)</span>
+                    <span className="font-medium">
+                      Partial Execution (Debug Mode)
+                    </span>
                   </Label>
                 </div>
 
@@ -868,21 +983,40 @@ export function BatchTestDialog({
                         Loading workflow steps...
                       </div>
                     ) : workflowSteps.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No steps available for this workflow</p>
+                      <p className="text-sm text-muted-foreground">
+                        No steps available for this workflow
+                      </p>
                     ) : (
                       <>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <Label htmlFor="start-step-select" className="text-xs font-mono uppercase">Start from step</Label>
-                            <Select value={startFromStep} onValueChange={setStartFromStep}>
-                              <SelectTrigger id="start-step-select" className="font-mono text-xs h-7 px-2">
+                            <Label
+                              htmlFor="start-step-select"
+                              className="text-xs font-mono uppercase"
+                            >
+                              Start from step
+                            </Label>
+                            <Select
+                              value={startFromStep}
+                              onValueChange={setStartFromStep}
+                            >
+                              <SelectTrigger
+                                id="start-step-select"
+                                className="font-mono text-xs h-7 px-2"
+                              >
                                 <SelectValue placeholder="From beginning" />
                               </SelectTrigger>
                               <SelectContent>
                                 {workflowSteps.map(step => (
-                                  <SelectItem key={step.id} value={step.id} className="font-mono text-xs py-1">
+                                  <SelectItem
+                                    key={step.id}
+                                    value={step.id}
+                                    className="font-mono text-xs py-1"
+                                  >
                                     {step.id}
-                                    <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      ({step.name})
+                                    </span>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -890,16 +1024,33 @@ export function BatchTestDialog({
                           </div>
 
                           <div className="space-y-1.5">
-                            <Label htmlFor="end-step-select" className="text-xs font-mono uppercase">End at step</Label>
-                            <Select value={endAtStep} onValueChange={setEndAtStep}>
-                              <SelectTrigger id="end-step-select" className="font-mono text-xs h-7 px-2">
+                            <Label
+                              htmlFor="end-step-select"
+                              className="text-xs font-mono uppercase"
+                            >
+                              End at step
+                            </Label>
+                            <Select
+                              value={endAtStep}
+                              onValueChange={setEndAtStep}
+                            >
+                              <SelectTrigger
+                                id="end-step-select"
+                                className="font-mono text-xs h-7 px-2"
+                              >
                                 <SelectValue placeholder="Until end" />
                               </SelectTrigger>
                               <SelectContent>
                                 {workflowSteps.map(step => (
-                                  <SelectItem key={step.id} value={step.id} className="font-mono text-xs py-1">
+                                  <SelectItem
+                                    key={step.id}
+                                    value={step.id}
+                                    className="font-mono text-xs py-1"
+                                  >
                                     {step.id}
-                                    <span className="text-xs text-muted-foreground ml-2">({step.name})</span>
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      ({step.name})
+                                    </span>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -912,9 +1063,14 @@ export function BatchTestDialog({
                             <Checkbox
                               id="follow-fallback"
                               checked={followFallback}
-                              onCheckedChange={(checked) => setFollowFallback(checked as boolean)}
+                              onCheckedChange={checked =>
+                                setFollowFallback(checked as boolean)
+                              }
                             />
-                            <Label htmlFor="follow-fallback" className="text-xs cursor-pointer">
+                            <Label
+                              htmlFor="follow-fallback"
+                              className="text-xs cursor-pointer"
+                            >
                               Follow fallback beyond end step
                             </Label>
                           </div>
@@ -923,9 +1079,14 @@ export function BatchTestDialog({
                             <Checkbox
                               id="execute-jumps"
                               checked={executeJumpsAtEnd}
-                              onCheckedChange={(checked) => setExecuteJumpsAtEnd(checked as boolean)}
+                              onCheckedChange={checked =>
+                                setExecuteJumpsAtEnd(checked as boolean)
+                              }
                             />
-                            <Label htmlFor="execute-jumps" className="text-xs cursor-pointer">
+                            <Label
+                              htmlFor="execute-jumps"
+                              className="text-xs cursor-pointer"
+                            >
                               Execute jumps at end step
                             </Label>
                           </div>
@@ -935,7 +1096,8 @@ export function BatchTestDialog({
                           <p className="font-mono">
                             {startFromStep || endAtStep ? (
                               <>
-                                Will execute: {startFromStep || 'beginning'} → {endAtStep || 'end'}
+                                Will execute: {startFromStep || 'beginning'} →{' '}
+                                {endAtStep || 'end'}
                               </>
                             ) : (
                               'Select start and/or end steps to run a partial execution'
@@ -961,7 +1123,9 @@ export function BatchTestDialog({
                       Total Combinations:
                     </span>
                     <span className="text-2xl font-bold">
-                      {totalCombinations === 0 && (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
+                      {totalCombinations === 0 &&
+                      (!workflow.input_parameters ||
+                        Object.keys(workflow.input_parameters).length === 0)
                         ? 1
                         : totalCombinations}
                     </span>
@@ -1015,9 +1179,12 @@ export function BatchTestDialog({
                       </div>
                     ) : (
                       (() => {
-                        const count = totalCombinations === 0 &&
-                          (!workflow.input_parameters || Object.keys(workflow.input_parameters).length === 0)
-                          ? 1 : totalCombinations;
+                        const count =
+                          totalCombinations === 0 &&
+                          (!workflow.input_parameters ||
+                            Object.keys(workflow.input_parameters).length === 0)
+                            ? 1
+                            : totalCombinations;
                         return `Queue ${count} Execution${count === 1 ? '' : 's'}`;
                       })()
                     )}
