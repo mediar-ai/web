@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState, useCallback } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   Node,
   Edge,
   Background,
@@ -11,8 +12,8 @@ import ReactFlow, {
   ConnectionLineType,
   Position,
   NodeProps,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { X, Code, AlertCircle, ArrowRight, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
