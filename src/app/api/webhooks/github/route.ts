@@ -410,6 +410,64 @@ export async function POST(request: NextRequest) {
             // Parse the TypeScript workflow
             const metadata = parseTypeScriptWorkflow(sourceCode);
 
+            // Create or update version
+            const { data: latestVersion } = await supabase
+              .from('deployed_workflow_versions')
+              .select('version_number')
+              .eq('workflow_id', workflowId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+
+            // Increment patch version (e.g., 1.0.0 -> 1.0.1)
+            let newVersionNumber = metadata.version || '1.0.0';
+            if (latestVersion?.version_number) {
+              const parts = latestVersion.version_number.split('.');
+              const patch = parseInt(parts[2] || '0') + 1;
+              newVersionNumber = `${parts[0]}.${parts[1]}.${patch}`;
+            }
+
+            // Create new version entry
+            console.log(
+              `📝 Creating TypeScript version ${newVersionNumber} for workflow ${workflowId}...`
+            );
+            const { data: newVersion, error: versionError } = await supabase
+              .from('deployed_workflow_versions')
+              .insert({
+                workflow_id: workflowId,
+                version_number: newVersionNumber,
+                automation_sequence: metadata,
+                automation_sequence_yaml: null,
+                preferred_format: 'typescript',
+                is_active: false,
+                change_notes: `Synced from GitHub (TypeScript)`,
+              })
+              .select()
+              .single();
+
+            if (versionError) {
+              console.error(
+                `❌ Version creation failed: ${versionError.message}`
+              );
+              throw new Error(`Version creation failed: ${versionError.message}`);
+            }
+
+            // Activate the new version
+            console.log(`🔄 Activating TypeScript version ${newVersionNumber}...`);
+            const { error: activateError } = await supabase.rpc(
+              'activate_workflow_version',
+              {
+                p_workflow_id: workflowId,
+                p_version_number: newVersionNumber,
+              }
+            );
+
+            if (activateError) {
+              console.error(
+                `❌ Failed to activate version: ${activateError.message}`
+              );
+            }
+
             // Update workflow with parsed metadata
             await supabase
               .from('deployed_workflows')
@@ -418,9 +476,9 @@ export async function POST(request: NextRequest) {
                 github_sync_status: 'synced',
                 name: metadata.name || workflowName,
                 description: metadata.description,
+                current_version_id: newVersion.id,
               })
               .eq('id', workflowId);
-
             console.log(
               `✅ Parsed TypeScript workflow: ${metadata.name} (${metadata.steps.length} steps)`
             );
