@@ -42,6 +42,31 @@ export class WorkflowFileManager {
   ): Promise<FileUploadResult> {
     try {
       const fileRecords = [];
+      // Fetch clerk_organization_id for the workflow
+      const { data: workflowData, error: workflowError } = await this.supabase
+        .from('deployed_workflows')
+        .select('organization_id')
+        .eq('id', workflowId)
+        .single();
+
+      if (workflowError || !workflowData?.organization_id) {
+        throw new Error(`Failed to get organization for workflow ${workflowId}: ${workflowError?.message || 'No organization_id'}`);  
+      }
+
+      // Fetch clerk_organization_id
+      const { data: orgData, error: orgError } = await this.supabase
+        .from('organizations')
+        .select('clerk_organization_id')
+        .eq('id', workflowData.organization_id)
+        .single();
+
+      if (orgError || !orgData?.clerk_organization_id) {
+        throw new Error(`Failed to get clerk_organization_id: ${orgError?.message || 'No clerk_organization_id'}`);  
+      }
+
+      const clerkOrgId = orgData.clerk_organization_id;
+      console.log(`[WorkflowFileManager] Using org: ${clerkOrgId} for workflow ${workflowId}`);
+
       const uploadedFiles = [];
 
       // Normalize all file paths to use forward slashes
@@ -80,7 +105,7 @@ export class WorkflowFileManager {
 
         // Always use workflow-specific path (no deduplication across workflows)
         // This ensures each workflow has its own files in its directory
-        const storagePath = this.generateStoragePath(workflowId, version, file.path, hash);
+        const storagePath = this.generateStoragePath(workflowId, version, file.path, hash, clerkOrgId);
 
           const { error: uploadError } = await this.supabase.storage
             .from(this.bucketName)
@@ -299,12 +324,16 @@ export class WorkflowFileManager {
     workflowId: number,
     version: string,
     filePath: string,
-    _hash: string
+    _hash: string,
+    clerkOrgId: string
   ): string {
     // Preserve original file structure without hash prefix
     // Format: workflows/{id}/{filepath}
     // This allows rclone mount to preserve the file structure
-    return `workflows/${workflowId}/${filePath}`;
+    // NEW: Use org-based path structure
+    // Format: org-{clerk_org_id}/workflows/{id}/{filepath}
+    // This matches the rclone mount structure on VMs
+    return `org-${clerkOrgId}/workflows/${workflowId}/${filePath}`;
   }
 
   private getContentType(filePath: string): string {
@@ -315,7 +344,8 @@ export class WorkflowFileManager {
       '.yaml': 'application/x-yaml',
       '.yml': 'application/x-yaml',
       '.txt': 'text/plain',
-      '.md': 'text/markdown'
+      '.md': 'text/markdown',
+      '.ts': 'application/typescript'
     };
     return contentTypes[ext] || 'application/octet-stream';
   }
