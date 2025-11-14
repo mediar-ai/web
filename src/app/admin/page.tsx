@@ -25,7 +25,8 @@ import {
   Edit2,
   Check,
   RefreshCw,
-  Cpu
+  Cpu,
+  Search
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
@@ -76,6 +77,7 @@ function AdminPageContent() {
   const [editingMachineOrgs, setEditingMachineOrgs] = useState<number | null>(null);
   const [machineOrgAssignments, setMachineOrgAssignments] = useState<{[key: number]: string[]}>({});
   const [machineIsGlobal, setMachineIsGlobal] = useState<{[key: number]: boolean}>({});
+  const [orgSearchQuery, setOrgSearchQuery] = useState('');
 
   // Check if user is Mediar admin
   const hasMediarEmail = user?.emailAddresses?.some(
@@ -223,7 +225,11 @@ function AdminPageContent() {
     setLoadingMachines(true);
     try {
       // Include all machines, not just active ones
-      const response = await fetch('/api/machines?include_load=true&status=all');
+      // For admins, use show_all=true to bypass organization filtering
+      const url = isGlobalAdmin
+        ? '/api/machines?include_load=true&status=all&show_all=true'
+        : '/api/machines?include_load=true&status=all';
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         const fetchedMachines = data.machines || [];
@@ -364,7 +370,7 @@ function AdminPageContent() {
 
   const handleSaveMachineOrgs = async (machineId: number) => {
     try {
-      const isGlobal = machineIsGlobal[machineId] ?? true;
+      const isGlobal = machineIsGlobal[machineId] ?? false;
       const orgIds = machineOrgAssignments[machineId] || [];
 
       const response = await fetch(`/api/machines/${machineId}/organizations`, {
@@ -378,6 +384,8 @@ function AdminPageContent() {
 
       if (response.ok) {
         const data = await response.json();
+        setEditingMachineOrgs(null);
+        setOrgSearchQuery('');
         if (data.restart_required) {
           toast.success('Organization assignments updated. VM restart required for changes to take effect.', {
             duration: 6000,
@@ -386,7 +394,6 @@ function AdminPageContent() {
         } else {
           toast.success('Organization assignments updated');
         }
-        setEditingMachineOrgs(null);
         await fetchMachines();
       } else {
         const error = await response.json();
@@ -411,7 +418,7 @@ function AdminPageContent() {
   const toggleMachineIsGlobal = (machineId: number) => {
     setMachineIsGlobal(prev => ({
       ...prev,
-      [machineId]: !(prev[machineId] ?? true)
+      [machineId]: !(prev[machineId] ?? false)
     }));
   };
 
@@ -1060,7 +1067,7 @@ function AdminPageContent() {
                                 </td>
                                 <td className="px-3 py-3">
                                   <div className="flex items-center gap-1">
-                                    {machineIsGlobal[machine.id] ?? true ? (
+                                    {machineIsGlobal[machine.id] ?? false ? (
                                       <span className="font-mono text-xs px-2 py-1 bg-black text-white whitespace-nowrap">
                                         ALL ORGS
                                       </span>
@@ -1273,7 +1280,7 @@ function AdminPageContent() {
 
         {/* Edit Machine Organizations Modal */}
         {editingMachineOrgs !== null && isGlobalAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white border-2 border-black max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
                 <h2 className="font-mono font-bold flex items-center gap-2">
@@ -1281,7 +1288,10 @@ function AdminPageContent() {
                   MANAGE ORGANIZATION ACCESS
                 </h2>
                 <button
-                  onClick={() => setEditingMachineOrgs(null)}
+                  onClick={() => {
+                    setEditingMachineOrgs(null);
+                    setOrgSearchQuery('');
+                  }}
                   className="p-1 hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
@@ -1298,7 +1308,7 @@ function AdminPageContent() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={machineIsGlobal[editingMachineOrgs] ?? true}
+                      checked={machineIsGlobal[editingMachineOrgs] ?? false}
                       onChange={() => toggleMachineIsGlobal(editingMachineOrgs)}
                       className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black"
                     />
@@ -1311,13 +1321,25 @@ function AdminPageContent() {
                   </p>
                 </div>
 
-                {!(machineIsGlobal[editingMachineOrgs] ?? true) && (
+                {!(machineIsGlobal[editingMachineOrgs] ?? false) && (
                   <div className="border-2 border-black">
                     <div className="bg-gray-50 p-4 border-b-2 border-black">
                       <h3 className="font-mono font-bold">SELECT ORGANIZATIONS</h3>
                       <p className="font-mono text-xs text-gray-600 mt-1">
                         Only selected organizations will have access to this machine
                       </p>
+
+                      {/* Search bar */}
+                      <div className="mt-3 relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search organizations..."
+                          value={orgSearchQuery}
+                          onChange={(e) => setOrgSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                        />
+                      </div>
                     </div>
                     <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
                       {allOrganizations.length === 0 ? (
@@ -1325,24 +1347,52 @@ function AdminPageContent() {
                           No organizations available
                         </div>
                       ) : (
-                        allOrganizations.map((org) => (
-                          <div key={org.clerk_organization_id || org.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={(machineOrgAssignments[editingMachineOrgs] || []).includes(org.clerk_organization_id || org.id)}
-                                onChange={() => toggleMachineOrgAssignment(editingMachineOrgs, org.clerk_organization_id || org.id)}
-                                className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black"
-                              />
-                              <div>
-                                <p className="font-mono font-bold">{org.name}</p>
-                                <p className="font-mono text-xs text-gray-600">
-                                  {org.member_count || 0} member{org.member_count !== 1 ? 's' : ''}
-                                </p>
+                        (() => {
+                          // Filter organizations by search query
+                          const filteredOrgs = allOrganizations.filter(org =>
+                            org.name.toLowerCase().includes(orgSearchQuery.toLowerCase())
+                          );
+
+                          // Sort: selected organizations first, then alphabetically
+                          const sortedOrgs = filteredOrgs.sort((a, b) => {
+                            const aSelected = (machineOrgAssignments[editingMachineOrgs] || []).includes(a.clerk_organization_id || a.id);
+                            const bSelected = (machineOrgAssignments[editingMachineOrgs] || []).includes(b.clerk_organization_id || b.id);
+
+                            // Selected ones come first
+                            if (aSelected && !bSelected) return -1;
+                            if (!aSelected && bSelected) return 1;
+
+                            // Within same group, sort alphabetically
+                            return a.name.localeCompare(b.name);
+                          });
+
+                          if (filteredOrgs.length === 0) {
+                            return (
+                              <div className="p-8 text-center text-gray-500 font-mono">
+                                No organizations match your search
+                              </div>
+                            );
+                          }
+
+                          return sortedOrgs.map((org) => (
+                            <div key={org.clerk_organization_id || org.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={(machineOrgAssignments[editingMachineOrgs] || []).includes(org.clerk_organization_id || org.id)}
+                                  onChange={() => toggleMachineOrgAssignment(editingMachineOrgs, org.clerk_organization_id || org.id)}
+                                  className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black"
+                                />
+                                <div>
+                                  <p className="font-mono font-bold">{org.name}</p>
+                                  <p className="font-mono text-xs text-gray-600">
+                                    {org.member_count || 0} member{org.member_count !== 1 ? 's' : ''}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))
+                          ));
+                        })()
                       )}
                     </div>
                   </div>
@@ -1350,7 +1400,10 @@ function AdminPageContent() {
 
                 <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
                   <button
-                    onClick={() => setEditingMachineOrgs(null)}
+                    onClick={() => {
+                      setEditingMachineOrgs(null);
+                      setOrgSearchQuery('');
+                    }}
                     className="px-4 py-2 font-mono font-bold border-2 border-black hover:bg-gray-100"
                   >
                     CANCEL
