@@ -26,12 +26,14 @@ function ActionNode({ data, selected }: NodeProps) {
       className={`bg-black text-white border-2 px-4 py-3 rounded-xl min-w-[200px] shadow-sm transition-all cursor-pointer hover:shadow-lg hover:scale-105 ${
         selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-black'
       }`}
-      title={data.description || data.label}
+      title={(data.description as string) || (data.label as string)}
     >
-      <div className="font-mono font-bold text-sm uppercase">{data.label}</div>
-      {data.description && (
+      <div className="font-mono font-bold text-sm uppercase">
+        {data.label as string}
+      </div>
+      {(data.description as string | undefined) && (
         <div className="text-xs mt-1 text-gray-300 font-mono line-clamp-2">
-          {data.description}
+          {data.description as string}
         </div>
       )}
     </div>
@@ -44,12 +46,14 @@ function ConditionNode({ data, selected }: NodeProps) {
       className={`bg-white text-black border-2 px-4 py-3 rounded-xl min-w-[200px] shadow-sm transition-all cursor-pointer hover:shadow-lg hover:scale-105 ${
         selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-black'
       }`}
-      title={data.description || data.label}
+      title={(data.description as string) || (data.label as string)}
     >
-      <div className="font-mono font-bold text-sm uppercase">{data.label}</div>
-      {data.description && (
+      <div className="font-mono font-bold text-sm uppercase">
+        {data.label as string}
+      </div>
+      {(data.description as string | undefined) && (
         <div className="text-xs mt-1 text-gray-600 font-mono line-clamp-2">
-          {data.description}
+          {data.description as string}
         </div>
       )}
     </div>
@@ -62,15 +66,15 @@ function ErrorHandlerNode({ data, selected }: NodeProps) {
       className={`bg-black text-white border-2 border-red-600 px-4 py-3 rounded-xl min-w-[200px] shadow-sm transition-all cursor-pointer hover:shadow-lg hover:scale-105 ${
         selected ? 'ring-2 ring-blue-500' : ''
       }`}
-      title={data.description || data.label}
+      title={(data.description as string) || (data.label as string)}
     >
       <div className="font-mono font-bold text-sm uppercase flex items-center">
         <span className="mr-2">⚠</span>
-        {data.label}
+        {data.label as string}
       </div>
-      {data.description && (
+      {(data.description as string | undefined) && (
         <div className="text-xs mt-1 text-gray-300 font-mono line-clamp-2">
-          {data.description}
+          {data.description as string}
         </div>
       )}
     </div>
@@ -80,7 +84,9 @@ function ErrorHandlerNode({ data, selected }: NodeProps) {
 function StartNode({ data }: NodeProps) {
   return (
     <div className="bg-gray-200 text-black border-2 border-gray-400 px-4 py-2 rounded-full min-w-[120px] text-center shadow-sm">
-      <div className="font-mono font-bold text-sm uppercase">{data.label}</div>
+      <div className="font-mono font-bold text-sm uppercase">
+        {data.label as string}
+      </div>
     </div>
   );
 }
@@ -88,7 +94,9 @@ function StartNode({ data }: NodeProps) {
 function EndNode({ data }: NodeProps) {
   return (
     <div className="bg-gray-200 text-black border-2 border-gray-400 px-4 py-2 rounded-full min-w-[120px] text-center shadow-sm">
-      <div className="font-mono font-bold text-sm uppercase">{data.label}</div>
+      <div className="font-mono font-bold text-sm uppercase">
+        {data.label as string}
+      </div>
     </div>
   );
 }
@@ -123,6 +131,9 @@ interface TypeScriptWorkflowMetadata {
     onSuccess?: string;
     onFailure?: string;
     condition?: string;
+    execute?: string;
+    inputs?: string[];
+    outputs?: string[];
   }>;
   errorHandlers?: Array<{
     id: string;
