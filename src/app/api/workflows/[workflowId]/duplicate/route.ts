@@ -16,9 +16,17 @@ export async function POST(
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
   try {
-    // STEP 1: Authenticate
+    // STEP 1: Authenticate (support both desktop tokens and Clerk web auth)
+    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const authResult = await getEffectiveOrgId(null);
+    const userId = authResult.userId;
+    const orgId = authResult.orgId;
+    const isMediarOrg = authResult.isMediarOrg;
+    const isMediarAdmin = authResult.isMediarAdmin;
+
+    // Still need Clerk's has() function for role checks
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId, orgId, has } = await auth();
+    const { has } = await auth();
 
     if (!userId) {
       return NextResponse.json(
@@ -62,11 +70,13 @@ export async function POST(
     }
 
     // STEP 2: AUTHORIZATION - Verify user has READ access to source workflow before duplicating
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+    // (authResult values already extracted above)
 
     const isOwner = originalWorkflow.created_by === userId;
-    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
+    // For desktop tokens, has() may not be available - only check for web Clerk sessions
+    const isOrgAdmin = (has && typeof has === 'function')
+      ? (has({ role: 'org:admin' }) || has({ role: 'org:owner' }))
+      : false;
     const isSameOrg = originalWorkflow.organization_id && originalWorkflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
