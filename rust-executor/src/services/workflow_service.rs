@@ -57,6 +57,9 @@ impl WorkflowService {
         let sequence = self
             .load_workflow_sequence(&workflow, request.execution_params.as_ref())
             .await?;
+        
+        // DEBUG: Log loaded sequence
+        error!("DEBUG - Loaded sequence: {:?}", sequence);
 
         // Validate sequence
         sequence
