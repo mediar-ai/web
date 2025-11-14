@@ -87,6 +87,7 @@ impl QueueProcessor {
                     ExecutionStatus::Cancelled,
                     Some("Auto-cancelled due to consecutive failures".to_string()),
                     None,
+                    None,
                 )
                 .await?;
 
@@ -173,6 +174,7 @@ impl QueueProcessor {
                         execution.id,
                         status.clone(),
                         workflow_result.error.clone(),
+                        Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
                         workflow_result.data.clone(),
                     )
                     .await?;
@@ -224,6 +226,7 @@ impl QueueProcessor {
                         execution.id,
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
+                        None,
                         None,
                     )
                     .await?;
