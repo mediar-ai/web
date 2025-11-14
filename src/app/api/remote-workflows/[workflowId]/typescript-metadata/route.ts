@@ -18,14 +18,14 @@ import * as path from 'path';
 export const dynamic = 'force-dynamic';
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     workflowId: string;
-  };
+  }>;
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const { workflowId } = context.params;
+    const { workflowId } = await context.params;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -246,7 +246,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const { workflowId } = context.params;
+    const { workflowId } = await context.params;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
