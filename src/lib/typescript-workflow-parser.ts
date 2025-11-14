@@ -31,7 +31,7 @@ export interface TypeScriptWorkflowMetadata {
     type: 'action' | 'condition' | 'loop' | 'error_handler';
 
     // For graph visualization
-    position?: { x: number; y: number };
+    position: { x: number; y: number };
 
     // Connections to other steps
     next?: string[]; // Normal flow
@@ -430,7 +430,7 @@ export function generateWorkflowGraph(
         inputs: step.inputs,
         outputs: step.outputs,
       },
-      position: step.position || { x: 100, y: 100 + index * 120 },
+      position: step.position,
     });
 
     // Add edge from previous step
