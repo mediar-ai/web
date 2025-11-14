@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     // Initialize environment variables
     dotenvy::dotenv().ok();
 
-    // Initialize tracing
+    // Initialize tracing (with Sentry if configured)
     init_tracing();
 
     // Force flush to ensure logs are written
@@ -52,11 +52,16 @@ async fn main() -> Result<()> {
 
     let db_pool = match db_pool_result {
         Ok(Ok(pool)) => {
-            info!("✓ Successfully connected to database");
+            info!("✓ Database connection pool created successfully");
             pool
         }
         Ok(Err(e)) => {
-            error!("✗ Failed to connect to database: {}", e);
+            error!("✗ Database connection failed: {}", e);
+            error!("  Possible causes:");
+            error!("  1. Incorrect DATABASE_URL format");
+            error!("  2. Database server is not accessible");
+            error!("  3. Invalid credentials");
+            error!("  4. SSL/TLS configuration mismatch");
             error!("  Creating empty pool to allow API to start");
             // Return error but with better message
             return Err(anyhow::anyhow!(
@@ -116,6 +121,8 @@ fn build_router(db_pool: DatabasePool) -> Result<Router> {
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
+        .layer(sentry_tower::NewSentryLayer::new_from_top())
+        .layer(sentry_tower::SentryHttpLayer::with_transaction())
         .with_state(db_pool);
 
     Ok(app)
@@ -130,8 +137,47 @@ fn init_tracing() {
         .with_level(true)
         .with_thread_ids(true);
 
-    tracing_subscriber::registry()
+    // Initialize Sentry if DSN is provided
+    let sentry_layer = std::env::var("SENTRY_DSN")
+        .ok()
+        .and_then(|dsn| {
+            if dsn.is_empty() {
+                None
+            } else {
+                eprintln!("Initializing Sentry with DSN");
+                
+                // Configure Sentry
+                let _guard = sentry::init((
+                    dsn,
+                    sentry::ClientOptions {
+                        release: sentry::release_name!(),
+                        environment: Some(
+                            std::env::var("ENVIRONMENT")
+                                .unwrap_or_else(|_| "production".to_string())
+                                .into()
+                        ),
+                        traces_sample_rate: 0.1, // 10% of transactions
+                        debug: std::env::var("SENTRY_DEBUG").is_ok(),
+                        attach_stacktrace: true,
+                        ..Default::default()
+                    },
+                ));
+
+                // Create tracing layer for Sentry
+                Some(sentry_tracing::layer())
+            }
+        });
+
+    // Build subscriber with conditional Sentry layer
+    let subscriber = tracing_subscriber::registry()
         .with(env_filter)
-        .with(fmt_layer)
-        .init();
+        .with(fmt_layer);
+
+    if let Some(sentry_layer) = sentry_layer {
+        subscriber.with(sentry_layer).init();
+        eprintln!("Tracing initialized with Sentry integration");
+    } else {
+        subscriber.init();
+        eprintln!("Tracing initialized without Sentry (no SENTRY_DSN configured)");
+    }
 }

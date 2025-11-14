@@ -77,3 +77,6 @@ wiremock = "0.6"
 lto = true
 opt-level = 3
 codegen-units = 1
+# Sentry for error tracking and performance monitoring
+sentry = { version = "0.34", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path", "reqwest", "rustls"] }
+sentry-tracing = "0.34"
