@@ -324,10 +324,10 @@ export async function POST(request: NextRequest) {
           `📂 Processing folder: ${folderName}, file: ${fileName} (${isTypeScript ? 'TypeScript' : 'YAML'})`
         );
 
-        // TypeScript workflows: Skip webhook sync - they're handled differently
+        // TypeScript workflows: Parse immediately instead of pending
         if (isTypeScript) {
           console.log(
-            `⏭️ Skipping TypeScript workflow ${folderName} - TypeScript workflows sync via parse API`
+            `🔧 Parsing TypeScript workflow ${folderName} immediately...`
           );
 
           // Look up existing workflow
@@ -337,26 +337,13 @@ export async function POST(request: NextRequest) {
             .eq('github_folder', folderName)
             .single();
 
-          if (existing) {
-            // Just update sync timestamp to indicate we saw the change
-            await supabase
-              .from('deployed_workflows')
-              .update({
-                github_last_synced_at: new Date().toISOString(),
-                github_sync_status: 'pending_parse',
-                github_path: filePath,
-              })
-              .eq('id', existing.id);
+          let workflowId = existing?.id;
+          let workflowName = folderName
+            .replace(/_typescript$/, '')
+            .replace(/_/g, ' ');
 
-            results.updated.push(
-              `${existing.name} (TypeScript - pending parse)`
-            );
-          } else {
-            // Create placeholder workflow for TypeScript
-            const workflowName = folderName
-              .replace(/_typescript$/, '')
-              .replace(/_/g, ' ');
-
+          if (!existing) {
+            // Create new workflow for TypeScript
             const { data: newWorkflow, error: createError } = await supabase
               .from('deployed_workflows')
               .insert({
@@ -365,7 +352,7 @@ export async function POST(request: NextRequest) {
                 github_folder: folderName,
                 github_path: filePath,
                 github_ref: branch,
-                github_sync_status: 'pending_parse',
+                github_sync_status: 'parsing',
                 github_last_synced_at: new Date().toISOString(),
                 preferred_format: 'typescript',
                 organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
@@ -377,16 +364,94 @@ export async function POST(request: NextRequest) {
               results.errors.push(
                 `${folderName}: Failed to create TypeScript workflow - ${createError.message}`
               );
+              continue;
+            }
+            workflowId = newWorkflow.id;
+          } else {
+            workflowName = existing.name;
+            // Update to parsing status
+            await supabase
+              .from('deployed_workflows')
+              .update({
+                github_last_synced_at: new Date().toISOString(),
+                github_sync_status: 'parsing',
+                github_path: filePath,
+              })
+              .eq('id', workflowId);
+          }
+
+          // Parse TypeScript workflow from GitHub
+          try {
+            const { parseTypeScriptWorkflow } = await import(
+              '@/lib/typescript-workflow-parser'
+            );
+            const fs = await import('fs');
+            const path = await import('path');
+
+            // Download terminator.ts from GitHub
+            const terminatorPath = `${orgPrefixPath}${folderName}/src/terminator.ts`;
+            const { data: terminatorContent } = await octokit.repos.getContent({
+              owner: 'mediar-ai',
+              repo: 'workflows',
+              path: terminatorPath,
+              ref: branch,
+            });
+
+            if (!terminatorContent || !('content' in terminatorContent)) {
+              throw new Error('Could not fetch terminator.ts from GitHub');
+            }
+
+            const sourceCode = Buffer.from(
+              terminatorContent.content,
+              'base64'
+            ).toString('utf-8');
+
+            // Parse the TypeScript workflow
+            const metadata = parseTypeScriptWorkflow(sourceCode);
+
+            // Update workflow with parsed metadata
+            await supabase
+              .from('deployed_workflows')
+              .update({
+                typescript_metadata: metadata,
+                github_sync_status: 'synced',
+                name: metadata.name || workflowName,
+                description: metadata.description,
+              })
+              .eq('id', workflowId);
+
+            console.log(
+              `✅ Parsed TypeScript workflow: ${metadata.name} (${metadata.steps.length} steps)`
+            );
+
+            if (existing) {
+              results.updated.push(
+                `${metadata.name} (TypeScript - ${metadata.steps.length} steps)`
+              );
             } else {
               results.created.push(
-                `${workflowName} (TypeScript - pending parse)`
+                `${metadata.name} (TypeScript - ${metadata.steps.length} steps)`
               );
             }
+          } catch (parseError) {
+            console.error(
+              `❌ Failed to parse TypeScript workflow ${folderName}:`,
+              parseError
+            );
+            // Update status to failed
+            await supabase
+              .from('deployed_workflows')
+              .update({
+                github_sync_status: 'parse_failed',
+              })
+              .eq('id', workflowId);
+
+            results.errors.push(
+              `${folderName}: Failed to parse TypeScript - ${parseError instanceof Error ? parseError.message : String(parseError)}`
+            );
           }
           continue;
         }
-
-        // YAML workflow handling
         const content = await githubWorkflowManager.getWorkflow(
           filePath,
           branch
