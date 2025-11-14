@@ -21,6 +21,7 @@ impl WorkflowQueries {
                 dw.category,
                 dw.github_folder,
                 dw.github_ref,
+                dw.preferred_format,
                 dwv.automation_sequence,
                 dwv.automation_sequence_yaml,
                 dw.created_at,
@@ -48,6 +49,7 @@ impl WorkflowQueries {
             category: row.get("category"),
             github_folder: row.get("github_folder"),
             github_ref: row.get("github_ref"),
+            preferred_format: row.get("preferred_format"),
             automation_sequence: row.get("automation_sequence"),
             automation_sequence_yaml: row.get("automation_sequence_yaml"),
             created_at: row.get("created_at"),
@@ -66,6 +68,7 @@ impl WorkflowQueries {
             SELECT
                 id, name, version, description,
                 status, category, github_folder, github_ref,
+                preferred_format,
                 automation_sequence, automation_sequence_yaml,
                 created_at, updated_at
             FROM deployed_workflows_with_sequence
@@ -85,6 +88,7 @@ impl WorkflowQueries {
             category: row.get("category"),
             github_folder: row.get("github_folder"),
             github_ref: row.get("github_ref"),
+            preferred_format: row.get("preferred_format"),
             automation_sequence: row.get("automation_sequence"),
             automation_sequence_yaml: row.get("automation_sequence_yaml"),
             created_at: row.get("created_at"),
