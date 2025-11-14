@@ -100,10 +100,10 @@ impl WorkflowService {
                         ExecutionStatus::Failed
                     },
                     workflow_result.error.clone(),
+                    Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
                     workflow_result.data.clone(),
                 )
                 .await?;
-
                 Ok(ExecutionResponse {
                     execution_id,
                     status: if workflow_result.success {
@@ -127,6 +127,7 @@ impl WorkflowService {
                     execution_id,
                     ExecutionStatus::Failed,
                     Some(e.to_string()),
+                    None,
                     None,
                 )
                 .await?;

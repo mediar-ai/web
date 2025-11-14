@@ -121,7 +121,9 @@ impl WorkflowQueries {
         .bind(client_id)
         .bind(execution_params)
         .bind(now)
+        .bind(logs)
         .bind(now)
+        .bind(logs)
         .fetch_one(pool)
         .await?;
 
@@ -194,6 +196,7 @@ impl WorkflowQueries {
         execution_id: i64,
         status: ExecutionStatus,
         error_message: Option<String>,
+        logs: Option<Value>,
         result: Option<Value>,
     ) -> Result<()> {
         let now = Utc::now();
@@ -205,14 +208,16 @@ impl WorkflowQueries {
             SET
                 status = $1,
                 error_message = $2,
-                results = $3,
-                completed_at = $4,
-                updated_at = $5
-            WHERE id = $6
+                results = $4,
+                completed_at = $5,
+                updated_at = $6,
+                execution_logs = $3
+            WHERE id = $7
             "#,
         )
         .bind(status_str)
         .bind(error_message)
+        .bind(logs)
         .bind(result)
         .bind(
             if matches!(
@@ -229,6 +234,7 @@ impl WorkflowQueries {
         )
         .bind(now)
         .bind(execution_id)
+        .execute(pool)
         .execute(pool)
         .await?;
 
