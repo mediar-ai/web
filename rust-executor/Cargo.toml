@@ -67,9 +67,9 @@ deadpool = "0.12"
 hostname = "0.4"
 
 # Sentry for error tracking and performance monitoring
-sentry = { version = "0.34", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path", "reqwest", "rustls"] }
-sentry-tracing = "0.34"
-sentry-tower = "0.34"
+sentry = { version = "0.45", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path", "reqwest", "rustls"] }
+sentry-tracing = "0.45"
+sentry-tower = "0.45"
 
 [dev-dependencies]
 mockito = "1.6"
