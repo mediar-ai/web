@@ -622,7 +622,7 @@ export function UnifiedWorkflowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto rounded-2xl border-0 shadow-2xl p-0">
+      <DialogContent className="max-w-6xl h-[85vh] flex flex-col rounded-2xl border-0 shadow-2xl p-0 overflow-hidden">
         <DialogHeader>
           {/* Inline Editable Title */}
           {isEditingName ? (
@@ -759,7 +759,10 @@ export function UnifiedWorkflowDialog({
           </div>
         )}
 
-        <Tabs defaultValue="overview" className="mt-2">
+        <Tabs
+          defaultValue="overview"
+          className="mt-2 flex-1 flex flex-col overflow-hidden"
+        >
           <TabsList
             className={`grid w-full ${workflow.preferred_format === 'typescript' ? 'grid-cols-8' : 'grid-cols-7'} px-8 py-2 bg-transparent gap-2`}
           >
@@ -823,7 +826,10 @@ export function UnifiedWorkflowDialog({
             )}
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6 px-8 py-6">
+          <TabsContent
+            value="overview"
+            className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+          >
             <div className="grid grid-cols-2 gap-6">
               <Card className="border-2 border-black rounded-lg">
                 <CardHeader className="pb-3">
@@ -898,7 +904,10 @@ export function UnifiedWorkflowDialog({
             </div>
           </TabsContent>
 
-          <TabsContent value="workflow" className="space-y-6 px-8 py-6">
+          <TabsContent
+            value="workflow"
+            className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+          >
             {/* Show message for TypeScript workflows */}
             {workflow.preferred_format === 'typescript' && (
               <Alert className="border-2 border-black rounded-lg">
@@ -1147,7 +1156,10 @@ export function UnifiedWorkflowDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="schedule" className="space-y-6 px-8 py-6">
+          <TabsContent
+            value="schedule"
+            className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+          >
             <Card className="border-2 border-black">
               <CardHeader className="bg-black text-white">
                 <CardTitle className="font-mono flex items-center gap-2">
@@ -1305,7 +1317,10 @@ export function UnifiedWorkflowDialog({
             </Card>
           </TabsContent>
 
-          <TabsContent value="parameters" className="space-y-6 px-8 py-6">
+          <TabsContent
+            value="parameters"
+            className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+          >
             {hasDetailedInfo ? (
               <>
                 <div>
@@ -1378,7 +1393,10 @@ export function UnifiedWorkflowDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="versions" className="space-y-4">
+          <TabsContent
+            value="versions"
+            className="space-y-4 overflow-y-auto flex-1 px-8 py-6"
+          >
             <Card className="border-black-outline">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1478,7 +1496,10 @@ export function UnifiedWorkflowDialog({
             </Card>
           </TabsContent>
 
-          <TabsContent value="machines" className="space-y-4">
+          <TabsContent
+            value="machines"
+            className="space-y-4 overflow-y-auto flex-1 px-8 py-6"
+          >
             <Card className="border-black-outline">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1736,7 +1757,10 @@ export function UnifiedWorkflowDialog({
             </Card>
           </TabsContent>
 
-          <TabsContent value="usage" className="space-y-6 px-8 py-6">
+          <TabsContent
+            value="usage"
+            className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+          >
             <Alert>
               <Terminal className="h-4 w-4" />
               <AlertDescription>
@@ -1771,7 +1795,10 @@ body: JSON.stringify(${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs :
 
           {/* TypeScript Workflow Tab */}
           {workflow.preferred_format === 'typescript' && (
-            <TabsContent value="typescript" className="space-y-6 px-8 py-6">
+            <TabsContent
+              value="typescript"
+              className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
+            >
               <TypeScriptWorkflowTab
                 workflowId={workflow.id}
                 workflowFormat={workflow.preferred_format}
