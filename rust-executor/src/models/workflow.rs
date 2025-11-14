@@ -14,6 +14,7 @@ pub struct Workflow {
     pub category: Option<String>,
     pub github_folder: Option<String>,
     pub github_ref: Option<String>,
+    pub organization_id: Option<i64>,
     pub preferred_format: Option<String>,
     pub automation_sequence: Option<Value>,
     pub automation_sequence_yaml: Option<String>,

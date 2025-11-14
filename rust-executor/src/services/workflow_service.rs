@@ -155,7 +155,7 @@ impl WorkflowService {
         // Check if this is a TypeScript workflow
         if workflow.preferred_format.as_deref() == Some("typescript") {
             info!("Detected TypeScript workflow, building file:// URL execution");
-            return self.build_typescript_workflow_sequence(workflow, execution_params);
+            return self.build_typescript_workflow_sequence(workflow, execution_params).await;
         }
 
         // Priority 1: Load from GitHub if configured
@@ -199,7 +199,7 @@ impl WorkflowService {
 
     /// Build a workflow sequence for TypeScript workflows
     /// Creates a special sequence that calls execute_sequence with url parameter
-    fn build_typescript_workflow_sequence(
+    async fn build_typescript_workflow_sequence(
         &self,
         workflow: &Workflow,
         execution_params: Option<&Value>,
@@ -207,28 +207,37 @@ impl WorkflowService {
         use crate::models::WorkflowSequence;
         use serde_json::{json, Map, Value};
 
-        // Determine the file path to the TypeScript workflow
-        // Assuming files are mounted at /tmp/workflow-files/{workflow_id}/
-        let workflow_path = format!("/tmp/workflow-files/{}", workflow.id);
+        // Get the clerk_organization_id for the workflow
+        let clerk_org_id = if let Some(org_id) = workflow.organization_id {
+            // Fetch clerk_organization_id from database
+            let row = sqlx::query(
+                r#"
+                SELECT clerk_organization_id 
+                FROM organizations 
+                WHERE id = $1
+                "#,
+            )
+            .bind(org_id)
+            .fetch_optional(&self.db_pool)
+            .await?;
 
-        // Check for terminator.ts in different locations (priority order)
-        let possible_paths = vec![
-            format!("{}/src/terminator.ts", workflow_path),
-            format!("{}/terminator.ts", workflow_path),
-            format!("{}/src/workflow.ts", workflow_path),
-            format!("{}/workflow.ts", workflow_path),
-            format!("{}/src/index.ts", workflow_path),
-            format!("{}/index.ts", workflow_path),
-        ];
+            if let Some(row) = row {
+                let clerk_id: String = row.get("clerk_organization_id");
+                clerk_id
+            } else {
+                return Err(anyhow::anyhow!("Organization not found for workflow"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("Workflow has no organization_id"));
+        };
 
-        let file_url = possible_paths
-            .into_iter()
-            .find(|path| std::path::Path::new(path).exists())
-            .map(|path| format!("file://{}", path))
-            .unwrap_or_else(|| {
-                // Fallback: assume src/terminator.ts (MCP server will handle error if not found)
-                format!("file://{}/src/terminator.ts", workflow_path)
-            });
+        // Build S:\ path on the VM where MCP server runs
+        // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
+        let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
+
+        // Try different possible file locations (MCP server will use the URL as-is)
+        // Default to src/terminator.ts as it's the most common
+        let file_url = format!("file://{}/src/terminator.ts", workflow_base_path);
 
         info!("TypeScript workflow URL: {}", file_url);
 
