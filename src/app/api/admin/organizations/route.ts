@@ -26,7 +26,7 @@ export async function GET() {
     // Fetch all organizations from Clerk
     const clerk = await clerkClient();
     const organizations = await clerk.organizations.getOrganizationList({
-      limit: 100,
+      limit: 500,
     });
 
     // Transform the data for the frontend
