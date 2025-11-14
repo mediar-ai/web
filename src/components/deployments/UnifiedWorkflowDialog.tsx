@@ -1,21 +1,58 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Terminal, Package, Monitor, Star, Trash2, Loader2, Check, AlertCircle, FileCode, FilePlus, Upload, Edit, Save, X, Clock } from 'lucide-react';
+import {
+  Terminal,
+  Package,
+  Monitor,
+  Star,
+  Trash2,
+  Loader2,
+  Check,
+  AlertCircle,
+  FileCode,
+  FilePlus,
+  Upload,
+  Edit,
+  Save,
+  X,
+  Clock,
+  BarChart3,
+  Workflow,
+  Settings,
+  GitBranch,
+  Server,
+  Activity,
+  Code2,
+  FileInput,
+} from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
 import { formatDuration } from './utils';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 import { CronScheduleEditor, type CronConfig } from './CronScheduleEditor';
+import { TypeScriptWorkflowTab } from './TypeScriptWorkflowTab';
 
 interface WorkflowVersion {
   version_number: string;
@@ -59,19 +96,25 @@ export function UnifiedWorkflowDialog({
   open,
   onOpenChange,
   onSettingsUpdated,
-  onUseAsTemplate
+  onUseAsTemplate,
 }: UnifiedWorkflowDialogProps) {
   // Version management state
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
-  const [activatingVersion, setActivatingVersion] = useState<string | null>(null);
+  const [activatingVersion, setActivatingVersion] = useState<string | null>(
+    null
+  );
   const [currentYaml, setCurrentYaml] = useState<string>('');
   const [loadingYaml, setLoadingYaml] = useState(false);
   const [editedYaml, setEditedYaml] = useState<string>('');
   const [isEditingYaml, setIsEditingYaml] = useState(false);
   const [uploadingVersion, setUploadingVersion] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [selectedVersionNumber, setSelectedVersionNumber] = useState<string>(''); // Track selected version for viewing
+  const [uploadResult, setUploadResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [selectedVersionNumber, setSelectedVersionNumber] =
+    useState<string>(''); // Track selected version for viewing
 
   // Inline editing state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -82,11 +125,15 @@ export function UnifiedWorkflowDialog({
 
   // Machine assignment state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
-  const [machineAssignments, setMachineAssignments] = useState<MachineAssignment[]>([]);
+  const [machineAssignments, setMachineAssignments] = useState<
+    MachineAssignment[]
+  >([]);
   const [loadingMachines, setLoadingMachines] = useState(false);
   const [selectedMachineId, setSelectedMachineId] = useState<string>('');
   const [addingAssignment, setAddingAssignment] = useState(false);
-  const [removingAssignment, setRemovingAssignment] = useState<number | null>(null);
+  const [removingAssignment, setRemovingAssignment] = useState<number | null>(
+    null
+  );
 
   // Feedback state
   const [successMessage, setSuccessMessage] = useState<string>('');
@@ -105,51 +152,71 @@ export function UnifiedWorkflowDialog({
   const [savingCron, setSavingCron] = useState(false);
 
   // Load YAML for a specific version (defined before loadVersions to avoid circular dependency)
-  const loadVersionYaml = useCallback(async (versionNumber: string) => {
-    if (!workflow) return;
+  const loadVersionYaml = useCallback(
+    async (versionNumber: string) => {
+      if (!workflow) return;
 
-    setLoadingYaml(true);
-    try {
-      // Fetch YAML directly from GitHub (or database fallback)
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml?version=${versionNumber}`);
-      if (!response.ok) throw new Error(`Failed to load version: ${response.status}`);
-
-      const data = await response.json();
-      if (data.success && data.yaml) {
-        setCurrentYaml(data.yaml);
-        setEditedYaml(data.yaml);
-
-        // Show source info
-        if (data.source === 'github') {
-          console.log(`✅ Loaded YAML from GitHub: ${data.github?.path}`);
-        } else if (data.source === 'database_fallback') {
-          console.warn('⚠️ Using cached version from database');
-        }
-      } else {
+      // Skip YAML loading for TypeScript workflows
+      if (workflow.preferred_format === 'typescript') {
         setCurrentYaml('');
-        setErrorMessage(`No YAML found for version ${versionNumber}`);
+        setLoadingYaml(false);
+        return;
       }
-    } catch (error) {
-      console.error('Error loading version YAML:', error);
-      setErrorMessage(`Failed to load version: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoadingYaml(false);
-    }
-  }, [workflow]);
+
+      setLoadingYaml(true);
+      try {
+        // Fetch YAML directly from GitHub (or database fallback)
+        const response = await fetch(
+          `/api/remote-workflows/${workflow.id}/github-yaml?version=${versionNumber}`
+        );
+        if (!response.ok)
+          throw new Error(`Failed to load version: ${response.status}`);
+
+        const data = await response.json();
+        if (data.success && data.yaml) {
+          setCurrentYaml(data.yaml);
+          setEditedYaml(data.yaml);
+
+          // Show source info
+          if (data.source === 'github') {
+            console.log(`✅ Loaded YAML from GitHub: ${data.github?.path}`);
+          } else if (data.source === 'database_fallback') {
+            console.warn('⚠️ Using cached version from database');
+          }
+        } else {
+          setCurrentYaml('');
+          setErrorMessage(`No YAML found for version ${versionNumber}`);
+        }
+      } catch (error) {
+        console.error('Error loading version YAML:', error);
+        setErrorMessage(
+          `Failed to load version: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      } finally {
+        setLoadingYaml(false);
+      }
+    },
+    [workflow]
+  );
 
   const loadVersions = useCallback(async () => {
     if (!workflow) return;
 
     setLoadingVersions(true);
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`);
-      if (!response.ok) throw new Error(`Failed to load versions: ${response.status}`);
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/versions`
+      );
+      if (!response.ok)
+        throw new Error(`Failed to load versions: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
         setVersions(data.versions || []);
         // Find active version and set as default selected version
-        const activeVersion = data.versions?.find((v: WorkflowVersion) => v.is_active);
+        const activeVersion = data.versions?.find(
+          (v: WorkflowVersion) => v.is_active
+        );
         if (activeVersion) {
           setSelectedVersionNumber(activeVersion.version_number);
           // Load the active version's YAML from GitHub/database
@@ -160,7 +227,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error loading versions:', error);
-      setErrorMessage(`Failed to load versions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to load versions: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setLoadingVersions(false);
     }
@@ -173,7 +242,9 @@ export function UnifiedWorkflowDialog({
     setLoadingYaml(true);
     try {
       // Fetch YAML from GitHub (with database fallback for legacy workflows)
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/github-yaml`);
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/github-yaml`
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to fetch YAML: ${response.status}`);
@@ -182,7 +253,10 @@ export function UnifiedWorkflowDialog({
       const data = await response.json();
 
       if (data.success && data.yaml) {
-        console.log(`📄 Loaded YAML for workflow ${workflow.id} from:`, data.source);
+        console.log(
+          `📄 Loaded YAML for workflow ${workflow.id} from:`,
+          data.source
+        );
         setCurrentYaml(data.yaml);
         setEditedYaml(data.yaml);
       } else {
@@ -200,8 +274,11 @@ export function UnifiedWorkflowDialog({
   const loadMachines = useCallback(async () => {
     setLoadingMachines(true);
     try {
-      const response = await fetch('/api/machines?status=active&include_load=true');
-      if (!response.ok) throw new Error(`Failed to load machines: ${response.status}`);
+      const response = await fetch(
+        '/api/machines?status=active&include_load=true'
+      );
+      if (!response.ok)
+        throw new Error(`Failed to load machines: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
@@ -211,7 +288,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error loading machines:', error);
-      setErrorMessage(`Failed to load machines: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to load machines: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setLoadingMachines(false);
     }
@@ -222,7 +301,10 @@ export function UnifiedWorkflowDialog({
 
     try {
       const response = await fetch(`/api/workflows/${workflow.id}/machines`);
-      if (!response.ok) throw new Error(`Failed to load machine assignments: ${response.status}`);
+      if (!response.ok)
+        throw new Error(
+          `Failed to load machine assignments: ${response.status}`
+        );
 
       const data = await response.json();
       if (data.success) {
@@ -232,7 +314,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error loading machine assignments:', error);
-      setErrorMessage(`Failed to load machine assignments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to load machine assignments: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }, [workflow]);
 
@@ -310,18 +394,21 @@ export function UnifiedWorkflowDialog({
       });
 
       // Update workflow-level cron config in database (single source of truth)
-      const cronDbResponse = await fetch(`/api/remote-workflows/${workflow.id}/cron`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cron_expression: cronConfig.expression,
-          cron_timezone: cronConfig.timezone,
-          cron_enabled: cronConfig.enabled,
-          cron_max_concurrent: cronConfig.maxConcurrent,
-          cron_retry_on_failure: cronConfig.retryOnFailure,
-          cron_retry_count: cronConfig.retryCount,
-        }),
-      });
+      const cronDbResponse = await fetch(
+        `/api/remote-workflows/${workflow.id}/cron`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cron_expression: cronConfig.expression,
+            cron_timezone: cronConfig.timezone,
+            cron_enabled: cronConfig.enabled,
+            cron_max_concurrent: cronConfig.maxConcurrent,
+            cron_retry_on_failure: cronConfig.retryOnFailure,
+            cron_retry_count: cronConfig.retryCount,
+          }),
+        }
+      );
 
       const cronDbData = await cronDbResponse.json();
 
@@ -334,10 +421,11 @@ export function UnifiedWorkflowDialog({
       if (onSettingsUpdated) {
         onSettingsUpdated();
       }
-
     } catch (error) {
       console.error('Error saving cron config:', error);
-      setErrorMessage(`Failed to save schedule: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to save schedule: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setSavingCron(false);
     }
@@ -354,7 +442,14 @@ export function UnifiedWorkflowDialog({
       setEditedName(workflow.name || '');
       setEditedDescription(workflow.description || '');
     }
-  }, [open, workflow, loadVersions, loadMachineAssignments, loadMachines, loadCronConfig]);
+  }, [
+    open,
+    workflow,
+    loadVersions,
+    loadMachineAssignments,
+    loadMachines,
+    loadCronConfig,
+  ]);
 
   // Clear messages after 3 seconds
   useEffect(() => {
@@ -367,7 +462,6 @@ export function UnifiedWorkflowDialog({
     }
   }, [successMessage, errorMessage]);
 
-
   const saveNameAndDescription = async () => {
     if (!workflow) return;
 
@@ -378,11 +472,12 @@ export function UnifiedWorkflowDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editedName,
-          description: editedDescription
-        })
+          description: editedDescription,
+        }),
       });
 
-      if (!response.ok) throw new Error(`Failed to update workflow: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Failed to update workflow: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
@@ -395,7 +490,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error updating workflow:', error);
-      setErrorMessage(`Failed to update workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to update workflow: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setSavingNameDescription(false);
     }
@@ -406,11 +503,15 @@ export function UnifiedWorkflowDialog({
 
     setActivatingVersion(versionNumber);
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/activate/${versionNumber}`, {
-        method: 'POST'
-      });
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/activate/${versionNumber}`,
+        {
+          method: 'POST',
+        }
+      );
 
-      if (!response.ok) throw new Error(`Failed to activate version: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Failed to activate version: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
@@ -422,7 +523,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error activating version:', error);
-      setErrorMessage(`Failed to activate version: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to activate version: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setActivatingVersion(null);
     }
@@ -443,13 +546,14 @@ export function UnifiedWorkflowDialog({
               assignment_type: 'exclusive',
               priority: machineAssignments.length + 1,
               conditions: {},
-              reason: 'Assigned via UI'
-            }
-          ]
-        })
+              reason: 'Assigned via UI',
+            },
+          ],
+        }),
       });
 
-      if (!response.ok) throw new Error(`Failed to add machine assignment: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Failed to add machine assignment: ${response.status}`);
 
       const data = await response.json();
       if (data.success) {
@@ -462,7 +566,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error adding machine assignment:', error);
-      setErrorMessage(`Failed to add machine assignment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to add machine assignment: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setAddingAssignment(false);
     }
@@ -473,12 +579,18 @@ export function UnifiedWorkflowDialog({
 
     setRemovingAssignment(assignmentId);
     try {
-      const response = await fetch(`/api/workflows/${workflow.id}/machines?assignment_id=${assignmentId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const response = await fetch(
+        `/api/workflows/${workflow.id}/machines?assignment_id=${assignmentId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
-      if (!response.ok) throw new Error(`Failed to remove machine assignment: ${response.status}`);
+      if (!response.ok)
+        throw new Error(
+          `Failed to remove machine assignment: ${response.status}`
+        );
 
       const data = await response.json();
       if (data.success) {
@@ -490,7 +602,9 @@ export function UnifiedWorkflowDialog({
       }
     } catch (error) {
       console.error('Error removing machine assignment:', error);
-      setErrorMessage(`Failed to remove machine assignment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(
+        `Failed to remove machine assignment: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     } finally {
       setRemovingAssignment(null);
     }
@@ -509,76 +623,73 @@ export function UnifiedWorkflowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto !mt-8 !mb-8 !top-8 !transform-none !translate-y-0">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto rounded-2xl border-0 shadow-2xl p-0">
         <DialogHeader>
           {/* Inline Editable Title */}
-          <div className="flex items-center gap-2">
-            {isEditingName ? (
-              <>
-                <Input
-                  value={editedName}
-                  onChange={(e) => setEditedName(e.target.value)}
-                  onBlur={() => {
-                    if (editedName !== workflow.name) {
-                      saveNameAndDescription();
-                    } else {
-                      setIsEditingName(false);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      saveNameAndDescription();
-                    } else if (e.key === 'Escape') {
-                      setEditedName(workflow.name);
-                      setIsEditingName(false);
-                    }
-                  }}
-                  className="text-2xl font-bold border-2 border-black"
-                  autoFocus
-                  disabled={savingNameDescription}
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => saveNameAndDescription()}
-                  disabled={savingNameDescription}
-                  className="flex-shrink-0"
-                >
-                  {savingNameDescription ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditedName(workflow.name);
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editedName}
+                onChange={e => setEditedName(e.target.value)}
+                onBlur={() => {
+                  if (editedName !== workflow.name) {
+                    saveNameAndDescription();
+                  } else {
                     setIsEditingName(false);
-                  }}
-                  disabled={savingNameDescription}
-                  className="flex-shrink-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </>
-            ) : (
-              <DialogTitle
-                className="text-2xl cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors flex-1"
-                onClick={() => setIsEditingName(true)}
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    saveNameAndDescription();
+                  } else if (e.key === 'Escape') {
+                    setEditedName(workflow.name || '');
+                    setIsEditingName(false);
+                  }
+                }}
+                autoFocus
+                className="text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500"
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => saveNameAndDescription()}
+                disabled={savingNameDescription}
+                className="flex-shrink-0"
               >
-                {workflow.name}
-              </DialogTitle>
-            )}
-          </div>
+                {savingNameDescription ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setEditedName(workflow.name);
+                  setIsEditingName(false);
+                }}
+                disabled={savingNameDescription}
+                className="flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <DialogTitle
+              className="text-2xl cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              onClick={() => setIsEditingName(true)}
+            >
+              {workflow.name}
+            </DialogTitle>
+          )}
 
           {/* Inline Editable Description */}
           {isEditingDescription ? (
             <div className="flex items-start gap-2">
               <Textarea
                 value={editedDescription}
-                onChange={(e) => setEditedDescription(e.target.value)}
+                onChange={e => setEditedDescription(e.target.value)}
                 onBlur={() => {
                   if (editedDescription !== workflow.description) {
                     saveNameAndDescription();
@@ -586,16 +697,15 @@ export function UnifiedWorkflowDialog({
                     setIsEditingDescription(false);
                   }
                 }}
-                onKeyDown={(e) => {
+                onKeyDown={e => {
                   if (e.key === 'Escape') {
                     setEditedDescription(workflow.description || '');
                     setIsEditingDescription(false);
                   }
                 }}
-                className="border-2 border-black resize-none"
-                rows={2}
                 autoFocus
-                disabled={savingNameDescription}
+                rows={3}
+                className="flex-1 border-2 border-gray-300 rounded-lg focus:border-blue-500"
               />
               <div className="flex flex-col gap-1">
                 <Button
@@ -627,7 +737,7 @@ export function UnifiedWorkflowDialog({
             </div>
           ) : (
             <DialogDescription
-              className="cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              className="cursor-pointer hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-gray-600"
               onClick={() => setIsEditingDescription(true)}
             >
               {workflow.description || 'Click to add description'}
@@ -637,125 +747,227 @@ export function UnifiedWorkflowDialog({
 
         {/* Success/Error Messages */}
         {successMessage && (
-          <div className="flex items-center gap-2 p-3 bg-green-50 border border-black rounded-lg">
-            <Check className="w-4 h-4 text-green-600" />
-            <span className="text-green-800">{successMessage}</span>
+          <div className="flex items-center gap-2 p-4 mx-8 mt-4 bg-white border-2 border-black rounded-lg">
+            <Check className="w-4 h-4" />
+            <span className="font-medium">{successMessage}</span>
           </div>
         )}
 
         {errorMessage && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 border border-black rounded-lg">
-            <AlertCircle className="w-4 h-4 text-red-600" />
-            <span className="text-red-800">{errorMessage}</span>
+          <div className="flex items-center gap-2 p-4 mx-8 mt-4 bg-white border-2 border-black rounded-lg">
+            <AlertCircle className="w-4 h-4" />
+            <span className="font-medium">{errorMessage}</span>
           </div>
         )}
 
-        <Tabs defaultValue="overview" className="mt-6">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="workflow">Workflow</TabsTrigger>
-            <TabsTrigger value="parameters">Parameters</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="versions">Versions</TabsTrigger>
-            <TabsTrigger value="machines">Machines</TabsTrigger>
-            <TabsTrigger value="usage">Usage</TabsTrigger>
+        <Tabs defaultValue="overview" className="mt-2">
+          <TabsList
+            className={`grid w-full ${workflow.preferred_format === 'typescript' ? 'grid-cols-8' : 'grid-cols-7'} px-8 py-2 bg-transparent gap-2`}
+          >
+            <TabsTrigger
+              value="overview"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="workflow"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <Workflow className="w-4 h-4 mr-2" />
+              Workflow
+            </TabsTrigger>
+            <TabsTrigger
+              value="parameters"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <FileInput className="w-4 h-4 mr-2" />
+              Inputs
+            </TabsTrigger>
+            <TabsTrigger
+              value="schedule"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Schedule
+            </TabsTrigger>
+            <TabsTrigger
+              value="versions"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <GitBranch className="w-4 h-4 mr-2" />
+              Versions
+            </TabsTrigger>
+            <TabsTrigger
+              value="machines"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <Server className="w-4 h-4 mr-2" />
+              Machines
+            </TabsTrigger>
+            <TabsTrigger
+              value="usage"
+              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+            >
+              <Terminal className="w-4 h-4 mr-2" />
+              API
+            </TabsTrigger>
+            {workflow.preferred_format === 'typescript' && (
+              <TabsTrigger
+                value="typescript"
+                className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              >
+                <Code2 className="w-4 h-4 mr-2" />
+                TypeScript
+              </TabsTrigger>
+            )}
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-semibold mb-2">Metadata</h4>
-                <dl className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Active Version:</dt>
-                    <dd className="font-mono">v{getActiveVersion()?.version_number || workflow.version}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Category:</dt>
-                    <dd className="font-mono">{workflow.category}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Est. Duration:</dt>
-                    <dd className="font-mono">{formatDuration(workflow.estimated_duration_seconds)}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Timeout:</dt>
-                    <dd className="font-mono">{workflow.timeout_minutes || 25} minutes</dd>
-                  </div>
-                </dl>
-              </div>
+          <TabsContent value="overview" className="space-y-6 px-8 py-6">
+            <div className="grid grid-cols-2 gap-6">
+              <Card className="border-2 border-black rounded-lg">
+                <CardHeader className="pb-3">
+                  <h4 className="font-semibold text-lg flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Metadata
+                  </h4>
+                </CardHeader>
+                <CardContent>
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Active Version:</dt>
+                      <dd className="font-mono">
+                        v
+                        {getActiveVersion()?.version_number || workflow.version}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Category:</dt>
+                      <dd className="font-mono">{workflow.category}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Est. Duration:</dt>
+                      <dd className="font-mono">
+                        {formatDuration(workflow.estimated_duration_seconds)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Timeout:</dt>
+                      <dd className="font-mono">
+                        {workflow.timeout_minutes || 25} minutes
+                      </dd>
+                    </div>
+                  </dl>
+                </CardContent>
+              </Card>
 
-              <div>
-                <h4 className="font-semibold mb-2">Performance</h4>
-                <dl className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Total Runs:</dt>
-                    <dd className="font-mono">{workflow.total_executions || 0}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Success Rate:</dt>
-                    <dd className="font-mono">
-                      {workflow.success_rate !== null && workflow.success_rate !== undefined && typeof workflow.success_rate === 'number'
-                        ? `${Math.round(workflow.success_rate)}%`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Successful:</dt>
-                    <dd className="font-mono">{workflow.successful_runs || 0}</dd>
-                  </div>
-                </dl>
-              </div>
+              <Card className="border-2 border-black rounded-lg">
+                <CardHeader className="pb-3">
+                  <h4 className="font-semibold text-lg flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    Performance
+                  </h4>
+                </CardHeader>
+                <CardContent>
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Total Runs:</dt>
+                      <dd className="font-mono">
+                        {workflow.total_executions || 0}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Success Rate:</dt>
+                      <dd className="font-mono">
+                        {workflow.success_rate !== null &&
+                        workflow.success_rate !== undefined &&
+                        typeof workflow.success_rate === 'number'
+                          ? `${Math.round(workflow.success_rate)}%`
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Successful:</dt>
+                      <dd className="font-mono">
+                        {workflow.successful_runs || 0}
+                      </dd>
+                    </div>
+                  </dl>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
-          <TabsContent value="workflow" className="space-y-4">
-            {/* Version Selector */}
-            <div className="flex items-center gap-3 p-3 bg-gray-50 border-2 border-black rounded-lg">
-              <span className="font-mono font-bold text-sm uppercase">Version:</span>
-              <Select
-                value={selectedVersionNumber}
-                onValueChange={(value) => {
-                  setSelectedVersionNumber(value);
-                  loadVersionYaml(value);
-                  setIsEditingYaml(false);
-                  setUploadResult(null);
-                }}
-                disabled={loadingVersions || isEditingYaml}
-              >
-                <SelectTrigger className="w-[200px] border-2 border-black font-mono">
-                  <SelectValue placeholder="Select version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {versions
-                    .sort((a, b) => {
-                      // Sort by version number descending (latest first)
-                      const aNum = parseFloat(a.version_number);
-                      const bNum = parseFloat(b.version_number);
-                      return bNum - aNum;
-                    })
-                    .map((version) => (
-                      <SelectItem key={version.version_number} value={version.version_number}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono">v{version.version_number}</span>
-                          {version.is_active && (
-                            <Badge className="bg-black text-white text-xs">ACTIVE</Badge>
-                          )}
-                          <span className="text-xs text-gray-500">
-                            {version.execution_count} runs
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {versions.find(v => v.version_number === selectedVersionNumber)?.is_active && (
-                <Badge className="bg-black text-white animate-pulse">
-                  <Star className="w-3 h-3 mr-1" />
-                  Active Version
-                </Badge>
-              )}
-            </div>
+          <TabsContent value="workflow" className="space-y-6 px-8 py-6">
+            {/* Show message for TypeScript workflows */}
+            {workflow.preferred_format === 'typescript' && (
+              <Alert className="border-2 border-black rounded-lg">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  This is a TypeScript workflow. YAML editing is not available.
+                  Use the TypeScript tab to view workflow details.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {workflow.preferred_format !== 'typescript' && (
+              <div className="flex items-center gap-3 p-4 bg-white border-2 border-black rounded-lg">
+                <span className="font-mono font-bold text-sm uppercase">
+                  Version:
+                </span>
+                <Select
+                  value={selectedVersionNumber}
+                  onValueChange={value => {
+                    setSelectedVersionNumber(value);
+                    loadVersionYaml(value);
+                    setIsEditingYaml(false);
+                    setUploadResult(null);
+                  }}
+                  disabled={loadingVersions || isEditingYaml}
+                >
+                  <SelectTrigger className="w-[200px] border-2 border-black font-mono">
+                    <SelectValue placeholder="Select version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {versions
+                      .sort((a, b) => {
+                        // Sort by version number descending (latest first)
+                        const aNum = parseFloat(a.version_number);
+                        const bNum = parseFloat(b.version_number);
+                        return bNum - aNum;
+                      })
+                      .map(version => (
+                        <SelectItem
+                          key={version.version_number}
+                          value={version.version_number}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">
+                              v{version.version_number}
+                            </span>
+                            {version.is_active && (
+                              <Badge className="bg-black text-white text-xs">
+                                ACTIVE
+                              </Badge>
+                            )}
+                            <span className="text-xs text-gray-500">
+                              {version.execution_count} runs
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {versions.find(v => v.version_number === selectedVersionNumber)
+                  ?.is_active && (
+                  <Badge className="bg-black text-white animate-pulse">
+                    <Star className="w-3 h-3 mr-1" />
+                    Active Version
+                  </Badge>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold flex items-center gap-2">
@@ -827,27 +1039,33 @@ export function UnifiedWorkflowDialog({
                         setUploadResult(null);
                         try {
                           // Upload new version
-                          const response = await fetch(`/api/remote-workflows/${workflow.id}/versions`, {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                              automation_sequence: editedYaml,
-                              set_as_active: false,
-                              change_notes: 'Updated via workflow editor'
-                            }),
-                          });
+                          const response = await fetch(
+                            `/api/remote-workflows/${workflow.id}/versions`,
+                            {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                automation_sequence: editedYaml,
+                                set_as_active: false,
+                                change_notes: 'Updated via workflow editor',
+                              }),
+                            }
+                          );
 
                           if (!response.ok) {
                             const errorData = await response.json();
-                            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                            throw new Error(
+                              errorData.error ||
+                                `HTTP ${response.status}: ${response.statusText}`
+                            );
                           }
 
                           const result = await response.json();
                           setUploadResult({
                             success: true,
-                            message: `Successfully uploaded version ${result.version.version_number}`
+                            message: `Successfully uploaded version ${result.version.version_number}`,
                           });
 
                           // Reload versions and reset state after successful upload
@@ -861,7 +1079,10 @@ export function UnifiedWorkflowDialog({
                           console.error('Version upload failed:', error);
                           setUploadResult({
                             success: false,
-                            message: error instanceof Error ? error.message : 'Upload failed'
+                            message:
+                              error instanceof Error
+                                ? error.message
+                                : 'Upload failed',
                           });
                         } finally {
                           setUploadingVersion(false);
@@ -888,15 +1109,17 @@ export function UnifiedWorkflowDialog({
             </div>
 
             {uploadResult && (
-              <Alert className={uploadResult.success ? 'border-green-500' : 'border-red-500'}>
+              <Alert
+                className={
+                  uploadResult.success ? 'border-green-500' : 'border-red-500'
+                }
+              >
                 {uploadResult.success ? (
                   <Check className="w-4 h-4 text-green-500" />
                 ) : (
                   <AlertCircle className="w-4 h-4 text-red-500" />
                 )}
-                <AlertDescription>
-                  {uploadResult.message}
-                </AlertDescription>
+                <AlertDescription>{uploadResult.message}</AlertDescription>
               </Alert>
             )}
 
@@ -909,7 +1132,7 @@ export function UnifiedWorkflowDialog({
               <div className="w-full">
                 <YamlEditorWithHighlight
                   value={isEditingYaml ? editedYaml : currentYaml}
-                  onChange={(value) => setEditedYaml(value)}
+                  onChange={value => setEditedYaml(value)}
                   readOnly={!isEditingYaml}
                   minHeight="500px"
                   className="w-full"
@@ -925,7 +1148,7 @@ export function UnifiedWorkflowDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="schedule" className="space-y-4">
+          <TabsContent value="schedule" className="space-y-6 px-8 py-6">
             <Card className="border-2 border-black">
               <CardHeader className="bg-black text-white">
                 <CardTitle className="font-mono flex items-center gap-2">
@@ -937,7 +1160,9 @@ export function UnifiedWorkflowDialog({
                 {loadingCron ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin" />
-                    <span className="ml-2">Loading schedule configuration...</span>
+                    <span className="ml-2">
+                      Loading schedule configuration...
+                    </span>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -965,25 +1190,43 @@ export function UnifiedWorkflowDialog({
                           <div className="text-sm">
                             {(() => {
                               // Get the exclusive assignment (only type supported)
-                              const exclusiveAssignment = machineAssignments.find(a => a.assignment_type === 'exclusive');
+                              const exclusiveAssignment =
+                                machineAssignments.find(
+                                  a => a.assignment_type === 'exclusive'
+                                );
                               const primaryAssignment = exclusiveAssignment;
 
                               if (primaryAssignment) {
-                                const machineData = availableMachines.find(m => m.id === primaryAssignment.machine_id);
+                                const machineData = availableMachines.find(
+                                  m => m.id === primaryAssignment.machine_id
+                                );
                                 return (
                                   <div className="flex items-center gap-2 p-2 bg-white border border-black rounded">
-                                    <span className="font-mono font-bold">{primaryAssignment.machine_name}</span>
+                                    <span className="font-mono font-bold">
+                                      {primaryAssignment.machine_name}
+                                    </span>
                                     {machineData && (
-                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                        machineData.health_status === 'healthy' ? 'bg-black animate-pulse' :
-                                        machineData.health_status === 'unhealthy' ? 'bg-gray-800' :
-                                        'bg-gray-400'
-                                      }`} title={`Health: ${machineData.health_status || 'unknown'}`} />
+                                      <span
+                                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                          machineData.health_status ===
+                                          'healthy'
+                                            ? 'bg-black animate-pulse'
+                                            : machineData.health_status ===
+                                                'unhealthy'
+                                              ? 'bg-gray-800'
+                                              : 'bg-gray-400'
+                                        }`}
+                                        title={`Health: ${machineData.health_status || 'unknown'}`}
+                                      />
                                     )}
-                                    <Badge className={primaryAssignment.assignment_type === 'exclusive'
-                                      ? 'bg-black text-white text-xs'
-                                      : 'bg-white text-black border border-black text-xs'
-                                    }>
+                                    <Badge
+                                      className={
+                                        primaryAssignment.assignment_type ===
+                                        'exclusive'
+                                          ? 'bg-black text-white text-xs'
+                                          : 'bg-white text-black border border-black text-xs'
+                                      }
+                                    >
                                       {primaryAssignment.assignment_type}
                                     </Badge>
                                   </div>
@@ -996,7 +1239,8 @@ export function UnifiedWorkflowDialog({
                             Cron jobs will execute on the assigned machine.{' '}
                             <button
                               onClick={() => {
-                                const tabsList = document.querySelector('[value="machines"]');
+                                const tabsList =
+                                  document.querySelector('[value="machines"]');
                                 if (tabsList instanceof HTMLElement) {
                                   tabsList.click();
                                 }
@@ -1010,11 +1254,13 @@ export function UnifiedWorkflowDialog({
                       ) : (
                         <div className="space-y-2">
                           <p className="text-sm text-gray-600">
-                            No machine assigned. Cron jobs will use automatic load-balanced assignment.
+                            No machine assigned. Cron jobs will use automatic
+                            load-balanced assignment.
                           </p>
                           <button
                             onClick={() => {
-                              const tabsList = document.querySelector('[value="machines"]');
+                              const tabsList =
+                                document.querySelector('[value="machines"]');
                               if (tabsList instanceof HTMLElement) {
                                 tabsList.click();
                               }
@@ -1060,32 +1306,46 @@ export function UnifiedWorkflowDialog({
             </Card>
           </TabsContent>
 
-          <TabsContent value="parameters" className="space-y-4">
+          <TabsContent value="parameters" className="space-y-6 px-8 py-6">
             {hasDetailedInfo ? (
               <>
                 <div>
                   <h4 className="font-semibold mb-3">Input Parameters</h4>
                   {Object.keys(workflow.input_parameters).length > 0 ? (
                     <div className="space-y-2">
-                      {Object.entries(workflow.input_parameters).map(([key, param]: [string, any]) => (
-                        <div key={key} className="border border-black rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <code className="text-sm font-mono">{key}</code>
-                            <Badge variant="secondary" className="text-xs">
-                              {param?.type || 'string'}
-                            </Badge>
+                      {Object.entries(workflow.input_parameters).map(
+                        ([key, param]: [string, any]) => (
+                          <div
+                            key={key}
+                            className="border border-black rounded-lg p-3"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <code className="text-sm font-mono">{key}</code>
+                              <Badge variant="secondary" className="text-xs">
+                                {param?.type || 'string'}
+                              </Badge>
+                            </div>
+                            {param?.description && (
+                              <p className="text-sm text-muted-foreground">
+                                {param.description}
+                              </p>
+                            )}
+                            {param?.required && (
+                              <Badge
+                                variant="destructive"
+                                className="text-xs mt-1"
+                              >
+                                Required
+                              </Badge>
+                            )}
                           </div>
-                          {param?.description && (
-                            <p className="text-sm text-muted-foreground">{param.description}</p>
-                          )}
-                          {param?.required && (
-                            <Badge variant="destructive" className="text-xs mt-1">Required</Badge>
-                          )}
-                        </div>
-                      ))}
+                        )
+                      )}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No input parameters required</p>
+                    <p className="text-sm text-muted-foreground">
+                      No input parameters required
+                    </p>
                   )}
                 </div>
 
@@ -1134,7 +1394,9 @@ export function UnifiedWorkflowDialog({
                     <span>Loading versions...</span>
                   </div>
                 ) : versions.length === 0 ? (
-                  <p className="text-muted-foreground py-4">No versions found for this workflow.</p>
+                  <p className="text-muted-foreground py-4">
+                    No versions found for this workflow.
+                  </p>
                 ) : (
                   <div className="space-y-2">
                     {/* Active Version */}
@@ -1143,9 +1405,13 @@ export function UnifiedWorkflowDialog({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Star className="w-3.5 h-3.5" />
-                            <span className="font-medium">v{getActiveVersion()!.version_number}</span>
+                            <span className="font-medium">
+                              v{getActiveVersion()!.version_number}
+                            </span>
                           </div>
-                          <span className="text-sm">{getActiveVersion()!.execution_count} executions</span>
+                          <span className="text-sm">
+                            {getActiveVersion()!.execution_count} executions
+                          </span>
                         </div>
                       </div>
                     )}
@@ -1154,23 +1420,43 @@ export function UnifiedWorkflowDialog({
                     <div className="space-y-1">
                       {versions
                         .filter(v => !v.is_active)
-                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .sort(
+                          (a, b) =>
+                            new Date(b.created_at).getTime() -
+                            new Date(a.created_at).getTime()
+                        )
                         .slice(0, 8)
-                        .map((version) => (
-                          <div key={version.version_number} className="flex items-center justify-between p-2 border border-black rounded text-sm">
+                        .map(version => (
+                          <div
+                            key={version.version_number}
+                            className="flex items-center justify-between p-2 border border-black rounded text-sm"
+                          >
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">v{version.version_number}</span>
-                              <span className="text-muted-foreground">{version.execution_count} exec</span>
+                              <span className="font-medium">
+                                v{version.version_number}
+                              </span>
                               <span className="text-muted-foreground">
-                                {new Date(version.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                {version.execution_count} exec
+                              </span>
+                              <span className="text-muted-foreground">
+                                {new Date(
+                                  version.created_at
+                                ).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}
                               </span>
                             </div>
                             <Button
                               variant="black-outline"
                               size="sm"
                               className="h-6 px-2 text-xs"
-                              onClick={() => activateVersion(version.version_number)}
-                              disabled={activatingVersion === version.version_number}
+                              onClick={() =>
+                                activateVersion(version.version_number)
+                              }
+                              disabled={
+                                activatingVersion === version.version_number
+                              }
                             >
                               {activatingVersion === version.version_number ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -1182,7 +1468,8 @@ export function UnifiedWorkflowDialog({
                         ))}
                       {versions.filter(v => !v.is_active).length > 8 && (
                         <div className="text-center text-sm text-muted-foreground pt-1">
-                          +{versions.filter(v => !v.is_active).length - 8} more versions
+                          +{versions.filter(v => !v.is_active).length - 8} more
+                          versions
                         </div>
                       )}
                     </div>
@@ -1207,26 +1494,45 @@ export function UnifiedWorkflowDialog({
                     <h4 className="font-medium text-sm">Current Assignments</h4>
                     {machineAssignments
                       .sort((a, b) => a.priority - b.priority)
-                      .map((assignment) => {
+                      .map(assignment => {
                         // Find the machine data for this assignment
-                        const machineData = availableMachines.find(m => m.id === assignment.machine_id);
+                        const machineData = availableMachines.find(
+                          m => m.id === assignment.machine_id
+                        );
 
                         return (
-                          <div key={assignment.assignment_id} className="flex items-center justify-between p-2 border border-black rounded text-sm">
+                          <div
+                            key={assignment.assignment_id}
+                            className="flex items-center justify-between p-2 border border-black rounded text-sm"
+                          >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-medium truncate" title={assignment.machine_name}>{assignment.machine_name}</span>
+                              <span
+                                className="font-medium truncate"
+                                title={assignment.machine_name}
+                              >
+                                {assignment.machine_name}
+                              </span>
                               {/* Health indicator for assigned machines */}
                               {machineData && (
-                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                  machineData.health_status === 'healthy' ? 'bg-black animate-pulse' :
-                                  machineData.health_status === 'unhealthy' ? 'bg-gray-800' :
-                                  'bg-gray-400'
-                                }`} title={`Health: ${machineData.health_status || 'unknown'}`} />
+                                <span
+                                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                    machineData.health_status === 'healthy'
+                                      ? 'bg-black animate-pulse'
+                                      : machineData.health_status ===
+                                          'unhealthy'
+                                        ? 'bg-gray-800'
+                                        : 'bg-gray-400'
+                                  }`}
+                                  title={`Health: ${machineData.health_status || 'unknown'}`}
+                                />
                               )}
-                              <Badge className={assignment.assignment_type === 'exclusive'
-                                ? 'bg-black text-white border border-black text-xs flex-shrink-0'
-                                : 'bg-white text-black border border-black text-xs flex-shrink-0'
-                              }>
+                              <Badge
+                                className={
+                                  assignment.assignment_type === 'exclusive'
+                                    ? 'bg-black text-white border border-black text-xs flex-shrink-0'
+                                    : 'bg-white text-black border border-black text-xs flex-shrink-0'
+                                }
+                              >
                                 {assignment.assignment_type}
                               </Badge>
                             </div>
@@ -1234,10 +1540,17 @@ export function UnifiedWorkflowDialog({
                               variant="black-outline"
                               size="sm"
                               className="h-6 px-2 text-xs"
-                              onClick={() => removeMachineAssignment(assignment.assignment_id)}
-                              disabled={removingAssignment === assignment.assignment_id}
+                              onClick={() =>
+                                removeMachineAssignment(
+                                  assignment.assignment_id
+                                )
+                              }
+                              disabled={
+                                removingAssignment === assignment.assignment_id
+                              }
                             >
-                              {removingAssignment === assignment.assignment_id ? (
+                              {removingAssignment ===
+                              assignment.assignment_id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               ) : (
                                 <Trash2 className="w-3 h-3" />
@@ -1254,89 +1567,125 @@ export function UnifiedWorkflowDialog({
                   <div className="space-y-2 pt-3 border-t border-black">
                     <h4 className="font-medium text-sm">Add Assignment</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
+                      <Select
+                        value={selectedMachineId}
+                        onValueChange={setSelectedMachineId}
+                      >
                         <SelectTrigger className="border-black-outline h-8 text-sm">
                           <SelectValue placeholder="Select machine" />
                         </SelectTrigger>
                         <SelectContent>
-                          {getAvailableMachinesForAssignment().filter(m => m.status === 'active').map((machine) => {
-                            // Parse health details for tooltip with uptime
-                            let healthTooltip = '';
+                          {getAvailableMachinesForAssignment()
+                            .filter(m => m.status === 'active')
+                            .map(machine => {
+                              // Parse health details for tooltip with uptime
+                              let healthTooltip = '';
 
-                            // Format uptime
-                            const formatUptime = (uptimeSeconds: number | null | undefined): string => {
-                              if (!uptimeSeconds || uptimeSeconds <= 0) return 'N/A';
-                              const days = Math.floor(uptimeSeconds / 86400);
-                              const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-                              const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-                              if (days > 0) return `${days}d ${hours}h`;
-                              if (hours > 0) return `${hours}h ${minutes}m`;
-                              return `${minutes}m`;
-                            };
+                              // Format uptime
+                              const formatUptime = (
+                                uptimeSeconds: number | null | undefined
+                              ): string => {
+                                if (!uptimeSeconds || uptimeSeconds <= 0)
+                                  return 'N/A';
+                                const days = Math.floor(uptimeSeconds / 86400);
+                                const hours = Math.floor(
+                                  (uptimeSeconds % 86400) / 3600
+                                );
+                                const minutes = Math.floor(
+                                  (uptimeSeconds % 3600) / 60
+                                );
+                                if (days > 0) return `${days}d ${hours}h`;
+                                if (hours > 0) return `${hours}h ${minutes}m`;
+                                return `${minutes}m`;
+                              };
 
-                            if (machine.health_details) {
-                              try {
-                                const details = typeof machine.health_details === 'string'
-                                  ? JSON.parse(machine.health_details)
-                                  : machine.health_details;
+                              if (machine.health_details) {
+                                try {
+                                  const details =
+                                    typeof machine.health_details === 'string'
+                                      ? JSON.parse(machine.health_details)
+                                      : machine.health_details;
 
-                                healthTooltip = `Health: ${machine.health_status || 'unknown'}\n`;
+                                  healthTooltip = `Health: ${machine.health_status || 'unknown'}\n`;
 
-                                // Add uptime if available
-                                if ((machine as any).uptime_seconds) {
-                                  healthTooltip += `Uptime: ${formatUptime((machine as any).uptime_seconds)}\n`;
-                                }
-
-                                if (details.lastCheck) {
-                                  const lastCheck = new Date(details.lastCheck);
-                                  const timeAgo = Math.floor((Date.now() - lastCheck.getTime()) / 1000);
-                                  const timeStr = timeAgo < 60 ? `${timeAgo}s ago`
-                                    : timeAgo < 3600 ? `${Math.floor(timeAgo / 60)}m ago`
-                                    : `${Math.floor(timeAgo / 3600)}h ago`;
-                                  healthTooltip += `Last check: ${timeStr}\n`;
-
-                                  if (details.responseTime) {
-                                    healthTooltip += `Response: ${details.responseTime}ms\n`;
+                                  // Add uptime if available
+                                  if ((machine as any).uptime_seconds) {
+                                    healthTooltip += `Uptime: ${formatUptime((machine as any).uptime_seconds)}\n`;
                                   }
-                                  if (details.error) {
-                                    healthTooltip += `Error: ${details.error}\n`;
+
+                                  if (details.lastCheck) {
+                                    const lastCheck = new Date(
+                                      details.lastCheck
+                                    );
+                                    const timeAgo = Math.floor(
+                                      (Date.now() - lastCheck.getTime()) / 1000
+                                    );
+                                    const timeStr =
+                                      timeAgo < 60
+                                        ? `${timeAgo}s ago`
+                                        : timeAgo < 3600
+                                          ? `${Math.floor(timeAgo / 60)}m ago`
+                                          : `${Math.floor(timeAgo / 3600)}h ago`;
+                                    healthTooltip += `Last check: ${timeStr}\n`;
+
+                                    if (details.responseTime) {
+                                      healthTooltip += `Response: ${details.responseTime}ms\n`;
+                                    }
+                                    if (details.error) {
+                                      healthTooltip += `Error: ${details.error}\n`;
+                                    }
+                                  }
+                                } catch (e) {
+                                  // If parsing fails, show basic info
+                                  healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
+                                  if ((machine as any).uptime_seconds) {
+                                    healthTooltip += `\nUptime: ${formatUptime((machine as any).uptime_seconds)}`;
                                   }
                                 }
-                              } catch (e) {
-                                // If parsing fails, show basic info
+                              } else {
                                 healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
                                 if ((machine as any).uptime_seconds) {
                                   healthTooltip += `\nUptime: ${formatUptime((machine as any).uptime_seconds)}`;
                                 }
                               }
-                            } else {
-                              healthTooltip = `Health: ${machine.health_status || 'unknown'}`;
-                              if ((machine as any).uptime_seconds) {
-                                healthTooltip += `\nUptime: ${formatUptime((machine as any).uptime_seconds)}`;
-                              }
-                            }
 
-                            return (
-                              <SelectItem key={machine.id} value={machine.id.toString()}>
-                                <div className="flex items-center gap-2 max-w-[300px]" title={healthTooltip}>
-                                  <span className="truncate" title={`${machine.name}\n${healthTooltip}`}>
-                                    {machine.name}
-                                  </span>
-                                  {/* Health indicator dot */}
-                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                    machine.health_status === 'healthy' ? 'bg-black animate-pulse' :
-                                    machine.health_status === 'unhealthy' ? 'bg-gray-800' :
-                                    'bg-gray-400'
-                                  }`} />
-                                  {machine.current_load !== undefined && machine.max_concurrent && (
-                                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                                      ({machine.current_load}/{machine.max_concurrent})
+                              return (
+                                <SelectItem
+                                  key={machine.id}
+                                  value={machine.id.toString()}
+                                >
+                                  <div
+                                    className="flex items-center gap-2 max-w-[300px]"
+                                    title={healthTooltip}
+                                  >
+                                    <span
+                                      className="truncate"
+                                      title={`${machine.name}\n${healthTooltip}`}
+                                    >
+                                      {machine.name}
                                     </span>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
+                                    {/* Health indicator dot */}
+                                    <span
+                                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                        machine.health_status === 'healthy'
+                                          ? 'bg-black animate-pulse'
+                                          : machine.health_status ===
+                                              'unhealthy'
+                                            ? 'bg-gray-800'
+                                            : 'bg-gray-400'
+                                      }`}
+                                    />
+                                    {machine.current_load !== undefined &&
+                                      machine.max_concurrent && (
+                                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                                          ({machine.current_load}/
+                                          {machine.max_concurrent})
+                                        </span>
+                                      )}
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
                         </SelectContent>
                       </Select>
 
@@ -1370,32 +1719,36 @@ export function UnifiedWorkflowDialog({
 
                 {/* No machines available */}
                 {!loadingMachines && availableMachines.length === 0 && (
-                  <p className="text-muted-foreground py-4">No machines available for assignment.</p>
+                  <p className="text-muted-foreground py-4">
+                    No machines available for assignment.
+                  </p>
                 )}
 
                 {/* All machines assigned */}
-                {!loadingMachines && getAvailableMachinesForAssignment().length === 0 && availableMachines.length > 0 && (
-                  <p className="text-muted-foreground py-4">All available machines are already assigned to this workflow.</p>
-                )}
+                {!loadingMachines &&
+                  getAvailableMachinesForAssignment().length === 0 &&
+                  availableMachines.length > 0 && (
+                    <p className="text-muted-foreground py-4">
+                      All available machines are already assigned to this
+                      workflow.
+                    </p>
+                  )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="usage" className="space-y-4">
+          <TabsContent value="usage" className="space-y-6 px-8 py-6">
             <Alert>
               <Terminal className="h-4 w-4" />
               <AlertDescription>
-                Execute this workflow by making a POST request to the execution endpoint
+                Execute this workflow by making a POST request to the execution
+                endpoint
               </AlertDescription>
             </Alert>
 
             <div>
-              <CodeBlock
-                language="curl"
-                title="cURL Example"
-                size="sm"
-              >
-{`curl -X POST \\
+              <CodeBlock language="curl" title="cURL Example" size="sm">
+                {`curl -X POST \\
 https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
 -H "Content-Type: application/json" \\
 -d '${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs : {}, null, 2)}'`}
@@ -1408,7 +1761,7 @@ https://app.mediar.ai/api/remote-workflows/${workflow.id}/execute \\
                 title="JavaScript Example"
                 size="sm"
               >
-{`fetch('/api/remote-workflows/${workflow.id}/execute', {
+                {`fetch('/api/remote-workflows/${workflow.id}/execute', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify(${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs : {}, null, 2)})
@@ -1416,6 +1769,16 @@ body: JSON.stringify(${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs :
               </CodeBlock>
             </div>
           </TabsContent>
+
+          {/* TypeScript Workflow Tab */}
+          {workflow.preferred_format === 'typescript' && (
+            <TabsContent value="typescript" className="space-y-6 px-8 py-6">
+              <TypeScriptWorkflowTab
+                workflowId={workflow.id}
+                workflowFormat={workflow.preferred_format}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>
