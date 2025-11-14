@@ -169,3 +169,76 @@ describe('GitHub Webhook Handler', () => {
     expect(true).toBe(true); // Placeholder for subdirectory detection test
   });
 });
+
+describe('TypeScript Workflow Version Creation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
+    process.env.GITHUB_TOKEN = 'test-token';
+  });
+
+  it('should create version when TypeScript workflow is pushed', async () => {
+    const payload = {
+      ref: 'refs/heads/main',
+      pusher: { name: 'developer' },
+      head_commit: {
+        message: 'feat: update typescript workflow',
+        author: { username: 'developer' }
+      },
+      commits: [{
+        added: ['org-test_org/test_workflow_typescript/src/terminator.ts'],
+        modified: [],
+        removed: []
+      }]
+    };
+
+    const body = JSON.stringify(payload);
+    const crypto = await import('crypto');
+    const hmac = crypto.createHmac('sha256', 'test-secret');
+    const signature = 'sha256=' + hmac.update(body).digest('hex');
+
+    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
+      method: 'POST',
+      body,
+      headers: { 'x-hub-signature-256': signature }
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.success).toBe(true);
+    expect(data.results.created).toBeDefined();
+  });
+
+  it('should NOT create duplicate version for dashboard workflows', async () => {
+    const payload = {
+      ref: 'refs/heads/main',
+      pusher: { name: 'louis030195' },
+      head_commit: {
+        message: 'Update workflow: Test (v1.0.5)',
+        author: { username: 'louis030195' }
+      },
+      commits: [{
+        added: [],
+        modified: ['test/workflow.yaml'],
+        removed: []
+      }]
+    };
+
+    const body = JSON.stringify(payload);
+    const crypto = await import('crypto');
+    const hmac = crypto.createHmac('sha256', 'test-secret');
+    const signature = 'sha256=' + hmac.update(body).digest('hex');
+
+    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
+      method: 'POST',
+      body,
+      headers: { 'x-hub-signature-256': signature }
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.message).toBe('Ignored automated push (prevents duplicate versions)');
+  });
+});
