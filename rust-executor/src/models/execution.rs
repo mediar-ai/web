@@ -123,6 +123,7 @@ impl WorkflowResult {
         }
     }
 
+    #[allow(dead_code)]
     pub fn failure(message: String, error: String) -> Self {
         Self {
             success: false,
@@ -138,6 +139,7 @@ impl WorkflowResult {
         }
     }
 
+    #[allow(dead_code)]
     pub fn skipped(message: String, reason: String) -> Self {
         Self {
             success: true,
@@ -154,6 +156,7 @@ impl WorkflowResult {
     }
 
     /// Create an exception result for critical system errors
+    #[allow(dead_code)]
     pub fn exception(message: String, error: String) -> Self {
         Self {
             success: false,

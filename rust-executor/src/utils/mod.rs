@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 /// Normalize an endpoint URL by removing trailing slashes
+#[allow(dead_code)]
 pub fn normalize_endpoint(url: &str) -> String {
     let mut normalized = url.trim().to_string();
     while normalized.ends_with('/') {
@@ -11,6 +12,7 @@ pub fn normalize_endpoint(url: &str) -> String {
 }
 
 /// Merge two JSON objects, with values from `override_obj` taking precedence
+#[allow(dead_code)]
 pub fn merge_json_objects(base: &Value, override_obj: &Value) -> Result<Value> {
     if !base.is_object() || !override_obj.is_object() {
         return Ok(override_obj.clone());
@@ -28,6 +30,7 @@ pub fn merge_json_objects(base: &Value, override_obj: &Value) -> Result<Value> {
 }
 
 /// Generate a unique request ID for tracing
+#[allow(dead_code)]
 pub fn generate_request_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
