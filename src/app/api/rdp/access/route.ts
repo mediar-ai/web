@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
     console.log('[RDP Access] Querying for machine ID:', resolvedMachineId);
     const { data: machine, error: machineError } = await supabase
       .from('remote_machines')
-      .select('id, name, is_global')
+      .select('id, name, is_global, guacamole_connection_name')
       .eq('id', resolvedMachineId)
       .single();
 
@@ -201,16 +201,24 @@ export async function GET(request: NextRequest) {
     machineName = machine.name;
 
     // STEP 6: Generate Guacamole connection URL
-    console.log(`[RDP Access] Generating connection URL for machine: ${machineName}`);
-    console.log(`[RDP Access] Using Guacamole URL: ${GUACAMOLE_URL}`);
-    console.log(`[RDP Access] Using Guacamole username: ${GUACAMOLE_USERNAME}`);
+    // Use stable Guacamole connection name (not user-editable display name)
+    const guacamoleConnectionName = machine.guacamole_connection_name;
 
-    if (!machineName) {
+    if (!guacamoleConnectionName) {
+      console.error('[RDP Access] Machine has no Guacamole connection name configured');
       return NextResponse.json(
-        { error: 'Machine has no name configured' },
+        {
+          error: 'Machine not configured for RDP access',
+          details: 'This machine has no Guacamole connection name. Please run the VM sync script: packer-terraform/scripts/sync-vms-to-supabase.sh'
+        },
         { status: 500 }
       );
     }
+
+    console.log(`[RDP Access] Generating connection URL for machine: ${machineName} (display name)`);
+    console.log(`[RDP Access] Using Guacamole connection: ${guacamoleConnectionName} (stable identifier)`);
+    console.log(`[RDP Access] Using Guacamole URL: ${GUACAMOLE_URL}`);
+    console.log(`[RDP Access] Using Guacamole username: ${GUACAMOLE_USERNAME}`);
 
     let connectionUrl: string;
     let connectionName: string;
@@ -220,7 +228,7 @@ export async function GET(request: NextRequest) {
         GUACAMOLE_URL,
         GUACAMOLE_USERNAME,
         GUACAMOLE_PASSWORD,
-        machineName
+        guacamoleConnectionName  // Use stable identifier, not user-editable name
       );
 
       connectionUrl = result.url;
