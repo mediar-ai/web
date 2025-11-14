@@ -708,7 +708,7 @@ export function BatchTestDialog({
               </p>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4 py-3 px-3">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <Label htmlFor="machine-select" className="text-xs">
                   Target Machine
                 </Label>
@@ -745,12 +745,12 @@ export function BatchTestDialog({
                   >
                     <SelectTrigger
                       id="machine-select"
-                      className="h-7 text-xs px-2"
+                      className="h-7 text-xs px-2 w-full [&>span]:block [&>span]:truncate"
                       title={selectedMachine?.name}
                     >
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
-                    <SelectContent className="max-w-md">
+                    <SelectContent className="min-w-[400px]">
                       {availableMachines.map(machine => {
                         // Determine machine status for display
                         const isActive = machine.status === 'active';
@@ -773,37 +773,22 @@ export function BatchTestDialog({
                           statusIndicator = '🔴'; // Inactive/maintenance/failed
                         }
 
-                        const jobsInfo = machine.load_info
-                          ? `${machine.load_info.current_executions}/${machine.load_info.available_capacity + machine.load_info.current_executions}`
-                          : '0/1';
-
-                        // Show machine status in display text
-                        const statusText = !isActive
-                          ? ` (${machine.status})`
-                          : '';
-
                         return (
                           <SelectItem
                             key={`machine-${machine.id}`}
                             value={machine.id.toString()}
                             disabled={false}
-                            className="text-xs py-1"
+                            className="text-xs py-1.5"
                           >
-                            <div className="flex items-center gap-1 w-full min-w-0">
+                            <div className="flex items-center gap-2 w-full">
                               <span className="flex-shrink-0">
                                 {statusIndicator}
                               </span>
                               <span
-                                className="flex-1 truncate min-w-0"
+                                className="flex-1 truncate"
                                 title={machine.name}
                               >
                                 {machine.name}
-                              </span>
-                              <span className="flex-shrink-0 text-muted-foreground whitespace-nowrap">
-                                {statusText}
-                              </span>
-                              <span className="flex-shrink-0 text-muted-foreground whitespace-nowrap">
-                                {jobsInfo} jobs
                               </span>
                             </div>
                           </SelectItem>
