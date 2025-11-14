@@ -750,7 +750,7 @@ export function BatchTestDialog({
                     >
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-w-md">
                       {availableMachines.map(machine => {
                         // Determine machine status for display
                         const isActive = machine.status === 'active';
