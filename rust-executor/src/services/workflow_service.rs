@@ -337,6 +337,7 @@ impl WorkflowService {
                 category: row.get("category"),
                 github_folder: row.get("github_folder"),
                 github_ref: row.get("github_ref"),
+                organization_id: row.get("organization_id"),
                 preferred_format: row.get("preferred_format"),
                 automation_sequence: row.get("automation_sequence"),
                 automation_sequence_yaml: row.get("automation_sequence_yaml"),
