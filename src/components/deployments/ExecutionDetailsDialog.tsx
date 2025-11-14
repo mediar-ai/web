@@ -48,6 +48,8 @@ const LoadingSkeleton = () => (
   </div>
 );
 
+// COMMENTED OUT: Agent Screen tab - RDP shadow approach not working
+/*
 interface AgentScreenTabProps {
   executionId: number;
 }
@@ -151,7 +153,7 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
 
   return (
     <div className="h-full flex flex-col gap-4">
-      {/* Security Warning Banner */}
+      {/* Security Warning Banner *\/}
       <div className="bg-red-50 border-2 border-red-600 rounded-lg p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 mt-0.5">
@@ -179,7 +181,7 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
         </div>
       </div>
 
-      {/* Embedded Guacamole Viewer */}
+      {/* Embedded Guacamole Viewer *\/}
       <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
         {rdpUrl && (
           <iframe
@@ -194,6 +196,7 @@ const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
     </div>
   );
 };
+*/
 
 interface CollapsibleSectionProps {
   title: string;
@@ -671,19 +674,21 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-4' : 'grid-cols-3'}`}>
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="logs">Orchestrator server logs</TabsTrigger>
               <TabsTrigger value="qa" className="flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Q&A
               </TabsTrigger>
+              {/* COMMENTED OUT: Agent Screen tab - RDP shadow approach not working
               {execution?.assigned_machine_id && (
                 <TabsTrigger value="agent-screen" className="flex items-center gap-1">
                   <Monitor className="w-3 h-3" />
                   Agent Screen
                 </TabsTrigger>
               )}
+              */}
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -1020,6 +1025,7 @@ export function ExecutionDetailsDialog({
                 </div>
               )}
             </TabsContent>
+            {/* COMMENTED OUT: Agent Screen tab content - RDP shadow approach not working
             {execution?.assigned_machine_id && (
               <TabsContent value="agent-screen" className="h-full">
                 {isTabLoading || !execution ? (
@@ -1029,6 +1035,7 @@ export function ExecutionDetailsDialog({
                 )}
               </TabsContent>
             )}
+            */}
           </div>
         </Tabs>
       </DialogContent>
