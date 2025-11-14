@@ -794,7 +794,7 @@ export function BatchTestDialog({
                                 {statusIndicator}
                               </span>
                               <span
-                                className="truncate min-w-0"
+                                className="flex-1 truncate min-w-0"
                                 title={machine.name}
                               >
                                 {machine.name}
