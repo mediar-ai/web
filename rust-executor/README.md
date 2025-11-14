@@ -268,4 +268,4 @@ RUST_LOG=workflow_executor=trace,tower_http=debug cargo run
 
 ## License
 
-MIT
+MIT# Debug logging enabled for step execution
