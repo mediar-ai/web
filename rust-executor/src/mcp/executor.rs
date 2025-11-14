@@ -108,6 +108,11 @@ impl WorkflowExecutor {
             .take(end_index.saturating_sub(start_index) + 1)
         {
             let step_id = step.id.clone().unwrap_or_else(|| format!("step_{index}"));
+        
+        // DEBUG: Log the entire step structure
+        error!("DEBUG - Full step structure: {:?}", step);
+        error!("DEBUG - Step tool_name: {:?}", step.tool_name);
+        error!("DEBUG - Step group_name: {:?}", step.group_name);
 
             info!(
                 "Executing step {}/{}: {} ({})",
@@ -291,6 +296,11 @@ impl WorkflowExecutor {
     ) -> Result<StepResult> {
         let start_time = Instant::now();
         let step_id = step.id.clone().unwrap_or_else(|| "unnamed".to_string());
+        
+        // DEBUG: Log the entire step structure
+        error!("DEBUG - Full step structure: {:?}", step);
+        error!("DEBUG - Step tool_name: {:?}", step.tool_name);
+        error!("DEBUG - Step group_name: {:?}", step.group_name);
 
         // Get tool name
         let tool_name = step
