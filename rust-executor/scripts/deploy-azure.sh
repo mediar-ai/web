@@ -167,6 +167,11 @@ ENV_VARS=(
     "RUST_LOG=$RUST_LOG"
     "DATABASE_URL=$DATABASE_URL"
     "MCP_ENDPOINT=$MCP_ENDPOINT"
+    "ENVIRONMENT=$ENVIRONMENT"
+    "OTEL_SDK_ENABLED=true"
+    "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-mcp-s3-mount-test.eastus.azurecontainer.io:4318"
+    "AZURE_CONTAINER_NAME=$CONTAINER_NAME"
+    "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
 )
 
 # Add Supabase credentials if available

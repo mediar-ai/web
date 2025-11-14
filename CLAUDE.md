@@ -380,6 +380,58 @@ export async function GET(
   - Queue: `http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/queue/status`
   - Logs: `az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg --follow`
 - **Executor selection**: Mediar team can choose Python or Rust executor in batch test dialog (default: Python)
+- **OpenTelemetry**: Rust executor sends traces to centralized OTLP collector
+  - Service name: `mediar-workflow-executor-rust`
+  - Collector endpoint: `otel-collector-mcp-s3-mount-test.eastus.azurecontainer.io:4318`
+  - Backend: ClickHouse Cloud (same as MCP agents)
+  - Enable: Set `OTEL_SDK_ENABLED=true` (auto-configured in deployment)
+  - Resource attributes: `deployment.environment`, `host.name`, `container.name`, `azure.resource_group`
+
+## Observability & Monitoring
+
+### OpenTelemetry Architecture
+All infrastructure components send telemetry to a **centralized OTLP collector** backed by **ClickHouse Cloud**:
+
+**Components sending telemetry:**
+- **MCP Windows VMs** (terminator-mcp-agent): Service name `mcp-vm-agent`
+  - Differentiated by `host.name`, `vm_name`, `resource_group`, `customer`, `organization_id`
+- **Rust Executor** (Azure ACI): Service name `mediar-workflow-executor-rust`
+  - Differentiated by `deployment.environment`, `container.name`, `azure.resource_group`
+
+**Collector infrastructure:**
+- **Endpoint**: `http://otel-collector-mcp-s3-mount-test.eastus.azurecontainer.io:4318`
+- **Protocol**: OTLP/HTTP (port 4318 for traces and logs)
+- **Backend**: ClickHouse Cloud (us-west-2) - columnar database optimized for observability
+- **Batch processing**: 1024 events per batch, 10s timeout
+- **Health check**: `http://4.157.190.55:13133/`
+
+**Querying telemetry (ClickHouse):**
+```sql
+-- All rust-executor traces
+SELECT * FROM otel_traces
+WHERE ServiceName = 'mediar-workflow-executor-rust'
+
+-- All MCP agent traces
+SELECT * FROM otel_traces
+WHERE ServiceName = 'mcp-vm-agent'
+
+-- Specific VM
+SELECT * FROM otel_traces
+WHERE ServiceName = 'mcp-vm-agent'
+  AND ResourceAttributes['host.name'] = 'vm1'
+
+-- End-to-end workflow execution
+SELECT * FROM otel_traces
+WHERE ServiceName IN ('mediar-workflow-executor-rust', 'mcp-vm-agent')
+ORDER BY Timestamp
+```
+
+**Environment variables (auto-configured in deployment):**
+- `OTEL_SDK_ENABLED=true` - Enable OpenTelemetry
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - Collector URL
+- `ENVIRONMENT` - Deployment environment (dev/staging/prod)
+- `AZURE_CONTAINER_NAME` - Container instance name
+- `AZURE_RESOURCE_GROUP` - Azure resource group
 
 ### Environment Variables
 - Use Vercel CLI for production deployments: `npx vercel env add`

@@ -11,6 +11,7 @@ mod mcp;
 mod models;
 mod services;
 mod storage;
+mod telemetry;
 mod utils;
 
 use crate::db::{create_pool, DatabasePool};
@@ -23,6 +24,9 @@ async fn main() -> Result<()> {
 
     // Initialize tracing (with Sentry if configured)
     init_tracing();
+
+    // Initialize OpenTelemetry tracing (after logging is set up)
+    telemetry::init_telemetry();
 
     // Force flush to ensure logs are written
     eprintln!("=== RUST EXECUTOR STARTING ===");
@@ -143,8 +147,8 @@ fn init_tracing() {
             if dsn.is_empty() {
                 None
             } else {
-                eprintln!("Initializing Sentry with DSN");
-                
+                eprintln!("✓ Initializing Sentry");
+
                 // Configure Sentry
                 let _guard = sentry::init((
                     dsn,
@@ -167,16 +171,20 @@ fn init_tracing() {
             }
         });
 
-    // Build subscriber with conditional Sentry layer
-    let subscriber = tracing_subscriber::registry()
+    // Build subscriber with all layers
+    let registry = tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt_layer);
 
-    if let Some(sentry_layer) = sentry_layer {
-        subscriber.with(sentry_layer).init();
-        eprintln!("Tracing initialized with Sentry integration");
+    // Add Sentry layer if available
+    if let Some(sentry) = sentry_layer {
+        registry.with(sentry).init();
+        eprintln!("✓ Tracing initialized with Sentry");
     } else {
-        subscriber.init();
-        eprintln!("Tracing initialized without Sentry (no SENTRY_DSN configured)");
+        registry.init();
+        eprintln!("✓ Tracing initialized without Sentry");
     }
+
+    // Note: OpenTelemetry logs are initialized separately to avoid type complexity
+    // The OTLP layer will be created when telemetry::init_telemetry() is called
 }
