@@ -25,7 +25,7 @@ jobs:
       - name: Run Tests
         run: |
           cd rust-executor
-          cargo test --verbose
+          cargo test --lib --tests --verbose
 
       - name: Azure Login
         uses: azure/login@v1
