@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info, warn};
 
@@ -53,7 +54,9 @@ impl WorkflowService {
         }
 
         // Load workflow sequence
-        let sequence = self.load_workflow_sequence(&workflow).await?;
+        let sequence = self
+            .load_workflow_sequence(&workflow, request.execution_params.as_ref())
+            .await?;
 
         // Validate sequence
         sequence
@@ -140,7 +143,17 @@ impl WorkflowService {
     }
 
     /// Load workflow sequence from GitHub or database
-    async fn load_workflow_sequence(&self, workflow: &Workflow) -> Result<WorkflowSequence> {
+    async fn load_workflow_sequence(
+        &self,
+        workflow: &Workflow,
+        execution_params: Option<&Value>,
+    ) -> Result<WorkflowSequence> {
+        // Check if this is a TypeScript workflow
+        if workflow.preferred_format.as_deref() == Some("typescript") {
+            info!("Detected TypeScript workflow, building file:// URL execution");
+            return self.build_typescript_workflow_sequence(workflow, execution_params);
+        }
+
         // Priority 1: Load from GitHub if configured
         if let Some(github_folder) = &workflow.github_folder {
             let github_ref = workflow.github_ref.as_deref().unwrap_or("main");
@@ -178,6 +191,65 @@ impl WorkflowService {
         }
 
         anyhow::bail!("No automation sequence found for workflow")
+    }
+
+    /// Build a workflow sequence for TypeScript workflows
+    /// Creates a special sequence that calls execute_sequence with url parameter
+    fn build_typescript_workflow_sequence(
+        &self,
+        workflow: &Workflow,
+        execution_params: Option<&Value>,
+    ) -> Result<WorkflowSequence> {
+        use crate::models::WorkflowSequence;
+        use serde_json::{json, Map, Value};
+
+        // Determine the file path to the TypeScript workflow
+        // Assuming files are mounted at /tmp/workflow-files/{workflow_id}/
+        let workflow_path = format!("/tmp/workflow-files/{}", workflow.id);
+
+        // Check for terminator.ts in different locations (priority order)
+        let possible_paths = vec![
+            format!("{}/src/terminator.ts", workflow_path),
+            format!("{}/terminator.ts", workflow_path),
+            format!("{}/src/workflow.ts", workflow_path),
+            format!("{}/workflow.ts", workflow_path),
+            format!("{}/src/index.ts", workflow_path),
+            format!("{}/index.ts", workflow_path),
+        ];
+
+        let file_url = possible_paths
+            .into_iter()
+            .find(|path| std::path::Path::new(path).exists())
+            .map(|path| format!("file://{}", path))
+            .unwrap_or_else(|| {
+                // Fallback: assume src/terminator.ts (MCP server will handle error if not found)
+                format!("file://{}/src/terminator.ts", workflow_path)
+            });
+
+        info!("TypeScript workflow URL: {}", file_url);
+
+        // Build arguments object with url parameter
+        let mut args = Map::new();
+        args.insert("url".to_string(), Value::String(file_url));
+
+        // Add inputs from execution_params if available
+        if let Some(params) = execution_params {
+            args.insert("inputs".to_string(), params.clone());
+        }
+
+        // Build the workflow sequence with a single step that calls execute_sequence
+        let yaml_content = json!({
+            "steps": [{
+                "id": "typescript_execution",
+                "tool_name": "execute_sequence",
+                "arguments": args,
+                "description": format!("Execute TypeScript workflow: {}", workflow.name)
+            }],
+            "stop_on_error": true,
+            "include_detailed_results": true
+        });
+
+        WorkflowSequence::from_value(yaml_content)
     }
 
     /// Get execution status
@@ -230,6 +302,7 @@ impl WorkflowService {
             SELECT
                 id, name, version, description,
                 status, category, github_folder, github_ref,
+                preferred_format,
                 automation_sequence, automation_sequence_yaml,
                 created_at, updated_at
             FROM deployed_workflows_with_sequence
@@ -251,6 +324,7 @@ impl WorkflowService {
                 category: row.get("category"),
                 github_folder: row.get("github_folder"),
                 github_ref: row.get("github_ref"),
+                preferred_format: row.get("preferred_format"),
                 automation_sequence: row.get("automation_sequence"),
                 automation_sequence_yaml: row.get("automation_sequence_yaml"),
                 created_at: row.get("created_at"),
