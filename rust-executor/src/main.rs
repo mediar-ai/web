@@ -138,7 +138,7 @@ fn init_tracing() {
         .with_thread_ids(true);
 
     // Initialize Sentry if DSN is provided
-    let sentry_layer = std::env::var("SENTRY_DSN")
+    let sentry_layer = Ok("https://f5832483657723604d167b937d0dfaaf@o4507617161314304.ingest.us.sentry.io/4510365180362752".to_string())
         .ok()
         .and_then(|dsn| {
             if dsn.is_empty() {
