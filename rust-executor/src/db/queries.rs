@@ -121,9 +121,7 @@ impl WorkflowQueries {
         .bind(client_id)
         .bind(execution_params)
         .bind(now)
-        .bind(logs)
         .bind(now)
-        .bind(logs)
         .fetch_one(pool)
         .await?;
 
@@ -235,9 +233,7 @@ impl WorkflowQueries {
         .bind(now)
         .bind(execution_id)
         .execute(pool)
-        .execute(pool)
         .await?;
-
         Ok(())
     }
 
