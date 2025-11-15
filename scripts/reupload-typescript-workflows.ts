@@ -33,12 +33,12 @@ async function collectWorkflowFiles(workflowPath: string): Promise<Array<{ path:
           await walk(fullPath, baseDir);
         } else if (entry.isFile() && /\.(ts|js|json)$/.test(entry.name)) {
           const content = await fs.readFile(fullPath);
-.replace(/\/g, '/'));
+          const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
           files.push({ path: relativePath, content });
         }
       }
     } catch (error) {
-      console.warn(\`   Warning: Could not read directory \${dir}\`);
+      console.warn(`   Warning: Could not read directory ${dir}`);
     }
   }
 
@@ -47,10 +47,10 @@ async function collectWorkflowFiles(workflowPath: string): Promise<Array<{ path:
 }
 
 async function reuploadWorkflow(workflow: TypeScriptWorkflow, dryRun: boolean): Promise<number> {
-  console.log(\`\n📦 Workflow #\${workflow.id}: \${workflow.name}\`);
+  console.log(`\n📦 Workflow #${workflow.id}: ${workflow.name}`);
 
   const possiblePaths = [
-    \`../../workflows/\${workflow.github_folder}\`
+    `../../workflows/${workflow.github_folder}`
   ];
 
   let workflowPath: string | null = null;
@@ -63,20 +63,20 @@ async function reuploadWorkflow(workflow: TypeScriptWorkflow, dryRun: boolean): 
   }
 
   if (!workflowPath) {
-    console.log(\`   ⚠️  Workflow directory not found locally - skipping\`);
+    console.log(`   ⚠️  Workflow directory not found locally - skipping`);
     return 0;
   }
 
   const files = await collectWorkflowFiles(workflowPath);
   if (files.length === 0) {
-    console.log(\`   ⚠️  No files found\`);
+    console.log(`   ⚠️  No files found`);
     return 0;
   }
 
-  console.log(\`   Found \${files.length} file(s)\`);
-  
+  console.log(`   Found ${files.length} file(s)`);
+
   if (dryRun) {
-    console.log(\`   [DRY RUN] Would upload \${files.length} files\`);
+    console.log(`   [DRY RUN] Would upload ${files.length} files`);
     return files.length;
   }
 
@@ -87,13 +87,13 @@ async function reuploadWorkflow(workflow: TypeScriptWorkflow, dryRun: boolean): 
     const result = await fileManager.uploadWorkflowFiles(workflow.id, workflow.current_version_number, [file], undefined);
     if (result.success) {
       uploadedCount++;
-      console.log(\`     ✓ \${file.path}\`);
+      console.log(`     ✓ ${file.path}`);
     } else {
-      console.error(\`     ✗ \${file.path}: \${result.error}\`);
+      console.error(`     ✗ ${file.path}: ${result.error}`);
     }
   }
 
-  console.log(\`   ✅ Uploaded \${uploadedCount}/\${files.length} files\`);
+  console.log(`   ✅ Uploaded ${uploadedCount}/${files.length} files`);
   return uploadedCount;
 }
 
@@ -104,7 +104,7 @@ async function main() {
 
   const { data: workflows, error } = await supabase
     .from('deployed_workflows')
-    .select(\`id, name, github_folder, deployed_workflow_versions!deployed_workflows_current_version_id_fkey(version_number)\`)
+    .select(`id, name, github_folder, deployed_workflow_versions!deployed_workflows_current_version_id_fkey(version_number)`)
     .eq('preferred_format', 'typescript')
     .not('organization_id', 'is', null);
 
@@ -113,7 +113,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(\`Found \${workflows.length} TypeScript workflow(s)\n\`);
+  console.log(`Found ${workflows.length} TypeScript workflow(s)\n`);
 
   let totalFilesUploaded = 0;
   for (const wf of workflows) {
@@ -126,11 +126,11 @@ async function main() {
     try {
       totalFilesUploaded += await reuploadWorkflow(workflow, dryRun);
     } catch (err) {
-      console.error(\`❌ Failed workflow #\${workflow.id}:\`, err);
+      console.error(`❌ Failed workflow #${workflow.id}:`, err);
     }
   }
 
-  console.log(\`\n📊 Total files uploaded: \${totalFilesUploaded}\`);
+  console.log(`\n📊 Total files uploaded: ${totalFilesUploaded}`);
   if (!dryRun) {
     console.log('\n✅ Complete! Files now use org-based paths: org-{clerk_org_id}/workflows/{id}/');
   }

@@ -1,6 +1,8 @@
 import { getVertexGenAI } from '@/lib/vertexai';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 // Helper function to determine if an error is retryable
 function isRetryableError(error: any): boolean {
   const errorMessage = error?.message || String(error);
