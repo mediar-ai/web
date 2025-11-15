@@ -243,6 +243,61 @@ impl WorkflowQueries {
 
     /// Update execution with screenshot URLs
     #[allow(dead_code)]
+    /// Update execution status with both raw_logs and execution_logs
+    pub async fn update_execution_status_with_logs(
+        pool: &Pool<Postgres>,
+        execution_id: i64,
+        status: ExecutionStatus,
+        error_message: Option<String>,
+        results: Option<Value>,
+        data: Option<Value>,
+        raw_logs: Option<String>,
+        execution_logs: Option<Value>,
+    ) -> Result<()> {
+        let now = Utc::now();
+        let status_str = Self::execution_status_to_string(&status);
+
+        sqlx::query(
+            r#"
+            UPDATE workflow_executions
+            SET
+                status = $1,
+                error_message = $2,
+                results = $3,
+                formatted_output = $4,
+                raw_logs = $5,
+                execution_logs = $6,
+                completed_at = $7,
+                updated_at = $8
+            WHERE id = $9
+            "#,
+        )
+        .bind(status_str)
+        .bind(error_message)
+        .bind(results)
+        .bind(data)
+        .bind(raw_logs)
+        .bind(execution_logs)
+        .bind(
+            if matches!(
+                status,
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed
+                    | ExecutionStatus::Cancelled
+                    | ExecutionStatus::Exception
+            ) {
+                Some(now)
+            } else {
+                None
+            },
+        )
+        .bind(now)
+        .bind(execution_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_execution_screenshots(
         pool: &Pool<Postgres>,
         execution_id: i64,

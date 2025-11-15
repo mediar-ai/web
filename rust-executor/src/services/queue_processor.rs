@@ -6,6 +6,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::db::{queries::WorkflowQueries, DatabasePool};
+use crate::logging::LogBuffer;
 use crate::mcp::{McpClient, WorkflowExecutor};
 use crate::models::{ExecutionStatus, WorkflowSequence};
 use crate::services::{GitHubLoader, MonitorClient, WorkflowService};
@@ -136,9 +137,12 @@ impl QueueProcessor {
 
             info!("DEBUG: Final mcp_endpoint = {}", mcp_endpoint);
 
+            // Create a LogBuffer for this execution
+            let log_buffer = LogBuffer::new();
+
             // Execute workflow
             let start_time = Utc::now();
-            let mcp_client = McpClient::from_url(mcp_endpoint);
+            let mcp_client = McpClient::from_url_with_log_buffer(mcp_endpoint, log_buffer.clone());
 
             // Check if this is a TypeScript workflow
             let result = if workflow.preferred_format.as_deref() == Some("typescript") {
@@ -155,7 +159,7 @@ impl QueueProcessor {
                 .await?;
 
                 // Execute TypeScript workflow directly via MCP
-                self.execute_typescript_workflow(&mcp_client, &workflow, &execution).await
+                self.execute_typescript_workflow(&mcp_client, &workflow, &execution, &log_buffer).await
             } else {
                 // Regular YAML workflow execution
                 info!("Executing YAML workflow");
@@ -175,7 +179,13 @@ impl QueueProcessor {
                 .await?;
 
                 // TODO: Get organization_id from workflow when available
-                let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id, None);
+                let executor = WorkflowExecutor::with_log_buffer(
+                    mcp_client,
+                    sequence,
+                    execution.id,
+                    None,
+                    log_buffer.clone()
+                );
                 executor.execute().await
             };
 
@@ -191,13 +201,19 @@ impl QueueProcessor {
                         ExecutionStatus::Failed
                     };
 
-                    WorkflowQueries::update_execution_status(
+                    // Get logs from log_buffer
+                    let raw_logs = log_buffer.to_text();
+                    let execution_logs = log_buffer.to_json();
+
+                    WorkflowQueries::update_execution_status_with_logs(
                         &self.db_pool,
                         execution.id,
                         status.clone(),
                         workflow_result.error.clone(),
                         Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
                         workflow_result.data.clone(),
+                        Some(raw_logs),
+                        Some(execution_logs),
                     )
                     .await?;
 
@@ -243,13 +259,19 @@ impl QueueProcessor {
                 Err(e) => {
                     error!("Execution {} failed: {}", execution.id, e);
 
-                    WorkflowQueries::update_execution_status(
+                    // Get logs from log_buffer
+                    let raw_logs = log_buffer.to_text();
+                    let execution_logs = log_buffer.to_json();
+
+                    WorkflowQueries::update_execution_status_with_logs(
                         &self.db_pool,
                         execution.id,
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
                         None,
                         None,
+                        Some(raw_logs),
+                        Some(execution_logs),
                     )
                     .await?;
 
@@ -329,12 +351,22 @@ impl QueueProcessor {
         mcp_client: &McpClient,
         workflow: &crate::models::Workflow,
         execution: &crate::models::WorkflowExecution,
+        log_buffer: &LogBuffer,
     ) -> Result<crate::models::WorkflowResult> {
         use crate::models::{WorkflowResult, WorkflowState};
         use serde_json::{Map, Value};
         use std::time::Instant;
 
         let start_time = Instant::now();
+
+        // Log the start of TypeScript execution
+        log_buffer.log(
+            "INFO",
+            format!(
+                "Starting TypeScript workflow execution for workflow ID: {}",
+                workflow.id
+            ),
+        );
 
         // Get organization_id from workflow (it's the clerk org ID string directly)
         let clerk_org_id = workflow
