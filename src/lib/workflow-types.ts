@@ -85,6 +85,8 @@ export interface Workflow {
   };
   created_at: string;
   updated_at: string;
+  last_activity_at?: string;  // When workflow was last active (execution completed, stats updated)
+  last_modified_at?: string;  // When workflow definition was last modified (from active version)
   // Organization fields (populated for Mediar admins)
   organization_id?: string;
   is_public?: boolean;  // Whether workflow is publicly accessible to all organizations

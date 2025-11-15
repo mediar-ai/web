@@ -537,11 +537,13 @@ export async function GET(request: NextRequest) {
         current_version_avg_duration,
         total_versions,
         created_at,
-        updated_at
+        updated_at,
+        last_activity_at,
+        last_modified_at
       `
       )
       .in('id', accessibleWorkflowIds)
-      .order('updated_at', { ascending: false })
+      .order('last_modified_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     // Only filter by status if explicitly provided
