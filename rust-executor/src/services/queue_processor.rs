@@ -205,13 +205,29 @@ impl QueueProcessor {
                     let raw_logs = log_buffer.to_text();
                     let execution_logs = log_buffer.to_json();
 
+                    // Always create formatted_output regardless of success/failure
+                    let formatted_output = if workflow_result.success {
+                        workflow_result.data.clone().or_else(|| Some(serde_json::json!({
+                            "success": workflow_result.success,
+                            "message": workflow_result.message.clone()
+                        })))
+                    } else {
+                        // For failures, create formatted output with error details
+                        Some(serde_json::json!({
+                            "success": false,
+                            "error": workflow_result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                            "message": workflow_result.message.clone(),
+                            "data": workflow_result.data.clone()
+                        }))
+                    };
+
                     WorkflowQueries::update_execution_status_with_logs(
                         &self.db_pool,
                         execution.id,
                         status.clone(),
                         workflow_result.error.clone(),
                         Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
-                        workflow_result.data.clone(),
+                        formatted_output,
                         Some(raw_logs),
                         Some(execution_logs),
                     )
@@ -263,13 +279,21 @@ impl QueueProcessor {
                     let raw_logs = log_buffer.to_text();
                     let execution_logs = log_buffer.to_json();
 
+                    // For errors, create formatted_output with error details
+                    let formatted_output = Some(serde_json::json!({
+                        "success": false,
+                        "error": e.to_string(),
+                        "message": format!("Workflow execution failed: {}", e),
+                        "error_type": "exception"
+                    }));
+
                     WorkflowQueries::update_execution_status_with_logs(
                         &self.db_pool,
                         execution.id,
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
                         None,
-                        None,
+                        formatted_output,
                         Some(raw_logs),
                         Some(execution_logs),
                     )
@@ -356,8 +380,48 @@ impl QueueProcessor {
         use crate::models::{WorkflowResult, WorkflowState};
         use serde_json::{Map, Value};
         use std::time::Instant;
+        use tracing::debug;
 
         let start_time = Instant::now();
+
+        // Add debug logging similar to Python executor
+        debug!("Modal Function: execute_workflow");
+        debug!("MCP Endpoint: {}", execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string()));
+        debug!("Workflow ID: {}", workflow.id);
+        debug!("Execution ID: {}", execution.id);
+        debug!("Start Time: {:?}", chrono::Utc::now());
+
+        // Log to buffer for UI display
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Modal Function: execute_workflow", chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            None,
+            None,
+        );
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - MCP Endpoint: {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string())),
+            None,
+            None,
+        );
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Workflow ID: {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                workflow.id),
+            None,
+            None,
+        );
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Execution ID: {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                execution.id),
+            None,
+            None,
+        );
 
         // Log the start of TypeScript execution
         log_buffer.log(
@@ -404,6 +468,49 @@ impl QueueProcessor {
         )
         .await?;
 
+        // Add more detailed logging
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Attempting to connect to MCP endpoint: {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string())),
+            None,
+            None,
+        );
+
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - --- DETAILED LOGGING: Payload being sent to MCP ---",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            None,
+            None,
+        );
+
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Full Arguments Payload: {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                serde_json::to_string(&args).unwrap_or_else(|_| "serialization error".to_string())),
+            None,
+            None,
+        );
+
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - --- END DETAILED LOGGING ---",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            None,
+            None,
+        );
+
+        log_buffer.log_step(
+            "debug",
+            format!("{} - workflow_executor - INFO - Initializing MCP session...",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            None,
+            None,
+        );
+
         // Call execute_sequence tool directly (NOT as a step)
         info!(
             "Calling MCP execute_sequence tool with args: {}",
@@ -419,12 +526,24 @@ impl QueueProcessor {
         // Parse result into WorkflowResult format
         match result {
             Ok(tool_result) => {
-                // Extract success/failure from tool result
-                let success = tool_result
+                // Check if there's an error field first (indicates failure)
+                let has_error = tool_result
                     .as_object()
-                    .and_then(|o| o.get("success"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true); // Default to success if not specified
+                    .and_then(|o| o.get("error"))
+                    .is_some();
+
+                // Extract success/failure from tool result
+                // If there's an error field, it's a failure regardless of success field
+                // If no success field is specified, check for error field
+                let success = if has_error {
+                    false
+                } else {
+                    tool_result
+                        .as_object()
+                        .and_then(|o| o.get("success"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false) // Default to failure if not specified
+                };
 
                 let error = if !success {
                     tool_result
@@ -489,6 +608,34 @@ impl QueueProcessor {
             }
             Err(e) => {
                 error!("TypeScript workflow execution failed: {}", e);
+
+                // Add error logging to buffer
+                log_buffer.log_step(
+                    "debug",
+                    format!("{} - workflow_executor - ERROR - MCP workflow execution error:",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+                    None,
+                    None,
+                );
+
+                log_buffer.log_step(
+                    "debug",
+                    format!("{} - workflow_executor - ERROR - MCP Error Context: {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                        e.to_string()),
+                    None,
+                    None,
+                );
+
+                log_buffer.log_step(
+                    "debug",
+                    format!("{} - workflow_executor - ERROR - Real workflow execution failed: MCP Execution Failed: {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                        e.to_string()),
+                    None,
+                    None,
+                );
+
                 Ok(WorkflowResult {
                     success: false,
                     message: "TypeScript workflow execution failed".to_string(),
