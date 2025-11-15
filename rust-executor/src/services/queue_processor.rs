@@ -642,15 +642,36 @@ impl QueueProcessor {
                     })
                     .unwrap_or(false);
 
+                // Check for "steps" array (different from "step_results")
+                let has_steps_failure = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("steps"))
+                    .and_then(|v| v.as_array())
+                    .map(|steps| {
+                        steps.iter().any(|step| {
+                            step.as_object()
+                                .and_then(|s| s.get("status"))
+                                .and_then(|v| v.as_str())
+                                .map(|status| status == "failed" || status == "error")
+                                .unwrap_or(false)
+                            || step.as_object()
+                                .and_then(|s| s.get("error"))
+                                .is_some()
+                        })
+                    })
+                    .unwrap_or(false);
+
                 // Determine success/failure
-                let success = if has_error || has_step_failure || message_indicates_failure {
+                let success = if has_error || has_step_failure || has_steps_failure || message_indicates_failure {
                     false
                 } else {
+                    // Only trust success: true if explicitly set
                     tool_result
                         .as_object()
                         .and_then(|o| o.get("success"))
                         .and_then(|v| v.as_bool())
-                        .unwrap_or(false) // Default to failure if not specified
+                        .filter(|s| *s) // Only accept true, not false
+                        .unwrap_or(false) // Default to failure if not specified or false
                 };
 
                 // Log the determination
@@ -810,5 +831,194 @@ mod tests {
         let id = QueueProcessor::generate_machine_id();
         assert!(id.contains('-'));
         assert!(id.len() > 36); // UUID is 36 chars + hostname + separator
+    }
+
+    #[test]
+    fn test_status_determination_with_step_failure() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "step_results": [
+                {
+                    "status": "failed",
+                    "error": "Step execution failed after 0 retries: Failed to create HTTP MCP service after retries"
+                }
+            ],
+            "message": "Workflow completed"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should be marked as failure when step fails");
+    }
+
+    #[test]
+    fn test_status_determination_with_top_level_error() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "error": "Connection timeout",
+            "message": "Failed to connect"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should be marked as failure with error field");
+    }
+
+    #[test]
+    fn test_status_determination_with_failure_message() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "message": "Workflow execution failed"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should be marked as failure when message contains 'failed'");
+    }
+
+    #[test]
+    fn test_status_determination_with_success_false() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "success": false,
+            "message": "Something went wrong"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should be marked as failure when success is false");
+    }
+
+    #[test]
+    fn test_status_determination_with_success_true() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "success": true,
+            "message": "Workflow completed successfully"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, true, "Should be marked as success when success is true");
+    }
+
+    #[test]
+    fn test_status_determination_with_steps_array() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "steps": [
+                {
+                    "status": "failed",
+                    "error": "Step failed"
+                }
+            ],
+            "message": "Workflow completed"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should be marked as failure when steps array contains failure");
+    }
+
+    #[test]
+    fn test_status_determination_with_no_explicit_status() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "message": "Workflow completed",
+            "data": "some data"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Should default to failure when no explicit success indicator");
+    }
+
+    #[test]
+    fn test_real_failure_case_execution_22062() {
+        use serde_json::json;
+
+        // This is the actual response from execution #22062
+        let tool_result = json!({
+            "step_results": [
+                {
+                    "step_name": "step_0",
+                    "status": "failed",
+                    "error": "Step execution failed after 0 retries: Failed to create HTTP MCP service after retries",
+                    "data": null,
+                    "timestamp": "2025-11-15T22:35:45.308Z"
+                }
+            ],
+            "message": "Workflow completed",
+            "timestamp": "2025-11-15T22:35:45.308Z"
+        });
+
+        let success = determine_success(&tool_result);
+        assert_eq!(success, false, "Real failure case from execution #22062 should be marked as failure");
+    }
+
+    // Helper function for tests - replicates the status determination logic
+    fn determine_success(tool_result: &serde_json::Value) -> bool {
+        let has_error = tool_result
+            .as_object()
+            .and_then(|o| o.get("error"))
+            .is_some();
+
+        let has_step_failure = tool_result
+            .as_object()
+            .and_then(|o| o.get("step_results"))
+            .and_then(|v| v.as_array())
+            .map(|steps| {
+                steps.iter().any(|step| {
+                    step.as_object()
+                        .and_then(|s| s.get("status"))
+                        .and_then(|v| v.as_str())
+                        .map(|status| status == "failed" || status == "error")
+                        .unwrap_or(false)
+                    || step.as_object()
+                        .and_then(|s| s.get("error"))
+                        .is_some()
+                })
+            })
+            .unwrap_or(false);
+
+        let has_steps_failure = tool_result
+            .as_object()
+            .and_then(|o| o.get("steps"))
+            .and_then(|v| v.as_array())
+            .map(|steps| {
+                steps.iter().any(|step| {
+                    step.as_object()
+                        .and_then(|s| s.get("status"))
+                        .and_then(|v| v.as_str())
+                        .map(|status| status == "failed" || status == "error")
+                        .unwrap_or(false)
+                    || step.as_object()
+                        .and_then(|s| s.get("error"))
+                        .is_some()
+                })
+            })
+            .unwrap_or(false);
+
+        let message_indicates_failure = tool_result
+            .as_object()
+            .and_then(|o| o.get("message"))
+            .and_then(|v| v.as_str())
+            .map(|msg| {
+                msg.contains("failed") ||
+                msg.contains("Failed") ||
+                msg.contains("error") ||
+                msg.contains("Error")
+            })
+            .unwrap_or(false);
+
+        if has_error || has_step_failure || has_steps_failure || message_indicates_failure {
+            false
+        } else {
+            tool_result
+                .as_object()
+                .and_then(|o| o.get("success"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false) // Default to failure if not specified
+        }
     }
 }
