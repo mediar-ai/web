@@ -31,6 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selectors: None,
         inputs: None,
         stop_on_error: Some(true),
+        start_from_step: None,
+        end_at_step: None,
+        follow_fallback: None,
+        execute_jumps_at_end: None,
+        scripts_base_path: None,
         include_detailed_results: Some(true),
         cron: None,
     };
@@ -70,10 +75,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Execute workflow
     println!("\n4. Executing workflow...");
-    let execution_id = Uuid::new_v4();
+    let execution_id = 1i64;
     println!("   Execution ID: {}", execution_id);
 
-    let executor = WorkflowExecutor::new(mcp_client, workflow, execution_id);
+    let executor = WorkflowExecutor::new(mcp_client, workflow, execution_id, None);
 
     match executor.execute().await {
         Ok(result) => {

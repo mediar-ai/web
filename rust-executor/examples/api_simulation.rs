@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Simulate workflow listing
     println!("2. List Workflows Endpoint (/api/v1/workflows):");
     let sample_workflow = Workflow {
-        id: Uuid::new_v4(),
+        id: 1,
         name: "Browser Automation".to_string(),
         version: "1.0.0".to_string(),
         description: Some("Automates browser tasks using MCP".to_string()),
@@ -32,6 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         category: Some("automation".to_string()),
         github_folder: Some("browser-automation".to_string()),
         github_ref: Some("main".to_string()),
+        organization_id: Some("org_test".to_string()),
+        preferred_format: None,
         automation_sequence: Some(json!({
             "steps": [
                 {"tool_name": "browser_navigate", "arguments": {"url": "https://example.com"}},
@@ -81,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n   Response:");
     let execution_response = ExecutionResponse {
-        execution_id: Uuid::new_v4(),
+        execution_id: 1,
         status: ExecutionStatus::Queued,
         message: "Workflow execution queued successfully".to_string(),
         result: None,

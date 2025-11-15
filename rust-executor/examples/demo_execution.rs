@@ -60,6 +60,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selectors: None,
         inputs: None,
         stop_on_error: Some(false),
+        start_from_step: None,
+        end_at_step: None,
+        follow_fallback: None,
+        execute_jumps_at_end: None,
+        scripts_base_path: None,
         include_detailed_results: Some(true),
         cron: None,
     };
