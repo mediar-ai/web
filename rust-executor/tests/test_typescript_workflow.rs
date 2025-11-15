@@ -22,8 +22,8 @@ fn test_typescript_workflow_detection_and_sequence_building() {
         category: Some("test".to_string()),
         github_folder: Some("chrome_install_typescript".to_string()),
         github_ref: Some("main".to_string()),
-        organization_id: None,
-        preferred_format: Some("typescript".to_string()), // KEY: TypeScript format
+        organization_id: Some("org_test".to_string()),
+        preferred_format: None,
         automation_sequence: None,
         automation_sequence_yaml: None,
         created_at: chrono::Utc::now(),
@@ -100,8 +100,8 @@ fn test_yaml_workflow_not_affected() {
         category: Some("test".to_string()),
         github_folder: Some("some_yaml_workflow".to_string()),
         github_ref: Some("main".to_string()),
-        organization_id: None,
-        preferred_format: Some("yaml".to_string()), // YAML format
+        organization_id: Some("org_test".to_string()),
+        preferred_format: None,
         automation_sequence: None,
         automation_sequence_yaml: Some(r#"
             steps:

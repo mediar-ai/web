@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Execute workflow
     println!("\n4. Executing workflow with screenshot capture...");
-    let execution_id = Uuid::new_v4();
+    let execution_id = 1i64;
     println!("   Execution ID: {}", execution_id);
 
     let executor = WorkflowExecutor::new(mcp_client, workflow, execution_id, None);
