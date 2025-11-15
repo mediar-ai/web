@@ -8,7 +8,6 @@
 
 use serde_json::json;
 use workflow_executor::models::{Workflow, WorkflowStatus, WorkflowSequence};
-use workflow_executor::services::WorkflowService;
 
 #[test]
 fn test_typescript_workflow_detection_and_sequence_building() {
