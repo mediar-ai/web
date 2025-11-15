@@ -52,20 +52,10 @@ export class WorkflowFileManager {
       if (workflowError || !workflowData?.organization_id) {
         throw new Error(`Failed to get organization for workflow ${workflowId}: ${workflowError?.message || 'No organization_id'}`);  
       }
-
-      // Fetch clerk_organization_id
-      const { data: orgData, error: orgError } = await this.supabase
-        .from('organizations')
-        .select('clerk_organization_id')
-        .eq('id', workflowData.organization_id)
-        .single();
-
-      if (orgError || !orgData?.clerk_organization_id) {
-        throw new Error(`Failed to get clerk_organization_id: ${orgError?.message || 'No clerk_organization_id'}`);  
-      }
-
-      const clerkOrgId = orgData.clerk_organization_id;
+      // organization_id column stores clerk_organization_id directly (e.g., "org_REDACTED")
+      const clerkOrgId = workflowData.organization_id;
       console.log(`[WorkflowFileManager] Using org: ${clerkOrgId} for workflow ${workflowId}`);
+
 
       const uploadedFiles = [];
 
