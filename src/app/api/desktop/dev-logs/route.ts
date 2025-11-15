@@ -119,7 +119,9 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET: List recent dev executions for the authenticated user
+ * GET: Retrieve execution logs
+ * - With ?workflow_id=N: Get latest execution logs for that workflow
+ * - Without params: List recent executions (metadata only)
  */
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
@@ -141,6 +143,50 @@ export async function GET(request: NextRequest) {
 
     const userId = validation.userId!;
     const redis = await getRedisClient();
+
+    // Check if requesting specific workflow's latest execution
+    const { searchParams } = new URL(request.url);
+    const workflowId = searchParams.get('workflow_id');
+
+    if (workflowId) {
+      // Get latest execution for this workflow
+      const latestKey = `dev-execution:${userId}:${workflowId}:latest`;
+      const latestExecutionId = await redis.get(latestKey);
+
+      if (!latestExecutionId) {
+        return NextResponse.json(
+          { error: 'No execution logs found for this workflow' },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+
+      // Get full execution data
+      const executionKey = `dev-execution:${userId}:${workflowId}:${latestExecutionId}`;
+      const executionDataStr = await redis.get(executionKey);
+
+      if (!executionDataStr) {
+        return NextResponse.json(
+          { error: 'Execution data not found' },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+
+      const executionData = JSON.parse(executionDataStr);
+
+      console.log(`[DEV LOGS] Returning latest execution ${latestExecutionId} for workflow ${workflowId}`);
+
+      return NextResponse.json({
+        execution_id: executionData.execution_id,
+        workflow_id: executionData.workflow_id,
+        workflow_name: executionData.workflow_name,
+        workflowExecutionLogs: executionData.workflowExecutionLogs,
+        status: executionData.status,
+        started_at: executionData.started_at,
+        completed_at: executionData.completed_at,
+        duration_seconds: executionData.duration_seconds,
+        error_message: executionData.error_message
+      }, { headers: corsHeaders });
+    }
 
     // 2. Get user's execution list (most recent first)
     const userListKey = `dev-executions:user:${userId}`;
