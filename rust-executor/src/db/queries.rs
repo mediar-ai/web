@@ -298,6 +298,7 @@ impl WorkflowQueries {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn update_execution_screenshots(
         pool: &Pool<Postgres>,
         execution_id: i64,

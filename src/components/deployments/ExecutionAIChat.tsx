@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Execution } from '@/lib/workflow-types';
 import { Send, Sparkles, User, Loader2, Copy, Check } from 'lucide-react';
 import { Streamdown } from 'streamdown';
@@ -30,6 +37,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
   const [_isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [contextData, setContextData] = useState<any | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-pro');
 
   // Load context data once when component mounts
   useEffect(() => {
@@ -166,6 +174,7 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
           executionId: execution.execution_id,
           // Pass pre-loaded context to avoid re-fetching on every message
           contextData: contextData,
+          model: selectedModel,
         }),
       });
 
@@ -241,9 +250,15 @@ export function ExecutionAIChat({ execution }: ExecutionAIChatProps) {
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5" />
           <h3 className="font-mono font-bold uppercase">AI Assistant</h3>
-          <Badge className="bg-black text-white text-xs">
-            GEMINI 2.5 PRO
-          </Badge>
+          <Select value={selectedModel} onValueChange={setSelectedModel}>
+            <SelectTrigger className="w-[180px] h-7 border-2 border-black font-mono text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+              <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+            </SelectContent>
+          </Select>
           {isLoadingContext && (
             <Badge className="bg-white text-black border border-black text-xs animate-pulse">
               <Loader2 className="w-3 h-3 mr-1 animate-spin inline" />

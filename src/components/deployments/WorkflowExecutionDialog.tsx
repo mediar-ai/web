@@ -123,7 +123,7 @@ export function WorkflowExecutionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-2xl">
             <Play className="w-5 h-5" />
             Execute Workflow: {workflow.name}
           </DialogTitle>
@@ -135,12 +135,12 @@ export function WorkflowExecutionDialog({
         <div className="space-y-4 py-4">
           {/* Cron Schedule Info */}
           {workflow.cron_expression && (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="p-4 bg-gray-50 rounded border-2 border-black">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-gray-500" />
-                    <span className="text-sm font-medium">Scheduled Execution</span>
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-mono font-bold uppercase">Scheduled Execution</span>
                   </div>
                   <p className="text-sm text-gray-600">
                     {(() => {
@@ -153,11 +153,10 @@ export function WorkflowExecutionDialog({
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="black-outline"
                   size="sm"
                   onClick={handleToggleCron}
                   disabled={executing}
-                  className={cronEnabled ? 'border-black' : 'border-gray-300'}
                 >
                   {cronEnabled ? 'Pause Schedule' : 'Resume Schedule'}
                 </Button>
@@ -168,10 +167,10 @@ export function WorkflowExecutionDialog({
           {/* Parameters Section */}
           {hasParameters ? (
             <div className="space-y-4">
-              <h3 className="text-sm font-medium">Workflow Parameters</h3>
+              <h3 className="text-sm font-mono font-bold uppercase">Workflow Parameters</h3>
               {Object.entries(workflow.input_parameters || {}).map(([key, config]: [string, any]) => (
                 <div key={key} className="space-y-2">
-                  <Label htmlFor={key}>
+                  <Label htmlFor={key} className="font-mono text-xs text-gray-600 uppercase">
                     {config.label || key}
                     {config.required && <span className="text-red-500 ml-1">*</span>}
                   </Label>
@@ -185,7 +184,7 @@ export function WorkflowExecutionDialog({
                       onChange={(e) => setParameters({ ...parameters, [key]: e.target.value })}
                       placeholder={config.placeholder || config.default || ''}
                       rows={3}
-                      className="font-mono text-sm"
+                      className="font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
                     />
                   ) : (
                     <Input
@@ -194,21 +193,21 @@ export function WorkflowExecutionDialog({
                       value={parameters[key] || ''}
                       onChange={(e) => setParameters({ ...parameters, [key]: e.target.value })}
                       placeholder={config.placeholder || config.default || ''}
-                      className="font-mono"
+                      className="font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
                     />
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-600">
               This workflow has no configurable parameters. Click &quot;Execute Now&quot; to run it.
             </div>
           )}
 
           {/* Error Display */}
           {error && (
-            <Alert variant="destructive">
+            <Alert className="border-2 border-black bg-gray-100">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -217,7 +216,7 @@ export function WorkflowExecutionDialog({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="black-outline"
             onClick={() => onOpenChange(false)}
             disabled={executing}
           >
@@ -226,7 +225,7 @@ export function WorkflowExecutionDialog({
           <Button
             onClick={handleExecute}
             disabled={executing}
-            className="bg-black text-white hover:bg-gray-800"
+            className="bg-black text-white hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-500"
           >
             {executing ? (
               <>
