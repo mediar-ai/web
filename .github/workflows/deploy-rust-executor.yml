@@ -12,6 +12,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust-executor
 
     steps:
       - name: Checkout code
@@ -23,9 +26,7 @@ jobs:
           toolchain: stable
 
       - name: Run Tests
-        run: |
-          cd rust-executor
-          cargo test --lib --tests --verbose
+        run: cargo test --lib --tests --verbose
 
       - name: Azure Login
         uses: azure/login@v1
@@ -40,14 +41,11 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           MEDIAR_SERVICE_API_KEY: ${{ secrets.MEDIAR_SERVICE_API_KEY }}
         run: |
-          cd rust-executor
           chmod +x scripts/*.sh
           ./scripts/deploy.sh dev
 
       - name: Test Health Endpoint
-        run: |
-          cd rust-executor
-          ./scripts/health-check.sh
+        run: ./scripts/health-check.sh
 
       - name: Deployment Summary
         run: |
