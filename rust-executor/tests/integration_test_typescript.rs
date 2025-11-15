@@ -13,6 +13,7 @@ mod test_helpers {
     use super::*;
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     pub struct Workflow {
         pub id: i64,
         pub name: String,
@@ -31,6 +32,7 @@ mod test_helpers {
     }
 
     #[derive(Debug, serde::Deserialize)]
+    #[allow(dead_code)]
     pub struct WorkflowSequence {
         pub steps: Vec<WorkflowStep>,
         #[serde(default)]
@@ -39,6 +41,7 @@ mod test_helpers {
     }
 
     #[derive(Debug, serde::Deserialize)]
+    #[allow(dead_code)]
     pub struct WorkflowStep {
         pub id: String,
         pub tool_name: Option<String>,
