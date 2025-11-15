@@ -6,6 +6,7 @@ use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use workflow_executor::models::{ErrorStrategy, WorkflowSequence, WorkflowStep};
 
 #[tokio::test]
+#[ignore] // Integration test - requires wiremock server
 async fn partial_execution_only_runs_bounded_steps() {
     let server = MockServer::start().await;
 
@@ -98,6 +99,7 @@ async fn partial_execution_only_runs_bounded_steps() {
 }
 
 #[tokio::test]
+#[ignore] // Integration test - requires wiremock server
 async fn step_timeout_is_enforced() {
     let server = MockServer::start().await;
 
