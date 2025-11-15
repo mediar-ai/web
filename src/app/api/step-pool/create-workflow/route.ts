@@ -61,6 +61,18 @@ function createWorkflowYaml(name: string, description: string, steps: any[]): st
   return yaml;
 }
 
+// CORS headers for cross-origin requests from Tauri app
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// OPTIONS: Handle CORS preflight requests
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 // POST: Create a new workflow from selected pool steps
 export async function POST(request: NextRequest) {
   try {
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
     if (!authenticatedUserId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
 
@@ -98,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (!body.name || !body.step_ids || !Array.isArray(body.step_ids)) {
       return NextResponse.json(
         { success: false, error: 'name and step_ids array are required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -124,7 +136,7 @@ export async function POST(request: NextRequest) {
     if (fetchError || !steps || steps.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Failed to fetch pool steps or no steps found' },
-        { status: 404 }
+        { status: 404, headers: corsHeaders }
       );
     }
 
@@ -158,7 +170,7 @@ export async function POST(request: NextRequest) {
       is_public,
       category,
       status: 'active',
-      version_number: '1.0.0',
+      version: '1.0.0',
       total_versions: 1,
       total_executions: 0,
       successful_executions: 0,
@@ -178,7 +190,7 @@ export async function POST(request: NextRequest) {
       console.error('Error creating workflow:', createError);
       return NextResponse.json(
         { success: false, error: 'Failed to create workflow' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -218,17 +230,17 @@ export async function POST(request: NextRequest) {
         id: newWorkflow.id,
         name: newWorkflow.name,
         description: newWorkflow.description,
-        version_number: newWorkflow.version_number,
+        version: newWorkflow.version,
         step_count: steps.length
       },
       steps_added: steps.length,
       remaining_pool_steps: remainingSteps
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('Error in POST /api/step-pool/create-workflow:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

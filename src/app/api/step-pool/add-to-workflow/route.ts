@@ -35,6 +35,18 @@ function convertStepsToYaml(steps: any[]): string {
   return `steps:\n${yamlSteps.join('\n')}`;
 }
 
+// CORS headers for cross-origin requests from Tauri app
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// OPTIONS: Handle CORS preflight requests
+export async function OPTIONS(request: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 // POST: Add selected pool steps to a workflow
 export async function POST(request: NextRequest) {
   try {
@@ -62,7 +74,7 @@ export async function POST(request: NextRequest) {
     if (!authenticatedUserId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
 
@@ -72,11 +84,13 @@ export async function POST(request: NextRequest) {
     if (!body.workflow_id || !body.step_ids || !Array.isArray(body.step_ids)) {
       return NextResponse.json(
         { success: false, error: 'workflow_id and step_ids array are required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const { workflow_id, step_ids, session_id, append_to_workflow = true } = body;
+
+    console.log('[ADD-TO-WORKFLOW] Request:', { workflow_id, step_ids, session_id, user_id: authenticatedUserId });
 
     // Fetch the selected steps
     const { data: steps, error: fetchError } = await supabase
@@ -87,24 +101,30 @@ export async function POST(request: NextRequest) {
       .eq('status', 'active')
       .order('pool_order', { ascending: true });
 
+    console.log('[ADD-TO-WORKFLOW] Fetched steps:', { count: steps?.length, error: fetchError?.message });
+
     if (fetchError || !steps || steps.length === 0) {
+      console.error('[ADD-TO-WORKFLOW] Failed to fetch steps:', { fetchError, stepsCount: steps?.length });
       return NextResponse.json(
-        { success: false, error: 'Failed to fetch pool steps' },
-        { status: 404 }
+        { success: false, error: 'Failed to fetch pool steps', details: fetchError?.message },
+        { status: 404, headers: corsHeaders }
       );
     }
 
     // Fetch the current workflow
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, automation_sequence_yaml, version_number, total_versions')
+      .select('id, name, automation_sequence_yaml, version, total_versions')
       .eq('id', workflow_id)
       .single();
 
+    console.log('[ADD-TO-WORKFLOW] Fetched workflow:', { workflow_id, found: !!workflow, error: workflowError?.message });
+
     if (workflowError || !workflow) {
+      console.error('[ADD-TO-WORKFLOW] Workflow not found:', { workflow_id, workflowError });
       return NextResponse.json(
-        { success: false, error: 'Workflow not found' },
-        { status: 404 }
+        { success: false, error: 'Workflow not found', details: workflowError?.message },
+        { status: 404, headers: corsHeaders }
       );
     }
 
@@ -129,12 +149,38 @@ export async function POST(request: NextRequest) {
       updatedYaml = newStepsYaml;
     }
 
-    // Update the workflow with new version
-    // This would normally go through your workflow API endpoint
+    // Create a new version in deployed_workflow_versions table
+    const newVersion = incrementVersion(workflow.version || '1.0.0');
+
+    const { data: newVersionRecord, error: versionError } = await supabase
+      .from('deployed_workflow_versions')
+      .insert({
+        workflow_id: workflow_id,
+        version_number: newVersion,
+        automation_sequence_yaml: updatedYaml,
+        is_active: false, // Not active by default
+        created_by: authenticatedUserId,
+        change_notes: `Added ${steps.length} step(s) from pool`,
+        preferred_format: 'yaml'
+      })
+      .select()
+      .single();
+
+    if (versionError) {
+      console.error('Error creating new version:', versionError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create new workflow version' },
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    // Update the workflow with new version info and current_version_id
     const updatePayload = {
       automation_sequence_yaml: updatedYaml,
-      version_number: incrementVersion(workflow.version_number || '1.0.0'),
-      total_versions: (workflow.total_versions || 0) + 1
+      version: newVersion,
+      total_versions: (workflow.total_versions || 0) + 1,
+      current_version_id: newVersionRecord.id,
+      updated_at: new Date().toISOString()
     };
 
     const { data: updatedWorkflow, error: updateError } = await supabase
@@ -148,7 +194,7 @@ export async function POST(request: NextRequest) {
       console.error('Error updating workflow:', updateError);
       return NextResponse.json(
         { success: false, error: 'Failed to update workflow' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -187,17 +233,17 @@ export async function POST(request: NextRequest) {
       workflow: {
         id: updatedWorkflow.id,
         name: updatedWorkflow.name,
-        version_number: updatedWorkflow.version_number,
+        version: updatedWorkflow.version,
         total_versions: updatedWorkflow.total_versions
       },
       steps_added: steps.length,
       remaining_pool_steps: remainingSteps
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('Error in POST /api/step-pool/add-to-workflow:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
