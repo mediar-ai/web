@@ -511,6 +511,55 @@ impl QueueProcessor {
             None,
         );
 
+        // Log step information like Python executor
+        if let Some(steps) = args.get("sequence")
+            .and_then(|s| s.as_array()) {
+            let step_count = steps.len();
+            log_buffer.log_step(
+                "info",
+                format!("{} [INFO] Starting workflow execution ID: {} with {} steps",
+                    chrono::Local::now().format("%H:%M:%S"),
+                    execution.id,
+                    step_count),
+                None,
+                None,
+            );
+
+            // Log each step like Python executor
+            for (idx, step) in steps.iter().enumerate() {
+                if let Some(step_obj) = step.as_object() {
+                    let tool_name = step_obj.get("tool_name")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("unknown");
+                    let step_num = idx + 1;
+
+                    log_buffer.log_step(
+                        "info",
+                        format!("{} [INFO] Executing step {}/{}: {}",
+                            chrono::Local::now().format("%H:%M:%S"),
+                            step_num,
+                            step_count,
+                            tool_name),
+                        Some(format!("step_{}", idx)),
+                        Some(tool_name.to_string()),
+                    );
+
+                    // Log MCP request details
+                    if let Some(args_value) = step_obj.get("arguments") {
+                        log_buffer.log_step(
+                            "info",
+                            format!("{} [INFO] MCP Request: {} -> {}",
+                                chrono::Local::now().format("%H:%M:%S"),
+                                tool_name,
+                                serde_json::to_string(args_value).unwrap_or_default()),
+                            Some(format!("step_{}", idx)),
+                            Some(tool_name.to_string()),
+                        );
+                    }
+                }
+            }
+        }
+
         // Call execute_sequence tool directly (NOT as a step)
         info!(
             "Calling MCP execute_sequence tool with args: {}",
@@ -526,16 +575,75 @@ impl QueueProcessor {
         // Parse result into WorkflowResult format
         match result {
             Ok(tool_result) => {
-                // Check if there's an error field first (indicates failure)
+                // Log the full response for debugging
+                debug!("MCP execute_sequence response: {:?}", tool_result);
+                log_buffer.log_step(
+                    "debug",
+                    format!("{} - workflow_executor - INFO - MCP Response received",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+                    None,
+                    None,
+                );
+
+                // Check multiple failure indicators
                 let has_error = tool_result
                     .as_object()
                     .and_then(|o| o.get("error"))
                     .is_some();
 
-                // Extract success/failure from tool result
-                // If there's an error field, it's a failure regardless of success field
-                // If no success field is specified, check for error field
-                let success = if has_error {
+                // Check for step-level failures and log them
+                let has_step_failure = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("step_results"))
+                    .and_then(|v| v.as_array())
+                    .map(|steps| {
+                        let mut has_failure = false;
+                        for (idx, step) in steps.iter().enumerate() {
+                            if let Some(step_obj) = step.as_object() {
+                                let step_id = format!("step_{}", idx);
+                                let status = step_obj.get("status")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("unknown");
+
+                                let is_failed = status == "failed" || status == "error" ||
+                                               step_obj.get("error").is_some();
+
+                                if is_failed {
+                                    has_failure = true;
+                                    // Log the step failure
+                                    if let Some(error) = step_obj.get("error").and_then(|e| e.as_str()) {
+                                        log_buffer.log_step(
+                                            "error",
+                                            format!("{} [ERROR] Step {} failed: {}",
+                                                chrono::Local::now().format("%H:%M:%S"),
+                                                step_id,
+                                                error),
+                                            Some(step_id.clone()),
+                                            None,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        has_failure
+                    })
+                    .unwrap_or(false);
+
+                // Check for failure in message content
+                let message_indicates_failure = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("message"))
+                    .and_then(|v| v.as_str())
+                    .map(|msg| {
+                        msg.contains("failed") ||
+                        msg.contains("Failed") ||
+                        msg.contains("error") ||
+                        msg.contains("Error")
+                    })
+                    .unwrap_or(false);
+
+                // Determine success/failure
+                let success = if has_error || has_step_failure || message_indicates_failure {
                     false
                 } else {
                     tool_result
@@ -545,19 +653,49 @@ impl QueueProcessor {
                         .unwrap_or(false) // Default to failure if not specified
                 };
 
+                // Log the determination
+                if !success {
+                    log_buffer.log_step(
+                        "error",
+                        format!("{} - workflow_executor - ERROR - Workflow execution failed (has_error: {}, has_step_failure: {}, message_indicates_failure: {})",
+                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                            has_error,
+                            has_step_failure,
+                            message_indicates_failure),
+                        None,
+                        None,
+                    );
+                }
+
+                // Extract error message from various possible locations
                 let error = if !success {
-                    tool_result
+                    // Try to get error from step results first
+                    let step_error = tool_result
                         .as_object()
-                        .and_then(|o| o.get("error"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from)
-                        .or_else(|| {
-                            tool_result
-                                .as_object()
-                                .and_then(|o| o.get("message"))
-                                .and_then(|v| v.as_str())
-                                .map(String::from)
-                        })
+                        .and_then(|o| o.get("step_results"))
+                        .and_then(|v| v.as_array())
+                        .and_then(|steps| {
+                            steps.iter().find_map(|step| {
+                                step.as_object()
+                                    .and_then(|s| s.get("error"))
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from)
+                            })
+                        });
+
+                    step_error.or_else(|| {
+                        tool_result
+                            .as_object()
+                            .and_then(|o| o.get("error"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    }).or_else(|| {
+                        tool_result
+                            .as_object()
+                            .and_then(|o| o.get("message"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    })
                 } else {
                     None
                 };
