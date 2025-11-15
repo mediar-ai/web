@@ -108,9 +108,6 @@ impl QueueProcessor {
                 return Ok(false);
             }
 
-            // Load workflow sequence
-            let sequence = self.load_workflow_sequence(&workflow).await?;
-
             // Get MCP endpoint from execution record (preferred) or execution params or environment
             info!(
                 "DEBUG: execution.mcp_endpoint = {:?}",
@@ -139,23 +136,48 @@ impl QueueProcessor {
 
             info!("DEBUG: Final mcp_endpoint = {}", mcp_endpoint);
 
-            // Update total steps
-            let total_steps = sequence.count_steps() as u32;
-            WorkflowQueries::update_execution_progress(
-                &self.db_pool,
-                execution.id,
-                0,
-                total_steps,
-                None,
-            )
-            .await?;
-
             // Execute workflow
             let start_time = Utc::now();
             let mcp_client = McpClient::from_url(mcp_endpoint);
-            // TODO: Get organization_id from workflow when available
-            let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id, None);
-            let result = executor.execute().await;
+
+            // Check if this is a TypeScript workflow
+            let result = if workflow.preferred_format.as_deref() == Some("typescript") {
+                info!("Executing TypeScript workflow directly via MCP");
+
+                // TypeScript workflows have only 1 step (the execute_sequence call)
+                WorkflowQueries::update_execution_progress(
+                    &self.db_pool,
+                    execution.id,
+                    0,
+                    1,
+                    Some("Executing TypeScript workflow".to_string()),
+                )
+                .await?;
+
+                // Execute TypeScript workflow directly via MCP
+                self.execute_typescript_workflow(&mcp_client, &workflow, &execution).await
+            } else {
+                // Regular YAML workflow execution
+                info!("Executing YAML workflow");
+
+                // Load workflow sequence
+                let sequence = self.load_workflow_sequence(&workflow).await?;
+
+                // Update total steps
+                let total_steps = sequence.count_steps() as u32;
+                WorkflowQueries::update_execution_progress(
+                    &self.db_pool,
+                    execution.id,
+                    0,
+                    total_steps,
+                    None,
+                )
+                .await?;
+
+                // TODO: Get organization_id from workflow when available
+                let executor = WorkflowExecutor::new(mcp_client, sequence, execution.id, None);
+                executor.execute().await
+            };
 
             // Update execution status based on result
             let end_time = Utc::now();
@@ -299,6 +321,156 @@ impl QueueProcessor {
         }
 
         anyhow::bail!("No automation sequence found for workflow")
+    }
+
+    /// Execute TypeScript workflow directly via MCP execute_sequence tool
+    async fn execute_typescript_workflow(
+        &self,
+        mcp_client: &McpClient,
+        workflow: &crate::models::Workflow,
+        execution: &crate::models::WorkflowExecution,
+    ) -> Result<crate::models::WorkflowResult> {
+        use crate::models::{WorkflowResult, WorkflowState};
+        use serde_json::{Map, Value};
+        use std::time::Instant;
+
+        let start_time = Instant::now();
+
+        // Get organization_id from workflow (it's the clerk org ID string directly)
+        let clerk_org_id = workflow
+            .organization_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Workflow has no organization_id"))?;
+
+        // Build S:\ path on Windows VM where MCP server runs
+        // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
+        let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
+
+        // Default to src/terminator.ts (most common location)
+        let file_url = format!("file://{}/src/terminator.ts", workflow_base_path);
+
+        info!("TypeScript workflow URL: {}", file_url);
+
+        // Build arguments object (like terminator CLI does)
+        let mut args = Map::new();
+        args.insert("url".to_string(), Value::String(file_url));
+        args.insert("include_detailed_results".to_string(), Value::Bool(true));
+        args.insert("stop_on_error".to_string(), Value::Bool(true));
+
+        // Add execution params as inputs
+        if let Some(params) = &execution.execution_params {
+            args.insert("inputs".to_string(), params.clone());
+        }
+
+        // Update progress - executing TypeScript
+        WorkflowQueries::update_execution_progress(
+            &self.db_pool,
+            execution.id,
+            1,
+            1,
+            Some("Running TypeScript workflow".to_string()),
+        )
+        .await?;
+
+        // Call execute_sequence tool directly (NOT as a step)
+        info!(
+            "Calling MCP execute_sequence tool with args: {}",
+            serde_json::to_string_pretty(&args)?
+        );
+
+        let result = mcp_client
+            .execute_tool_with_retry("execute_sequence".to_string(), Some(args.clone()), 3)
+            .await;
+
+        let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        // Parse result into WorkflowResult format
+        match result {
+            Ok(tool_result) => {
+                // Extract success/failure from tool result
+                let success = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("success"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true); // Default to success if not specified
+
+                let error = if !success {
+                    tool_result
+                        .as_object()
+                        .and_then(|o| o.get("error"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .or_else(|| {
+                            tool_result
+                                .as_object()
+                                .and_then(|o| o.get("message"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                        })
+                } else {
+                    None
+                };
+
+                let message = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("message"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+                    .unwrap_or_else(|| {
+                        if success {
+                            "TypeScript workflow completed successfully".to_string()
+                        } else {
+                            "TypeScript workflow failed".to_string()
+                        }
+                    });
+
+                // Extract screenshots if present
+                let screenshot_urls = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("screenshots"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let state = if success {
+                    WorkflowState::Success
+                } else {
+                    WorkflowState::Failure
+                };
+
+                Ok(WorkflowResult {
+                    success,
+                    message,
+                    state,
+                    error,
+                    data: Some(tool_result),
+                    steps_completed: 1,
+                    total_steps: 1,
+                    step_results: vec![], // TypeScript workflows don't have individual step results
+                    execution_time_ms,
+                    screenshot_urls,
+                })
+            }
+            Err(e) => {
+                error!("TypeScript workflow execution failed: {}", e);
+                Ok(WorkflowResult {
+                    success: false,
+                    message: "TypeScript workflow execution failed".to_string(),
+                    state: WorkflowState::Exception,
+                    error: Some(e.to_string()),
+                    data: None,
+                    steps_completed: 0,
+                    total_steps: 1,
+                    step_results: vec![],
+                    execution_time_ms,
+                    screenshot_urls: vec![],
+                })
+            }
+        }
     }
 
     /// Generate a unique machine ID

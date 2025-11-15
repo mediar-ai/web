@@ -57,9 +57,6 @@ impl WorkflowService {
         let sequence = self
             .load_workflow_sequence(&workflow, request.execution_params.as_ref())
             .await?;
-        
-        // DEBUG: Log loaded sequence
-        error!("DEBUG - Loaded sequence: {:?}", sequence);
 
         // Validate sequence
         sequence
@@ -150,12 +147,11 @@ impl WorkflowService {
     async fn load_workflow_sequence(
         &self,
         workflow: &Workflow,
-        execution_params: Option<&Value>,
+        _execution_params: Option<&Value>,
     ) -> Result<WorkflowSequence> {
-        // Check if this is a TypeScript workflow
+        // TypeScript workflows should not use this method - they are handled differently in queue_processor
         if workflow.preferred_format.as_deref() == Some("typescript") {
-            info!("Detected TypeScript workflow, building file:// URL execution");
-            return self.build_typescript_workflow_sequence(workflow, execution_params).await;
+            anyhow::bail!("TypeScript workflows should be executed directly via MCP, not through WorkflowSequence");
         }
 
         // Priority 1: Load from GitHub if configured
@@ -197,57 +193,6 @@ impl WorkflowService {
         anyhow::bail!("No automation sequence found for workflow")
     }
 
-    /// Build a workflow sequence for TypeScript workflows
-    /// Creates a special sequence that calls execute_sequence with url parameter
-    async fn build_typescript_workflow_sequence(
-        &self,
-        workflow: &Workflow,
-        execution_params: Option<&Value>,
-    ) -> Result<WorkflowSequence> {
-        use crate::models::WorkflowSequence;
-        use serde_json::{json, Map, Value};
-
-        // Get the clerk_organization_id for the workflow
-        // organization_id field contains the clerk_organization_id string directly (e.g., "org_2yynzGa53bNM1GTPLp5mc2lYRyD")
-        let clerk_org_id = if let Some(org_id) = &workflow.organization_id {
-            org_id.clone()
-        } else {
-            return Err(anyhow::anyhow!("Workflow has no organization_id"));
-        };
-
-        // Build S:\ path on the VM where MCP server runs
-        // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
-        let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
-
-        // Try different possible file locations (MCP server will use the URL as-is)
-        // Default to src/terminator.ts as it's the most common
-        let file_url = format!("file://{}/src/terminator.ts", workflow_base_path);
-
-        info!("TypeScript workflow URL: {}", file_url);
-
-        // Build arguments object with url parameter
-        let mut args = Map::new();
-        args.insert("url".to_string(), Value::String(file_url));
-
-        // Add inputs from execution_params if available
-        if let Some(params) = execution_params {
-            args.insert("inputs".to_string(), params.clone());
-        }
-
-        // Build the workflow sequence with a single step that calls execute_sequence
-        let yaml_content = json!({
-            "steps": [{
-                "id": "typescript_execution",
-                "tool_name": "execute_sequence",
-                "arguments": args,
-                "description": format!("Execute TypeScript workflow: {}", workflow.name)
-            }],
-            "stop_on_error": true,
-            "include_detailed_results": true
-        });
-
-        WorkflowSequence::from_value(yaml_content)
-    }
 
     /// Get execution status
     pub async fn get_execution(&self, execution_id: i64) -> Result<Option<WorkflowExecution>> {
