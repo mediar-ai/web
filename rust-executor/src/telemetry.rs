@@ -117,6 +117,7 @@ fn init_telemetry_provider(otlp_endpoint: &str) -> anyhow::Result<()> {
 
 
 /// Shutdown OpenTelemetry cleanly
+#[allow(dead_code)]
 pub fn shutdown_telemetry() {
     opentelemetry::global::shutdown_tracer_provider();
 }
