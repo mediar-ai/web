@@ -61,6 +61,7 @@ impl WorkflowQueries {
         Ok(workflow)
     }
 
+    #[allow(dead_code)]
     pub async fn get_workflow_by_version(
         pool: &Pool<Postgres>,
         version: &str,
@@ -241,6 +242,7 @@ impl WorkflowQueries {
     }
 
     /// Update execution with screenshot URLs
+    #[allow(dead_code)]
     pub async fn update_execution_screenshots(
         pool: &Pool<Postgres>,
         execution_id: i64,

@@ -17,6 +17,7 @@ use tracing::{debug, info, warn};
 #[derive(Clone)]
 pub enum McpTransport {
     Http(String),
+    #[allow(dead_code)]
     Stdio(Vec<String>),
 }
 
@@ -51,6 +52,7 @@ impl McpClient {
         Self::new(McpTransport::Http(normalized_url))
     }
 
+    #[allow(dead_code)]
     pub fn from_command(command: Vec<String>) -> Self {
         Self::new(McpTransport::Stdio(command))
     }
@@ -184,6 +186,7 @@ impl McpClient {
     }
 
     /// Execute a tool with retry logic
+    #[allow(dead_code)]
     pub async fn execute_tool_with_retry(
         &self,
         tool_name: String,
@@ -343,6 +346,7 @@ impl McpClient {
     }
 
     /// List all available tools
+    #[allow(dead_code)]
     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
         match &self.transport {
             McpTransport::Http(url) => {
