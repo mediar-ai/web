@@ -208,25 +208,9 @@ impl WorkflowService {
         use serde_json::{json, Map, Value};
 
         // Get the clerk_organization_id for the workflow
-        let clerk_org_id = if let Some(org_id) = workflow.organization_id {
-            // Fetch clerk_organization_id from database
-            let row = sqlx::query(
-                r#"
-                SELECT clerk_organization_id 
-                FROM organizations 
-                WHERE id = $1
-                "#,
-            )
-            .bind(org_id)
-            .fetch_optional(&self.db_pool)
-            .await?;
-
-            if let Some(row) = row {
-                let clerk_id: String = row.get("clerk_organization_id");
-                clerk_id
-            } else {
-                return Err(anyhow::anyhow!("Organization not found for workflow"));
-            }
+        // organization_id field contains the clerk_organization_id string directly (e.g., "org_2yynzGa53bNM1GTPLp5mc2lYRyD")
+        let clerk_org_id = if let Some(org_id) = &workflow.organization_id {
+            org_id.clone()
         } else {
             return Err(anyhow::anyhow!("Workflow has no organization_id"));
         };
