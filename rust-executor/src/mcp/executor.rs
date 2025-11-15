@@ -3,6 +3,7 @@ use serde_json::{Map, Value};
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
 
+use crate::logging::LogBuffer;
 use crate::mcp::McpClient;
 use crate::models::{
     ErrorStrategy, StepResult, StepStatus, WorkflowResult, WorkflowSequence, WorkflowState,
@@ -16,6 +17,7 @@ pub struct WorkflowExecutor {
     execution_id: i64,
     organization_id: Option<i64>,
     storage: Option<SupabaseStorage>,
+    pub log_buffer: LogBuffer,
 }
 
 impl WorkflowExecutor {
@@ -24,6 +26,16 @@ impl WorkflowExecutor {
         sequence: WorkflowSequence,
         execution_id: i64,
         organization_id: Option<i64>,
+    ) -> Self {
+        Self::with_log_buffer(client, sequence, execution_id, organization_id, LogBuffer::new())
+    }
+
+    pub fn with_log_buffer(
+        client: McpClient,
+        sequence: WorkflowSequence,
+        execution_id: i64,
+        organization_id: Option<i64>,
+        log_buffer: LogBuffer,
     ) -> Self {
         // Initialize storage if environment variables are available
         let storage = match (
@@ -54,6 +66,7 @@ impl WorkflowExecutor {
             execution_id,
             organization_id,
             storage,
+            log_buffer,
         }
     }
 
@@ -69,6 +82,15 @@ impl WorkflowExecutor {
         info!(
             "Starting workflow execution {} with {} steps",
             self.execution_id, total_steps
+        );
+
+        // Log the start of execution
+        self.log_buffer.log(
+            "INFO",
+            format!(
+                "Starting workflow execution ID: {} with {} steps",
+                self.execution_id, total_steps
+            ),
         );
 
         // Process variables
@@ -114,15 +136,26 @@ impl WorkflowExecutor {
         error!("DEBUG - Step tool_name: {:?}", step.tool_name);
         error!("DEBUG - Step group_name: {:?}", step.group_name);
 
+            let step_name = step.tool_name
+                .as_ref()
+                .or(step.group_name.as_ref())
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+
             info!(
                 "Executing step {}/{}: {} ({})",
                 index + 1,
                 total_steps,
-                step.tool_name
-                    .as_ref()
-                    .or(step.group_name.as_ref())
-                    .unwrap_or(&"unknown".to_string()),
+                step_name,
                 step_id
+            );
+
+            // Log step execution
+            self.log_buffer.log_step(
+                "INFO",
+                format!("Executing step {}/{}: {}", index + 1, total_steps, step_name),
+                Some(step_id.clone()),
+                Some(step_name.clone()),
             );
 
             let step_result = self.execute_step(step, &variables).await;
@@ -146,9 +179,25 @@ impl WorkflowExecutor {
                     }
 
                     info!("Step {} completed successfully", step_id);
+
+                    // Log step completion
+                    self.log_buffer.log_step(
+                        "INFO",
+                        format!("Step {} completed successfully", step_id),
+                        Some(step_id.clone()),
+                        Some(result.tool_name.clone()),
+                    );
                 }
                 Err(e) => {
                     error!("Step {} failed: {}", step_id, e);
+
+                    // Log step failure
+                    self.log_buffer.log_step(
+                        "ERROR",
+                        format!("Step {} failed: {}", step_id, e),
+                        Some(step_id.clone()),
+                        Some(step_name.clone()),
+                    );
 
                     let failed_result = StepResult {
                         step_id: step_id.clone(),
