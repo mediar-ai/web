@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { messages, executionId, contextData } = body;
+    const { messages, executionId, contextData, model = 'gemini-2.5-pro' } = body;
 
     // Check if context was provided by the frontend
     if (contextData) {
@@ -1443,8 +1443,8 @@ Answer the user's question helpfully and thoroughly by using the available tools
     });
 
     // Get the model with tools
-    const model = vertexAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: model,
       tools:
         functionDeclarations.length > 0
           ? [{ functionDeclarations }]
@@ -1467,11 +1467,11 @@ Answer the user's question helpfully and thoroughly by using the available tools
     const userMessage = messages[messages.length - 1].content;
 
     console.log(
-      `[Q&A API] Starting conversation with ${history.length} previous messages`
+      `[Q&A API] Starting conversation with ${history.length} previous messages using ${model}`
     );
 
     // Start chat
-    const chat = model.startChat({ history: history as any });
+    const chat = generativeModel.startChat({ history: history as any });
 
     // Multi-turn conversation loop
     let finalText = '';

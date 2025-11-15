@@ -101,6 +101,7 @@ impl LogBuffer {
     }
 
     /// Clear all log entries
+    #[allow(dead_code)]
     pub fn clear(&self) {
         if let Ok(mut entries) = self.entries.lock() {
             entries.clear();
@@ -108,6 +109,7 @@ impl LogBuffer {
     }
 
     /// Get the number of log entries
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         if let Ok(entries) = self.entries.lock() {
             entries.len()
