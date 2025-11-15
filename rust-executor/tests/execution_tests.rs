@@ -1,5 +1,4 @@
 use serde_json::json;
-use uuid::Uuid;
 use workflow_executor::models::{
     ExecutionRequest, ExecutionStatus, StepResult, StepStatus, WorkflowResult, WorkflowState,
 };
@@ -70,7 +69,7 @@ fn test_execution_status_serialization() {
 #[test]
 fn test_execution_request() {
     let request = ExecutionRequest {
-        workflow_id: Uuid::new_v4(),
+        workflow_id: 123, // Use i64 instead of Uuid
         execution_params: Some(json!({
             "param1": "value1",
             "param2": 123
