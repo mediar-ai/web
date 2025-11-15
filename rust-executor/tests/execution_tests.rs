@@ -89,15 +89,15 @@ fn test_execution_request() {
 
 #[test]
 fn test_step_status_transitions() {
-    let mut status = StepStatus::Pending;
+    let mut _status = StepStatus::Pending;
 
     // Valid transition: Pending -> Running
-    status = StepStatus::Running;
-    assert_eq!(status, StepStatus::Running);
+    _status = StepStatus::Running;
+    assert_eq!(_status, StepStatus::Running);
 
     // Valid transition: Running -> Success
-    status = StepStatus::Success;
-    assert_eq!(status, StepStatus::Success);
+    _status = StepStatus::Success;
+    assert_eq!(_status, StepStatus::Success);
 
     // Test all status values
     let all_statuses = vec![
