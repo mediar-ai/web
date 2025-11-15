@@ -17,7 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight, Monitor } from 'lucide-react';
+import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight, Monitor, Info, Search } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
@@ -250,6 +250,23 @@ export function ExecutionDetailsDialog({
   });
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
   const [isDownloadingResults, setIsDownloadingResults] = useState(false);
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+
+  // Helper function to highlight search query in text
+  const highlightText = (text: string, query: string) => {
+    if (!query || !text) return text;
+
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, index) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <span key={index} className="bg-black text-white px-0.5 rounded">
+          {part}
+        </span>
+      ) : (
+        part
+      )
+    );
+  };
 
   // Helper function to open file in Windows Explorer or with default app
   const openFileInExplorer = async (filePath: string, action: 'select' | 'open' = 'select') => {
@@ -675,8 +692,14 @@ export function ExecutionDetailsDialog({
         >
           <div className="px-6">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="logs">Orchestrator server logs</TabsTrigger>
+              <TabsTrigger value="summary" className="flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                Summary
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="flex items-center gap-1">
+                <Terminal className="w-3 h-3" />
+                Logs
+              </TabsTrigger>
               <TabsTrigger value="qa" className="flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
                 Q&A
@@ -975,39 +998,59 @@ export function ExecutionDetailsDialog({
                           </Button>
                         </div>
                       </div>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search logs..."
+                          value={logSearchQuery}
+                          onChange={(e) => setLogSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
+                        />
+                      </div>
                       <div className="flex-1 min-h-0 overflow-auto border border-black rounded-md bg-white p-4">
-                        {executionLogs.map((log, idx) => (
-                          <div
-                            key={idx}
-                            className="flex gap-2 text-xs font-mono"
-                          >
-                            <span className="text-muted-foreground">
-                              {log.timestamp
-                                ? new Date(log.timestamp).toLocaleTimeString()
-                                : ''}
-                            </span>
-                            <Badge
-                              variant={
-                                log.level === 'error' ? 'outline' : 'secondary'
-                              }
-                              className={
-                                log.level === 'error'
-                                  ? 'border-black text-black'
-                                  : 'text-xs'
-                              }
+                        {executionLogs
+                          .filter(log => {
+                            if (!logSearchQuery) return true;
+                            const searchLower = logSearchQuery.toLowerCase();
+                            return (
+                              log.message?.toLowerCase().includes(searchLower) ||
+                              log.level?.toLowerCase().includes(searchLower) ||
+                              (log.timestamp && new Date(log.timestamp).toLocaleTimeString().toLowerCase().includes(searchLower))
+                            );
+                          })
+                          .map((log, idx) => (
+                            <div
+                              key={idx}
+                              className="flex gap-2 text-xs font-mono"
                             >
-                              {log.level}
-                            </Badge>
-                            <span className="flex-1">{log.message}</span>
-                          </div>
-                        ))}
+                              <span className="text-muted-foreground">
+                                {log.timestamp
+                                  ? highlightText(new Date(log.timestamp).toLocaleTimeString(), logSearchQuery)
+                                  : ''}
+                              </span>
+                              <Badge
+                                variant={
+                                  log.level === 'error' ? 'outline' : 'secondary'
+                                }
+                                className={
+                                  log.level === 'error'
+                                    ? 'border-black text-black'
+                                    : 'text-xs'
+                                }
+                              >
+                                {log.level}
+                              </Badge>
+                              <span className="flex-1">{highlightText(log.message, logSearchQuery)}</span>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   ) : (
                     <Alert className="text-center">
                       <Terminal className="h-4 w-4" />
                       <AlertDescription>
-                        No orchestrator server logs available for this run.
+                        No logs available for this run.
                       </AlertDescription>
                     </Alert>
                   )}
