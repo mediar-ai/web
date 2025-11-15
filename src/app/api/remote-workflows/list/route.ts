@@ -515,9 +515,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Build query with filters - using statistics summary view for version-specific stats
+    // Desktop app (version=latest) uses latest version, web app uses active version
     // Only fetch workflows this org has access to
+    const statsViewName = versionParam === 'latest'
+      ? 'workflow_statistics_summary_latest'  // Desktop: uses latest version by created_at
+      : 'workflow_statistics_summary';         // Web: uses active version
+
     let query = supabase
-      .from('workflow_statistics_summary')
+      .from(statsViewName)
       .select(
         `
         id,
