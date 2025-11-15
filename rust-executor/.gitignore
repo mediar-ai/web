@@ -6,3 +6,9 @@ target/
 .env.*
 !.env.example
 deploy_output*.txt
+
+# Test files
+test_*.sql
+test_*.js
+test_*.sh
+run-test.sh
