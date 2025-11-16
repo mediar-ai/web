@@ -148,9 +148,9 @@ impl McpClient {
             return Ok(());
         }
 
-        // Create new service with retry logic for 503s
-        let max_retries = 5;
-        let mut backoff = Duration::from_millis(500);
+        // Create new service with retry logic for 503s and connection issues
+        let max_retries = 10;  // Increased from 5 to give more chances
+        let mut backoff = Duration::from_secs(1);  // Start with 1 second instead of 500ms
 
         for attempt in 0..=max_retries {
             info!(
@@ -167,6 +167,33 @@ impl McpClient {
                 }
                 Err(e) => {
                     let error_str = e.to_string();
+                    warn!(
+                        "Failed to connect to MCP server at {} (attempt {}/{}): {}",
+                        url, attempt + 1, max_retries + 1, error_str
+                    );
+
+                    // Log more specific error details
+                    if error_str.contains("deadline has elapsed") || error_str.contains("timed out") {
+                        warn!("Connection timed out - MCP server may be unreachable from this network");
+                    } else if error_str.contains("Connection refused") {
+                        warn!("Connection refused - MCP server is not listening on this port");
+                    } else if error_str.contains("401") || error_str.contains("Unauthorized") {
+                        warn!("Authentication failed - check Bearer token");
+                    }
+
+                    // Log to buffer if available
+                    if let Some(ref log_buffer) = self.log_buffer {
+                        log_buffer.log_step(
+                            "error",
+                            format!("{} - workflow_executor - ERROR - Failed to connect to MCP at {}: {}",
+                                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                                url,
+                                error_str),
+                            None,
+                            None,
+                        );
+                    }
+
                     if error_str.contains("503") && attempt < max_retries {
                         warn!(
                             "Received 503 from MCP server. Backing off for {:?}",
@@ -174,8 +201,13 @@ impl McpClient {
                         );
                         sleep(backoff).await;
                         backoff = backoff.saturating_mul(2);
+                    } else if attempt < max_retries {
+                        // Retry for any connection error
+                        warn!("Retrying connection after {:?}", backoff);
+                        sleep(backoff).await;
+                        backoff = backoff.saturating_mul(2);
                     } else {
-                        return Err(e).context("Failed to create HTTP MCP service after retries");
+                        return Err(e).context(format!("Failed to create HTTP MCP service at {} after {} retries", url, max_retries + 1));
                     }
                 }
             }
@@ -184,9 +216,30 @@ impl McpClient {
         unreachable!("Loop should always return in the last iteration");
     }
 
-    /// Create a new HTTP service connection
+    /// Create a new HTTP service connection with authentication
     async fn create_http_service(url: &str) -> Result<RunningService<RoleClient, ClientInfo>> {
-        let transport = StreamableHttpClientTransport::from_uri(url);
+        // Create a custom reqwest client with authentication header
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            reqwest::header::HeaderValue::from_static("Bearer ***REMOVED***"),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("application/json, text/event-stream"),
+        );
+
+        let http_client = reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(Duration::from_secs(120))  // 2 minute timeout for npm install
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .context("Failed to create HTTP client")?;
+
+        // Create config for the transport with increased timeout
+        let mut config = rmcp::transport::StreamableHttpClientTransportConfig::from_uri(url);
+
+        let transport = StreamableHttpClientTransport::with_client(http_client, config);
 
         let client_info = ClientInfo {
             protocol_version: Default::default(),
@@ -197,10 +250,15 @@ impl McpClient {
             },
         };
 
-        client_info
-            .serve(transport)
-            .await
-            .context("Failed to connect to MCP server via HTTP")
+        // Try to establish connection with timeout
+        match tokio::time::timeout(
+            Duration::from_secs(30),
+            client_info.serve(transport)
+        ).await {
+            Ok(Ok(service)) => Ok(service),
+            Ok(Err(e)) => Err(e).context("Failed to connect to MCP server via HTTP"),
+            Err(_) => Err(anyhow::anyhow!("Timeout connecting to MCP server after 30s"))
+        }
     }
 
     /// Execute a tool with retry logic
