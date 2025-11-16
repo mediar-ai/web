@@ -1,6 +1,6 @@
 /**
  * API endpoint for storing and retrieving dev execution logs
- * Logs are stored in Redis with 48-hour TTL for short-term debugging
+ * Logs are stored in Redis with 30-day TTL for debugging and historical analysis
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -8,7 +8,7 @@ import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getRedisClient } from '@/lib/redis-client';
 import { getCorsHeaders } from '@/lib/cors';
 
-const DEV_LOG_TTL = 60 * 60 * 48; // 48 hours
+const DEV_LOG_TTL = 60 * 60 * 24 * 30; // 30 days
 
 /**
  * OPTIONS: Handle CORS preflight
@@ -100,12 +100,12 @@ export async function POST(request: NextRequest) {
     await redis.zAdd(userListKey, { score: timestamp, value: execution_id });
     await redis.expire(userListKey, DEV_LOG_TTL);
 
-    console.log(`[DEV LOGS] ✓ Stored execution ${execution_id} (TTL: 48h)`);
+    console.log(`[DEV LOGS] ✓ Stored execution ${execution_id} (TTL: 30 days)`);
 
     return NextResponse.json({
       success: true,
       execution_id,
-      ttl_hours: 48,
+      ttl_hours: 720, // 30 days
       message: 'Execution logs stored successfully'
     }, { headers: corsHeaders });
 

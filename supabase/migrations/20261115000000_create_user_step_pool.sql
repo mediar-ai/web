@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS user_step_pool (
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW()),
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW()),
-    expires_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW() + INTERVAL '7 days') -- Auto-cleanup old steps
+    expires_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW() + INTERVAL '30 days') -- Auto-cleanup old steps
 );
 
 -- Indexes for efficient queries
