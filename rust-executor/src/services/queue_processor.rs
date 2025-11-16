@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::logging::LogBuffer;
 use crate::mcp::{McpClient, WorkflowExecutor};
-use crate::models::{ExecutionStatus, WorkflowSequence};
-use crate::services::{GitHubLoader, MonitorClient, WorkflowService};
+use crate::models::{ExecutionStatus, WorkflowSequence, WorkflowState, WorkflowResult, StepStatus};
+use crate::services::{GitHubLoader, MonitorClient, WorkflowService, format_success, format_failure, format_exception};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
@@ -207,18 +207,49 @@ impl QueueProcessor {
 
                     // Always create formatted_output regardless of success/failure
                     let formatted_output = if workflow_result.success {
-                        workflow_result.data.clone().or_else(|| Some(serde_json::json!({
-                            "success": workflow_result.success,
-                            "message": workflow_result.message.clone()
-                        })))
+                        // Use format_success for successful executions
+                        Some(format_success(
+                            &workflow_result.message,
+                            workflow_result.data.as_ref(),
+                            workflow_result.execution_time_ms
+                        ))
                     } else {
-                        // For failures, create formatted output with error details
-                        Some(serde_json::json!({
-                            "success": false,
-                            "error": workflow_result.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                            "message": workflow_result.message.clone(),
-                            "data": workflow_result.data.clone()
-                        }))
+                        // Use format_failure for failed executions
+                        // Convert step_results to Value array
+                        let step_results_values: Vec<serde_json::Value> = workflow_result.step_results
+                            .iter()
+                            .map(|sr| serde_json::to_value(sr).unwrap_or(serde_json::json!({})))
+                            .collect();
+
+                        // If we have step_results from TypeScript workflow in data, use those
+                        let step_results = if let Some(data) = &workflow_result.data {
+                            if let Some(steps) = data.get("step_results").and_then(|v| v.as_array()) {
+                                steps.clone()
+                            } else if let Some(steps) = data.get("steps").and_then(|v| v.as_array()) {
+                                steps.clone()
+                            } else {
+                                step_results_values
+                            }
+                        } else {
+                            step_results_values
+                        };
+
+                        // Determine error type and stage
+                        let error_type = match workflow_result.state {
+                            WorkflowState::Exception => "Exception",
+                            WorkflowState::Failure => "WorkflowFailure",
+                            _ => "Error"
+                        };
+
+                        let error_stage = "workflow_execution";
+
+                        Some(format_failure(
+                            &workflow_result.error.clone().unwrap_or_else(|| "Workflow execution failed".to_string()),
+                            error_type,
+                            error_stage,
+                            &step_results,
+                            workflow_result.execution_time_ms
+                        ))
                     };
 
                     WorkflowQueries::update_execution_status_with_logs(
@@ -279,13 +310,11 @@ impl QueueProcessor {
                     let raw_logs = log_buffer.to_text();
                     let execution_logs = log_buffer.to_json();
 
-                    // For errors, create formatted_output with error details
-                    let formatted_output = Some(serde_json::json!({
-                        "success": false,
-                        "error": e.to_string(),
-                        "message": format!("Workflow execution failed: {}", e),
-                        "error_type": "exception"
-                    }));
+                    // For errors, use format_exception with detailed error formatting
+                    let formatted_output = Some(format_exception(
+                        &e.to_string(),
+                        execution_time as u64 * 1000  // Convert seconds to milliseconds
+                    ));
 
                     WorkflowQueries::update_execution_status_with_logs(
                         &self.db_pool,
@@ -377,7 +406,6 @@ impl QueueProcessor {
         execution: &crate::models::WorkflowExecution,
         log_buffer: &LogBuffer,
     ) -> Result<crate::models::WorkflowResult> {
-        use crate::models::{WorkflowResult, WorkflowState};
         use serde_json::{Map, Value};
         use std::time::Instant;
         use tracing::debug;
@@ -752,15 +780,41 @@ impl QueueProcessor {
                     WorkflowState::Failure
                 };
 
+                // Extract step results from the tool_result if available
+                let step_results = tool_result
+                    .as_object()
+                    .and_then(|o| o.get("step_results"))
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| {
+                        // Try to convert JSON values to StepResult structs
+                        let results: Vec<crate::models::StepResult> = arr.iter()
+                            .filter_map(|step| {
+                                serde_json::from_value(step.clone()).ok()
+                            })
+                            .collect();
+                        if results.is_empty() {
+                            None
+                        } else {
+                            Some(results)
+                        }
+                    })
+                    .unwrap_or_else(Vec::new);
+
+                // Calculate steps completed based on step results
+                let steps_completed = step_results.iter()
+                    .filter(|sr| sr.status == StepStatus::Success)
+                    .count() as u32;
+                let total_steps = step_results.len() as u32;
+
                 Ok(WorkflowResult {
                     success,
                     message,
                     state,
                     error,
                     data: Some(tool_result),
-                    steps_completed: 1,
-                    total_steps: 1,
-                    step_results: vec![], // TypeScript workflows don't have individual step results
+                    steps_completed: if total_steps > 0 { steps_completed } else { 1 },
+                    total_steps: if total_steps > 0 { total_steps } else { 1 },
+                    step_results,
                     execution_time_ms,
                     screenshot_urls,
                 })
