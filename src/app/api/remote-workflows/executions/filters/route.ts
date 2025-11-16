@@ -104,12 +104,14 @@ export async function GET(request: NextRequest) {
     // Use check_machine_access function to filter by organization
     const { data: allMachinesData, error: machinesError } = await supabase
       .from('remote_machines')
-      .select('id, name')
+      .select('id, name, is_global')
       .order('name');
 
     if (machinesError) {
       console.error('[Filters API] Error fetching machines:', machinesError);
     }
+
+    console.log(`[Filters API] Total machines in DB: ${allMachinesData?.length || 0}, checking access for org: ${orgId}`);
 
     // Filter machines by organization access
     const accessibleMachines = [];
@@ -122,9 +124,11 @@ export async function GET(request: NextRequest) {
           });
 
         if (accessError) {
-          console.error(`[Filters API] Failed to check access for machine ${machine.id}:`, accessError);
+          console.error(`[Filters API] Failed to check access for machine ${machine.id} (${machine.name}):`, accessError);
           continue;
         }
+
+        console.log(`[Filters API] Machine "${machine.name}" (id:${machine.id}, is_global:${machine.is_global}) -> hasAccess: ${hasAccess}`);
 
         if (hasAccess) {
           accessibleMachines.push(machine.name);
@@ -133,7 +137,7 @@ export async function GET(request: NextRequest) {
     }
 
     const uniqueMachines = Array.from(new Set(accessibleMachines.filter(Boolean))).sort();
-    console.log('[Filters API] Accessible machines for org:', uniqueMachines.length, uniqueMachines);
+    console.log(`[Filters API] Final accessible machines for org ${orgId}: ${uniqueMachines.length}`, uniqueMachines);
 
     return NextResponse.json({
       success: true,
