@@ -79,7 +79,7 @@ interface SessionData {
   updatedAt: string;
 }
 
-const KV_SESSION_TTL = 60 * 60 * 24; // 24 hours
+const KV_SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 const KV_SESSION_PREFIX = 'ai-session:';
 
 // Helpers ------------------------------------------------------------
