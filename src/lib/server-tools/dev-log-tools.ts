@@ -173,7 +173,7 @@ export async function executeDevLogTool(
     if (!latestExecutionId) {
       return {
         error: 'No recent execution logs found',
-        message: `No dev execution logs found for workflow ${workflow_id}. The user needs to run the workflow in the desktop app first. Logs are stored for 48 hours after execution.`,
+        message: `No dev execution logs found for workflow ${workflow_id}. The user needs to run the workflow in the desktop app first. Logs are stored for 30 days after execution.`,
         workflow_id
       };
     }
@@ -185,7 +185,7 @@ export async function executeDevLogTool(
     if (!executionData) {
       return {
         error: 'Execution logs expired',
-        message: 'The execution logs have expired (TTL: 48 hours). Please run the workflow again to generate new logs.',
+        message: 'The execution logs have expired (TTL: 30 days). Please run the workflow again to generate new logs.',
         execution_id: latestExecutionId
       };
     }
