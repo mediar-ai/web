@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     // Fetch the current workflow
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, automation_sequence_yaml, version, total_versions')
+      .select('id, name, automation_sequence, automation_sequence_yaml, version, total_versions')
       .eq('id', workflow_id)
       .single();
 
@@ -132,6 +132,8 @@ export async function POST(request: NextRequest) {
     const newStepsYaml = convertStepsToYaml(steps);
 
     let updatedYaml;
+    let updatedJson;
+
     if (append_to_workflow && workflow.automation_sequence_yaml) {
       // Append to existing YAML
       const existingYaml = workflow.automation_sequence_yaml;
@@ -144,42 +146,41 @@ export async function POST(request: NextRequest) {
       } else {
         updatedYaml = existingYaml + '\n\n' + newStepsYaml;
       }
+
+      // Create JSON representation
+      const existingSteps = workflow.automation_sequence?.steps || [];
+      const newJsonSteps = steps.map(step => ({
+        id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        tool: step.tool_name,
+        name: step.step_name || step.tool_name,
+        arguments: step.arguments || {}
+      }));
+      updatedJson = {
+        steps: [...existingSteps, ...newJsonSteps]
+      };
     } else {
       // Replace with new steps only
       updatedYaml = newStepsYaml;
+      updatedJson = {
+        steps: steps.map(step => ({
+          id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          tool: step.tool_name,
+          name: step.step_name || step.tool_name,
+          arguments: step.arguments || {}
+        }))
+      };
     }
 
-    // Create a new version in deployed_workflow_versions table
-    const newVersion = incrementVersion(workflow.version || '1.0.0');
+    // Update the workflow - the database trigger will automatically:
+    // 1. Create a new version in deployed_workflow_versions
+    // 2. Increment the version number
+    // 3. Update total_versions and current_version_id
+    console.log('[ADD-TO-WORKFLOW] Updating workflow (trigger will handle versioning)...');
 
-    const { data: newVersionRecord, error: versionError } = await supabase
-      .from('deployed_workflow_versions')
-      .insert({
-        workflow_id: workflow_id,
-        version_number: newVersion,
-        automation_sequence_yaml: updatedYaml,
-        is_active: false, // Not active by default
-        created_by: authenticatedUserId,
-        change_notes: `Added ${steps.length} step(s) from pool`,
-        preferred_format: 'yaml'
-      })
-      .select()
-      .single();
-
-    if (versionError) {
-      console.error('Error creating new version:', versionError);
-      return NextResponse.json(
-        { success: false, error: 'Failed to create new workflow version' },
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    // Update the workflow with new version info and current_version_id
     const updatePayload = {
+      automation_sequence: updatedJson,
       automation_sequence_yaml: updatedYaml,
-      version: newVersion,
-      total_versions: (workflow.total_versions || 0) + 1,
-      current_version_id: newVersionRecord.id,
+      created_by: authenticatedUserId, // Needed for trigger's created_by field
       updated_at: new Date().toISOString()
     };
 
@@ -197,6 +198,12 @@ export async function POST(request: NextRequest) {
         { status: 500, headers: corsHeaders }
       );
     }
+
+    console.log('[ADD-TO-WORKFLOW] Workflow updated successfully:', {
+      version: updatedWorkflow.version,
+      total_versions: updatedWorkflow.total_versions,
+      current_version_id: updatedWorkflow.current_version_id
+    });
 
     // Mark steps as added to workflow
     const { error: markError } = await supabase
@@ -246,13 +253,4 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: corsHeaders }
     );
   }
-}
-
-// Helper function to increment semantic version
-function incrementVersion(version: string): string {
-  const parts = version.split('.');
-  if (parts.length !== 3) return '1.0.1';
-
-  const patch = parseInt(parts[2]) || 0;
-  return `${parts[0]}.${parts[1]}.${patch + 1}`;
 }
