@@ -72,9 +72,7 @@ async fn main() -> Result<()> {
 
             start_server(port).await
         }
-        Some(Commands::Run { machine, workflow }) => {
-            run_workflow_directly(machine, workflow).await
-        }
+        Some(Commands::Run { machine, workflow }) => run_workflow_directly(machine, workflow).await,
     }
 }
 
@@ -187,7 +185,10 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         _ => {
             // Try to look up machine by name in database
             // For now, return an error
-            return Err(anyhow::anyhow!("Unknown machine: {}. Use vm1, vm2, or provide a full MCP endpoint URL", machine));
+            return Err(anyhow::anyhow!(
+                "Unknown machine: {}. Use vm1, vm2, or provide a full MCP endpoint URL",
+                machine
+            ));
         }
     };
 
@@ -204,7 +205,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         // Query database for workflow
         let query = r#"
             SELECT id::text
-            FROM workflows
+            FROM deployed_workflows
             WHERE name = $1 OR github_folder = $1
             LIMIT 1
         "#;
@@ -227,47 +228,83 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
 
     info!("Workflow ID: {}", workflow_id);
 
-    // Create a workflow execution
-    let execution_id = uuid::Uuid::new_v4();
-    let query = r#"
-        INSERT INTO workflow_executions
-        (id, workflow_id, status, parameters, machine_id, created_at, updated_at)
-        VALUES ($1, $2, 'queued', '{}', $3, NOW(), NOW())
-        RETURNING id::text
-    "#;
+    // Parse workflow_id as integer (deployed_workflows uses integer IDs)
+    let workflow_id_int: i64 = workflow_id
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid workflow ID '{}': {}", workflow_id, e))?;
 
-    sqlx::query_scalar::<_, String>(query)
-        .bind(&execution_id)
-        .bind(&uuid::Uuid::parse_str(&workflow_id)?)
-        .bind(&machine)
-        .fetch_one(&db_pool)
-        .await?;
+    // Get workflow details to check if it's TypeScript
+    let workflow = db::queries::WorkflowQueries::get_workflow(&db_pool, workflow_id_int)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Workflow not found: {}", workflow_id_int))?;
 
-    info!("Created execution: {}", execution_id);
-    eprintln!("Created execution: {}", execution_id);
+    // Check if this is a TypeScript workflow
+    if workflow.preferred_format.as_deref() == Some("typescript") {
+        info!("Detected TypeScript workflow - executing via execute_sequence MCP tool");
+        eprintln!("📦 TypeScript workflow detected");
 
-    // Get workflow information from database
-    let workflow_query = r#"
-        SELECT id::text, json_id
-        FROM workflows
-        WHERE id = $1
-        LIMIT 1
-    "#;
+        // Get the github_folder which maps to the local path on the VM
+        let github_folder = workflow
+            .github_folder
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing github_folder"))?;
 
-    let workflow_info = sqlx::query_as::<_, (String, Option<i64>)>(workflow_query)
-        .bind(&uuid::Uuid::parse_str(&workflow_id)?)
-        .fetch_one(&db_pool)
-        .await?;
+        // The Windows VMs have S3 bucket mounted to S: drive via rclone
+        // Structure: S:\org-{clerk_org_id}\{github_folder}\
+        let vm_workflow_path = if let Some(org_id) = &workflow.organization_id {
+            format!("S:\\org-{}\\{}", org_id, github_folder)
+        } else {
+            // Fallback: if no org_id, just pass the folder name
+            eprintln!("⚠️  Warning: No organization_id found, passing folder name only");
+            github_folder.to_string()
+        };
 
-    let workflow_json_id = workflow_info.1
-        .ok_or_else(|| anyhow::anyhow!("Workflow missing json_id"))?;
+        info!("TypeScript workflow path on VM: {}", vm_workflow_path);
+        eprintln!("📁 VM workflow path: {}", vm_workflow_path);
+
+        // Create MCP client
+        let mcp_client = mcp::McpClient::from_url(mcp_endpoint.clone());
+
+        // Build execute_sequence arguments with the VM's local file path
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "url".to_string(),
+            serde_json::Value::String(vm_workflow_path),
+        );
+        args.insert("stop_on_error".to_string(), serde_json::Value::Bool(true));
+        args.insert(
+            "include_detailed_results".to_string(),
+            serde_json::Value::Bool(true),
+        );
+
+        eprintln!("🚀 Executing TypeScript workflow via MCP...");
+
+        // Execute via MCP execute_sequence tool
+        let result = mcp_client
+            .execute_tool_with_retry(
+                "execute_sequence".to_string(),
+                Some(args),
+                3, // max retries
+            )
+            .await?;
+
+        info!("TypeScript workflow execution completed");
+        eprintln!("✓ TypeScript workflow execution completed");
+        eprintln!("\nResult:");
+        eprintln!("{}", serde_json::to_string_pretty(&result)?);
+
+        return Ok(());
+    }
+
+    // For YAML workflows, use the normal execution path
+    info!("Executing YAML workflow via WorkflowService");
 
     // Create executor and run the workflow
     let executor = services::WorkflowService::new(db_pool.clone());
 
     // Create execution request
     let request = ExecutionRequest {
-        workflow_id: workflow_json_id,
+        workflow_id: workflow_id_int,
         execution_params: Some(serde_json::json!({})),
         client_id: None,
         version_number: None,
@@ -279,7 +316,6 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         Ok(_) => {
             info!("✓ Workflow execution completed successfully");
             eprintln!("✓ Workflow execution completed successfully");
-            eprintln!("Execution ID: {}", execution_id);
         }
         Err(e) => {
             error!("✗ Workflow execution failed: {}", e);
