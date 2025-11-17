@@ -82,7 +82,8 @@ export const serverSideTools = {
         }
 
         // Direct database call - no HTTP request needed!
-        const { data, error } = await getSupabaseClient().rpc('search_rpa_kb_two_stage', {
+        // Type assertion needed because createClient doesn't have database schema types
+        const { data, error } = await (getSupabaseClient().rpc as any)('search_rpa_kb_two_stage', {
           search_query: params.search_query || params.similarity_query,
           query_embedding: query_embedding ? `[${query_embedding.join(',')}]` : null,
           embedding_type: params.embedding_type || 'workflow',
