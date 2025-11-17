@@ -100,12 +100,19 @@ echo ""
 echo "📋 Step 4: Building and pushing Docker image..."
 echo "🏗️  Building $IMAGE_NAME:$IMAGE_TAG in Azure..."
 
-# Use ACR build task for cloud-based build (faster, doesn't require local Docker)
+# Use optimized Dockerfile if available
+DOCKERFILE_PATH="${DOCKERFILE:-Dockerfile}"
+if [ -f "Dockerfile.optimized" ] && [ -z "$DOCKERFILE" ]; then
+    DOCKERFILE_PATH="Dockerfile.optimized"
+    echo "   ✅ Using optimized Dockerfile with cargo-chef caching"
+fi
+
+# Use ACR build task for cloud-based build with caching
 az acr build \
     --registry "$ACR_NAME" \
     --image "${IMAGE_NAME}:${IMAGE_TAG}" \
     --image "${IMAGE_NAME}:${ENVIRONMENT}-latest" \
-    --file Dockerfile \
+    --file "$DOCKERFILE_PATH" \
     . \
     --no-logs
 

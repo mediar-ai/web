@@ -1,4 +1,4 @@
-name: Deploy Rust Executor to Azure (Optimized)
+name: Deploy Rust Executor to Azure
 
 on:
   push:
@@ -6,37 +6,26 @@ on:
       - main
     paths:
       - 'rust-executor/**'
-      - '.github/workflows/deploy-rust-executor-optimized.yml'
-  workflow_dispatch:
+      - '.github/workflows/deploy-rust-executor.yml'
+  workflow_dispatch:  # Allow manual triggers from GitHub UI
 
 jobs:
-  # Run tests in parallel
-  test:
+  deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Rust with caching
+      - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          cache: true  # Cache ~/.cargo and target/
 
       - name: Run Tests
         run: |
           cd rust-executor
           cargo test --lib --tests --verbose
-
-  # Build and deploy in parallel with tests
-  deploy:
-    runs-on: ubuntu-latest
-    # Remove needs: [test] to run in parallel, or keep to run after tests pass
-    # needs: [test]  # Uncomment for safety (sequential)
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v1
@@ -53,10 +42,6 @@ jobs:
         run: |
           cd rust-executor
           chmod +x scripts/*.sh
-          # Use optimized Dockerfile if it exists, otherwise use default
-          if [ -f "Dockerfile.optimized" ]; then
-            export DOCKERFILE="Dockerfile.optimized"
-          fi
           ./scripts/deploy.sh dev
 
       - name: Test Health Endpoint
