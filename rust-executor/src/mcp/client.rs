@@ -19,7 +19,6 @@ use crate::logging::LogBuffer;
 #[derive(Clone)]
 pub enum McpTransport {
     Http(String),
-    #[allow(dead_code)]
     Stdio(Vec<String>),
 }
 
@@ -149,8 +148,8 @@ impl McpClient {
         }
 
         // Create new service with retry logic for 503s and connection issues
-        let max_retries = 10;  // Increased from 5 to give more chances
-        let mut backoff = Duration::from_secs(1);  // Start with 1 second instead of 500ms
+        let max_retries = 10; // Increased from 5 to give more chances
+        let mut backoff = Duration::from_secs(1); // Start with 1 second instead of 500ms
 
         for attempt in 0..=max_retries {
             info!(
@@ -169,11 +168,15 @@ impl McpClient {
                     let error_str = e.to_string();
                     warn!(
                         "Failed to connect to MCP server at {} (attempt {}/{}): {}",
-                        url, attempt + 1, max_retries + 1, error_str
+                        url,
+                        attempt + 1,
+                        max_retries + 1,
+                        error_str
                     );
 
                     // Log more specific error details
-                    if error_str.contains("deadline has elapsed") || error_str.contains("timed out") {
+                    if error_str.contains("deadline has elapsed") || error_str.contains("timed out")
+                    {
                         warn!("Connection timed out - MCP server may be unreachable from this network");
                     } else if error_str.contains("Connection refused") {
                         warn!("Connection refused - MCP server is not listening on this port");
@@ -207,7 +210,11 @@ impl McpClient {
                         sleep(backoff).await;
                         backoff = backoff.saturating_mul(2);
                     } else {
-                        return Err(e).context(format!("Failed to create HTTP MCP service at {} after {} retries", url, max_retries + 1));
+                        return Err(e).context(format!(
+                            "Failed to create HTTP MCP service at {} after {} retries",
+                            url,
+                            max_retries + 1
+                        ));
                     }
                 }
             }
@@ -219,8 +226,12 @@ impl McpClient {
     /// Create a new HTTP service connection with authentication
     async fn create_http_service(url: &str) -> Result<RunningService<RoleClient, ClientInfo>> {
         // Create config with authentication using the auth_header method (like terminator CLI)
-        let config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url)
-            .auth_header("Bearer ***REMOVED***");
+        // Note: auth_header expects just the token value, not the "Bearer " prefix
+        let config =
+            rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
+                url,
+            )
+            .auth_header("***REMOVED***");
 
         // Create transport with config (authentication is handled in the config)
         let transport = StreamableHttpClientTransport::with_client(reqwest::Client::new(), config);
@@ -235,13 +246,12 @@ impl McpClient {
         };
 
         // Try to establish connection with timeout
-        match tokio::time::timeout(
-            Duration::from_secs(30),
-            client_info.serve(transport)
-        ).await {
+        match tokio::time::timeout(Duration::from_secs(30), client_info.serve(transport)).await {
             Ok(Ok(service)) => Ok(service),
             Ok(Err(e)) => Err(e).context("Failed to connect to MCP server via HTTP"),
-            Err(_) => Err(anyhow::anyhow!("Timeout connecting to MCP server after 30s"))
+            Err(_) => Err(anyhow::anyhow!(
+                "Timeout connecting to MCP server after 30s"
+            )),
         }
     }
 
@@ -330,10 +340,13 @@ impl McpClient {
         if let Some(ref log_buffer) = self.log_buffer {
             log_buffer.log_step(
                 "INFO",
-                format!("MCP Request: {} -> {}", tool_name,
-                    serde_json::to_string(&arguments).unwrap_or_else(|_| "null".to_string())),
+                format!(
+                    "MCP Request: {} -> {}",
+                    tool_name,
+                    serde_json::to_string(&arguments).unwrap_or_else(|_| "null".to_string())
+                ),
                 None,
-                Some(tool_name.clone())
+                Some(tool_name.clone()),
             );
         }
 
@@ -421,12 +434,13 @@ impl McpClient {
                 Ok(value) => {
                     log_buffer.log_step(
                         "INFO",
-                        format!("MCP Response: {} <- {}",
+                        format!(
+                            "MCP Response: {} <- {}",
                             tool_name,
                             serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
                         ),
                         None,
-                        Some(tool_name.clone())
+                        Some(tool_name.clone()),
                     );
                 }
                 Err(e) => {
@@ -434,7 +448,7 @@ impl McpClient {
                         "ERROR",
                         format!("MCP Error: {} <- {}", tool_name, e),
                         None,
-                        Some(tool_name)
+                        Some(tool_name),
                     );
                 }
             }

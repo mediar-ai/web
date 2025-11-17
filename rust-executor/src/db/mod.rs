@@ -107,13 +107,6 @@ pub async fn create_pool(database_url: &str) -> Result<DatabasePool> {
     Database::connect(database_url).await
 }
 
-#[allow(dead_code)]
-pub async fn create_pool_from_env() -> Result<DatabasePool> {
-    let database_url =
-        std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL not set"))?;
-    create_pool(&database_url).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
