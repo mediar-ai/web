@@ -386,8 +386,6 @@ export async function POST(request: NextRequest) {
             const { parseTypeScriptWorkflow } = await import(
               '@/lib/typescript-workflow-parser'
             );
-            const fs = await import('fs');
-            const path = await import('path');
 
             // Download terminator.ts from GitHub
             const terminatorPath = `${orgPrefixPath}${folderName}/src/terminator.ts`;
