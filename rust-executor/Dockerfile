@@ -48,4 +48,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/api/v1/health || exit 1
 
-CMD ["sh", "-c", "echo '=== STARTING WORKFLOW EXECUTOR ===' && ./workflow-executor 2>&1 | tee /tmp/app.log; echo '=== EXIT CODE: $? ===' && sleep 30"]
+CMD ["sh", "-c", "echo '=== STARTING WORKFLOW EXECUTOR ===' && ./workflow-executor serve 2>&1 | tee /tmp/app.log; echo '=== EXIT CODE: $? ===' && sleep 30"]
