@@ -227,7 +227,6 @@ impl WorkflowService {
                 result: row.get("results"),
                 logs: row.get("execution_logs"),
                 total_steps: row.get("total_steps"),
-                completed_steps: None, // Column does not exist in schema
                 current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),

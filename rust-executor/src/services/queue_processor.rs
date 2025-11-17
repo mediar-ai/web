@@ -9,26 +9,22 @@ use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::logging::LogBuffer;
 use crate::mcp::{McpClient, WorkflowExecutor};
 use crate::models::{ExecutionStatus, WorkflowSequence, WorkflowState, WorkflowResult, StepStatus};
-use crate::services::{GitHubLoader, MonitorClient, WorkflowService, format_success, format_failure, format_exception};
+use crate::services::{GitHubLoader, MonitorClient, format_success, format_failure, format_exception};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
     machine_id: String,
-    #[allow(dead_code)]
-    workflow_service: WorkflowService,
     monitor_client: MonitorClient,
 }
 
 impl QueueProcessor {
     pub fn new(db_pool: DatabasePool) -> Self {
         let machine_id = Self::generate_machine_id();
-        let workflow_service = WorkflowService::new(db_pool.clone());
         let monitor_client = MonitorClient::new();
 
         Self {
             db_pool,
             machine_id,
-            workflow_service,
             monitor_client,
         }
     }
