@@ -19,7 +19,8 @@ export MEDIAR_SERVICE_API_KEY="f8a5c2b1-5e9d-4a1c-9b0d-3a2b1c0d4e5f"
 
 # MCP Endpoint - This should be the actual VM endpoint
 # We'll need to determine this from the execution params or use a default
-export MCP_ENDPOINT="${1:-http://20.169.144.86:3000}"
+# Using vm1 as the default fallback (172.190.244.122:8080)
+export MCP_ENDPOINT="${1:-http://172.190.244.122:8080}"
 
 # Rust logging
 export RUST_LOG=info,workflow_executor=debug
