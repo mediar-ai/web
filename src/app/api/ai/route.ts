@@ -253,6 +253,7 @@ async function executeServerTool(
     orgId: string | null;
     email?: string | null;
     workflowId?: number;
+    allTools?: FunctionDeclaration[]; // For get_tool_details meta-tool
   },
   options: {
     preserveId: boolean; // Anthropic needs IDs, Vertex doesn't
@@ -314,7 +315,9 @@ async function executeServerTool(
           orgId: context.orgId || null,
           ...(context.email && { email: context.email }),
         })
-      : await executeKnowledgeTool(toolCall.name, toolArgs);
+      : await executeKnowledgeTool(toolCall.name, toolArgs, {
+          allTools: context.allTools,
+        });
 
     // Extract workflow data if present
     const workflowData = isWorkflow
@@ -777,6 +780,7 @@ export async function POST(request: NextRequest) {
               authenticatedUserId,
               orgId,
               workflowId,
+              allTools: allTools as any, // For get_tool_details meta-tool
             },
             { preserveId: true } // Anthropic needs IDs
           );
@@ -875,6 +879,7 @@ export async function POST(request: NextRequest) {
                   authenticatedUserId,
                   orgId,
                   workflowId,
+                  allTools: allTools as any, // For get_tool_details meta-tool
                 },
                 { preserveId: true, isAdditional: true } // Anthropic needs IDs
               );
@@ -1208,6 +1213,7 @@ export async function POST(request: NextRequest) {
             orgId,
             email: userEmail,
             workflowId,
+            allTools: functionDeclarations, // For get_tool_details meta-tool
           },
           { preserveId: false } // Vertex doesn't need IDs
         );
@@ -1304,6 +1310,7 @@ export async function POST(request: NextRequest) {
                 authenticatedUserId,
                 orgId,
                 workflowId,
+                allTools: functionDeclarations, // For get_tool_details meta-tool
               },
               { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
             );
