@@ -1,5 +1,6 @@
 use anyhow::Result;
 use axum::{extract::DefaultBodyLimit, Router};
+use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, info};
@@ -16,7 +17,33 @@ mod telemetry;
 mod utils;
 
 use crate::db::{create_pool, DatabasePool};
+use crate::models::ExecutionRequest;
 use crate::services::QueueProcessor;
+
+#[derive(Parser)]
+#[command(name = "workflow-executor")]
+#[command(about = "Mediar Workflow Executor - Run workflows on remote machines", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the API server and queue processor
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+    },
+    /// Run a specific workflow on a machine
+    Run {
+        /// Machine name or ID (e.g., vm1, vm2, or MCP endpoint URL)
+        machine: String,
+        /// Workflow name or ID
+        workflow: String,
+    },
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,11 +56,34 @@ async fn main() -> Result<()> {
     // Initialize OpenTelemetry tracing (after logging is set up)
     telemetry::init_telemetry();
 
+    // Parse CLI arguments
+    let cli = Cli::parse();
+
+    match cli.command {
+        None | Some(Commands::Serve { .. }) => {
+            // Default behavior: start server (for backward compatibility)
+            let port = if let Some(Commands::Serve { port }) = cli.command {
+                port
+            } else {
+                std::env::var("PORT")
+                    .unwrap_or_else(|_| "8080".to_string())
+                    .parse::<u16>()?
+            };
+
+            start_server(port).await
+        }
+        Some(Commands::Run { machine, workflow }) => {
+            run_workflow_directly(machine, workflow).await
+        }
+    }
+}
+
+async fn start_server(port: u16) -> Result<()> {
     // Force flush to ensure logs are written
-    eprintln!("=== RUST EXECUTOR STARTING ===");
+    eprintln!("=== RUST EXECUTOR STARTING (SERVER MODE) ===");
     eprintln!(
         "Environment: PORT={}, RUST_LOG={}",
-        std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()),
+        port,
         std::env::var("RUST_LOG").unwrap_or_else(|_| "not set".to_string())
     );
 
@@ -102,10 +152,6 @@ async fn main() -> Result<()> {
     let app = build_router(db_pool)?;
 
     // Start server
-    let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "8080".to_string())
-        .parse::<u16>()?;
-
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("Server listening on {}", addr);
 
@@ -115,6 +161,132 @@ async fn main() -> Result<()> {
         error!("Server error: {}", e);
         anyhow::anyhow!("Server error: {}", e)
     })?;
+
+    Ok(())
+}
+
+async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> {
+    eprintln!("=== RUST EXECUTOR - DIRECT RUN MODE ===");
+    eprintln!("Machine: {}", machine);
+    eprintln!("Workflow: {}", workflow);
+
+    info!("Starting direct workflow execution");
+    info!("Machine: {}, Workflow: {}", machine, workflow);
+
+    // Initialize database connection
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://localhost/mediar_workflows".to_string());
+
+    let db_pool = create_pool(&database_url).await?;
+
+    // Determine MCP endpoint based on machine name
+    let mcp_endpoint = match machine.to_lowercase().as_str() {
+        "vm1" => "http://172.190.244.122:8080".to_string(),
+        "vm2" => "http://4.227.217.44:8080".to_string(),
+        url if url.starts_with("http://") || url.starts_with("https://") => url.to_string(),
+        _ => {
+            // Try to look up machine by name in database
+            // For now, return an error
+            return Err(anyhow::anyhow!("Unknown machine: {}. Use vm1, vm2, or provide a full MCP endpoint URL", machine));
+        }
+    };
+
+    info!("Using MCP endpoint: {}", mcp_endpoint);
+
+    // Look up workflow
+    let workflow_id = if uuid::Uuid::parse_str(&workflow).is_ok() {
+        workflow.clone()
+    } else {
+        // Try to look up workflow by name
+        // For now, we'll need to implement this lookup
+        info!("Looking up workflow by name: {}", workflow);
+
+        // Query database for workflow
+        let query = r#"
+            SELECT id::text
+            FROM workflows
+            WHERE name = $1 OR github_folder = $1
+            LIMIT 1
+        "#;
+
+        let row = sqlx::query_scalar::<_, String>(query)
+            .bind(&workflow)
+            .fetch_optional(&db_pool)
+            .await?;
+
+        match row {
+            Some(id) => {
+                info!("Found workflow ID: {}", id);
+                id
+            }
+            None => {
+                return Err(anyhow::anyhow!("Workflow not found: {}", workflow));
+            }
+        }
+    };
+
+    info!("Workflow ID: {}", workflow_id);
+
+    // Create a workflow execution
+    let execution_id = uuid::Uuid::new_v4();
+    let query = r#"
+        INSERT INTO workflow_executions
+        (id, workflow_id, status, parameters, machine_id, created_at, updated_at)
+        VALUES ($1, $2, 'queued', '{}', $3, NOW(), NOW())
+        RETURNING id::text
+    "#;
+
+    sqlx::query_scalar::<_, String>(query)
+        .bind(&execution_id)
+        .bind(&uuid::Uuid::parse_str(&workflow_id)?)
+        .bind(&machine)
+        .fetch_one(&db_pool)
+        .await?;
+
+    info!("Created execution: {}", execution_id);
+    eprintln!("Created execution: {}", execution_id);
+
+    // Get workflow information from database
+    let workflow_query = r#"
+        SELECT id::text, json_id
+        FROM workflows
+        WHERE id = $1
+        LIMIT 1
+    "#;
+
+    let workflow_info = sqlx::query_as::<_, (String, Option<i64>)>(workflow_query)
+        .bind(&uuid::Uuid::parse_str(&workflow_id)?)
+        .fetch_one(&db_pool)
+        .await?;
+
+    let workflow_json_id = workflow_info.1
+        .ok_or_else(|| anyhow::anyhow!("Workflow missing json_id"))?;
+
+    // Create executor and run the workflow
+    let executor = services::WorkflowService::new(db_pool.clone());
+
+    // Create execution request
+    let request = ExecutionRequest {
+        workflow_id: workflow_json_id,
+        execution_params: Some(serde_json::json!({})),
+        client_id: None,
+        version_number: None,
+        mcp_endpoint: mcp_endpoint.clone(),
+    };
+
+    eprintln!("Executing workflow...");
+    match executor.execute_workflow(request).await {
+        Ok(_) => {
+            info!("✓ Workflow execution completed successfully");
+            eprintln!("✓ Workflow execution completed successfully");
+            eprintln!("Execution ID: {}", execution_id);
+        }
+        Err(e) => {
+            error!("✗ Workflow execution failed: {}", e);
+            eprintln!("✗ Workflow execution failed: {}", e);
+            return Err(e);
+        }
+    }
 
     Ok(())
 }
