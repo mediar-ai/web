@@ -1,14 +1,10 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use object_store::{http::HttpBuilder, ObjectStore};
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
 pub struct SupabaseStorage {
-    #[allow(dead_code)]
-    storage_client: Arc<dyn ObjectStore>,
     supabase_url: String,
     supabase_key: String,
     http_client: Client,
@@ -17,19 +13,9 @@ pub struct SupabaseStorage {
 impl SupabaseStorage {
     /// Create a new Supabase Storage client
     pub fn new(supabase_url: String, supabase_key: String) -> Result<Self> {
-        // Build the storage endpoint URL
-        let storage_endpoint = format!("{supabase_url}/storage/v1/object");
-
-        // Create HTTP-based object store
-        let storage_client = HttpBuilder::new()
-            .with_url(&storage_endpoint)
-            .build()
-            .context("Failed to build HTTP storage client")?;
-
         let http_client = Client::new();
 
         Ok(Self {
-            storage_client: Arc::new(storage_client),
             supabase_url,
             supabase_key,
             http_client,

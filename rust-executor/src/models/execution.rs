@@ -20,9 +20,6 @@ pub struct WorkflowExecution {
     #[serde(rename = "execution_logs")]
     pub logs: Option<Value>, // Database uses jsonb, not text
     pub total_steps: Option<i32>, // Database uses integer
-    #[serde(skip)] // This column doesn't exist in database
-    #[allow(dead_code)]
-    pub completed_steps: Option<u32>,
     #[serde(rename = "current_step_description")]
     pub current_step: Option<String>,
     pub created_at: DateTime<Utc>,

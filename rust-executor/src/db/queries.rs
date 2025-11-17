@@ -61,47 +61,6 @@ impl WorkflowQueries {
         Ok(workflow)
     }
 
-    #[allow(dead_code)]
-    pub async fn get_workflow_by_version(
-        pool: &Pool<Postgres>,
-        version: &str,
-    ) -> Result<Option<Workflow>> {
-        let workflow = sqlx::query(
-            r#"
-            SELECT
-                id, name, version, description,
-                status, category, github_folder, github_ref,
-                preferred_format,
-                automation_sequence, automation_sequence_yaml,
-                created_at, updated_at
-            FROM deployed_workflows_with_sequence
-            WHERE version = $1 AND status = 'deployed'
-            LIMIT 1
-            "#,
-        )
-        .bind(version)
-        .fetch_optional(pool)
-        .await?
-        .map(|row| Workflow {
-            id: row.get("id"),
-            name: row.get("name"),
-            version: row.get("version"),
-            description: row.get("description"),
-            status: WorkflowStatus::Deployed,
-            category: row.get("category"),
-            github_folder: row.get("github_folder"),
-            github_ref: row.get("github_ref"),
-            organization_id: row.get("organization_id"),
-            preferred_format: row.get("preferred_format"),
-            automation_sequence: row.get("automation_sequence"),
-            automation_sequence_yaml: row.get("automation_sequence_yaml"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        });
-
-        Ok(workflow)
-    }
-
     pub async fn create_execution(
         pool: &Pool<Postgres>,
         workflow_id: i64,
@@ -183,7 +142,6 @@ impl WorkflowQueries {
                 result: row.get("results"),
                 logs: row.get("execution_logs"),
                 total_steps: row.get("total_steps"),
-                completed_steps: None, // Column does not exist in schema
                 current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
