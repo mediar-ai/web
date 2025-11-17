@@ -392,6 +392,74 @@ export const serverSideTools = {
         };
       }
     }
+  },
+
+  get_tool_details: {
+    description: 'Get detailed parameter information for specific tools. Use this when you need to call a tool but need to see its full parameter schema first.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        tool_names: {
+          type: SchemaType.ARRAY,
+          description: 'Array of tool names to get details for',
+          items: {
+            type: SchemaType.STRING
+          }
+        }
+      },
+      required: ['tool_names']
+    },
+    execute: async (params: {
+      tool_names: string[];
+    }, context?: {
+      allTools?: any[];
+    }) => {
+      try {
+        console.log('[SERVER-GET-TOOL-DETAILS] Getting details for tools:', params.tool_names);
+
+        if (!context?.allTools || context.allTools.length === 0) {
+          return {
+            action: 'error',
+            error: 'No tools available in context. This tool requires the full tool list to be passed in execution context.'
+          };
+        }
+
+        const requestedTools = context.allTools.filter(tool =>
+          params.tool_names.includes(tool.name)
+        );
+
+        if (requestedTools.length === 0) {
+          return {
+            action: 'no_tools_found',
+            requested: params.tool_names,
+            available_count: context.allTools.length,
+            message: 'None of the requested tools were found in the available tool list.'
+          };
+        }
+
+        // Format tool details for AI consumption
+        const toolDetails = requestedTools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters
+        }));
+
+        console.log(`[SERVER-GET-TOOL-DETAILS] Returning details for ${toolDetails.length} tools`);
+
+        return {
+          action: 'tool_details_retrieved',
+          requested_count: params.tool_names.length,
+          found_count: toolDetails.length,
+          tools: toolDetails
+        };
+      } catch (error) {
+        console.error('[SERVER-GET-TOOL-DETAILS] Error:', error);
+        return {
+          action: 'error',
+          error: error instanceof Error ? error.message : 'Failed to retrieve tool details'
+        };
+      }
+    }
   }
 };
 
@@ -409,12 +477,12 @@ export function getServerToolDeclarations() {
 /**
  * Execute a server-side tool by name
  */
-export async function executeServerTool(name: string, args: any) {
+export async function executeServerTool(name: string, args: any, context?: { allTools?: any[] }) {
   const tool = serverSideTools[name as keyof typeof serverSideTools];
   if (!tool) {
     throw new Error(`Unknown server tool: ${name}`);
   }
-  return await tool.execute(args);
+  return await tool.execute(args, context);
 }
 
 /**
