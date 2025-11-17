@@ -280,10 +280,10 @@ async function executeServerTool(
   console.log(`🔧 Executing ${prefix} ${toolType} tool: ${toolCall.name}`);
 
   try {
-    // Workflow and dev log tools require authenticated user context
-    if ((isWorkflow || isDevLog) && !context.authenticatedUserId) {
+    // All server-side tools require authenticated user context
+    if (!context.authenticatedUserId) {
       throw new Error(
-        'Workflow editing and dev log tools require authentication with a user account'
+        'Server-side tools require authentication with a user account'
       );
     }
 
