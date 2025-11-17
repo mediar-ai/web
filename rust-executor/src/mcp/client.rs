@@ -218,28 +218,12 @@ impl McpClient {
 
     /// Create a new HTTP service connection with authentication
     async fn create_http_service(url: &str) -> Result<RunningService<RoleClient, ClientInfo>> {
-        // Create a custom reqwest client with authentication header
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_static("Bearer cargorunmediar123"),
-        );
-        headers.insert(
-            reqwest::header::ACCEPT,
-            reqwest::header::HeaderValue::from_static("application/json, text/event-stream"),
-        );
+        // Create config with authentication using the auth_header method (like terminator CLI)
+        let config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url)
+            .auth_header("Bearer cargorunmediar123");
 
-        let http_client = reqwest::Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(120))  // 2 minute timeout for npm install
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .context("Failed to create HTTP client")?;
-
-        // Create config for the transport with increased timeout
-        let mut config = rmcp::transport::StreamableHttpClientTransportConfig::from_uri(url);
-
-        let transport = StreamableHttpClientTransport::with_client(http_client, config);
+        // Create transport with config (authentication is handled in the config)
+        let transport = StreamableHttpClientTransport::with_client(reqwest::Client::new(), config);
 
         let client_info = ClientInfo {
             protocol_version: Default::default(),
