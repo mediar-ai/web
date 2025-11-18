@@ -229,6 +229,35 @@ function createSessionId(): string {
   return randomUUID();
 }
 
+/**
+ * Truncate tool result content to reduce token consumption in persistent history
+ * Anthropic API requires tool_result blocks to exist, but content can be truncated
+ *
+ * @param result - The tool result to truncate
+ * @param maxChars - Maximum characters to keep (default: 1000)
+ * @returns Truncated result with metadata
+ */
+function truncateToolResult(result: any, maxChars: number = 1000): any {
+  if (!result) return result;
+
+  const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+
+  if (resultStr.length <= maxChars) {
+    return result;
+  }
+
+  // Truncate and add indicator
+  const truncated = resultStr.substring(0, maxChars);
+  const truncatedObj = {
+    _truncated: true,
+    _originalLength: resultStr.length,
+    content: truncated,
+    summary: `[Result truncated from ${resultStr.length} to ${maxChars} chars to save tokens]`
+  };
+
+  return truncatedObj;
+}
+
 // Helper to capture workflow data from tool results
 function captureWorkflowData(toolResult: any, currentWorkflowData: any): any {
   if (
@@ -744,29 +773,18 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // CRITICAL: Add client tool results to persistent history BEFORE calling AI
-      // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
-      let updatedHistoryWithToolResults = [...history];
-      if (toolResults && toolResults.length > 0) {
-        updatedHistoryWithToolResults.push({
-          role: 'user',
-          parts: toolResults.map(tr => ({
-            functionResponse: {
-              name: tr.name,
-              response: tr.result,
-              ...(tr.id && { id: tr.id }),
-            },
-          })),
-        });
-      }
+      // Strategy for tool results:
+      // - Pass FULL results via toolResults parameter for current turn accuracy
+      // - After AI responds, add TRUNCATED results to persistent history (to save tokens)
+      // - handleAnthropicChat will add full results to its internal Anthropic history
 
       const anthropicRequest: AIProviderRequest = {
         model: sessionModel,
         input,
-        history: updatedHistoryWithToolResults,
+        history, // Don't add tool results here - they'll be added after the call (truncated)
         system: sessionSystem,
         tools: allTools, // Pass merged tools to Anthropic
-        // toolResults: removed - results are now in history
+        toolResults, // Pass FULL results for current turn (handleAnthropicChat will add them)
         generationConfig,
         sessionId: actualSessionId,
       };
@@ -823,13 +841,26 @@ export async function POST(request: NextRequest) {
             `🔄 Auto-continuing with ${serverToolResults.length} server tool results`
           );
 
-          // Update history with the tool calls
-          // Start with history that already includes client tool results (if any)
-          const updatedHistoryWithCalls = [...updatedHistoryWithToolResults];
+          // Update history with user input and tool calls
+          const updatedHistoryWithCalls = [...history];
           if (input) {
             updatedHistoryWithCalls.push({
               role: 'user',
               parts: [{ text: input }],
+            });
+          }
+
+          // Add client tool results (TRUNCATED) if any
+          if (toolResults && toolResults.length > 0) {
+            updatedHistoryWithCalls.push({
+              role: 'user',
+              parts: toolResults.map(tr => ({
+                functionResponse: {
+                  name: tr.name,
+                  response: truncateToolResult(tr.result, 1000),
+                  ...(tr.id && { id: tr.id }),
+                },
+              })),
             });
           }
 
@@ -847,26 +878,28 @@ export async function POST(request: NextRequest) {
             parts: toolCallParts,
           });
 
-          // CRITICAL: Add server tool results to persistent history
+          // CRITICAL: Add server tool results to persistent history (TRUNCATED to save tokens)
           // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+          // Full results are passed via toolResults parameter for current turn accuracy
           updatedHistoryWithCalls.push({
             role: 'user',
             parts: serverToolResults.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                response: tr.result,
+                response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
                 ...(tr.id && { id: tr.id }),
               },
             })),
           });
 
-          // Call Anthropic again - tool results are now in history, not passed as parameter
+          // Call Anthropic again with FULL server tool results for current turn
+          // (History has truncated results to save tokens)
           const continuationResult = await handleAnthropicChat({
             model: sessionModel,
             history: updatedHistoryWithCalls,
             system: sessionSystem,
             tools: allTools,
-            // toolResults: removed - results are now in history
+            toolResults: serverToolResults, // Pass FULL results for current turn accuracy
             generationConfig,
             sessionId: actualSessionId,
           });
@@ -943,14 +976,15 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // CRITICAL: Add server tool results to persistent history
+            // CRITICAL: Add server tool results to persistent history (TRUNCATED to save tokens)
             // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+            // Full results are passed via toolResults parameter for current turn accuracy
             finalHistory.push({
               role: 'user',
               parts: moreServerTools.map(tr => ({
                 functionResponse: {
                   name: tr.name,
-                  response: tr.result,
+                  response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
                   ...(tr.id && { id: tr.id }),
                 },
               })),
@@ -965,7 +999,7 @@ export async function POST(request: NextRequest) {
               history: finalHistory,
               system: sessionSystem,
               tools: allTools,
-              // toolResults: removed - results are now in history
+              toolResults: moreServerTools, // Pass FULL results for current turn accuracy
               generationConfig,
               sessionId: actualSessionId,
             });
@@ -1032,14 +1066,28 @@ export async function POST(request: NextRequest) {
       }
 
       // No server tools executed - standard response path
-      // Start with history that already has tool results (if any)
-      const updatedHistory = [...updatedHistoryWithToolResults];
+      const updatedHistory = [...history];
 
       // Add user message to history
       if (input) {
         updatedHistory.push({
           role: 'user',
           parts: [{ text: input }],
+        });
+      }
+
+      // CRITICAL: Add client tool results to persistent history (TRUNCATED to save tokens)
+      // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+      if (toolResults && toolResults.length > 0) {
+        updatedHistory.push({
+          role: 'user',
+          parts: toolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
+              ...(tr.id && { id: tr.id }),
+            },
+          })),
         });
       }
 
