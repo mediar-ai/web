@@ -16,7 +16,6 @@ import {
   Mail,
   Trash2,
   UserPlus,
-  AlertCircle,
   X,
   Clock,
   Crown,
@@ -1205,27 +1204,6 @@ function AdminPageContent() {
               )}
             </div>
 
-            {/* Mediar Admin Section */}
-            {isMediarOrg && (
-              <div className="mt-8 border-2 border-red-600">
-                <div className="bg-red-600 text-white p-4">
-                  <h2 className="font-mono font-bold text-lg flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    MEDIAR GLOBAL ADMIN
-                  </h2>
-                </div>
-                <div className="p-6 space-y-4">
-                  <p className="font-mono text-sm">
-                    You have global admin access. You can see and manage all organizations and workflows.
-                  </p>
-                  <div className="flex gap-4">
-                    <Link href="/admin-workflow-mining" className="px-4 py-2 bg-red-600 text-white font-mono font-bold hover:bg-red-700">
-                      WORKFLOW MINING
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         ) : (
           <div className="border-2 border-black p-8 text-center">
