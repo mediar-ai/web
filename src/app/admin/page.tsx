@@ -70,7 +70,8 @@ function AdminPageContent() {
     max_concurrent_executions: 1,
     priority: 5,
     region: '',
-    tags: [] as string[]
+    tags: [] as string[],
+    azure_resource_id: ''
   });
 
   // Machine organization assignment state
@@ -283,7 +284,8 @@ function AdminPageContent() {
           max_concurrent_executions: 1,
           priority: 5,
           region: '',
-          tags: []
+          tags: [],
+          azure_resource_id: ''
         });
       } else {
         const error = await response.json();
@@ -916,7 +918,8 @@ function AdminPageContent() {
                               <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '180px' }}>NAME</th>
                               <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>STATUS</th>
                               <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '120px' }}>HEALTH</th>
-                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '80px' }}>LOAD</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '120px' }}>IP ADDRESS</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '140px' }}>AZURE ID</th>
                               <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '140px' }}>ORGANIZATIONS</th>
                               <th className="px-3 py-3 text-right font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>ACTIONS</th>
                             </tr>
@@ -1052,17 +1055,24 @@ function AdminPageContent() {
                                 </td>
                                 <td className="px-3 py-3">
                                   <div className="font-mono text-xs">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <span className={`${machine.load_info?.load_percentage > 80 ? 'font-bold' : ''}`}>
-                                        {machine.load_info?.current_executions || 0}/{machine.max_concurrent_executions}
-                                      </span>
-                                    </div>
-                                    <div className="w-20 h-2 bg-gray-200 border border-black">
-                                      <div
-                                        className="h-full bg-black transition-all"
-                                        style={{ width: `${machine.load_info?.load_percentage || 0}%` }}
-                                      />
-                                    </div>
+                                    {machine.health_details?.ip_address ||
+                                     machine.health_details?.public_ip ||
+                                     machine.health_details?.data?.ip_address ||
+                                     machine.health_details?.data?.public_ip ||
+                                     '-'}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="font-mono text-xs">
+                                    {machine.azure_resource_id ? (
+                                      <button
+                                        onClick={() => copyToClipboard(machine.azure_resource_id, 'Azure Resource ID')}
+                                        className="hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left truncate max-w-[140px]"
+                                        title={machine.azure_resource_id}
+                                      >
+                                        {machine.azure_resource_id.split('/').pop() || machine.azure_resource_id}
+                                      </button>
+                                    ) : '-'}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3">
@@ -1145,7 +1155,7 @@ function AdminPageContent() {
                             ))}
                             {machines.length === 0 && (
                               <tr>
-                                <td colSpan={6} className="px-4 py-8 text-center text-gray-500 font-mono">
+                                <td colSpan={7} className="px-4 py-8 text-center text-gray-500 font-mono">
                                   No machines registered
                                 </td>
                               </tr>
@@ -1422,7 +1432,7 @@ function AdminPageContent() {
 
         {/* Add Machine Modal */}
         {showAddMachine && isGlobalAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white border-2 border-black max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-4 border-b-2 border-black flex items-center justify-between sticky top-0 bg-white">
                 <h2 className="font-mono font-bold flex items-center gap-2">
@@ -1442,7 +1452,8 @@ function AdminPageContent() {
                       max_concurrent_executions: 1,
                       priority: 5,
                       region: '',
-                      tags: []
+                      tags: [],
+                      azure_resource_id: ''
                     });
                   }}
                   className="p-1 hover:bg-gray-100"
@@ -1551,15 +1562,28 @@ function AdminPageContent() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block font-mono text-xs text-gray-600 mb-1">REGION</label>
-                  <input
-                    type="text"
-                    value={newMachine.region}
-                    onChange={(e) => setNewMachine({ ...newMachine, region: e.target.value })}
-                    placeholder="e.g., us-west-2"
-                    className="w-full px-3 py-2 font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-mono text-xs text-gray-600 mb-1">REGION</label>
+                    <input
+                      type="text"
+                      value={newMachine.region}
+                      onChange={(e) => setNewMachine({ ...newMachine, region: e.target.value })}
+                      placeholder="e.g., us-west-2"
+                      className="w-full px-3 py-2 font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-mono text-xs text-gray-600 mb-1">AZURE RESOURCE ID</label>
+                    <input
+                      type="text"
+                      value={newMachine.azure_resource_id}
+                      onChange={(e) => setNewMachine({ ...newMachine, azure_resource_id: e.target.value })}
+                      placeholder="e.g., /subscriptions/.../vm-name"
+                      className="w-full px-3 py-2 font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -1590,7 +1614,8 @@ function AdminPageContent() {
                         max_concurrent_executions: 1,
                         priority: 5,
                         region: '',
-                        tags: []
+                        tags: [],
+                        azure_resource_id: ''
                       });
                     }}
                     className="px-4 py-2 font-mono font-bold border-2 border-black hover:bg-gray-100"

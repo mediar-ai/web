@@ -1,12 +1,12 @@
 ---
 name: supabase
-description: Query Supabase database for Mediar workflow system. Auto-activates when user asks about database, tables, schema, workflows, executions, or organizations. Trigger words: "check database", "query supabase", "table schema", "show workflows", "check executions", "what's in the db", "database structure"
+description: Query Supabase database for Mediar workflow system. Auto-activates when user asks about database, tables, schema, workflows, executions, machines, or organizations. Trigger words: "check database", "query supabase", "table schema", "show workflows", "check executions", "what's in the db", "database structure", "remote machines"
 allowed-tools: Bash, Read
 ---
 
 # Supabase Database Skill
 
-Query and inspect the Mediar Supabase database for workflows, executions, organizations, and system data.
+Query and inspect the Mediar Supabase database for workflows, executions, remote machines, and system data.
 
 ## ⚠️ CRITICAL SAFETY RULES
 
@@ -31,7 +31,7 @@ SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
 # Your query here
-curl -s "${SUPABASE_URL}/rest/v1/workflows?select=id,name&limit=5" \
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name&limit=5" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
 EOF
@@ -46,51 +46,138 @@ bash /tmp/query_supabase.sh
 
 ## Mediar Database Schema
 
-### Core Tables
+### Core Tables (✅ = Confirmed to exist)
 
-**`workflows`** - Workflow definitions
+**✅ `deployed_workflows`** - Workflow definitions (NOT `workflows`)
 - `id` (number) - Primary key
 - `name` (text) - Workflow name
 - `description` (text) - Description
 - `github_folder` (text) - Folder name in mediar-ai/workflows repo
-- `yaml_content` (text) - Workflow YAML
-- `organization_id` (number) - FK to organizations
-- `created_at`, `updated_at` (timestamp)
+- `github_path` (text) - Full GitHub path
+- `github_sha` (text) - Git commit SHA
+- `github_sync_status` (text) - Sync status
+- `github_last_synced_at` (timestamp)
+- `automation_sequence` (text) - Legacy YAML content
+- `automation_sequence_yaml` (text) - Workflow YAML
+- `preferred_format` (text) - "yaml" or "typescript"
+- `workflow_type` (text) - Type of workflow
+- `organization_id` (number) - FK to organizations (via Clerk)
+- `current_version_id` (number) - Current active version
+- `version` (text) - Version string
+- `total_versions` (number) - Count of versions
+- `status` (text) - active/paused/archived
+- `category` (text) - Workflow category
+- `cron_enabled` (boolean) - Scheduled execution enabled
+- `cron_expression` (text) - Cron schedule
+- `cron_timezone` (text) - Timezone for cron
+- `cron_retry_on_failure` (boolean)
+- `cron_retry_count` (number)
+- `cron_max_concurrent` (number)
+- `cron_auto_paused` (boolean)
+- `auto_pause_reason`, `auto_paused_at`
+- `requires_files` (boolean) - Has associated files
+- `files_config` (jsonb) - File metadata
+- `typescript_metadata` (jsonb) - TS workflow metadata
+- `total_executions`, `successful_runs`, `failed_runs`, `cancelled_runs` (number)
+- `average_duration_seconds`, `estimated_duration_seconds` (number)
+- `current_version_*` - Stats for current version
+- `consecutive_failures` (number)
+- `last_successful_execution`, `last_failed_execution`, `last_failure_message`
+- `next_scheduled_execution`, `last_scheduled_execution` (timestamp)
+- `display_order` (number)
+- `is_public` (boolean)
+- `parent_workflow_id` (number) - For nested workflows
+- `skip_next_cancellation_check` (boolean)
+- `created_at`, `updated_at`, `created_by` (timestamp/text)
 
-**`workflow_executions`** - Execution records (⚠️ Note: table is `workflow_executions`, NOT `executions`)
+**✅ `workflow_executions`** - Execution records
 - `id` (number) - Primary key
-- `workflow_id` (number) - FK to workflows
-- `workflow_version_id` (number) - FK to workflow_versions
-- `status` (text) - running/completed/failed/queued
-- `client_id` (text) - Client identifier (e.g., "cron-scheduler")
+- `workflow_id` (number) - FK to deployed_workflows
+- `workflow_version_id` (number) - Specific version executed
+- `workflow_version_number` (text) - Version string
+- `version_number` (text) - Legacy version field
+- `status` (text) - queued/running/completed/failed/cancelled
+- `client_id` (text) - Client identifier (e.g., "cron-scheduler", "web-ui")
+- `client_ip` (text) - Client IP address
+- `user_agent` (text) - User agent string
+- `batch_id` (text) - For batch executions
 - `execution_params` (jsonb) - Input parameters
+- `execution_params_hash` (text) - Hash of params for deduplication
 - `results` (jsonb) - Output results
+- `formatted_output` (text) - Human-readable output
 - `error_message` (text) - Error if failed
+- `error_analysis` (text) - AI-analyzed error
+- `error_analyzed_at` (timestamp)
 - `queued_at`, `started_at`, `completed_at` (timestamp)
+- `step_start_time` (timestamp) - Current step start
 - `execution_duration_seconds` (number)
+- `estimated_completion_time` (timestamp)
 - `progress_percentage` (number) - 0-100
+- `progress_details` (text)
 - `current_step_index` (number)
+- `current_step_description` (text)
 - `total_steps` (number)
-- `assigned_machine_id` (number) - Executor machine
-- `executor_type` (text) - python/rust
+- `start_from_step`, `end_at_step` (text) - Partial execution
+- `execute_jumps_at_end` (boolean)
+- `follow_fallback` (boolean)
+- `assigned_machine_id` (number) - FK to remote_machines
+- `assignment_method`, `assignment_reason` (text)
+- `machine_assignment_timestamp` (timestamp)
+- `mcp_endpoint` (text) - Direct MCP URL if not using machine
+- `executor_type` (text) - "python" or "rust"
 - `compute_cost_cents` (number) - Cost tracking
 - `priority` (number) - 1-10 priority
-- `modal_call_id` (text) - Modal execution ID
-- `execution_logs`, `modal_logs`, `raw_logs` (text/jsonb)
-- `screenshots` (jsonb array)
-- `start_from_step`, `end_at_step` (text) - Partial execution control
-
-**`organizations`** - Organization/tenant data
-- `id` (number) - Primary key
-- `name` (text) - Organization name
+- `modal_call_id` (text) - Modal function call ID
+- `execution_logs` (text) - Structured logs
+- `modal_logs` (text) - Modal-specific logs
+- `raw_logs` (text) - Raw unprocessed logs
+- `raw_mcp_response` (jsonb) - Raw MCP tool response
+- `screenshots` (jsonb array) - Base64 screenshots
 - `created_at`, `updated_at` (timestamp)
 
-**`workflow_versions`** - Workflow version history
+**✅ `remote_machines`** - MCP-enabled execution machines
 - `id` (number) - Primary key
-- `workflow_id` (number) - FK to workflows
-- `version_number` (text) - Version string (e.g., "1.0.1")
-- `yaml_content` (text) - Workflow YAML snapshot
+- `name` (text) - Machine display name
+- `description` (text) - Machine description
+- `mcp_endpoint` (text) - MCP server URL (e.g., http://IP:8080/mcp)
+- `health_endpoint` (text) - Health check URL
+- `management_endpoint` (text) - Management API URL
+- `azure_resource_id` (text) - Full Azure resource ID
+- `guacamole_connection_name` (text) - RDP connection name
+- `machine_type` (text) - "windows_vm", "linux_vm", "container"
+- `status` (text) - "active", "inactive", "maintenance", "error"
+- `health_status` (text) - "healthy", "unhealthy", "unknown"
+- `health_details` (jsonb) - Detailed health info
+- `region` (text) - Azure region
+- `capabilities` (jsonb array) - Machine capabilities
+- `tags` (jsonb array) - Searchable tags
+- `priority` (number) - Assignment priority
+- `max_concurrent_executions` (number)
+- `is_global` (boolean) - Available to all orgs
+- `last_health_check`, `last_healthy_at`, `last_unhealthy_at` (timestamp)
+- `last_response_time_ms` (number)
+- `avg_response_time_ms` (number)
+- `last_check_had_taskbar` (boolean) - Windows UI check
+- `total_executions` (number)
+- `total_checks`, `successful_checks`, `consecutive_failures` (number)
+- `success_rate_percent` (number)
+- `uptime_percentage` (number)
+- `avg_execution_time_seconds` (number)
+- `created_at`, `updated_at`, `created_by` (timestamp/text)
+
+**✅ `users`** - User accounts
+- `id` (number) - Primary key
+- `clerk_id` (text) - Clerk user ID
+- `email` (text) - User email
+- `credits` (number) - Available credits
+- `stripe_connected` (boolean) - Stripe integration status
 - `created_at` (timestamp)
+
+**❌ `workflows`** - DOES NOT EXIST (use `deployed_workflows` instead)
+**❌ `workflow_versions`** - DOES NOT EXIST  
+**❌ `organizations`** - DOES NOT EXIST (use Clerk org IDs in `deployed_workflows.organization_id`)
+**❌ `workflow_schedules`** - DOES NOT EXIST (schedules are in `deployed_workflows.cron_*` columns)
+**❌ `api_keys`** - DOES NOT EXIST
 
 ---
 
@@ -104,9 +191,9 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-curl -s "${SUPABASE_URL}/rest/v1/workflows?select=id,name,github_folder,created_at&order=created_at.desc&limit=20" \
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder,status,total_executions&order=created_at.desc&limit=20" \
   -H "apikey: ${SUPABASE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) (\(.github_folder))"'
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.total_executions) runs (\(.status))"'
 EOF
 bash /tmp/query_supabase.sh
 ```
@@ -119,9 +206,9 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-WORKFLOW_ID=153  # Replace with actual ID
+WORKFLOW_ID=239  # Replace with actual ID
 
-curl -s "${SUPABASE_URL}/rest/v1/workflows?select=*&id=eq.${WORKFLOW_ID}" \
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=*&id=eq.${WORKFLOW_ID}" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[0]'
 EOF
@@ -136,9 +223,9 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-SEARCH_TERM="SAP"  # Replace with search term
+SEARCH_TERM="onedrive"  # Replace with search term
 
-curl -s "${SUPABASE_URL}/rest/v1/workflows?select=id,name,github_folder&name=ilike.*${SEARCH_TERM}*" \
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder&name=ilike.*${SEARCH_TERM}*" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
 EOF
@@ -153,9 +240,9 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,status,started_at,completed_at&order=started_at.desc&limit=10" \
+curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,status,started_at,completed_at,executor_type&order=started_at.desc&limit=10" \
   -H "apikey: ${SUPABASE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] Status: \(.status) | Workflow: \(.workflow_id) | Started: \(.started_at)"'
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.status) | Workflow \(.workflow_id) | \(.executor_type) | \(.started_at)"'
 EOF
 bash /tmp/query_supabase.sh
 ```
@@ -175,7 +262,7 @@ EOF
 bash /tmp/query_supabase.sh
 ```
 
-### 6. Execution by ID with Workflow Details
+### 6. List All Remote Machines
 
 ```bash
 cat > /tmp/query_supabase.sh << 'EOF'
@@ -183,16 +270,31 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-EXECUTION_ID=20117  # Replace with actual ID
+curl -s "${SUPABASE_URL}/rest/v1/remote_machines?select=id,name,mcp_endpoint,status,health_status,machine_type,total_executions&order=name" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.status)/\(.health_status) - \(.total_executions) runs"'
+EOF
+bash /tmp/query_supabase.sh
+```
 
-curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=*,workflows(name,github_folder)&id=eq.${EXECUTION_ID}" \
+### 7. Get Machine by ID or Name
+
+```bash
+cat > /tmp/query_supabase.sh << 'EOF'
+#!/bin/bash
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+
+MACHINE_ID=18  # Replace with ID or use name filter
+
+curl -s "${SUPABASE_URL}/rest/v1/remote_machines?select=*&id=eq.${MACHINE_ID}" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[0]'
 EOF
 bash /tmp/query_supabase.sh
 ```
 
-### 7. Running Executions
+### 8. Running Executions
 
 ```bash
 cat > /tmp/query_supabase.sh << 'EOF'
@@ -200,14 +302,14 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,progress_percentage,current_step_index,total_steps&status=eq.running&order=started_at.desc" \
+curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,progress_percentage,current_step_index,total_steps,assigned_machine_id&status=eq.running&order=started_at.desc" \
   -H "apikey: ${SUPABASE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | "[\(.id)] \(.progress_percentage)% - Step \(.current_step_index)/\(.total_steps)"'
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | "[\(.id)] \(.progress_percentage)% - Step \(.current_step_index)/\(.total_steps) - Machine #\(.assigned_machine_id)"'
 EOF
 bash /tmp/query_supabase.sh
 ```
 
-### 8. Execution Status Summary
+### 9. Execution Status Summary
 
 ```bash
 cat > /tmp/query_supabase.sh << 'EOF'
@@ -222,21 +324,6 @@ EOF
 bash /tmp/query_supabase.sh
 ```
 
-### 9. Organizations
-
-```bash
-cat > /tmp/query_supabase.sh << 'EOF'
-#!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
-
-curl -s "${SUPABASE_URL}/rest/v1/organizations?select=id,name,created_at&order=name" \
-  -H "apikey: ${SUPABASE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name)"'
-EOF
-bash /tmp/query_supabase.sh
-```
-
 ### 10. Get Table Schema (Columns)
 
 ```bash
@@ -245,11 +332,41 @@ cat > /tmp/query_supabase.sh << 'EOF'
 SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
 SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
 
-TABLE_NAME="workflow_executions"  # Replace with table name
+TABLE_NAME="workflow_executions"  # Replace: deployed_workflows, remote_machines, users
 
 curl -s "${SUPABASE_URL}/rest/v1/${TABLE_NAME}?select=*&limit=1" \
   -H "apikey: ${SUPABASE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r 'if length > 0 then .[0] | keys[] else "Table empty or not found" end'
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r 'if length > 0 then .[0] | keys | sort | join(", ") else "Table empty or not found" end'
+EOF
+bash /tmp/query_supabase.sh
+```
+
+### 11. Scheduled Workflows (Cron-Enabled)
+
+```bash
+cat > /tmp/query_supabase.sh << 'EOF'
+#!/bin/bash
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,cron_expression,cron_timezone,next_scheduled_execution&cron_enabled=eq.true&order=next_scheduled_execution" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.cron_expression) (\(.cron_timezone)) - Next: \(.next_scheduled_execution)"'
+EOF
+bash /tmp/query_supabase.sh
+```
+
+### 12. TypeScript Workflows
+
+```bash
+cat > /tmp/query_supabase.sh << 'EOF'
+#!/bin/bash
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+
+curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder,requires_files&preferred_format=eq.typescript&order=name" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - Files: \(.requires_files)"'
 EOF
 bash /tmp/query_supabase.sh
 ```
@@ -270,11 +387,11 @@ bash /tmp/query_supabase.sh
 - `is.null` - IS NULL
 - `not.is.null` - IS NOT NULL
 - `in.(val1,val2,val3)` - IN
+- `or=(filter1,filter2)` - OR condition
 
 ### Modifiers
 - `select=col1,col2` - Select specific columns
 - `select=*` - Select all columns
-- `select=*,related_table(cols)` - Join related table
 - `order=column.asc` - Sort ascending
 - `order=column.desc` - Sort descending
 - `limit=N` - Limit results
@@ -287,56 +404,18 @@ bash /tmp/query_supabase.sh
 
 ---
 
-## Output Formatting
-
-### For Lists
-```
-## Workflows (showing 10 of 42)
-
-[123] SAP Upload (sap-upload)
-[124] Email Parser (email-parser)
-[125] Data Sync (data-sync)
-```
-
-### For Detailed Records
-```
-## Execution #20117
-
-- Workflow: [153] SAP Upload
-- Status: running
-- Progress: 45% (step 3/7)
-- Started: 2025-11-07 17:35:40
-- Client: cron-scheduler
-- Machine: #21 (python executor)
-```
-
-### For Schema
-```
-## Table: workflow_executions
-
-Columns (48 total):
-- id, workflow_id, status, execution_params, results
-- queued_at, started_at, completed_at
-- progress_percentage, current_step_index, total_steps
-- error_message, execution_logs, screenshots
-- assigned_machine_id, executor_type
-(see full schema in skill documentation)
-```
-
----
-
 ## Error Handling
 
 ### Common Issues
 
 **"relation does not exist"**
-- Table name might be wrong
-- Remember: Use `workflow_executions` NOT `executions`
-- Check spelling: `workflows` not `workflow`
+- Use `deployed_workflows` NOT `workflows`
+- Use `remote_machines` NOT `machines`
+- Check table name spelling
 
 **"column does not exist"**
-- Check column name in schema first
-- Use query #10 to list all columns
+- Check schema with query #10
+- Common mistakes: `ip_address` doesn't exist (use `mcp_endpoint`)
 
 **Empty result `[]`**
 - Table might be empty
@@ -344,19 +423,17 @@ Columns (48 total):
 - Check filter syntax (e.g., `eq.VALUE` not `=VALUE`)
 
 **Timeout/No response**
-- Check network connection
-- Verify `.env.development` has correct URL/key
+- Check `.env.development` has correct URL/key
 - Try simpler query with `limit=1`
 
 ---
 
 ## Important Notes
 
-1. **Table names:** `workflow_executions` (not `executions`), `workflows`, `organizations`
+1. **Correct table names:** `deployed_workflows`, `workflow_executions`, `remote_machines`, `users`
 2. **Always use script pattern:** Avoids bash escaping issues
-3. **Read-only by default:** Only do writes with user confirmation
-4. **Service key:** Bypasses Row Level Security (RLS)
-5. **JSON columns:** Use `jq` for parsing, `->` for nested access
-6. **Large results:** Always use `limit` parameter
-7. **Pagination:** Use `offset` + `limit` or check `Prefer: count=exact` header
-8. **Joins:** Use `select=*,related_table(columns)` syntax
+3. **No organizations table:** Use `organization_id` in workflows (Clerk IDs)
+4. **No workflow_versions table:** Version tracking is embedded in `deployed_workflows`
+5. **Service key:** Bypasses Row Level Security (RLS)
+6. **JSON columns:** Use `jq` for parsing
+7. **Large results:** Always use `limit` parameter

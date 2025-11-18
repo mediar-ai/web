@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
       region: machine.region,
       tags: machine.tags,
       is_global: machine.is_global, // Include global flag for UI display
+      azure_resource_id: machine.azure_resource_id, // Azure unique identifier
 
       // Connection details
       endpoints: {
@@ -146,14 +147,14 @@ export async function GET(request: NextRequest) {
           load_percentage: machine.load_percentage || 0
         }
       }),
-      
+
       // Performance metrics
       performance: {
         avg_execution_time_seconds: machine.avg_execution_time_seconds || 0,
         success_rate_percent: machine.success_rate_percent || 0,
         total_executions: machine.total_executions || 0
       },
-      
+
       // Health details
       health_details: machine.health_details || {},
       last_health_check: machine.last_health_check,
@@ -253,6 +254,7 @@ export async function POST(request: NextRequest) {
       priority: body.priority || 5,
       region: body.region || null,
       tags: body.tags || [],
+      azure_resource_id: body.azure_resource_id || null,
       health_status: healthCheckResult.status,
       health_details: healthCheckResult.details
     };
