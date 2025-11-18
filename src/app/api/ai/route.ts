@@ -744,13 +744,29 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // CRITICAL: Add client tool results to persistent history BEFORE calling AI
+      // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+      let updatedHistoryWithToolResults = [...history];
+      if (toolResults && toolResults.length > 0) {
+        updatedHistoryWithToolResults.push({
+          role: 'user',
+          parts: toolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: tr.result,
+              ...(tr.id && { id: tr.id }),
+            },
+          })),
+        });
+      }
+
       const anthropicRequest: AIProviderRequest = {
         model: sessionModel,
         input,
-        history,
+        history: updatedHistoryWithToolResults,
         system: sessionSystem,
         tools: allTools, // Pass merged tools to Anthropic
-        toolResults,
+        // toolResults: removed - results are now in history
         generationConfig,
         sessionId: actualSessionId,
       };
@@ -808,7 +824,8 @@ export async function POST(request: NextRequest) {
           );
 
           // Update history with the tool calls
-          const updatedHistoryWithCalls = [...history];
+          // Start with history that already includes client tool results (if any)
+          const updatedHistoryWithCalls = [...updatedHistoryWithToolResults];
           if (input) {
             updatedHistoryWithCalls.push({
               role: 'user',
@@ -1015,7 +1032,8 @@ export async function POST(request: NextRequest) {
       }
 
       // No server tools executed - standard response path
-      const updatedHistory = [...history];
+      // Start with history that already has tool results (if any)
+      const updatedHistory = [...updatedHistoryWithToolResults];
 
       // Add user message to history
       if (input) {
@@ -1024,10 +1042,6 @@ export async function POST(request: NextRequest) {
           parts: [{ text: input }],
         });
       }
-
-      // NOTE: Tool results are NOT added to persistent history
-      // They are only sent to the AI provider via the toolResults parameter
-      // This prevents re-sending large tool results on every subsequent turn
 
       // Add model response to history
       const modelParts: Array<{ text?: string; functionCall?: any }> = [];
