@@ -466,7 +466,7 @@ impl McpClient {
                 Err(e) => {
                     log_buffer.log_step(
                         "ERROR",
-                        format!("MCP Error: {} <- {}", tool_name, e),
+                        format!("MCP Error: {tool_name} <- {e}"),
                         None,
                         Some(tool_name),
                     );

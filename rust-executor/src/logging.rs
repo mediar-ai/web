@@ -85,11 +85,11 @@ impl LogBuffer {
                         e.message,
                         e.step_id
                             .as_ref()
-                            .map(|s| format!(" [step: {}]", s))
+                            .map(|s| format!(" [step: {s}]"))
                             .unwrap_or_default(),
                         e.tool_name
                             .as_ref()
-                            .map(|t| format!(" [tool: {}]", t))
+                            .map(|t| format!(" [tool: {t}]"))
                             .unwrap_or_default()
                     )
                 })

@@ -171,8 +171,7 @@ fn test_real_world_infrastructure_errors() {
         assert_eq!(
             classify_error(error),
             ErrorCategory::Infrastructure,
-            "Failed for error: {}",
-            error
+            "Failed for error: {error}"
         );
     }
 }
@@ -193,8 +192,7 @@ fn test_real_world_workflow_errors() {
         assert_eq!(
             classify_error(error),
             ErrorCategory::WorkflowLogic,
-            "Failed for error: {}",
-            error
+            "Failed for error: {error}"
         );
     }
 }
