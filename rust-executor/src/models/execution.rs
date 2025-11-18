@@ -24,6 +24,12 @@ pub struct WorkflowExecution {
     pub current_step: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Retry support
+    pub retry_count: i32,
+    pub max_retries: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    pub is_retryable: bool,
+    pub error_category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

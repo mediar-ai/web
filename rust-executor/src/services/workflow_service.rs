@@ -230,6 +230,11 @@ impl WorkflowService {
                 current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
+                retry_count: 0,
+                max_retries: 0,
+                next_retry_at: None,
+                is_retryable: false,
+                error_category: None,
             }))
         } else {
             Ok(None)
