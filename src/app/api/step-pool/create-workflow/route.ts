@@ -17,7 +17,7 @@ function createWorkflowYaml(name: string, description: string, steps: any[]): st
   const yamlSteps = steps.map((step, index) => {
     const stepId = step.step_id || `step_${index + 1}`;
     let stepYaml = `  - id: ${stepId}\n`;
-    stepYaml += `    tool: ${step.tool_name}\n`;
+    stepYaml += `    tool_name: ${step.tool_name}\n`;
 
     if (step.step_name) {
       stepYaml += `    name: ${step.step_name}\n`;
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       version: '1.0.0',
       steps: steps.map((step, index) => ({
         id: step.step_id || `step_${index + 1}`,
-        tool: step.tool_name,
+        tool_name: step.tool_name,
         name: step.step_name || step.tool_name,
         arguments: step.arguments || {},
         timeout: step.duration_ms ? step.duration_ms * 2 : 30000, // Double actual duration for timeout
@@ -165,7 +165,9 @@ export async function POST(request: NextRequest) {
       description,
       automation_sequence: automationSequence,
       automation_sequence_yaml: workflowYaml,
-      created_by: authenticatedUserId,
+      // Note: created_by expects UUID from auth.users, but we have Clerk user ID (text)
+      // Setting to null for now - ownership tracked via organization_id
+      created_by: null,
       organization_id: organization_id || null,
       is_public,
       category,

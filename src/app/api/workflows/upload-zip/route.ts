@@ -418,7 +418,9 @@ export async function POST(request: NextRequest) {
         cron_expression: extractCronConfigFromYAML(workflowContent)?.expression || null,
         cron_timezone: extractCronConfigFromYAML(workflowContent)?.timezone || 'UTC',
         cron_enabled: extractCronConfigFromYAML(workflowContent)?.enabled || false,
-        created_by: authenticatedUserId,  // Set the creator
+        // Note: created_by expects UUID from auth.users, but we have Clerk user ID (text)
+        // Setting to null for now - ownership tracked via organization_id
+        created_by: null,
         organization_id: orgId || null,   // Set the organization
         total_versions: 1,
       };
