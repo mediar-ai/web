@@ -78,7 +78,7 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         // HTTP/Server errors (5xx)
         "500 internal server error",
         "502 bad gateway",
-        "503 service unavailable",
+        "503 service",
         "504 gateway timeout",
         "http error 500",
         "http error 502",
