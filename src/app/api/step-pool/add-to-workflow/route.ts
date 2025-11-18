@@ -12,7 +12,7 @@ function convertStepsToYaml(steps: any[]): string {
   const yamlSteps = steps.map((step, index) => {
     const stepId = step.step_id || `step_${index + 1}`;
     let yaml = `  - id: ${stepId}\n`;
-    yaml += `    tool: ${step.tool_name}\n`;
+    yaml += `    tool_name: ${step.tool_name}\n`;
 
     if (step.step_name) {
       yaml += `    name: ${step.step_name}\n`;
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       const existingSteps = workflow.automation_sequence?.steps || [];
       const newJsonSteps = steps.map(step => ({
         id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        tool: step.tool_name,
+        tool_name: step.tool_name,
         name: step.step_name || step.tool_name,
         arguments: step.arguments || {}
       }));
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       updatedJson = {
         steps: steps.map(step => ({
           id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          tool: step.tool_name,
+          tool_name: step.tool_name,
           name: step.step_name || step.tool_name,
           arguments: step.arguments || {}
         }))
@@ -180,7 +180,6 @@ export async function POST(request: NextRequest) {
     const updatePayload = {
       automation_sequence: updatedJson,
       automation_sequence_yaml: updatedYaml,
-      created_by: authenticatedUserId, // Needed for trigger's created_by field
       updated_at: new Date().toISOString()
     };
 
@@ -241,7 +240,10 @@ export async function POST(request: NextRequest) {
         id: updatedWorkflow.id,
         name: updatedWorkflow.name,
         version: updatedWorkflow.version,
-        total_versions: updatedWorkflow.total_versions
+        total_versions: updatedWorkflow.total_versions,
+        automation_sequence: updatedWorkflow.automation_sequence,
+        automation_sequence_yaml: updatedWorkflow.automation_sequence_yaml,
+        current_version_id: updatedWorkflow.current_version_id
       },
       steps_added: steps.length,
       remaining_pool_steps: remainingSteps
