@@ -225,16 +225,33 @@ impl McpClient {
 
     /// Create a new HTTP service connection with authentication
     async fn create_http_service(url: &str) -> Result<RunningService<RoleClient, ClientInfo>> {
-        // Create config with authentication using the auth_header method (like terminator CLI)
-        // Note: auth_header expects just the token value, not the "Bearer " prefix
+        // Create config without auth_header - we'll add auth to reqwest client instead
         let config =
             rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
                 url,
-            )
-            .auth_header("cargorunmediar123");
+            );
+
+        // Create reqwest client with custom Accept AND Authorization headers
+        // The MCP server returns 406 if both application/json and text/event-stream are not accepted
+        // The MCP server returns 401 if Authorization header is missing from event stream requests
+        // We must add auth to the reqwest client's default_headers so it applies to ALL requests
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("application/json, text/event-stream"),
+        );
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            reqwest::header::HeaderValue::from_static("Bearer cargorunmediar123"),
+        );
+
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .context("Failed to build reqwest client with custom headers")?;
 
         // Create transport with config (authentication is handled in the config)
-        let transport = StreamableHttpClientTransport::with_client(reqwest::Client::new(), config);
+        let transport = StreamableHttpClientTransport::with_client(client, config);
 
         let client_info = ClientInfo {
             protocol_version: Default::default(),
@@ -360,19 +377,22 @@ impl McpClient {
                 // Ensure we have a connection
                 self.get_or_create_http_service(url).await?;
 
-                // Get service reference and make the call
-                let service_lock = self.http_service.lock().await;
-                let service = service_lock
-                    .as_ref()
-                    .expect("Service should be initialized");
+                // Make the tool call - the mutex guard is automatically dropped after the call
+                // The service lifetime is managed by the Arc<Mutex<>> so it stays alive
+                {
+                    let service_lock = self.http_service.lock().await;
+                    let service = service_lock
+                        .as_ref()
+                        .expect("Service should be initialized");
 
-                service
-                    .call_tool(CallToolRequestParam {
-                        name: tool_name.clone().into(),
-                        arguments,
-                    })
-                    .await
-                    .context(format!("Failed to execute tool: {tool_name}"))?
+                    service
+                        .call_tool(CallToolRequestParam {
+                            name: tool_name.clone().into(),
+                            arguments,
+                        })
+                        .await
+                        .context(format!("Failed to execute tool: {tool_name}"))?
+                }
             }
             McpTransport::Stdio(command) => {
                 info!("Starting MCP server via stdio: {:?}", command);

@@ -449,11 +449,15 @@ export async function POST(request: NextRequest) {
               console.error(
                 `❌ Version creation failed: ${versionError.message}`
               );
-              throw new Error(`Version creation failed: ${versionError.message}`);
+              throw new Error(
+                `Version creation failed: ${versionError.message}`
+              );
             }
 
             // Activate the new version
-            console.log(`🔄 Activating TypeScript version ${newVersionNumber}...`);
+            console.log(
+              `🔄 Activating TypeScript version ${newVersionNumber}...`
+            );
             const { error: activateError } = await supabase.rpc(
               'activate_workflow_version',
               {
@@ -468,17 +472,74 @@ export async function POST(request: NextRequest) {
               );
             }
 
-            // Update workflow with parsed metadata
-            await supabase
-              .from('deployed_workflows')
-              .update({
-                typescript_metadata: metadata,
-                github_sync_status: 'synced',
-                name: metadata.name || workflowName,
-                description: metadata.description,
-                current_version_id: newVersion.id,
-              })
-              .eq('id', workflowId);
+            // Upload TypeScript workflow files to S3
+            console.log(`📦 Fetching TypeScript workflow files from GitHub...`);
+            const tsFiles = await fetchTypeScriptWorkflowFiles(
+              `${orgPrefixPath}${folderName}`,
+              branch
+            );
+
+            if (tsFiles.length > 0) {
+              console.log(
+                `📤 Uploading ${tsFiles.length} TypeScript files to storage...`
+              );
+
+              const fileManager = new WorkflowFileManager();
+              let uploadedCount = 0;
+              let totalSize = 0;
+
+              for (const file of tsFiles) {
+                const result = await fileManager.uploadWorkflowFiles(
+                  workflowId,
+                  newVersionNumber,
+                  [file],
+                  undefined
+                );
+
+                if (result.success) {
+                  uploadedCount++;
+                  totalSize += file.content.length;
+                  console.log(`  ✓ ${file.path}`);
+                } else {
+                  console.error(`  ✗ ${file.path}: ${result.error}`);
+                }
+              }
+
+              console.log(
+                `✅ Uploaded ${uploadedCount}/${tsFiles.length} TypeScript files`
+              );
+
+              // Update workflow with file metadata
+              await supabase
+                .from('deployed_workflows')
+                .update({
+                  typescript_metadata: metadata,
+                  github_sync_status: 'synced',
+                  name: metadata.name || workflowName,
+                  description: metadata.description,
+                  current_version_id: newVersion.id,
+                  requires_files: uploadedCount > 0,
+                  files_config: {
+                    file_count: uploadedCount,
+                    total_size: totalSize,
+                    last_updated: new Date().toISOString(),
+                  },
+                })
+                .eq('id', workflowId);
+            } else {
+              // No files to upload, just update metadata
+              await supabase
+                .from('deployed_workflows')
+                .update({
+                  typescript_metadata: metadata,
+                  github_sync_status: 'synced',
+                  name: metadata.name || workflowName,
+                  description: metadata.description,
+                  current_version_id: newVersion.id,
+                })
+                .eq('id', workflowId);
+            }
+
             console.log(
               `✅ Parsed TypeScript workflow: ${metadata.name} (${metadata.steps.length} steps)`
             );
@@ -1196,4 +1257,68 @@ async function fetchChangedFiles(
 
   console.log(`📦 Successfully fetched ${jsFiles.length} JS files`);
   return jsFiles;
+}
+
+/**
+ * Fetch all TypeScript workflow files from GitHub (recursively)
+ */
+async function fetchTypeScriptWorkflowFiles(
+  folderPath: string,
+  branch: string = 'main'
+): Promise<WorkflowFile[]> {
+  const files: WorkflowFile[] = [];
+
+  async function fetchRecursive(path: string) {
+    try {
+      const { data: contents } = await octokit.repos.getContent({
+        owner: 'mediar-ai',
+        repo: 'workflows',
+        path,
+        ref: branch,
+      });
+
+      if (!Array.isArray(contents)) {
+        // Single file
+        if (
+          'content' in contents &&
+          contents.content &&
+          /\.(ts|js|json)$/.test(contents.name)
+        ) {
+          const relativePath = contents.path.replace(`${folderPath}/`, '');
+          const content = Buffer.from(contents.content, 'base64');
+          files.push({ path: relativePath, content });
+        }
+        return;
+      }
+
+      // Directory - process each item
+      for (const item of contents) {
+        if (item.type === 'dir') {
+          await fetchRecursive(item.path);
+        } else if (item.type === 'file' && /\.(ts|js|json)$/.test(item.name)) {
+          // Fetch file content
+          const { data: fileData } = await octokit.repos.getContent({
+            owner: 'mediar-ai',
+            repo: 'workflows',
+            path: item.path,
+            ref: branch,
+          });
+
+          if ('content' in fileData && fileData.content) {
+            const relativePath = item.path.replace(`${folderPath}/`, '');
+            const content = Buffer.from(fileData.content, 'base64');
+            files.push({ path: relativePath, content });
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Error fetching ${path}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  await fetchRecursive(folderPath);
+  return files;
 }

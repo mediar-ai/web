@@ -250,9 +250,15 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
             .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing github_folder"))?;
 
         // The Windows VMs have S3 bucket mounted to S: drive via rclone
-        // Structure: S:\org-{clerk_org_id}\{github_folder}\
+        // Structure: S:\org-{clerk_org_id}\workflows\{workflow_id}\
+        // Note: S3 uses numeric workflow IDs, not github_folder names
+        // MCP execute_sequence requires file:// URL format (matching terminator CLI)
         let vm_workflow_path = if let Some(org_id) = &workflow.organization_id {
-            format!("S:\\org-{}\\{}", org_id, github_folder)
+            let windows_path = format!("S:\\org-{}\\workflows\\{}", org_id, workflow_id_int);
+            // Convert Windows path to file:// URL (terminator format: file:// with forward slashes)
+            // S:\org-xxx\workflows\123 -> file://S:/org-xxx/workflows/123
+            let normalized_path = windows_path.replace("\\", "/");
+            format!("file://{}", normalized_path)
         } else {
             // Fallback: if no org_id, just pass the folder name
             eprintln!("⚠️  Warning: No organization_id found, passing folder name only");
