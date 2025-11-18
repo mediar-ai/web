@@ -142,12 +142,36 @@ export async function POST(request: NextRequest) {
     }
 
     // No duplicates found, proceed with normal insert
+    // Handle Clerk user IDs vs UUID user IDs
+    let userIdForDB = null;
+    let payloadToStore = body;
+
+    if (user_id) {
+      // Check if it's a valid UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(user_id)) {
+        // It's a valid UUID, use it directly
+        userIdForDB = user_id;
+      } else {
+        // It's a Clerk user ID or other format
+        // Store the Clerk ID in the payload and use NULL for the UUID column
+        console.log(`[INGEST] Non-UUID user_id detected (${user_id}), storing in payload.clerk_user_id`);
+        userIdForDB = null;
+
+        // Ensure the Clerk user_id is preserved in the payload
+        payloadToStore = {
+          ...body,
+          clerk_user_id: user_id  // Preserve Clerk user ID in the payload
+        };
+      }
+    }
+
     const { error } = await supabaseAdmin
       .from('low_level_events')
       .insert({
         session_id,
-        user_id,
-        payload: body,  // Store entire request body including client timestamp
+        user_id: userIdForDB,  // Use the processed user_id (UUID or NULL)
+        payload: payloadToStore,  // Store entire request body including clerk_user_id if needed
         source: 'windows_app'
         // created_at will default to now() for proper server-time based queries
       });
