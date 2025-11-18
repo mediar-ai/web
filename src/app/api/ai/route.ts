@@ -830,16 +830,26 @@ export async function POST(request: NextRequest) {
             parts: toolCallParts,
           });
 
-          // NOTE: Server tool results are NOT added to persistent history
-          // They are passed via toolResults parameter for immediate processing only
+          // CRITICAL: Add server tool results to persistent history
+          // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+          updatedHistoryWithCalls.push({
+            role: 'user',
+            parts: serverToolResults.map(tr => ({
+              functionResponse: {
+                name: tr.name,
+                response: tr.result,
+                ...(tr.id && { id: tr.id }),
+              },
+            })),
+          });
 
-          // Call Anthropic again with tool results via parameter
+          // Call Anthropic again - tool results are now in history, not passed as parameter
           const continuationResult = await handleAnthropicChat({
             model: sessionModel,
             history: updatedHistoryWithCalls,
             system: sessionSystem,
             tools: allTools,
-            toolResults: serverToolResults, // Pass tool results via parameter
+            // toolResults: removed - results are now in history
             generationConfig,
             sessionId: actualSessionId,
           });
@@ -916,8 +926,18 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // NOTE: Server tool results are NOT added to persistent history
-            // They are passed via toolResults parameter for immediate processing only
+            // CRITICAL: Add server tool results to persistent history
+            // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
+            finalHistory.push({
+              role: 'user',
+              parts: moreServerTools.map(tr => ({
+                functionResponse: {
+                  name: tr.name,
+                  response: tr.result,
+                  ...(tr.id && { id: tr.id }),
+                },
+              })),
+            });
 
             // Continue conversation with new server tool results
             console.log(
@@ -928,7 +948,7 @@ export async function POST(request: NextRequest) {
               history: finalHistory,
               system: sessionSystem,
               tools: allTools,
-              toolResults: moreServerTools, // Pass tool results via parameter
+              // toolResults: removed - results are now in history
               generationConfig,
               sessionId: actualSessionId,
             });
