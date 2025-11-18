@@ -94,7 +94,7 @@ async fn start_server(port: u16) -> Result<()> {
 
     info!(
         "Attempting to connect to database: {}",
-        database_url.split('@').last().unwrap_or("unknown")
+        database_url.split('@').next_back().unwrap_or("unknown")
     );
 
     // Try to connect with timeout
@@ -119,8 +119,7 @@ async fn start_server(port: u16) -> Result<()> {
             error!("  Creating empty pool to allow API to start");
             // Return error but with better message
             return Err(anyhow::anyhow!(
-                "Database connection failed: {}. Check network connectivity to Supabase.",
-                e
+                "Database connection failed: {e}. Check network connectivity to Supabase."
             ));
         }
         Err(_) => {
@@ -128,7 +127,7 @@ async fn start_server(port: u16) -> Result<()> {
             error!("  This usually means DNS resolution or network connectivity issues");
             error!(
                 "  Check that the container can reach: {}",
-                database_url.split('@').last().unwrap_or("unknown")
+                database_url.split('@').next_back().unwrap_or("unknown")
             );
             return Err(anyhow::anyhow!(
                 "Database connection timeout. Network/DNS issue suspected."
@@ -158,7 +157,7 @@ async fn start_server(port: u16) -> Result<()> {
 
     axum::serve(listener, app).await.map_err(|e| {
         error!("Server error: {}", e);
-        anyhow::anyhow!("Server error: {}", e)
+        anyhow::anyhow!("Server error: {e}")
     })?;
 
     Ok(())
@@ -166,8 +165,8 @@ async fn start_server(port: u16) -> Result<()> {
 
 async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> {
     eprintln!("=== RUST EXECUTOR - DIRECT RUN MODE ===");
-    eprintln!("Machine: {}", machine);
-    eprintln!("Workflow: {}", workflow);
+    eprintln!("Machine: {machine}");
+    eprintln!("Workflow: {workflow}");
 
     info!("Starting direct workflow execution");
     info!("Machine: {}, Workflow: {}", machine, workflow);
@@ -187,8 +186,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
             // Try to look up machine by name in database
             // For now, return an error
             return Err(anyhow::anyhow!(
-                "Unknown machine: {}. Use vm1, vm2, or provide a full MCP endpoint URL",
-                machine
+                "Unknown machine: {machine}. Use vm1, vm2, or provide a full MCP endpoint URL"
             ));
         }
     };
@@ -222,7 +220,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
                 id
             }
             None => {
-                return Err(anyhow::anyhow!("Workflow not found: {}", workflow));
+                return Err(anyhow::anyhow!("Workflow not found: {workflow}"));
             }
         }
     };
@@ -232,12 +230,12 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
     // Parse workflow_id as integer (deployed_workflows uses integer IDs)
     let workflow_id_int: i64 = workflow_id
         .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid workflow ID '{}': {}", workflow_id, e))?;
+        .map_err(|e| anyhow::anyhow!("Invalid workflow ID '{workflow_id}': {e}"))?;
 
     // Get workflow details to check if it's TypeScript
     let workflow = db::queries::WorkflowQueries::get_workflow(&db_pool, workflow_id_int)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Workflow not found: {}", workflow_id_int))?;
+        .ok_or_else(|| anyhow::anyhow!("Workflow not found: {workflow_id_int}"))?;
 
     // Check if this is a TypeScript workflow
     if workflow.preferred_format.as_deref() == Some("typescript") {
@@ -255,11 +253,11 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         // Note: S3 uses numeric workflow IDs, not github_folder names
         // MCP execute_sequence requires file:// URL format (matching terminator CLI)
         let vm_workflow_path = if let Some(org_id) = &workflow.organization_id {
-            let windows_path = format!("S:\\org-{}\\workflows\\{}", org_id, workflow_id_int);
+            let windows_path = format!("S:\\org-{org_id}\\workflows\\{workflow_id_int}");
             // Convert Windows path to file:// URL (terminator format: file:// with forward slashes)
             // S:\org-xxx\workflows\123 -> file://S:/org-xxx/workflows/123
             let normalized_path = windows_path.replace("\\", "/");
-            format!("file://{}", normalized_path)
+            format!("file://{normalized_path}")
         } else {
             // Fallback: if no org_id, just pass the folder name
             eprintln!("⚠️  Warning: No organization_id found, passing folder name only");
@@ -267,7 +265,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         };
 
         info!("TypeScript workflow path on VM: {}", vm_workflow_path);
-        eprintln!("📁 VM workflow path: {}", vm_workflow_path);
+        eprintln!("📁 VM workflow path: {vm_workflow_path}");
 
         // Create MCP client
         let mcp_client = mcp::McpClient::from_url(mcp_endpoint.clone());
@@ -326,7 +324,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         }
         Err(e) => {
             error!("✗ Workflow execution failed: {}", e);
-            eprintln!("✗ Workflow execution failed: {}", e);
+            eprintln!("✗ Workflow execution failed: {e}");
             return Err(e);
         }
     }

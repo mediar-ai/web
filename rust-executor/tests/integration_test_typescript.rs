@@ -77,8 +77,8 @@ mod test_helpers {
         let file_url = possible_paths
             .into_iter()
             .find(|path| Path::new(path).exists())
-            .map(|path| format!("file://{}", path))
-            .unwrap_or_else(|| format!("file://{}/src/terminator.ts", workflow_path));
+            .map(|path| format!("file://{path}"))
+            .unwrap_or_else(|| format!("file://{workflow_path}/src/terminator.ts"));
 
         let mut args = Map::new();
         args.insert("url".to_string(), Value::String(file_url));
@@ -135,7 +135,7 @@ fn test_real_typescript_workflow_with_file_mounting() {
 
     // Create workflow files at expected location
     let workflow_path = format!("/tmp/workflow-files/{}", workflow.id);
-    std::fs::create_dir_all(format!("{}/src", workflow_path))
+    std::fs::create_dir_all(format!("{workflow_path}/src"))
         .expect("Failed to create workflow directory");
 
     // Write minimal TypeScript workflow
@@ -158,7 +158,7 @@ const workflow = createWorkflow({
 
 export default workflow;
 "#;
-    std::fs::write(format!("{}/src/terminator.ts", workflow_path), ts_content)
+    std::fs::write(format!("{workflow_path}/src/terminator.ts"), ts_content)
         .expect("Failed to write TypeScript file");
 
     // Test building the workflow sequence
@@ -173,7 +173,7 @@ export default workflow;
 
     // Verify sequence structure
     assert_eq!(sequence.steps.len(), 1, "Should have exactly 1 step");
-    assert_eq!(sequence.stop_on_error, true, "Should stop on error");
+    assert!(sequence.stop_on_error, "Should stop on error");
     assert_eq!(
         sequence.include_detailed_results,
         Some(true),
@@ -229,7 +229,7 @@ export default workflow;
 
     println!("✓ Integration test PASSED!");
     println!("✓ TypeScript workflow sequence built correctly");
-    println!("✓ File URL: {}", url_str);
+    println!("✓ File URL: {url_str}");
     println!("✓ Inputs passed correctly: 4 parameters");
 }
 

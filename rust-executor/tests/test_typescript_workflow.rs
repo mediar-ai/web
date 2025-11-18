@@ -130,10 +130,10 @@ fn test_file_path_detection_fallbacks() {
 
     for file_path in test_cases {
         let workflow_id = 789;
-        let full_path = format!("/tmp/workflow-files/{}/{}", workflow_id, file_path);
-        let expected_url = format!("file://{}", full_path);
+        let full_path = format!("/tmp/workflow-files/{workflow_id}/{file_path}");
+        let expected_url = format!("file://{full_path}");
         
-        println!("Expected URL for {}: {}", file_path, expected_url);
+        println!("Expected URL for {file_path}: {expected_url}");
         
         // Verify URL format is correct
         assert!(expected_url.starts_with("file:///tmp/workflow-files/"));

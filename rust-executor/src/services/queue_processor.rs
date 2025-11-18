@@ -558,7 +558,7 @@ impl QueueProcessor {
         let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
 
         // Default to src/terminator.ts (most common location)
-        let file_url = format!("file://{}/src/terminator.ts", workflow_base_path);
+        let file_url = format!("file://{workflow_base_path}/src/terminator.ts");
 
         info!("TypeScript workflow URL: {}", file_url);
 
@@ -655,7 +655,7 @@ impl QueueProcessor {
                             step_num,
                             step_count,
                             tool_name),
-                        Some(format!("step_{}", idx)),
+                        Some(format!("step_{idx}")),
                         Some(tool_name.to_string()),
                     );
 
@@ -667,7 +667,7 @@ impl QueueProcessor {
                                 chrono::Local::now().format("%H:%M:%S"),
                                 tool_name,
                                 serde_json::to_string(args_value).unwrap_or_default()),
-                            Some(format!("step_{}", idx)),
+                            Some(format!("step_{idx}")),
                             Some(tool_name.to_string()),
                         );
                     }
@@ -715,7 +715,7 @@ impl QueueProcessor {
                         let mut has_failure = false;
                         for (idx, step) in steps.iter().enumerate() {
                             if let Some(step_obj) = step.as_object() {
-                                let step_id = format!("step_{}", idx);
+                                let step_id = format!("step_{idx}");
                                 let status = step_obj.get("status")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("unknown");
@@ -922,7 +922,7 @@ impl QueueProcessor {
                     "debug",
                     format!("{} - workflow_executor - ERROR - MCP Error Context: {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        e.to_string()),
+                        e),
                     None,
                     None,
                 );
@@ -931,7 +931,7 @@ impl QueueProcessor {
                     "debug",
                     format!("{} - workflow_executor - ERROR - Real workflow execution failed: MCP Execution Failed: {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        e.to_string()),
+                        e),
                     None,
                     None,
                 );
@@ -989,7 +989,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should be marked as failure when step fails");
+        assert!(!success, "Should be marked as failure when step fails");
     }
 
     #[test]
@@ -1002,7 +1002,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should be marked as failure with error field");
+        assert!(!success, "Should be marked as failure with error field");
     }
 
     #[test]
@@ -1014,7 +1014,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should be marked as failure when message contains 'failed'");
+        assert!(!success, "Should be marked as failure when message contains 'failed'");
     }
 
     #[test]
@@ -1027,7 +1027,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should be marked as failure when success is false");
+        assert!(!success, "Should be marked as failure when success is false");
     }
 
     #[test]
@@ -1040,7 +1040,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, true, "Should be marked as success when success is true");
+        assert!(success, "Should be marked as success when success is true");
     }
 
     #[test]
@@ -1058,7 +1058,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should be marked as failure when steps array contains failure");
+        assert!(!success, "Should be marked as failure when steps array contains failure");
     }
 
     #[test]
@@ -1071,7 +1071,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Should default to failure when no explicit success indicator");
+        assert!(!success, "Should default to failure when no explicit success indicator");
     }
 
     #[test]
@@ -1094,7 +1094,7 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert_eq!(success, false, "Real failure case from execution #22062 should be marked as failure");
+        assert!(!success, "Real failure case from execution #22062 should be marked as failure");
     }
 
     // Helper function for tests - replicates the status determination logic

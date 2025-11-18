@@ -89,7 +89,7 @@ impl MonitorClient {
             .client
             .post(&monitor_url)
             .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Authorization", format!("Bearer {api_key}"))
             .json(&payload)
             .timeout(std::time::Duration::from_secs(5))
             .send()
@@ -108,12 +108,12 @@ impl MonitorClient {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_else(|_| "".to_string());
                     warn!("⚠️ Monitor notification failed: {} - {}", status, body);
-                    Err(anyhow::anyhow!("Monitor API returned {}: {}", status, body))
+                    Err(anyhow::anyhow!("Monitor API returned {status}: {body}"))
                 }
             }
             Err(e) => {
                 error!("❌ Failed to send monitor notification: {}", e);
-                Err(anyhow::anyhow!("Monitor API request failed: {}", e))
+                Err(anyhow::anyhow!("Monitor API request failed: {e}"))
             }
         }
     }

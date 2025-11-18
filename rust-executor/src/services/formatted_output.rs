@@ -41,33 +41,24 @@ pub fn format_failure(
         r#"Workflow execution failed!
 
 Execution Error Summary
-{}
+{divider}
 
 Error Details:
-  Type: {}
-  Stage: {}
-  Message: {}
+  Type: {error_type}
+  Stage: {error_stage}
+  Message: {error}
 
 Execution Metrics
-{}
-  Total Steps Attempted: {}
-  Successful Steps: {}
-  Failed Steps: {}
-  Execution Time: {:.1}s
+{sub_divider}
+  Total Steps Attempted: {total_steps}
+  Successful Steps: {successful_steps}
+  Failed Steps: {failed_steps}
+  Execution Time: {execution_time_seconds:.1}s
 
 Troubleshooting:
   • Check if MCP endpoint is running and accessible
   • Verify browser automation dependencies are installed
-  • Review the raw logs for detailed error trace"#,
-        divider,
-        error_type,
-        error_stage,
-        error,
-        sub_divider,
-        total_steps,
-        successful_steps,
-        failed_steps,
-        execution_time_seconds
+  • Review the raw logs for detailed error trace"#
     );
 
     // Return JSON with both the formatted text and structured data
@@ -99,22 +90,19 @@ pub fn format_exception(
         r#"Workflow execution failed!
 
 Execution Error Summary
-{}
+{divider}
 
 Error Details:
   Type: Exception
   Stage: workflow_execution
-  Message: {}
+  Message: {error}
 
-Execution Time: {:.1}s
+Execution Time: {execution_time_seconds:.1}s
 
 Troubleshooting:
   • Check if MCP endpoint is running and accessible
   • Verify browser automation dependencies are installed
-  • Review the raw logs for detailed error trace"#,
-        divider,
-        error,
-        execution_time_seconds
+  • Review the raw logs for detailed error trace"#
     );
 
     json!({

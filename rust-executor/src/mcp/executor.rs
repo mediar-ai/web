@@ -183,7 +183,7 @@ impl WorkflowExecutor {
                     // Log step completion
                     self.log_buffer.log_step(
                         "INFO",
-                        format!("Step {} completed successfully", step_id),
+                        format!("Step {step_id} completed successfully"),
                         Some(step_id.clone()),
                         Some(result.tool_name.clone()),
                     );
@@ -194,7 +194,7 @@ impl WorkflowExecutor {
                     // Log step failure
                     self.log_buffer.log_step(
                         "ERROR",
-                        format!("Step {} failed: {}", step_id, e),
+                        format!("Step {step_id} failed: {e}"),
                         Some(step_id.clone()),
                         Some(step_name.clone()),
                     );
