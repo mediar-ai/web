@@ -906,8 +906,52 @@ function AdminPageContent() {
                       </button>
                     </div>
                     {loadingMachines ? (
-                      <div className="p-8 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                      <div className="overflow-x-auto w-full border-t border-gray-200">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '180px' }}>NAME</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>STATUS</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '120px' }}>HEALTH</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '120px' }}>IP ADDRESS</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '140px' }}>AZURE ID</th>
+                              <th className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '140px' }}>ORGANIZATIONS</th>
+                              <th className="px-3 py-3 text-right font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>ACTIONS</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {[1, 2, 3].map((i) => (
+                              <tr key={i} className="animate-pulse">
+                                <td className="px-3 py-3">
+                                  <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
+                                  <div className="h-3 bg-gray-100 rounded w-48"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="h-6 bg-gray-200 rounded w-20"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="h-4 bg-gray-200 rounded w-24 mb-1"></div>
+                                  <div className="h-3 bg-gray-100 rounded w-32"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="h-3 bg-gray-200 rounded w-28"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="h-3 bg-gray-200 rounded w-24"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="h-6 bg-gray-200 rounded w-20"></div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                                    <div className="h-8 w-8 bg-gray-200 rounded"></div>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     ) : (
                       <div className="overflow-x-auto w-full border-t border-gray-200">
@@ -1003,53 +1047,62 @@ function AdminPageContent() {
                                 </td>
                                 <td className="px-3 py-3">
                                   <div className="space-y-1">
-                                    <div className="flex items-center gap-1">
-                                      <Activity className={`w-3 h-3 ${
-                                        machine.health_status === 'healthy' ? 'text-black' :
-                                        machine.health_status === 'unhealthy' ? 'text-gray-600' :
-                                        'text-gray-400'
-                                      } ${machine.health_status === 'healthy' ? 'animate-pulse' : ''}`} />
-                                      <span className="font-mono text-xs">
-                                        {machine.health_status?.toUpperCase() || 'UNKNOWN'}
-                                      </span>
-                                    </div>
-                                    <div className="font-mono text-xs text-gray-600">
-                                      {(() => {
-                                        const totalChecks = (machine as any).total_checks || 0;
-                                        const successfulChecks = (machine as any).successful_checks || 0;
-                                        const lastCheck = machine.last_health_check;
-
-                                        if (machine.status === 'inactive') {
-                                          return <span title="Machine is inactive">N/A</span>;
-                                        }
-
-                                        if (totalChecks === 0) {
-                                          return <span>No checks</span>;
-                                        }
-
-                                        let uptimePercent = ((successfulChecks / totalChecks) * 100);
-
-                                        if (lastCheck) {
-                                          const hoursSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60);
-                                          if (hoursSinceCheck > 24) {
-                                            const daysSinceCheck = hoursSinceCheck / 24;
-                                            const stalePenalty = Math.min(daysSinceCheck * 10, uptimePercent);
-                                            uptimePercent = Math.max(0, uptimePercent - stalePenalty);
-                                          }
-                                        }
-
-                                        const uptimeStr = uptimePercent.toFixed(1);
-                                        const title = lastCheck && Date.now() - new Date(lastCheck).getTime() > 86400000
-                                          ? `${successfulChecks}/${totalChecks} checks (stale)`
-                                          : `${successfulChecks}/${totalChecks} checks`;
-
-                                        return (
-                                          <span title={title}>
-                                            {uptimeStr}% • {formatTimeAgo(machine.last_health_check)}
+                                    {machine.status === 'active' ? (
+                                      <>
+                                        <div className="flex items-center gap-1">
+                                          <Activity className={`w-3 h-3 ${
+                                            machine.health_status === 'healthy' ? 'text-black' :
+                                            machine.health_status === 'unhealthy' ? 'text-gray-600' :
+                                            'text-gray-400'
+                                          } ${machine.health_status === 'healthy' ? 'animate-pulse' : ''}`} />
+                                          <span className="font-mono text-xs">
+                                            {machine.health_status?.toUpperCase() || 'UNKNOWN'}
                                           </span>
-                                        );
-                                      })()}
-                                    </div>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <Activity className="w-3 h-3 text-gray-400" />
+                                        <span className="font-mono text-xs text-gray-400">
+                                          N/A
+                                        </span>
+                                      </div>
+                                    )}
+                                    {machine.status === 'active' && (
+                                      <div className="font-mono text-xs text-gray-600">
+                                        {(() => {
+                                          const totalChecks = (machine as any).total_checks || 0;
+                                          const successfulChecks = (machine as any).successful_checks || 0;
+                                          const lastCheck = machine.last_health_check;
+
+                                          if (totalChecks === 0) {
+                                            return <span>No checks</span>;
+                                          }
+
+                                          let uptimePercent = ((successfulChecks / totalChecks) * 100);
+
+                                          if (lastCheck) {
+                                            const hoursSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60);
+                                            if (hoursSinceCheck > 24) {
+                                              const daysSinceCheck = hoursSinceCheck / 24;
+                                              const stalePenalty = Math.min(daysSinceCheck * 10, uptimePercent);
+                                              uptimePercent = Math.max(0, uptimePercent - stalePenalty);
+                                            }
+                                          }
+
+                                          const uptimeStr = uptimePercent.toFixed(1);
+                                          const title = lastCheck && Date.now() - new Date(lastCheck).getTime() > 86400000
+                                            ? `${successfulChecks}/${totalChecks} checks (stale)`
+                                            : `${successfulChecks}/${totalChecks} checks`;
+
+                                          return (
+                                            <span title={title}>
+                                              {uptimeStr}% • {formatTimeAgo(machine.last_health_check)}
+                                            </span>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3">
@@ -1068,13 +1121,15 @@ function AdminPageContent() {
                                 <td className="px-3 py-3">
                                   <div className="font-mono text-xs">
                                     {machine.azure_resource_id ? (
-                                      <button
-                                        onClick={() => copyToClipboard(machine.azure_resource_id, 'Azure Resource ID')}
-                                        className="hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left truncate max-w-[140px]"
-                                        title={machine.azure_resource_id}
+                                      <a
+                                        href={`https://portal.azure.com/#resource${machine.azure_resource_id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hover:bg-gray-100 px-2 py-1 -mx-2 -my-1 rounded text-left truncate max-w-[140px] inline-block underline hover:no-underline"
+                                        title={`Open ${machine.azure_resource_id} in Azure Portal`}
                                       >
                                         {machine.azure_resource_id.split('/').pop() || machine.azure_resource_id}
-                                      </button>
+                                      </a>
                                     ) : '-'}
                                   </div>
                                 </td>
