@@ -7,6 +7,7 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
+mod config;
 mod db;
 mod logging;
 mod mcp;

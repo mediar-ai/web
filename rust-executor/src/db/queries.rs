@@ -102,14 +102,20 @@ impl WorkflowQueries {
             r#"
             UPDATE workflow_executions
             SET
-                status = $1,
+                status = 'running',
                 started_at = NOW(),
                 updated_at = NOW()
             WHERE id = (
                 SELECT id FROM workflow_executions
-                WHERE status = $2
-                AND executor_type = 'rust'
-                ORDER BY created_at ASC
+                WHERE (
+                    (status = 'queued' AND executor_type = 'rust')
+                    OR
+                    (status = 'failed' AND is_retryable = TRUE AND next_retry_at <= NOW() AND executor_type = 'rust')
+                )
+                ORDER BY
+                    priority DESC NULLS LAST,
+                    retry_count ASC,
+                    created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
@@ -119,11 +125,11 @@ impl WorkflowQueries {
                 mcp_endpoint,
                 started_at, completed_at, error_message,
                 results, execution_logs, total_steps,
-                current_step_description, created_at, updated_at
+                current_step_description, created_at, updated_at,
+                retry_count, max_retries, next_retry_at,
+                is_retryable, error_category
             "#,
         )
-        .bind("running")
-        .bind("queued")
         .fetch_optional(pool)
         .await?;
 
@@ -145,6 +151,11 @@ impl WorkflowQueries {
                 current_step: row.get("current_step_description"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
+                retry_count: row.get("retry_count"),
+                max_retries: row.get("max_retries"),
+                next_retry_at: row.get("next_retry_at"),
+                is_retryable: row.get("is_retryable"),
+                error_category: row.get("error_category"),
             }))
         } else {
             Ok(None)
@@ -299,6 +310,66 @@ impl WorkflowQueries {
         .bind(total_steps as i32)
         .bind(current_step)
         .bind(execution_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Schedule an execution for retry after infrastructure failure
+    pub async fn schedule_retry(
+        pool: &Pool<Postgres>,
+        execution_id: i64,
+        retry_count: i32,
+        next_retry_at: chrono::DateTime<Utc>,
+        error_category: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE workflow_executions
+            SET
+                status = 'queued',
+                retry_count = $2,
+                next_retry_at = $3,
+                is_retryable = TRUE,
+                error_category = $4,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(execution_id)
+        .bind(retry_count)
+        .bind(next_retry_at)
+        .bind(error_category)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Mark execution as permanently failed (no more retries)
+    pub async fn mark_failed_permanently(
+        pool: &Pool<Postgres>,
+        execution_id: i64,
+        error_message: &str,
+        error_category: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE workflow_executions
+            SET
+                status = 'failed',
+                error_message = $2,
+                is_retryable = FALSE,
+                error_category = $3,
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(execution_id)
+        .bind(error_message)
+        .bind(error_category)
         .execute(pool)
         .await?;
 

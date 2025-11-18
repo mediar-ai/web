@@ -6,6 +6,7 @@ use tracing::{error, info, warn};
 use crate::models::ExecutionStatus;
 
 /// Client for calling the monitor API endpoint with authentication
+#[derive(Clone)]
 pub struct MonitorClient {
     app_url: String,
     api_key: Option<String>,

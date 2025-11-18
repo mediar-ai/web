@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 use tokio::time::interval;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::config::{classify_error, ErrorCategory, RetryConfig};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::logging::LogBuffer;
 use crate::mcp::{McpClient, WorkflowExecutor};
@@ -15,41 +18,71 @@ pub struct QueueProcessor {
     db_pool: DatabasePool,
     machine_id: String,
     monitor_client: MonitorClient,
+    retry_config: RetryConfig,
+    max_concurrent_executions: usize,
 }
 
 impl QueueProcessor {
     pub fn new(db_pool: DatabasePool) -> Self {
         let machine_id = Self::generate_machine_id();
         let monitor_client = MonitorClient::new();
+        let retry_config = RetryConfig::default();
+        let max_concurrent_executions = std::env::var("MAX_CONCURRENT_EXECUTIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
 
         Self {
             db_pool,
             machine_id,
             monitor_client,
+            retry_config,
+            max_concurrent_executions,
         }
     }
 
-    /// Start processing the queue
+    /// Start processing the queue with concurrency support
     pub async fn start(&self) -> Result<()> {
         info!(
-            "Starting queue processor with machine_id: {}",
-            self.machine_id
+            "Starting queue processor with machine_id: {} (max_concurrent: {})",
+            self.machine_id, self.max_concurrent_executions
         );
 
+        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_executions));
         let mut ticker = interval(Duration::from_secs(5));
 
         loop {
             ticker.tick().await;
 
-            match self.process_next_job().await {
-                Ok(processed) => {
-                    if processed {
-                        info!("Successfully processed a job");
+            // Try to claim a new execution if we have capacity
+            if semaphore.available_permits() > 0 {
+                let permit = match semaphore.clone().try_acquire_owned() {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+
+                // Clone self for spawned task
+                let processor = QueueProcessor {
+                    db_pool: self.db_pool.clone(),
+                    machine_id: self.machine_id.clone(),
+                    monitor_client: self.monitor_client.clone(),
+                    retry_config: self.retry_config.clone(),
+                    max_concurrent_executions: self.max_concurrent_executions,
+                };
+
+                tokio::spawn(async move {
+                    match processor.process_next_job().await {
+                        Ok(processed) => {
+                            if processed {
+                                info!("Successfully processed execution");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error processing execution: {}", e);
+                        }
                     }
-                }
-                Err(e) => {
-                    error!("Error processing job: {}", e);
-                }
+                    drop(permit);
+                });
             }
         }
     }
@@ -302,46 +335,104 @@ impl QueueProcessor {
                 Err(e) => {
                     error!("Execution {} failed: {}", execution.id, e);
 
+                    let error_message = e.to_string();
+                    let error_category = classify_error(&error_message);
+
+                    info!("Error classified as: {:?} for execution {}", error_category, execution.id);
+
                     // Get logs from log_buffer
                     let raw_logs = log_buffer.to_text();
                     let execution_logs = log_buffer.to_json();
 
-                    // For errors, use format_exception with detailed error formatting
-                    let formatted_output = Some(format_exception(
-                        &e.to_string(),
-                        execution_time as u64 * 1000  // Convert seconds to milliseconds
-                    ));
+                    // Determine if we should retry
+                    let should_retry = error_category == ErrorCategory::Infrastructure
+                        && self.retry_config.enabled
+                        && execution.retry_count < self.retry_config.max_infrastructure_retries as i32;
 
-                    WorkflowQueries::update_execution_status_with_logs(
-                        &self.db_pool,
-                        execution.id,
-                        ExecutionStatus::Failed,
-                        Some(e.to_string()),
-                        None,
-                        formatted_output,
-                        Some(raw_logs),
-                        Some(execution_logs),
-                    )
-                    .await?;
+                    if should_retry {
+                        // Schedule retry
+                        let retry_count = execution.retry_count + 1;
+                        let delay = self.retry_config.calculate_delay(retry_count as u32);
+                        let next_retry_at = Utc::now() + delay;
 
-                    // Notify monitor endpoint about exception
-                    if let Err(monitor_err) = self
-                        .monitor_client
-                        .notify_execution_status(
+                        info!(
+                            "Scheduling retry {}/{} for execution {} at {} (delay: {}s)",
+                            retry_count, self.retry_config.max_infrastructure_retries,
+                            execution.id, next_retry_at, delay.as_secs()
+                        );
+
+                        WorkflowQueries::schedule_retry(
+                            &self.db_pool,
+                            execution.id,
+                            retry_count,
+                            next_retry_at,
+                            "infrastructure",
+                        )
+                        .await?;
+
+                        // Notify monitor about scheduled retry
+                        let _ = self.monitor_client.notify_execution_status(
                             execution.id,
                             workflow.id,
                             Some(workflow.name.clone()),
-                            ExecutionStatus::Failed,
-                            Some(e.to_string()),
+                            ExecutionStatus::Queued,
+                            Some(format!(
+                                "Infrastructure failure. Retry {}/{} scheduled for {}",
+                                retry_count, self.retry_config.max_infrastructure_retries, next_retry_at
+                            )),
                             None,
                             Some(start_time),
                             Some(end_time),
                             Some(execution_time),
-                            "rust_executor_exception",
+                            "rust_executor_retry_scheduled",
+                        ).await;
+                    } else {
+                        // Mark as permanently failed
+                        let error_cat_str = match error_category {
+                            ErrorCategory::Infrastructure => "infrastructure",
+                            ErrorCategory::WorkflowLogic => "workflow_logic",
+                            ErrorCategory::Unknown => "unknown",
+                        };
+
+                        info!("Marking execution {} as permanently failed: {:?}", execution.id, error_category);
+
+                        WorkflowQueries::mark_failed_permanently(
+                            &self.db_pool,
+                            execution.id,
+                            &error_message,
+                            error_cat_str,
                         )
-                        .await
-                    {
-                        warn!("Failed to send monitor notification for exception: {}", monitor_err);
+                        .await?;
+
+                        let formatted_output = Some(format_exception(
+                            &error_message,
+                            execution_time as u64 * 1000,
+                        ));
+
+                        WorkflowQueries::update_execution_status_with_logs(
+                            &self.db_pool,
+                            execution.id,
+                            ExecutionStatus::Failed,
+                            Some(error_message.clone()),
+                            None,
+                            formatted_output,
+                            Some(raw_logs),
+                            Some(execution_logs),
+                        )
+                        .await?;
+
+                        let _ = self.monitor_client.notify_execution_status(
+                            execution.id,
+                            workflow.id,
+                            Some(workflow.name.clone()),
+                            ExecutionStatus::Failed,
+                            Some(error_message),
+                            None,
+                            Some(start_time),
+                            Some(end_time),
+                            Some(execution_time),
+                            "rust_executor_failed_permanently",
+                        ).await;
                     }
                 }
             }

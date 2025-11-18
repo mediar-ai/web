@@ -163,7 +163,7 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
     // Check workflow logic patterns
     for pattern in &workflow_logic_patterns {
         if error_lower.contains(pattern) {
-            return ErrorCategory::Infrastructure;
+            return ErrorCategory::WorkflowLogic;
         }
     }
 
