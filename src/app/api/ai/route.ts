@@ -830,28 +830,16 @@ export async function POST(request: NextRequest) {
             parts: toolCallParts,
           });
 
-          // Add server tool results to history
-          updatedHistoryWithCalls.push({
-            role: 'user',
-            parts: serverToolResults.map(tr => ({
-              functionResponse: {
-                name: tr.name,
-                response: {
-                  name: tr.name, // Name must be repeated in response
-                  content: tr.result, // Actual tool result goes in content
-                },
-                ...(tr.id && { id: tr.id }),
-              },
-            })),
-          });
+          // NOTE: Server tool results are NOT added to persistent history
+          // They are passed via toolResults parameter for immediate processing only
 
-          // Call Anthropic again with tool results (already in history)
+          // Call Anthropic again with tool results via parameter
           const continuationResult = await handleAnthropicChat({
             model: sessionModel,
             history: updatedHistoryWithCalls,
             system: sessionSystem,
             tools: allTools,
-            // toolResults not needed - already in updatedHistoryWithCalls
+            toolResults: serverToolResults, // Pass tool results via parameter
             generationConfig,
             sessionId: actualSessionId,
           });
@@ -928,20 +916,8 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // Add server tool results to history
-            finalHistory.push({
-              role: 'user',
-              parts: moreServerTools.map(tr => ({
-                functionResponse: {
-                  name: tr.name,
-                  response: {
-                    name: tr.name,
-                    content: tr.result,
-                  },
-                  ...(tr.id && { id: tr.id }),
-                },
-              })),
-            });
+            // NOTE: Server tool results are NOT added to persistent history
+            // They are passed via toolResults parameter for immediate processing only
 
             // Continue conversation with new server tool results
             console.log(
@@ -952,6 +928,7 @@ export async function POST(request: NextRequest) {
               history: finalHistory,
               system: sessionSystem,
               tools: allTools,
+              toolResults: moreServerTools, // Pass tool results via parameter
               generationConfig,
               sessionId: actualSessionId,
             });
@@ -1028,22 +1005,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Add tool results to history if present
-      if (toolResults && toolResults.length > 0) {
-        updatedHistory.push({
-          role: 'user',
-          parts: toolResults.map(tr => ({
-            functionResponse: {
-              name: tr.name,
-              response: {
-                name: tr.name, // Name must be repeated in response
-                content: tr.result, // Actual tool result goes in content
-              },
-              ...(tr.id && { id: tr.id }), // Include ID if present
-            },
-          })),
-        });
-      }
+      // NOTE: Tool results are NOT added to persistent history
+      // They are only sent to the AI provider via the toolResults parameter
+      // This prevents re-sending large tool results on every subsequent turn
 
       // Add model response to history
       const modelParts: Array<{ text?: string; functionCall?: any }> = [];
@@ -1283,19 +1247,8 @@ export async function POST(request: NextRequest) {
         let finalResult = continuationResult;
         const finalHistory = [...updatedHistoryWithCalls];
 
-        // Now add the tool results to history for Redis storage
-        finalHistory.push({
-          role: 'user',
-          parts: serverToolResults.map(tr => ({
-            functionResponse: {
-              name: tr.name,
-              response: {
-                name: tr.name,
-                content: tr.result,
-              },
-            },
-          })),
-        });
+        // NOTE: Server tool results are NOT added to persistent history
+        // They were sent via toolResults parameter for immediate processing only
 
         // Keep executing server tools until there are none left
         while (finalResult.toolCalls.length > 0) {
@@ -1378,19 +1331,8 @@ export async function POST(request: NextRequest) {
             finishReason: finalResult.finishReason,
           });
 
-          // Now add the tool results to history for Redis storage
-          finalHistory.push({
-            role: 'user',
-            parts: moreServerTools.map(tr => ({
-              functionResponse: {
-                name: tr.name,
-                response: {
-                  name: tr.name,
-                  content: tr.result,
-                },
-              },
-            })),
-          });
+          // NOTE: Server tool results are NOT added to persistent history
+          // They were sent via toolResults parameter for immediate processing only
         }
 
         // Add final model response to history
@@ -1460,22 +1402,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Add tool results to history if present
-    if (toolResults && toolResults.length > 0) {
-      updatedHistory.push({
-        role: 'user',
-        parts: toolResults.map(tr => ({
-          functionResponse: {
-            name: tr.name,
-            response: {
-              name: tr.name, // Name must be repeated in response
-              content: tr.result, // Actual tool result goes in content
-            },
-            ...(tr.id && { id: tr.id }), // Preserve ID for Anthropic multi-turn support
-          },
-        })),
-      });
-    }
+    // NOTE: Tool results are NOT added to persistent history
+    // They are only sent to the AI provider via the toolResults parameter
+    // This prevents re-sending large tool results on every subsequent turn
 
     // Add model response to history
     const modelParts: Array<{ text?: string; functionCall?: any }> = [];
