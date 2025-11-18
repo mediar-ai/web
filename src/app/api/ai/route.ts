@@ -234,10 +234,10 @@ function createSessionId(): string {
  * Anthropic API requires tool_result blocks to exist, but content can be truncated
  *
  * @param result - The tool result to truncate
- * @param maxChars - Maximum characters to keep (default: 1000)
+ * @param maxChars - Maximum characters to keep (default: 500)
  * @returns Truncated result with metadata
  */
-function truncateToolResult(result: any, maxChars: number = 1000): any {
+function truncateToolResult(result: any, maxChars: number = 500): any {
   if (!result) return result;
 
   const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
@@ -857,7 +857,7 @@ export async function POST(request: NextRequest) {
               parts: toolResults.map(tr => ({
                 functionResponse: {
                   name: tr.name,
-                  response: truncateToolResult(tr.result, 1000),
+                  response: truncateToolResult(tr.result, 500),
                   ...(tr.id && { id: tr.id }),
                 },
               })),
@@ -886,7 +886,7 @@ export async function POST(request: NextRequest) {
             parts: serverToolResults.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
+                response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
                 ...(tr.id && { id: tr.id }),
               },
             })),
@@ -984,7 +984,7 @@ export async function POST(request: NextRequest) {
               parts: moreServerTools.map(tr => ({
                 functionResponse: {
                   name: tr.name,
-                  response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
+                  response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
                   ...(tr.id && { id: tr.id }),
                 },
               })),
@@ -1084,7 +1084,7 @@ export async function POST(request: NextRequest) {
           parts: toolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              response: truncateToolResult(tr.result, 1000), // Truncate to 1000 chars
+              response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
               ...(tr.id && { id: tr.id }),
             },
           })),
