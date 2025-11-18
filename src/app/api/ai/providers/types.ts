@@ -10,7 +10,7 @@ export interface AIProviderRequest {
   history: any[]; // Provider-specific format (Vertex or Anthropic)
   system?: string;
   tools?: any[]; // Provider-specific tool format
-  toolResults?: Array<{ id: string; name: string; result: any }>; // id is required for proper matching
+  toolResults?: Array<{ id?: string; name: string; result: any }>; // id is optional (Vertex doesn't use it)
   generationConfig?: {
     temperature?: number;
     maxOutputTokens?: number;
