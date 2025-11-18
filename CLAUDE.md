@@ -443,6 +443,25 @@ ORDER BY Timestamp
 - Keep commits focused and atomic
 - Include clear descriptions of UI/UX changes
 
+## Infrastructure & Deployment - CRITICAL LESSONS
+
+### 1. Verify Infrastructure Layers Work
+Build completes ≠ everything works. Check logs: rclone mount logs, service health endpoints, storage connectivity before declaring success.
+
+### 2. GitHub Actions Secrets Require Explicit Mapping
+Secret names ≠ environment variable names. Must map: `secrets.SUPABASE_S3_ACCESS_KEY` → `S3_ACCESS_KEY` in workflow env vars.
+
+### 3. Windows Error Codes Quick Reference
+- `os error 5`: Cross-process permissions (fix: `--network-mode`)
+- `os error 1117`: Mount exists but broken (check storage logs/credentials)
+- `HTTP 403 Missing signature`: S3 credentials missing
+
+### 4. Windows VM Boot Time: 10-15 Minutes
+Don't test immediately after `terraform apply`. Wait for boot + auto-logon + services. Health endpoint responding ≠ all services ready.
+
+### 5. Use Auto-Detection for Resources (Docker-style)
+Query for latest image dynamically instead of hardcoding versions. Terraform auto-uses newest build without manual updates.
+
 ## Important Notes
 - User prefers simplicity over complexity
 - Mathematical, clean aesthetic is priority
