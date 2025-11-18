@@ -1055,11 +1055,15 @@ function AdminPageContent() {
                                 </td>
                                 <td className="px-3 py-3">
                                   <div className="font-mono text-xs">
-                                    {machine.health_details?.ip_address ||
-                                     machine.health_details?.public_ip ||
-                                     machine.health_details?.data?.ip_address ||
-                                     machine.health_details?.data?.public_ip ||
-                                     '-'}
+                                    {(() => {
+                                      try {
+                                        const endpoint = machine.endpoints?.mcp || machine.mcp_endpoint || '';
+                                        const url = new URL(endpoint);
+                                        return url.hostname;
+                                      } catch {
+                                        return '-';
+                                      }
+                                    })()}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3">
