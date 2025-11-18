@@ -358,7 +358,7 @@ export async function PATCH(
     // Check workflow_organization_access table for organization-based access
     // PATCH (modify) requires write or admin access level
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('access_level')
@@ -373,11 +373,11 @@ export async function PATCH(
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify any workflow)
     // - User is the workflow owner
-    // - User is org admin in the same org (legacy organization_id field)
-    // - User is org admin AND organization has access via workflow_organization_access table
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    // - User is in the same org (organization_id field) - supports desktop users
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !isSameOrg && !hasOrgAccess) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized update for workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized update for workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         { error: 'Forbidden - You do not have permission to modify this workflow' },
