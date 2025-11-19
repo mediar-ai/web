@@ -8,34 +8,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Convert pool steps to YAML format
-function convertStepsToYaml(steps: any[]): string {
-  const yamlSteps = steps.map((step, index) => {
-    const stepId = step.step_id || `step_${index + 1}`;
-    let yaml = `  - id: ${stepId}\n`;
-    yaml += `    tool_name: ${step.tool_name}\n`;
-
-    if (step.step_name) {
-      yaml += `    name: ${step.step_name}\n`;
-    }
-
-    if (step.arguments && Object.keys(step.arguments).length > 0) {
-      yaml += `    arguments:\n`;
-      for (const [key, value] of Object.entries(step.arguments)) {
-        if (typeof value === 'object' && value !== null) {
-          yaml += `      ${key}: ${JSON.stringify(value)}\n`;
-        } else {
-          yaml += `      ${key}: ${value}\n`;
-        }
-      }
-    }
-
-    return yaml;
-  });
-
-  return `steps:\n${yamlSteps.join('\n')}`;
-}
-
 // CORS headers for cross-origin requests from Tauri app
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -112,65 +84,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch the current workflow
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, automation_sequence, automation_sequence_yaml, version, total_versions')
-      .eq('id', workflow_id)
-      .single();
+    // Load the LATEST workflow version using workflowLoader
+    // This ensures we're appending to the most recent edits, not stale data from deployed_workflows
+    const { workflowLoader } = await import('@/lib/workflow-loader');
+    const loadedWorkflow = await workflowLoader.loadWorkflow(workflow_id);
 
-    console.log('[ADD-TO-WORKFLOW] Fetched workflow:', { workflow_id, found: !!workflow, error: workflowError?.message });
+    console.log('[ADD-TO-WORKFLOW] Loaded latest workflow:', {
+      workflow_id,
+      found: !!loadedWorkflow,
+      version: loadedWorkflow?.metadata?.version,
+      source: loadedWorkflow?.metadata?.source
+    });
 
-    if (workflowError || !workflow) {
-      console.error('[ADD-TO-WORKFLOW] Workflow not found:', { workflow_id, workflowError });
+    if (!loadedWorkflow) {
+      console.error('[ADD-TO-WORKFLOW] Workflow not found:', { workflow_id });
       return NextResponse.json(
-        { success: false, error: 'Workflow not found', details: workflowError?.message },
+        { success: false, error: 'Workflow not found' },
         { status: 404, headers: corsHeaders }
       );
     }
 
-    // Convert steps to YAML
-    const newStepsYaml = convertStepsToYaml(steps);
+    // Convert pool steps to workflow step format
+    const newSteps = steps.map(step => ({
+      id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      tool_name: step.tool_name,
+      name: step.step_name || step.tool_name,
+      arguments: step.arguments || {}
+    }));
 
-    let updatedYaml;
     let updatedJson;
 
-    if (append_to_workflow && workflow.automation_sequence_yaml) {
-      // Append to existing YAML
-      const existingYaml = workflow.automation_sequence_yaml;
-
-      // Simple append - in production, you'd want to properly parse and merge YAML
-      if (existingYaml.includes('steps:')) {
-        // Remove the 'steps:' line from new YAML since it already exists
-        const stepsOnly = newStepsYaml.replace('steps:\n', '');
-        updatedYaml = existingYaml + '\n' + stepsOnly;
-      } else {
-        updatedYaml = existingYaml + '\n\n' + newStepsYaml;
-      }
-
-      // Create JSON representation
-      const existingSteps = workflow.automation_sequence?.steps || [];
-      const newJsonSteps = steps.map(step => ({
-        id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        tool_name: step.tool_name,
-        name: step.step_name || step.tool_name,
-        arguments: step.arguments || {}
-      }));
+    if (append_to_workflow) {
+      // Append new steps to existing steps from LATEST version
+      const existingSteps = loadedWorkflow.automation_sequence?.steps || [];
       updatedJson = {
-        steps: [...existingSteps, ...newJsonSteps]
+        steps: [...existingSteps, ...newSteps]
       };
     } else {
       // Replace with new steps only
-      updatedYaml = newStepsYaml;
       updatedJson = {
-        steps: steps.map(step => ({
-          id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          tool_name: step.tool_name,
-          name: step.step_name || step.tool_name,
-          arguments: step.arguments || {}
-        }))
+        steps: newSteps
       };
     }
+
+    // Generate YAML from the updated JSON
+    const updatedYaml = yaml.dump(updatedJson, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true
+    });
 
     // Update the workflow - the database trigger will automatically:
     // 1. Create a new version in deployed_workflow_versions
@@ -199,12 +161,10 @@ export async function POST(request: NextRequest) {
 
     console.log('[ADD-TO-WORKFLOW] Workflow updated successfully, reloading from latest version...');
 
-    // Load the workflow using workflowLoader (same as remote-workflows route)
-    // This ensures we get properly parsed YAML from the latest version
-    const { workflowLoader } = await import('@/lib/workflow-loader');
-    const loadedWorkflow = await workflowLoader.loadWorkflow(workflow_id);
+    // Reload the workflow to get the new version (after trigger created it)
+    const reloadedWorkflow = await workflowLoader.loadWorkflow(workflow_id);
 
-    if (!loadedWorkflow) {
+    if (!reloadedWorkflow) {
       console.error('[ADD-TO-WORKFLOW] Failed to reload workflow after update');
       return NextResponse.json(
         { success: false, error: 'Failed to reload workflow after update' },
@@ -213,8 +173,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[ADD-TO-WORKFLOW] Workflow reloaded successfully:', {
-      source: loadedWorkflow.metadata.source,
-      version: loadedWorkflow.metadata.version
+      source: reloadedWorkflow.metadata.source,
+      version: reloadedWorkflow.metadata.version
     });
 
     // Mark steps as added to workflow
@@ -254,9 +214,9 @@ export async function POST(request: NextRequest) {
       .eq('id', workflow_id)
       .single();
 
-    // Generate proper YAML from the loaded automation_sequence
+    // Generate proper YAML from the reloaded automation_sequence
     // This ensures the desktop app gets valid, parseable YAML
-    const regeneratedYaml = yaml.dump(loadedWorkflow.automation_sequence, {
+    const regeneratedYaml = yaml.dump(reloadedWorkflow.automation_sequence, {
       indent: 2,
       lineWidth: -1,
       noRefs: true
@@ -265,14 +225,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       workflow: {
-        id: loadedWorkflow.id,
-        name: loadedWorkflow.name,
+        id: reloadedWorkflow.id,
+        name: reloadedWorkflow.name,
         version: workflowMetadata?.version,
         total_versions: workflowMetadata?.total_versions,
-        automation_sequence: loadedWorkflow.automation_sequence,
+        automation_sequence: reloadedWorkflow.automation_sequence,
         automation_sequence_yaml: regeneratedYaml, // Properly generated YAML
         current_version_id: workflowMetadata?.current_version_id,
-        metadata: loadedWorkflow.metadata
+        metadata: reloadedWorkflow.metadata
       },
       steps_added: steps.length,
       remaining_pool_steps: remainingSteps
