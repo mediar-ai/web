@@ -538,18 +538,12 @@ export async function POST(request: NextRequest) {
                 .eq('id', workflowId);
             }
 
-            console.log(
-              `✅ Parsed TypeScript workflow: ${metadata.name} (${metadata.steps.length} steps)`
-            );
+            console.log(`✅ Parsed TypeScript workflow: ${metadata.name}`);
 
             if (existing) {
-              results.updated.push(
-                `${metadata.name} (TypeScript - ${metadata.steps.length} steps)`
-              );
+              results.updated.push(`${metadata.name} (TypeScript)`);
             } else {
-              results.created.push(
-                `${metadata.name} (TypeScript - ${metadata.steps.length} steps)`
-              );
+              results.created.push(`${metadata.name} (TypeScript)`);
             }
           } catch (parseError) {
             console.error(
