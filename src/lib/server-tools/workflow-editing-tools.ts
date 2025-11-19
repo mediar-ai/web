@@ -273,11 +273,21 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Use YAML if available, otherwise use JSON
-        const content = currentVersion.yamlContent ||
-                       JSON.stringify(currentVersion.jsonContent || {});
+        // Use content based on preferred format
+        let content: string;
+        let parsed: any;
 
-        const { parsed } = parseWorkflowContent(content);
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, use JSON content directly
+          parsed = currentVersion.jsonContent;
+          content = JSON.stringify(parsed);
+        } else {
+          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
+          content = currentVersion.yamlContent ||
+                   JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
         const steps = getSteps(parsed);
 
         const stepIndex = findStepIndex(steps, params.step_identifier);
@@ -373,11 +383,21 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Use YAML if available, otherwise use JSON
-        const content = currentVersion.yamlContent ||
-                       JSON.stringify(currentVersion.jsonContent || {});
+        // Use content based on preferred format
+        let content: string;
+        let parsed: any;
 
-        const { parsed } = parseWorkflowContent(content);
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, use JSON content directly
+          parsed = currentVersion.jsonContent;
+          content = JSON.stringify(parsed);
+        } else {
+          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
+          content = currentVersion.yamlContent ||
+                   JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
         const steps = getSteps(parsed);
 
         const stepIndex = findStepIndex(steps, params.step_identifier);
@@ -463,9 +483,17 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Return YAML if available, otherwise convert JSON to YAML
-        const content = currentVersion.yamlContent ||
-                       yaml.dump(currentVersion.jsonContent);
+        // Return content based on preferred format
+        let content: string;
+
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, convert to YAML for consistency
+          content = yaml.dump(currentVersion.jsonContent);
+        } else {
+          // For yaml format, return YAML directly, or convert JSON to YAML as fallback
+          content = currentVersion.yamlContent ||
+                   yaml.dump(currentVersion.jsonContent);
+        }
 
         return { content, version_number: currentVersion.versionNumber };
       } catch (error) {
@@ -510,11 +538,21 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Use YAML if available, otherwise use JSON
-        const content = currentVersion.yamlContent ||
-                       JSON.stringify(currentVersion.jsonContent || {});
+        // Use content based on preferred format
+        let content: string;
+        let parsed: any;
 
-        const { parsed } = parseWorkflowContent(content);
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, use JSON content directly
+          parsed = currentVersion.jsonContent;
+          content = JSON.stringify(parsed);
+        } else {
+          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
+          content = currentVersion.yamlContent ||
+                   JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
         const steps = getSteps(parsed);
 
         const stepIndex = findStepIndex(steps, params.step_identifier);
@@ -573,11 +611,21 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Use YAML if available, otherwise use JSON
-        const content = currentVersion.yamlContent ||
-                       JSON.stringify(currentVersion.jsonContent || {});
+        // Use content based on preferred format
+        let content: string;
+        let parsed: any;
 
-        const { parsed } = parseWorkflowContent(content);
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, use JSON content directly
+          parsed = currentVersion.jsonContent;
+          content = JSON.stringify(parsed);
+        } else {
+          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
+          content = currentVersion.yamlContent ||
+                   JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
         const steps = getSteps(parsed);
 
         if (params.from_index < 0 || params.from_index >= steps.length ||
