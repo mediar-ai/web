@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import * as yaml from 'js-yaml';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -183,12 +184,10 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     };
 
-    const { data: updatedWorkflow, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('deployed_workflows')
       .update(updatePayload)
-      .eq('id', workflow_id)
-      .select()
-      .single();
+      .eq('id', workflow_id);
 
     if (updateError) {
       console.error('Error updating workflow:', updateError);
@@ -198,10 +197,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[ADD-TO-WORKFLOW] Workflow updated successfully:', {
-      version: updatedWorkflow.version,
-      total_versions: updatedWorkflow.total_versions,
-      current_version_id: updatedWorkflow.current_version_id
+    console.log('[ADD-TO-WORKFLOW] Workflow updated successfully, reloading from latest version...');
+
+    // Load the workflow using workflowLoader (same as remote-workflows route)
+    // This ensures we get properly parsed YAML from the latest version
+    const { workflowLoader } = await import('@/lib/workflow-loader');
+    const loadedWorkflow = await workflowLoader.loadWorkflow(workflow_id);
+
+    if (!loadedWorkflow) {
+      console.error('[ADD-TO-WORKFLOW] Failed to reload workflow after update');
+      return NextResponse.json(
+        { success: false, error: 'Failed to reload workflow after update' },
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    console.log('[ADD-TO-WORKFLOW] Workflow reloaded successfully:', {
+      source: loadedWorkflow.metadata.source,
+      version: loadedWorkflow.metadata.version
     });
 
     // Mark steps as added to workflow
@@ -234,16 +247,32 @@ export async function POST(request: NextRequest) {
       remainingSteps = count;
     }
 
+    // Fetch version metadata from deployed_workflows for response
+    const { data: workflowMetadata } = await supabase
+      .from('deployed_workflows')
+      .select('version, total_versions, current_version_id')
+      .eq('id', workflow_id)
+      .single();
+
+    // Generate proper YAML from the loaded automation_sequence
+    // This ensures the desktop app gets valid, parseable YAML
+    const regeneratedYaml = yaml.dump(loadedWorkflow.automation_sequence, {
+      indent: 2,
+      lineWidth: -1,
+      noRefs: true
+    });
+
     return NextResponse.json({
       success: true,
       workflow: {
-        id: updatedWorkflow.id,
-        name: updatedWorkflow.name,
-        version: updatedWorkflow.version,
-        total_versions: updatedWorkflow.total_versions,
-        automation_sequence: updatedWorkflow.automation_sequence,
-        automation_sequence_yaml: updatedWorkflow.automation_sequence_yaml,
-        current_version_id: updatedWorkflow.current_version_id
+        id: loadedWorkflow.id,
+        name: loadedWorkflow.name,
+        version: workflowMetadata?.version,
+        total_versions: workflowMetadata?.total_versions,
+        automation_sequence: loadedWorkflow.automation_sequence,
+        automation_sequence_yaml: regeneratedYaml, // Properly generated YAML
+        current_version_id: workflowMetadata?.current_version_id,
+        metadata: loadedWorkflow.metadata
       },
       steps_added: steps.length,
       remaining_pool_steps: remainingSteps
