@@ -166,7 +166,12 @@ export default function ObservabilityPage() {
     const groups = new Map<string, LogEntry[]>();
 
     displayedLogs.forEach(log => {
-      const traceId = log.TraceId || 'ungrouped';
+      // Only group if there's a valid TraceID
+      // If no TraceID, create individual groups (ungrouped behavior)
+      const traceId = log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000'
+        ? log.TraceId
+        : `ungrouped-${log.Timestamp}-${Math.random()}`; // Unique key for each ungrouped log
+
       if (!groups.has(traceId)) {
         groups.set(traceId, []);
       }
@@ -182,6 +187,7 @@ export default function ObservabilityPage() {
       return {
         traceId,
         logs: sortedEntries,
+        isUngrouped: traceId.startsWith('ungrouped-'),
         errorCount: sortedEntries.filter(e => e.SeverityText === 'ERROR' || e.SeverityText === 'FATAL').length,
         warnCount: sortedEntries.filter(e => e.SeverityText === 'WARN').length,
         infoCount: sortedEntries.filter(e => e.SeverityText === 'INFO').length,
@@ -516,7 +522,7 @@ export default function ObservabilityPage() {
                             </span>
 
                             {/* TraceID badge */}
-                            {group.traceId !== 'ungrouped' && (
+                            {!group.isUngrouped && (
                               <span className="text-gray-500 text-[10px] font-mono flex-shrink-0">
                                 {group.traceId.slice(0, 8)}...
                               </span>
