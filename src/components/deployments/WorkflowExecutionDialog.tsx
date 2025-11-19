@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { WorkflowWithSettings } from '@/lib/workflow-types';
+import { TypeScriptWorkflowMetadata } from '@/lib/typescript-workflow-parser';
 import { Play, Loader2, AlertCircle, Clock } from 'lucide-react';
 import cronstrue from 'cronstrue';
 
@@ -23,6 +24,27 @@ interface WorkflowExecutionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onExecutionStarted?: (executionId: number) => void;
+}
+
+// Helper function to transform TypeScript inputs to YAML parameters format
+function transformTypeScriptInputs(inputs: TypeScriptWorkflowMetadata['inputs']): Record<string, any> {
+  const parameters: Record<string, any> = {};
+
+  inputs.forEach(input => {
+    // Map TypeScript type to YAML type
+    let yamlType = input.type;
+    if (input.type === 'string') yamlType = 'text';
+
+    parameters[input.name] = {
+      type: yamlType,
+      label: input.name.charAt(0).toUpperCase() + input.name.slice(1).replace(/([A-Z])/g, ' $1').trim(),
+      description: input.description,
+      required: input.required,
+      default: input.default,
+    };
+  });
+
+  return parameters;
 }
 
 export function WorkflowExecutionDialog({
@@ -35,20 +57,70 @@ export function WorkflowExecutionDialog({
   const [error, setError] = useState<string | null>(null);
   const [parameters, setParameters] = useState<Record<string, any>>({});
   const [cronEnabled, setCronEnabled] = useState(false);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
+  const [inputParameters, setInputParameters] = useState<Record<string, any>>({});
+
+  // Fetch TypeScript metadata if needed
+  useEffect(() => {
+    if (!workflow) return;
+
+    const fetchTypeScriptMetadata = async () => {
+      // Check if this is a TypeScript workflow
+      const isTypeScript = (workflow as any).preferred_format === 'typescript';
+
+      if (!isTypeScript) {
+        // YAML workflow - use input_parameters directly
+        setInputParameters(workflow.input_parameters || {});
+        return;
+      }
+
+      // TypeScript workflow - check if metadata is already cached
+      const cachedMetadata = (workflow as any).typescript_metadata;
+
+      if (cachedMetadata?.inputs) {
+        // Use cached metadata
+        const transformedParams = transformTypeScriptInputs(cachedMetadata.inputs);
+        setInputParameters(transformedParams);
+        return;
+      }
+
+      // Fetch metadata from API
+      setLoadingMetadata(true);
+      try {
+        const response = await fetch(`/api/remote-workflows/${workflow.id}/typescript-metadata`);
+        const data = await response.json();
+
+        if (data.success && data.metadata?.inputs) {
+          const transformedParams = transformTypeScriptInputs(data.metadata.inputs);
+          setInputParameters(transformedParams);
+        } else {
+          // Fallback to empty parameters
+          setInputParameters({});
+        }
+      } catch (err) {
+        console.error('Failed to fetch TypeScript metadata:', err);
+        setInputParameters({});
+      } finally {
+        setLoadingMetadata(false);
+      }
+    };
+
+    fetchTypeScriptMetadata();
+  }, [workflow]);
 
   useEffect(() => {
     if (workflow) {
-      // Initialize parameters from workflow input_parameters
+      // Initialize parameters from transformed input_parameters
       const defaultParams: Record<string, any> = {};
-      if (workflow.input_parameters) {
-        Object.entries(workflow.input_parameters).forEach(([key, config]: [string, any]) => {
+      if (inputParameters) {
+        Object.entries(inputParameters).forEach(([key, config]: [string, any]) => {
           defaultParams[key] = config.default || '';
         });
       }
       setParameters(defaultParams);
       setCronEnabled(workflow.cron_enabled || false);
     }
-  }, [workflow]);
+  }, [workflow, inputParameters]);
 
   const handleExecute = async () => {
     if (!workflow) return;
@@ -117,7 +189,7 @@ export function WorkflowExecutionDialog({
 
   if (!workflow) return null;
 
-  const hasParameters = workflow.input_parameters && Object.keys(workflow.input_parameters).length > 0;
+  const hasParameters = inputParameters && Object.keys(inputParameters).length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,11 +236,19 @@ export function WorkflowExecutionDialog({
             </div>
           )}
 
+          {/* Loading State */}
+          {loadingMetadata && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="ml-2 text-sm text-gray-600">Loading workflow parameters...</span>
+            </div>
+          )}
+
           {/* Parameters Section */}
-          {hasParameters ? (
+          {!loadingMetadata && hasParameters && (
             <div className="space-y-4">
               <h3 className="text-sm font-mono font-bold uppercase">Workflow Parameters</h3>
-              {Object.entries(workflow.input_parameters || {}).map(([key, config]: [string, any]) => (
+              {Object.entries(inputParameters).map(([key, config]: [string, any]) => (
                 <div key={key} className="space-y-2">
                   <Label htmlFor={key} className="font-mono text-xs text-gray-600 uppercase">
                     {config.label || key}
@@ -199,7 +279,9 @@ export function WorkflowExecutionDialog({
                 </div>
               ))}
             </div>
-          ) : (
+          )}
+
+          {!loadingMetadata && !hasParameters && (
             <div className="text-sm text-gray-600">
               This workflow has no configurable parameters. Click &quot;Execute Now&quot; to run it.
             </div>
@@ -224,7 +306,7 @@ export function WorkflowExecutionDialog({
           </Button>
           <Button
             onClick={handleExecute}
-            disabled={executing}
+            disabled={executing || loadingMetadata}
             className="bg-black text-white hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-500"
           >
             {executing ? (
