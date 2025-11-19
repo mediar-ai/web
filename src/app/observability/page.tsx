@@ -49,6 +49,8 @@ export default function ObservabilityPage() {
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
   const [deduplicateLogs, setDeduplicateLogs] = useState(false);
+  const [groupByTrace, setGroupByTrace] = useState(true);
+  const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
   const [availableFilters, setAvailableFilters] = useState<{
     hosts: string[];
     scopes: string[];
@@ -156,6 +158,54 @@ export default function ObservabilityPage() {
 
     return deduplicated;
   }, [logs, deduplicateLogs]);
+
+  // Group logs by TraceID (Vercel-style)
+  const groupedLogs = useMemo(() => {
+    if (!groupByTrace) return null;
+
+    const groups = new Map<string, LogEntry[]>();
+
+    displayedLogs.forEach(log => {
+      const traceId = log.TraceId || 'ungrouped';
+      if (!groups.has(traceId)) {
+        groups.set(traceId, []);
+      }
+      groups.get(traceId)!.push(log);
+    });
+
+    return Array.from(groups.entries()).map(([traceId, entries]) => {
+      // Sort logs by timestamp within group
+      const sortedEntries = entries.sort((a, b) =>
+        new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime()
+      );
+
+      return {
+        traceId,
+        logs: sortedEntries,
+        errorCount: sortedEntries.filter(e => e.SeverityText === 'ERROR' || e.SeverityText === 'FATAL').length,
+        warnCount: sortedEntries.filter(e => e.SeverityText === 'WARN').length,
+        infoCount: sortedEntries.filter(e => e.SeverityText === 'INFO').length,
+        debugCount: sortedEntries.filter(e => e.SeverityText === 'DEBUG').length,
+      };
+    }).sort((a, b) => {
+      // Sort groups by first log timestamp (newest first)
+      const aTime = new Date(a.logs[0].Timestamp).getTime();
+      const bTime = new Date(b.logs[0].Timestamp).getTime();
+      return bTime - aTime;
+    });
+  }, [displayedLogs, groupByTrace]);
+
+  const toggleTrace = (traceId: string) => {
+    setExpandedTraces(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(traceId)) {
+        newSet.delete(traceId);
+      } else {
+        newSet.add(traceId);
+      }
+      return newSet;
+    });
+  };
 
   if (!isLoaded) {
     return (
@@ -352,6 +402,17 @@ export default function ObservabilityPage() {
               ))}
             </select>
 
+            {/* Group by Trace Checkbox */}
+            <label className="flex items-center gap-2 px-3 py-1.5 border-2 border-black bg-white cursor-pointer hover:bg-gray-100">
+              <input
+                type="checkbox"
+                checked={groupByTrace}
+                onChange={(e) => setGroupByTrace(e.target.checked)}
+                className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black cursor-pointer"
+              />
+              <span className="font-mono text-xs uppercase font-bold">GROUP BY TRACE</span>
+            </label>
+
             {/* Deduplicate Checkbox */}
             <label className="flex items-center gap-2 px-3 py-1.5 border-2 border-black bg-white cursor-pointer hover:bg-gray-100">
               <input
@@ -397,111 +458,285 @@ export default function ObservabilityPage() {
           </div>
         ) : (
           <>
-            {/* Logs List - Vercel style */}
-            <div className="space-y-1">
-              {displayedLogs.length === 0 ? (
-                <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
-                  No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
-                </div>
-              ) : (
-                displayedLogs.map((log, i) => {
-                  const isSelected = selectedLog === log;
-                  const severity = log.SeverityText || 'INFO';
+            {/* Grouped View (Vercel-style) */}
+            {groupByTrace && groupedLogs ? (
+              <div className="space-y-1">
+                {groupedLogs.length === 0 ? (
+                  <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
+                    No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
+                  </div>
+                ) : (
+                  groupedLogs.map((group, groupIdx) => {
+                    const isExpanded = expandedTraces.has(group.traceId);
+                    const firstLog = group.logs[0];
+                    const severity = firstLog.SeverityText || 'INFO';
 
-                  return (
-                    <div key={i}>
-                      {/* Compact Log Line */}
-                      <button
-                        onClick={() => setSelectedLog(isSelected ? null : log)}
-                        className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
-                      >
-                        <div className="flex items-center gap-3 font-mono text-xs">
-                          {/* Time */}
-                          <span className="text-gray-500 w-20 flex-shrink-0">
-                            {formatTimeCompact(log.Timestamp)}
-                          </span>
+                    return (
+                      <div key={groupIdx} className="border border-gray-300">
+                        {/* Group Header */}
+                        <button
+                          onClick={() => toggleTrace(group.traceId)}
+                          className="w-full hover:bg-gray-50 p-2 text-left transition-colors border-b border-gray-300"
+                        >
+                          <div className="flex items-center gap-3 font-mono text-xs">
+                            <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
 
-                          {/* Severity Badge */}
-                          <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(severity)} flex-shrink-0`}>
-                            {getSeverityIcon(severity)}
-                            {severity}
-                          </span>
+                            {/* Time */}
+                            <span className="text-gray-500 w-20 flex-shrink-0">
+                              {formatTimeCompact(firstLog.Timestamp)}
+                            </span>
 
-                          {/* Host */}
-                          <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
-                            {log.HostName || '-'}
-                          </span>
+                            {/* Log Count */}
+                            <span className="font-bold text-black w-20 flex-shrink-0">
+                              {group.logs.length} {group.logs.length === 1 ? 'log' : 'logs'}
+                            </span>
 
-                          {/* Message (truncated) */}
-                          <span className="flex-1 truncate text-black">
-                            {log.Body}
-                          </span>
-
-                          {/* Expand Icon */}
-                          <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
-                        </div>
-                      </button>
-
-                      {/* Expanded Details */}
-                      {isSelected && (
-                        <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <span className="font-bold uppercase text-gray-600">Timestamp:</span>
-                              <div className="mt-1">{log.Timestamp}</div>
+                            {/* Summary Counts */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {group.errorCount > 0 && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-900 border border-red-300 rounded-sm font-bold">
+                                  {group.errorCount} ERROR
+                                </span>
+                              )}
+                              {group.warnCount > 0 && (
+                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-900 border border-yellow-300 rounded-sm font-bold">
+                                  {group.warnCount} WARN
+                                </span>
+                              )}
+                              {group.infoCount > 0 && (
+                                <span className="text-gray-600">
+                                  {group.infoCount} INFO
+                                </span>
+                              )}
                             </div>
-                            <div>
-                              <span className="font-bold uppercase text-gray-600">Severity:</span>
-                              <div className="mt-1">{severity}</div>
-                            </div>
-                            <div>
-                              <span className="font-bold uppercase text-gray-600">Host:</span>
-                              <div className="mt-1">{log.HostName || 'N/A'}</div>
-                            </div>
-                            <div>
-                              <span className="font-bold uppercase text-gray-600">Service:</span>
-                              <div className="mt-1">{log.ServiceName || 'N/A'}</div>
-                            </div>
+
+                            {/* First message preview */}
+                            <span className="flex-1 truncate text-gray-700">
+                              {firstLog.Body}
+                            </span>
+
+                            {/* TraceID badge */}
+                            {group.traceId !== 'ungrouped' && (
+                              <span className="text-gray-500 text-[10px] font-mono flex-shrink-0">
+                                {group.traceId.slice(0, 8)}...
+                              </span>
+                            )}
                           </div>
+                        </button>
 
-                          <div>
-                            <span className="font-bold uppercase text-gray-600">Scope:</span>
-                            <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                              {log.ScopeName}
-                            </div>
+                        {/* Expanded Logs */}
+                        {isExpanded && (
+                          <div className="bg-gray-50">
+                            {group.logs.map((log, logIdx) => {
+                              const isSelected = selectedLog === log;
+                              const logSeverity = log.SeverityText || 'INFO';
+
+                              return (
+                                <div key={logIdx} className="border-l-2 border-black ml-4">
+                                  {/* Log Line */}
+                                  <button
+                                    onClick={() => setSelectedLog(isSelected ? null : log)}
+                                    className="w-full hover:bg-white p-2 pl-4 text-left transition-colors border-b border-gray-200"
+                                  >
+                                    <div className="flex items-center gap-3 font-mono text-xs">
+                                      {/* Time */}
+                                      <span className="text-gray-500 w-20 flex-shrink-0">
+                                        {formatTimeCompact(log.Timestamp)}
+                                      </span>
+
+                                      {/* Severity Badge */}
+                                      <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(logSeverity)} flex-shrink-0`}>
+                                        {getSeverityIcon(logSeverity)}
+                                        {logSeverity}
+                                      </span>
+
+                                      {/* Host */}
+                                      <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
+                                        {log.HostName || '-'}
+                                      </span>
+
+                                      {/* Message */}
+                                      <span className="flex-1 truncate text-black">
+                                        {log.Body}
+                                      </span>
+
+                                      {/* Expand Icon */}
+                                      <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
+                                    </div>
+                                  </button>
+
+                                  {/* Expanded Log Details */}
+                                  {isSelected && (
+                                    <div className="bg-white border-2 border-black p-4 space-y-3 m-2 font-mono text-xs">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Timestamp:</span>
+                                          <div className="mt-1">{log.Timestamp}</div>
+                                        </div>
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Severity:</span>
+                                          <div className="mt-1">{logSeverity}</div>
+                                        </div>
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Host:</span>
+                                          <div className="mt-1">{log.HostName || 'N/A'}</div>
+                                        </div>
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Service:</span>
+                                          <div className="mt-1">{log.ServiceName || 'N/A'}</div>
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <span className="font-bold uppercase text-gray-600">Scope:</span>
+                                        <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
+                                          {log.ScopeName}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <span className="font-bold uppercase text-gray-600">Message:</span>
+                                        <div className="mt-1 p-2 bg-gray-50 border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+                                          {log.Body}
+                                        </div>
+                                      </div>
+
+                                      {log.TraceId && (
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Trace ID:</span>
+                                          <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
+                                            {log.TraceId}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {log.SpanId && (
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Span ID:</span>
+                                          <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
+                                            {log.SpanId}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              /* Ungrouped View (Original) */
+              <div className="space-y-1">
+                {displayedLogs.length === 0 ? (
+                  <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
+                    No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
+                  </div>
+                ) : (
+                  displayedLogs.map((log, i) => {
+                    const isSelected = selectedLog === log;
+                    const severity = log.SeverityText || 'INFO';
 
-                          <div>
-                            <span className="font-bold uppercase text-gray-600">Message:</span>
-                            <div className="mt-1 p-2 bg-white border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+                    return (
+                      <div key={i}>
+                        {/* Compact Log Line */}
+                        <button
+                          onClick={() => setSelectedLog(isSelected ? null : log)}
+                          className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
+                        >
+                          <div className="flex items-center gap-3 font-mono text-xs">
+                            {/* Time */}
+                            <span className="text-gray-500 w-20 flex-shrink-0">
+                              {formatTimeCompact(log.Timestamp)}
+                            </span>
+
+                            {/* Severity Badge */}
+                            <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(severity)} flex-shrink-0`}>
+                              {getSeverityIcon(severity)}
+                              {severity}
+                            </span>
+
+                            {/* Host */}
+                            <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
+                              {log.HostName || '-'}
+                            </span>
+
+                            {/* Message (truncated) */}
+                            <span className="flex-1 truncate text-black">
                               {log.Body}
-                            </div>
+                            </span>
+
+                            {/* Expand Icon */}
+                            <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
                           </div>
+                        </button>
 
-                          {log.TraceId && (
-                            <div>
-                              <span className="font-bold uppercase text-gray-600">Trace ID:</span>
-                              <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                                {log.TraceId}
+                        {/* Expanded Details */}
+                        {isSelected && (
+                          <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Timestamp:</span>
+                                <div className="mt-1">{log.Timestamp}</div>
+                              </div>
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Severity:</span>
+                                <div className="mt-1">{severity}</div>
+                              </div>
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Host:</span>
+                                <div className="mt-1">{log.HostName || 'N/A'}</div>
+                              </div>
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Service:</span>
+                                <div className="mt-1">{log.ServiceName || 'N/A'}</div>
                               </div>
                             </div>
-                          )}
 
-                          {log.SpanId && (
                             <div>
-                              <span className="font-bold uppercase text-gray-600">Span ID:</span>
+                              <span className="font-bold uppercase text-gray-600">Scope:</span>
                               <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                                {log.SpanId}
+                                {log.ScopeName}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
+
+                            <div>
+                              <span className="font-bold uppercase text-gray-600">Message:</span>
+                              <div className="mt-1 p-2 bg-white border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+                                {log.Body}
+                              </div>
+                            </div>
+
+                            {log.TraceId && (
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Trace ID:</span>
+                                <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
+                                  {log.TraceId}
+                                </div>
+                              </div>
+                            )}
+
+                            {log.SpanId && (
+                              <div>
+                                <span className="font-bold uppercase text-gray-600">Span ID:</span>
+                                <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
+                                  {log.SpanId}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </>
         )}
         </div>
