@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import WorkflowGraphViewer from '@/components/workflow-graph-viewer';
-import { TypeScriptWorkflowMetadata } from '@/lib/typescript-workflow-parser';
+import { WorkflowMetadata } from '@/lib/typescript-workflow-parser';
 
 interface TypeScriptWorkflowTabProps {
   workflowId: number;
@@ -27,48 +27,49 @@ export function TypeScriptWorkflowTab({
   workflowId,
   workflowFormat,
 }: TypeScriptWorkflowTabProps) {
-  const [metadata, setMetadata] = useState<TypeScriptWorkflowMetadata | null>(
-    null
-  );
+  const [metadata, setMetadata] = useState<WorkflowMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'cached' | 'parsed' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMetadata = async (forceRefresh = false) => {
-    try {
-      setLoading(true);
-      setError(null);
+  const fetchMetadata = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        setLoading(true);
+        setError(null);
 
-      const endpoint = forceRefresh
-        ? `/api/remote-workflows/${workflowId}/typescript-metadata`
-        : `/api/remote-workflows/${workflowId}/typescript-metadata`;
+        const endpoint = forceRefresh
+          ? `/api/remote-workflows/${workflowId}/typescript-metadata`
+          : `/api/remote-workflows/${workflowId}/typescript-metadata`;
 
-      const response = await fetch(endpoint, {
-        method: forceRefresh ? 'POST' : 'GET',
-      });
+        const response = await fetch(endpoint, {
+          method: forceRefresh ? 'POST' : 'GET',
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (data.success) {
-        setMetadata(data.metadata);
-        setSource(data.source);
-      } else {
-        setError(data.error || 'Failed to load TypeScript metadata');
+        if (data.success) {
+          setMetadata(data.metadata);
+          setSource(data.source);
+        } else {
+          setError(data.error || 'Failed to load TypeScript metadata');
+        }
+      } catch (err: any) {
+        setError(err.message || 'An unexpected error occurred');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    },
+    [workflowId]
+  );
 
   useEffect(() => {
     if (workflowFormat === 'typescript') {
       fetchMetadata();
     }
-  }, [workflowId, workflowFormat]);
+  }, [workflowId, workflowFormat, fetchMetadata]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -291,11 +292,11 @@ export function TypeScriptWorkflowTab({
                         {input.description}
                       </p>
                     )}
-                    {input.default !== undefined && (
+                    {input.defaultValue !== undefined && (
                       <p className="text-xs text-muted-foreground mt-1">
                         Default:{' '}
                         <code className="font-mono">
-                          {JSON.stringify(input.default)}
+                          {JSON.stringify(input.defaultValue)}
                         </code>
                       </p>
                     )}
@@ -316,7 +317,7 @@ export function TypeScriptWorkflowTab({
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
-          <WorkflowGraphViewer metadata={metadata} />
+          <WorkflowGraphViewer metadata={metadata as any} />
         </CardContent>
       </Card>
 
