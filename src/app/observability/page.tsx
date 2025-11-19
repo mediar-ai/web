@@ -49,8 +49,9 @@ export default function ObservabilityPage() {
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
   const [deduplicateLogs, setDeduplicateLogs] = useState(false);
-  const [groupByTrace, setGroupByTrace] = useState(true);
+  const [groupByTrace, setGroupByTrace] = useState(false); // Default to ungrouped for performance
   const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
+  const [logsToShow, setLogsToShow] = useState(50); // Pagination: show 50 logs at a time
   const [availableFilters, setAvailableFilters] = useState<{
     hosts: string[];
     scopes: string[];
@@ -135,6 +136,11 @@ export default function ObservabilityPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setLogsToShow(50);
+  }, [logHostFilter, logScopeFilter, logSeverityFilter, searchQuery, groupByTrace, deduplicateLogs]);
+
   // Deduplicate consecutive logs
   const displayedLogs = useMemo(() => {
     if (!deduplicateLogs) return logs;
@@ -163,14 +169,20 @@ export default function ObservabilityPage() {
   const groupedLogs = useMemo(() => {
     if (!groupByTrace) return null;
 
+    // ONLY show logs with valid TraceIDs when grouping is enabled
+    const logsWithTraceId = displayedLogs.filter(log =>
+      log.TraceId &&
+      log.TraceId.trim() !== '' &&
+      log.TraceId !== '00000000000000000000000000000000'
+    );
+
+    // Apply pagination BEFORE grouping for performance
+    const paginatedLogs = logsWithTraceId.slice(0, logsToShow);
+
     const groups = new Map<string, LogEntry[]>();
 
-    displayedLogs.forEach(log => {
-      // Only group if there's a valid TraceID
-      // If no TraceID, create individual groups (ungrouped behavior)
-      const traceId = log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000'
-        ? log.TraceId
-        : `ungrouped-${log.Timestamp}-${Math.random()}`; // Unique key for each ungrouped log
+    paginatedLogs.forEach(log => {
+      const traceId = log.TraceId!; // Safe because we filtered above
 
       if (!groups.has(traceId)) {
         groups.set(traceId, []);
@@ -187,7 +199,6 @@ export default function ObservabilityPage() {
       return {
         traceId,
         logs: sortedEntries,
-        isUngrouped: traceId.startsWith('ungrouped-'),
         errorCount: sortedEntries.filter(e => e.SeverityText === 'ERROR' || e.SeverityText === 'FATAL').length,
         warnCount: sortedEntries.filter(e => e.SeverityText === 'WARN').length,
         infoCount: sortedEntries.filter(e => e.SeverityText === 'INFO').length,
@@ -199,7 +210,7 @@ export default function ObservabilityPage() {
       const bTime = new Date(b.logs[0].Timestamp).getTime();
       return bTime - aTime;
     });
-  }, [displayedLogs, groupByTrace]);
+  }, [displayedLogs, groupByTrace, logsToShow]);
 
   const toggleTrace = (traceId: string) => {
     setExpandedTraces(prev => {
@@ -345,7 +356,10 @@ export default function ObservabilityPage() {
 
             {/* Log Count */}
             <span className="ml-auto text-sm font-mono font-bold">
-              {displayedLogs.length} {deduplicateLogs && logs.length !== displayedLogs.length ? `/ ${logs.length}` : ''} logs
+              {groupByTrace
+                ? `${Math.min(logsToShow, displayedLogs.filter(log => log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000').length)} / ${displayedLogs.filter(log => log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000').length} logs with traces`
+                : `${Math.min(logsToShow, displayedLogs.length)} / ${displayedLogs.length} logs`
+              }
             </span>
           </div>
         </div>
@@ -522,11 +536,9 @@ export default function ObservabilityPage() {
                             </span>
 
                             {/* TraceID badge */}
-                            {!group.isUngrouped && (
-                              <span className="text-gray-500 text-[10px] font-mono flex-shrink-0">
-                                {group.traceId.slice(0, 8)}...
-                              </span>
-                            )}
+                            <span className="text-gray-500 text-[10px] font-mono flex-shrink-0">
+                              {group.traceId.slice(0, 8)}...
+                            </span>
                           </div>
                         </button>
 
@@ -644,7 +656,7 @@ export default function ObservabilityPage() {
                     No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
                   </div>
                 ) : (
-                  displayedLogs.map((log, i) => {
+                  displayedLogs.slice(0, logsToShow).map((log, i) => {
                     const isSelected = selectedLog === log;
                     const severity = log.SeverityText || 'INFO';
 
@@ -741,6 +753,22 @@ export default function ObservabilityPage() {
                     );
                   })
                 )}
+              </div>
+            )}
+
+            {/* Load More Button (Vercel-style pagination) */}
+            {((groupByTrace && groupedLogs && groupedLogs.length > 0) || (!groupByTrace && displayedLogs.length > logsToShow)) && (
+              <div className="flex justify-center py-6">
+                <Button
+                  onClick={() => setLogsToShow(prev => prev + 50)}
+                  className="bg-black text-white hover:bg-gray-800 border-2 border-black font-mono text-sm uppercase"
+                >
+                  Load More ({logsToShow} of {groupByTrace ? displayedLogs.filter(log =>
+                    log.TraceId &&
+                    log.TraceId.trim() !== '' &&
+                    log.TraceId !== '00000000000000000000000000000000'
+                  ).length : displayedLogs.length} logs)
+                </Button>
               </div>
             )}
           </>
