@@ -251,10 +251,11 @@ export class WorkflowVersionService {
     yamlContent: string | null;
     jsonContent: any | null;
     versionNumber: string;
+    preferredFormat: 'yaml' | 'jsonb' | 'typescript' | null;
   }> {
     const { data: currentVersion, error } = await this.supabase
       .from('deployed_workflow_versions')
-      .select('automation_sequence_yaml, automation_sequence, version_number')
+      .select('automation_sequence_yaml, automation_sequence, version_number, preferred_format')
       .eq('workflow_id', workflowId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -268,6 +269,7 @@ export class WorkflowVersionService {
       yamlContent: currentVersion.automation_sequence_yaml,
       jsonContent: currentVersion.automation_sequence,
       versionNumber: currentVersion.version_number,
+      preferredFormat: currentVersion.preferred_format,
     };
   }
 
