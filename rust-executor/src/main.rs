@@ -4,7 +4,6 @@ use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
 mod config;
@@ -51,11 +50,8 @@ async fn main() -> Result<()> {
     // Initialize environment variables
     dotenvy::dotenv().ok();
 
-    // Initialize tracing (with Sentry if configured)
+    // Initialize tracing (with Sentry and OpenTelemetry)
     init_tracing();
-
-    // Initialize OpenTelemetry tracing (after logging is set up)
-    telemetry::init_telemetry();
 
     // Parse CLI arguments
     let cli = Cli::parse();
@@ -347,6 +343,8 @@ fn build_router(db_pool: DatabasePool) -> Result<Router> {
 }
 
 fn init_tracing() {
+    use tracing_subscriber::prelude::*;
+
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "workflow_executor=debug,tower_http=debug,info".into());
 
@@ -385,20 +383,23 @@ fn init_tracing() {
             }
         });
 
-    // Build subscriber with all layers
-    let registry = tracing_subscriber::registry()
+    // Initialize OpenTelemetry layer (traces + logs)
+    // Do this AFTER Sentry to avoid type issues
+    let otel_layer = telemetry::init_telemetry();
+
+    // Build subscriber with all layers using the type-safe approach
+    let subscriber = tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt_layer);
 
     // Add Sentry layer if available
-    if let Some(sentry) = sentry_layer {
-        registry.with(sentry).init();
-        eprintln!("✓ Tracing initialized with Sentry");
-    } else {
-        registry.init();
-        eprintln!("✓ Tracing initialized without Sentry");
-    }
+    let subscriber = subscriber.with(sentry_layer);
 
-    // Note: OpenTelemetry logs are initialized separately to avoid type complexity
-    // The OTLP layer will be created when telemetry::init_telemetry() is called
+    // Add OpenTelemetry layer if available
+    let subscriber = subscriber.with(otel_layer);
+
+    // Initialize the subscriber
+    subscriber.init();
+
+    eprintln!("✓ Tracing initialized");
 }
