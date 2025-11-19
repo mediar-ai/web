@@ -878,22 +878,8 @@ export async function POST(request: NextRequest) {
             parts: toolCallParts,
           });
 
-          // CRITICAL: Add server tool results to persistent history (TRUNCATED to save tokens)
-          // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
-          // Full results are passed via toolResults parameter for current turn accuracy
-          updatedHistoryWithCalls.push({
-            role: 'user',
-            parts: serverToolResults.map(tr => ({
-              functionResponse: {
-                name: tr.name,
-                response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
-                ...(tr.id && { id: tr.id }),
-              },
-            })),
-          });
-
-          // Call Anthropic again with FULL server tool results for current turn
-          // (History has truncated results to save tokens)
+          // Call Anthropic with FULL server tool results via toolResults parameter
+          // (Truncated results will be added to history AFTER continuation completes)
           const continuationResult = await handleAnthropicChat({
             model: sessionModel,
             history: updatedHistoryWithCalls,
@@ -908,6 +894,19 @@ export async function POST(request: NextRequest) {
             textLen: continuationResult.text.length,
             toolCallsCount: continuationResult.toolCalls.length,
             finishReason: continuationResult.finishReason,
+          });
+
+          // Add TRUNCATED server tool results to persistent history (saves tokens for future turns)
+          // This is done AFTER the continuation so handleAnthropicChat received FULL results
+          updatedHistoryWithCalls.push({
+            role: 'user',
+            parts: serverToolResults.map(tr => ({
+              functionResponse: {
+                name: tr.name,
+                response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
+                ...(tr.id && { id: tr.id }),
+              },
+            })),
           });
 
           // Check if continuation has more server-side tools to execute
@@ -976,21 +975,8 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // CRITICAL: Add server tool results to persistent history (TRUNCATED to save tokens)
-            // This ensures every tool_use has a corresponding tool_result (required by Anthropic API)
-            // Full results are passed via toolResults parameter for current turn accuracy
-            finalHistory.push({
-              role: 'user',
-              parts: moreServerTools.map(tr => ({
-                functionResponse: {
-                  name: tr.name,
-                  response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
-                  ...(tr.id && { id: tr.id }),
-                },
-              })),
-            });
-
-            // Continue conversation with new server tool results
+            // Continue conversation with FULL server tool results via toolResults parameter
+            // (Truncated results will be added to history AFTER continuation completes)
             console.log(
               `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
             );
@@ -1008,6 +994,19 @@ export async function POST(request: NextRequest) {
               textLen: finalResult.text.length,
               toolCallsCount: finalResult.toolCalls.length,
               finishReason: finalResult.finishReason,
+            });
+
+            // Add TRUNCATED server tool results to persistent history (saves tokens for future turns)
+            // This is done AFTER the continuation so handleAnthropicChat received FULL results
+            finalHistory.push({
+              role: 'user',
+              parts: moreServerTools.map(tr => ({
+                functionResponse: {
+                  name: tr.name,
+                  response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
+                  ...(tr.id && { id: tr.id }),
+                },
+              })),
             });
           }
 
