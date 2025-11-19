@@ -25,7 +25,8 @@ async function testTypeScriptWorkflowSync() {
   // ==========================================================================
   // STEP 1: Read TypeScript workflow from local filesystem
   // ==========================================================================
-  const workflowPath = '../workflows/org-org_33DH72nPyAInVAh5t8TyIKVdYNw/WORKFLOW_FOLDER';
+  const workflowPath =
+    '../workflows/org-org_33DH72nPyAInVAh5t8TyIKVdYNw/WORKFLOW_FOLDER';
   const terminatorPath = path.join(workflowPath, 'src', 'terminator.ts');
 
   console.log(`📂 Reading TypeScript workflow from: ${workflowPath}`);
@@ -62,7 +63,9 @@ async function testTypeScriptWorkflowSync() {
   // STEP 3: Check if workflow already exists in database
   // ==========================================================================
   const folderName = 'WORKFLOW_FOLDER';
-  console.log(`\n🔍 Checking if workflow "${folderName}" exists in database...`);
+  console.log(
+    `\n🔍 Checking if workflow "${folderName}" exists in database...`
+  );
 
   const { data: existing } = await supabase
     .from('deployed_workflows')
@@ -71,8 +74,12 @@ async function testTypeScriptWorkflowSync() {
     .single();
 
   if (existing) {
-    console.log(`✅ Found existing workflow: ID ${existing.id}, name "${existing.name}"`);
-    console.log(`\n⚠️  Workflow already exists. Delete it first to test creation, or update version.`);
+    console.log(
+      `✅ Found existing workflow: ID ${existing.id}, name "${existing.name}"`
+    );
+    console.log(
+      `\n⚠️  Workflow already exists. Delete it first to test creation, or update version.`
+    );
     console.log(`\n   To delete: run this in Supabase SQL editor:`);
     console.log(`   DELETE FROM deployed_workflows WHERE id = ${existing.id};`);
     process.exit(0);
@@ -101,7 +108,7 @@ async function testTypeScriptWorkflowSync() {
       github_last_synced_at: new Date().toISOString(),
       version: '1.0.0',
       total_versions: 1,
-      organization_id: 'org_2yynzGa53bNM1GTPLp5mc2lYRyD' // Default to your primary org
+      organization_id: 'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Default to your primary org
     })
     .select()
     .single();
@@ -127,7 +134,7 @@ async function testTypeScriptWorkflowSync() {
       typescript_metadata: metadata,
       automation_sequence: {}, // Placeholder for NOT NULL constraint
       is_active: false,
-      change_notes: 'Test workflow created locally'
+      change_notes: 'Test workflow created locally',
     })
     .select()
     .single();
@@ -136,10 +143,7 @@ async function testTypeScriptWorkflowSync() {
     console.error(`❌ Failed to create version:`, versionError);
 
     // Rollback: Delete the workflow
-    await supabase
-      .from('deployed_workflows')
-      .delete()
-      .eq('id', newWorkflow.id);
+    await supabase.from('deployed_workflows').delete().eq('id', newWorkflow.id);
 
     process.exit(1);
   }
@@ -151,11 +155,13 @@ async function testTypeScriptWorkflowSync() {
   // ==========================================================================
   console.log(`\n🔄 Activating version 1.0.0...`);
 
-  const { error: activateError } = await supabase
-    .rpc('activate_workflow_version', {
+  const { error: activateError } = await supabase.rpc(
+    'activate_workflow_version',
+    {
       p_workflow_id: newWorkflow.id,
-      p_version_number: '1.0.0'
-    });
+      p_version_number: '1.0.0',
+    }
+  );
 
   if (activateError) {
     console.error(`❌ Failed to activate version:`, activateError);
@@ -184,11 +190,17 @@ async function testTypeScriptWorkflowSync() {
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
 
-      if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== 'dist') {
+      if (
+        entry.isDirectory() &&
+        entry.name !== 'node_modules' &&
+        entry.name !== 'dist'
+      ) {
         await collectTsFiles(fullPath, baseDir);
       } else if (entry.isFile() && entry.name.endsWith('.ts')) {
         const content = await fs.readFile(fullPath);
-        const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+        const relativePath = path
+          .relative(baseDir, fullPath)
+          .replace(/\\/g, '/');
         tsFiles.push({ path: relativePath, content });
         console.log(`   Found: ${relativePath}`);
       }
@@ -202,7 +214,8 @@ async function testTypeScriptWorkflowSync() {
   // Upload to Supabase storage
   console.log(`\n📤 Uploading files to Supabase storage...`);
 
-  const WorkflowFileManager = (await import('../src/lib/workflow-file-manager')).WorkflowFileManager;
+  const WorkflowFileManager = (await import('../src/lib/workflow-file-manager'))
+    .WorkflowFileManager;
   const fileManager = new WorkflowFileManager();
 
   let uploadedCount = 0;
@@ -235,12 +248,14 @@ async function testTypeScriptWorkflowSync() {
           file_count: uploadedCount,
           total_size: totalSize,
           subdirectory: null,
-          last_updated: new Date().toISOString()
-        }
+          last_updated: new Date().toISOString(),
+        },
       })
       .eq('id', newWorkflow.id);
 
-    console.log(`\n✅ Uploaded ${uploadedCount}/${tsFiles.length} files (${(totalSize / 1024).toFixed(2)} KB)`);
+    console.log(
+      `\n✅ Uploaded ${uploadedCount}/${tsFiles.length} files (${(totalSize / 1024).toFixed(2)} KB)`
+    );
   }
 
   // ==========================================================================
