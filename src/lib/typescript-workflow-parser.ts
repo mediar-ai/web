@@ -1,5 +1,9 @@
 import * as ts from 'typescript';
 
+// ============================================================================
+// Interfaces
+// ============================================================================
+
 export interface WorkflowInput {
   name: string;
   type: string;
@@ -10,14 +14,42 @@ export interface WorkflowInput {
   nested?: WorkflowInput[];
 }
 
-export interface WorkflowMetadata {
-  name?: string;
-  version?: string;
+export interface TypeScriptWorkflowMetadata {
+  name: string;
+  version: string;
   description?: string;
   inputs: WorkflowInput[];
+  steps: {
+    id: string;
+    name: string;
+    description?: string;
+    type: 'action' | 'condition' | 'loop' | 'error_handler';
+    position: { x: number; y: number };
+    next?: string[];
+    onError?: string;
+    onSuccess?: string;
+    onFailure?: string;
+    condition?: string;
+    execute?: string;
+    inputs?: string[];
+    outputs?: string[];
+  }[];
+  errorHandler?: {
+    type: 'global' | 'step';
+    code?: string;
+  };
 }
 
-export function parseTypeScriptWorkflow(sourceCode: string): WorkflowMetadata {
+// Alias for compatibility
+export type WorkflowMetadata = TypeScriptWorkflowMetadata;
+
+// ============================================================================
+// Main Parser Function
+// ============================================================================
+
+export function parseTypeScriptWorkflow(
+  sourceCode: string
+): TypeScriptWorkflowMetadata {
   const sourceFile = ts.createSourceFile(
     'workflow.ts',
     sourceCode,
@@ -25,8 +57,11 @@ export function parseTypeScriptWorkflow(sourceCode: string): WorkflowMetadata {
     true
   );
 
-  const metadata: WorkflowMetadata = {
+  const metadata: TypeScriptWorkflowMetadata = {
+    name: 'Unknown Workflow',
+    version: '1.0.0',
     inputs: [],
+    steps: [],
   };
 
   function visit(node: ts.Node) {
@@ -49,9 +84,13 @@ export function parseTypeScriptWorkflow(sourceCode: string): WorkflowMetadata {
   return metadata;
 }
 
+// ============================================================================
+// Workflow Object Parsing
+// ============================================================================
+
 function parseWorkflowObject(
   objectLiteral: ts.ObjectLiteralExpression,
-  metadata: WorkflowMetadata,
+  metadata: TypeScriptWorkflowMetadata,
   sourceFile: ts.SourceFile
 ) {
   objectLiteral.properties.forEach(prop => {
@@ -66,9 +105,8 @@ function parseWorkflowObject(
     } else if (name === 'description' && ts.isStringLiteral(prop.initializer)) {
       metadata.description = prop.initializer.text;
     } else if (name === 'input') {
-      // Could be a variable reference (InputSchema) or inline z.object({})
+      // Input Parsing Logic
       if (ts.isIdentifier(prop.initializer)) {
-        // It's a reference, we need to find the definition in the file
         const variableName = prop.initializer.text;
         const schemaNode = findVariableDeclaration(sourceFile, variableName);
         if (schemaNode) {
@@ -77,6 +115,17 @@ function parseWorkflowObject(
       } else {
         metadata.inputs = parseZodSchema(prop.initializer);
       }
+    } else if (
+      name === 'steps' &&
+      ts.isArrayLiteralExpression(prop.initializer)
+    ) {
+      // Step Parsing Logic
+      metadata.steps = parseSteps(prop.initializer, sourceFile);
+    } else if (name === 'onError') {
+      metadata.errorHandler = {
+        type: 'global',
+        code: prop.initializer.getText(sourceFile),
+      };
     }
   });
 }
@@ -101,21 +150,20 @@ function findVariableDeclaration(
   return found;
 }
 
+// ============================================================================
+// Zod Schema Parsing (Robust AST Implementation)
+// ============================================================================
+
 function parseZodSchema(node: ts.Node): WorkflowInput[] {
-  // Unwrap possible TypeAssertion (e.g. z.object(...) as any)
   if (ts.isAsExpression(node)) {
     return parseZodSchema(node.expression);
   }
-
-  // Expecting z.object({ ... }) or a chain ending in z.object({ ... })
-  // We need to find the z.object call in the chain
 
   let objectLiteral: ts.ObjectLiteralExpression | undefined;
 
   function findObjectLiteral(n: ts.Node) {
     if (ts.isCallExpression(n)) {
       if (ts.isPropertyAccessExpression(n.expression)) {
-        // Check if this is the .object({}) call
         if (n.expression.name.text === 'object') {
           if (
             n.arguments.length > 0 &&
@@ -124,7 +172,6 @@ function parseZodSchema(node: ts.Node): WorkflowInput[] {
             objectLiteral = n.arguments[0];
           }
         }
-        // Continue traversing down the expression chain
         findObjectLiteral(n.expression.expression);
       }
     }
@@ -168,7 +215,6 @@ function parseZodField(node: ts.Node): Omit<WorkflowInput, 'name'> {
   let nested: WorkflowInput[] | undefined;
 
   function analyze(n: ts.Node) {
-    // Unwrap AsExpression
     if (ts.isAsExpression(n)) {
       analyze(n.expression);
       return;
@@ -180,7 +226,6 @@ function parseZodField(node: ts.Node): Omit<WorkflowInput, 'name'> {
       if (ts.isPropertyAccessExpression(expr)) {
         const method = expr.name.text;
 
-        // Modifiers
         if (method === 'optional') {
           required = false;
         } else if (method === 'default') {
@@ -193,7 +238,6 @@ function parseZodField(node: ts.Node): Omit<WorkflowInput, 'name'> {
           }
         }
 
-        // Base types (if accessed via property like z.string().optional())
         const mappedType = mapZodTypeToType(method);
         if (mappedType !== 'unknown') {
           type = mappedType;
@@ -217,11 +261,8 @@ function parseZodField(node: ts.Node): Omit<WorkflowInput, 'name'> {
           }
         }
 
-        // Continue down the chain
         analyze(expr.expression);
       }
-    } else if (ts.isIdentifier(n)) {
-      // Base case: 'z' or imported variable
     }
   }
 
@@ -262,4 +303,222 @@ function extractValue(node: ts.Node): any {
   if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (ts.isArrayLiteralExpression(node)) return [];
   return undefined;
+}
+
+// ============================================================================
+// Step Parsing (Restored)
+// ============================================================================
+
+function parseSteps(
+  stepsArray: ts.ArrayLiteralExpression,
+  sourceFile: ts.SourceFile
+): TypeScriptWorkflowMetadata['steps'] {
+  const steps: TypeScriptWorkflowMetadata['steps'] = [];
+
+  stepsArray.elements.forEach((element, index) => {
+    if (ts.isIdentifier(element)) {
+      // Step is imported
+      steps.push({
+        id: element.text,
+        name: toTitleCase(element.text),
+        type: 'action',
+        position: { x: 100, y: 100 + index * 120 },
+        next:
+          index < stepsArray.elements.length - 1
+            ? [stepsArray.elements[index + 1].getText(sourceFile)]
+            : undefined,
+      });
+    } else if (ts.isCallExpression(element)) {
+      // Inline step
+      const step = parseInlineStep(element, index, sourceFile);
+      if (step) steps.push(step);
+    }
+  });
+
+  return steps;
+}
+
+function parseInlineStep(
+  call: ts.CallExpression,
+  index: number,
+  sourceFile: ts.SourceFile
+): TypeScriptWorkflowMetadata['steps'][0] | null {
+  if (call.arguments.length === 0) return null;
+
+  const config = call.arguments[0];
+  if (!ts.isObjectLiteralExpression(config)) return null;
+
+  const step: TypeScriptWorkflowMetadata['steps'][0] = {
+    id: `step_${index}`,
+    name: `Step ${index + 1}`,
+    type: 'action',
+    position: { x: 100, y: 100 + index * 120 },
+  };
+
+  config.properties.forEach(prop => {
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) return;
+    const propName = prop.name.text;
+    const value = prop.initializer;
+
+    switch (propName) {
+      case 'id':
+        if (ts.isStringLiteral(value)) step.id = value.text;
+        break;
+      case 'name':
+        if (ts.isStringLiteral(value)) step.name = value.text;
+        break;
+      case 'description':
+        if (ts.isStringLiteral(value)) step.description = value.text;
+        break;
+      case 'condition':
+        step.type = 'condition';
+        step.condition = value.getText(sourceFile);
+        break;
+      case 'execute':
+        step.execute = value.getText(sourceFile);
+        break;
+      case 'onError':
+        step.onError = value.getText(sourceFile);
+        break;
+    }
+  });
+
+  return step;
+}
+
+function toTitleCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, s => s.toUpperCase())
+    .trim();
+}
+
+// ============================================================================
+// Graph Generation (Restored)
+// ============================================================================
+
+export interface WorkflowGraphNode {
+  id: string;
+  type: 'action' | 'condition' | 'loop' | 'error_handler' | 'start' | 'end';
+  data: {
+    label: string;
+    description?: string;
+    inputs?: string[];
+    outputs?: string[];
+  };
+  position: { x: number; y: number };
+}
+
+export interface WorkflowGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  type?: 'default' | 'success' | 'failure' | 'error';
+}
+
+export interface WorkflowGraph {
+  nodes: WorkflowGraphNode[];
+  edges: WorkflowGraphEdge[];
+}
+
+export function generateWorkflowGraph(
+  metadata: TypeScriptWorkflowMetadata
+): WorkflowGraph {
+  const nodes: WorkflowGraphNode[] = [];
+  const edges: WorkflowGraphEdge[] = [];
+
+  nodes.push({
+    id: '__start__',
+    type: 'start',
+    data: { label: 'Start' },
+    position: { x: 100, y: 0 },
+  });
+
+  metadata.steps.forEach((step, index) => {
+    nodes.push({
+      id: step.id,
+      type: step.type,
+      data: {
+        label: step.name,
+        description: step.description,
+        inputs: step.inputs,
+        outputs: step.outputs,
+      },
+      position: step.position,
+    });
+
+    if (index === 0) {
+      edges.push({
+        id: `__start__->${step.id}`,
+        source: '__start__',
+        target: step.id,
+        type: 'default',
+      });
+    } else {
+      const prevStep = metadata.steps[index - 1];
+      edges.push({
+        id: `${prevStep.id}->${step.id}`,
+        source: prevStep.id,
+        target: step.id,
+        type: 'default',
+      });
+    }
+
+    if (step.onError) {
+      edges.push({
+        id: `${step.id}->error`,
+        source: step.id,
+        target: step.onError,
+        type: 'error',
+        label: 'On Error',
+      });
+    }
+
+    if (step.type === 'condition') {
+      if (step.onSuccess) {
+        edges.push({
+          id: `${step.id}->success`,
+          source: step.id,
+          target: step.onSuccess,
+          type: 'success',
+          label: 'True',
+        });
+      }
+      if (step.onFailure) {
+        edges.push({
+          id: `${step.id}->failure`,
+          source: step.id,
+          target: step.onFailure,
+          type: 'failure',
+          label: 'False',
+        });
+      }
+    }
+  });
+
+  const lastStep = metadata.steps[metadata.steps.length - 1];
+  if (lastStep) {
+    nodes.push({
+      id: '__end__',
+      type: 'end',
+      data: { label: 'End' },
+      position: { x: 100, y: 100 + metadata.steps.length * 120 },
+    });
+
+    edges.push({
+      id: `${lastStep.id}->__end__`,
+      source: lastStep.id,
+      target: '__end__',
+      type: 'default',
+    });
+  }
+
+  return { nodes, edges };
+}
+
+export function extractMetadataFromCompiledJS(
+  jsContent: string
+): Partial<TypeScriptWorkflowMetadata> {
+  return parseTypeScriptWorkflow(jsContent);
 }

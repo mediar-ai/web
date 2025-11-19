@@ -210,8 +210,8 @@ test('should handle missing optional metadata fields', () => {
   `;
   const metadata = parseTypeScriptWorkflow(source);
   assert.strictEqual(metadata.inputs.length, 1);
-  assert.strictEqual(metadata.name, undefined);
-  assert.strictEqual(metadata.version, undefined);
+  assert.strictEqual(metadata.name, 'Unknown Workflow');
+  assert.strictEqual(metadata.version, '1.0.0');
   assert.strictEqual(metadata.description, undefined);
 });
 
