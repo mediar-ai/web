@@ -27,7 +27,9 @@ interface WorkflowExecutionDialogProps {
 }
 
 // Helper function to transform TypeScript inputs to YAML parameters format
-function transformTypeScriptInputs(inputs: TypeScriptWorkflowMetadata['inputs']): Record<string, any> {
+function transformTypeScriptInputs(
+  inputs: TypeScriptWorkflowMetadata['inputs']
+): Record<string, any> {
   const parameters: Record<string, any> = {};
 
   inputs.forEach(input => {
@@ -37,10 +39,15 @@ function transformTypeScriptInputs(inputs: TypeScriptWorkflowMetadata['inputs'])
 
     parameters[input.name] = {
       type: yamlType,
-      label: input.name.charAt(0).toUpperCase() + input.name.slice(1).replace(/([A-Z])/g, ' $1').trim(),
+      label:
+        input.name.charAt(0).toUpperCase() +
+        input.name
+          .slice(1)
+          .replace(/([A-Z])/g, ' $1')
+          .trim(),
       description: input.description,
       required: input.required,
-      default: input.default,
+      default: input.defaultValue,
     };
   });
 
@@ -58,7 +65,9 @@ export function WorkflowExecutionDialog({
   const [parameters, setParameters] = useState<Record<string, any>>({});
   const [cronEnabled, setCronEnabled] = useState(false);
   const [loadingMetadata, setLoadingMetadata] = useState(false);
-  const [inputParameters, setInputParameters] = useState<Record<string, any>>({});
+  const [inputParameters, setInputParameters] = useState<Record<string, any>>(
+    {}
+  );
 
   // Fetch TypeScript metadata if needed
   useEffect(() => {
@@ -79,7 +88,9 @@ export function WorkflowExecutionDialog({
 
       if (cachedMetadata?.inputs) {
         // Use cached metadata
-        const transformedParams = transformTypeScriptInputs(cachedMetadata.inputs);
+        const transformedParams = transformTypeScriptInputs(
+          cachedMetadata.inputs
+        );
         setInputParameters(transformedParams);
         return;
       }
@@ -87,11 +98,15 @@ export function WorkflowExecutionDialog({
       // Fetch metadata from API
       setLoadingMetadata(true);
       try {
-        const response = await fetch(`/api/remote-workflows/${workflow.id}/typescript-metadata`);
+        const response = await fetch(
+          `/api/remote-workflows/${workflow.id}/typescript-metadata`
+        );
         const data = await response.json();
 
         if (data.success && data.metadata?.inputs) {
-          const transformedParams = transformTypeScriptInputs(data.metadata.inputs);
+          const transformedParams = transformTypeScriptInputs(
+            data.metadata.inputs
+          );
           setInputParameters(transformedParams);
         } else {
           // Fallback to empty parameters
@@ -113,9 +128,11 @@ export function WorkflowExecutionDialog({
       // Initialize parameters from transformed input_parameters
       const defaultParams: Record<string, any> = {};
       if (inputParameters) {
-        Object.entries(inputParameters).forEach(([key, config]: [string, any]) => {
-          defaultParams[key] = config.default || '';
-        });
+        Object.entries(inputParameters).forEach(
+          ([key, config]: [string, any]) => {
+            defaultParams[key] = config.default || '';
+          }
+        );
       }
       setParameters(defaultParams);
       setCronEnabled(workflow.cron_enabled || false);
@@ -129,15 +146,18 @@ export function WorkflowExecutionDialog({
     setError(null);
 
     try {
-      const response = await fetch(`/api/remote-workflows/${workflow.id}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          execution_params: parameters,
-        }),
-      });
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/execute`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            execution_params: parameters,
+          }),
+        }
+      );
 
       const result = await response.json();
 
@@ -189,7 +209,8 @@ export function WorkflowExecutionDialog({
 
   if (!workflow) return null;
 
-  const hasParameters = inputParameters && Object.keys(inputParameters).length > 0;
+  const hasParameters =
+    inputParameters && Object.keys(inputParameters).length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -212,12 +233,16 @@ export function WorkflowExecutionDialog({
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    <span className="text-sm font-mono font-bold uppercase">Scheduled Execution</span>
+                    <span className="text-sm font-mono font-bold uppercase">
+                      Scheduled Execution
+                    </span>
                   </div>
                   <p className="text-sm text-gray-600">
                     {(() => {
                       try {
-                        return cronstrue.toString(workflow.cron_expression, { verbose: false });
+                        return cronstrue.toString(workflow.cron_expression, {
+                          verbose: false,
+                        });
                       } catch {
                         return workflow.cron_expression;
                       }
@@ -240,50 +265,74 @@ export function WorkflowExecutionDialog({
           {loadingMetadata && (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="ml-2 text-sm text-gray-600">Loading workflow parameters...</span>
+              <span className="ml-2 text-sm text-gray-600">
+                Loading workflow parameters...
+              </span>
             </div>
           )}
 
           {/* Parameters Section */}
           {!loadingMetadata && hasParameters && (
             <div className="space-y-4">
-              <h3 className="text-sm font-mono font-bold uppercase">Workflow Parameters</h3>
-              {Object.entries(inputParameters).map(([key, config]: [string, any]) => (
-                <div key={key} className="space-y-2">
-                  <Label htmlFor={key} className="font-mono text-xs text-gray-600 uppercase">
-                    {config.label || key}
-                    {config.required && <span className="text-red-500 ml-1">*</span>}
-                  </Label>
-                  {config.description && (
-                    <p className="text-xs text-gray-500">{config.description}</p>
-                  )}
-                  {config.type === 'text' || config.type === 'multiline' ? (
-                    <Textarea
-                      id={key}
-                      value={parameters[key] || ''}
-                      onChange={(e) => setParameters({ ...parameters, [key]: e.target.value })}
-                      placeholder={config.placeholder || config.default || ''}
-                      rows={3}
-                      className="font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
-                    />
-                  ) : (
-                    <Input
-                      id={key}
-                      type={config.type === 'number' ? 'number' : 'text'}
-                      value={parameters[key] || ''}
-                      onChange={(e) => setParameters({ ...parameters, [key]: e.target.value })}
-                      placeholder={config.placeholder || config.default || ''}
-                      className="font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
-                    />
-                  )}
-                </div>
-              ))}
+              <h3 className="text-sm font-mono font-bold uppercase">
+                Workflow Parameters
+              </h3>
+              {Object.entries(inputParameters).map(
+                ([key, config]: [string, any]) => (
+                  <div key={key} className="space-y-2">
+                    <Label
+                      htmlFor={key}
+                      className="font-mono text-xs text-gray-600 uppercase"
+                    >
+                      {config.label || key}
+                      {config.required && (
+                        <span className="text-red-500 ml-1">*</span>
+                      )}
+                    </Label>
+                    {config.description && (
+                      <p className="text-xs text-gray-500">
+                        {config.description}
+                      </p>
+                    )}
+                    {config.type === 'text' || config.type === 'multiline' ? (
+                      <Textarea
+                        id={key}
+                        value={parameters[key] || ''}
+                        onChange={e =>
+                          setParameters({
+                            ...parameters,
+                            [key]: e.target.value,
+                          })
+                        }
+                        placeholder={config.placeholder || config.default || ''}
+                        rows={3}
+                        className="font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                      />
+                    ) : (
+                      <Input
+                        id={key}
+                        type={config.type === 'number' ? 'number' : 'text'}
+                        value={parameters[key] || ''}
+                        onChange={e =>
+                          setParameters({
+                            ...parameters,
+                            [key]: e.target.value,
+                          })
+                        }
+                        placeholder={config.placeholder || config.default || ''}
+                        className="font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                      />
+                    )}
+                  </div>
+                )
+              )}
             </div>
           )}
 
           {!loadingMetadata && !hasParameters && (
             <div className="text-sm text-gray-600">
-              This workflow has no configurable parameters. Click &quot;Execute Now&quot; to run it.
+              This workflow has no configurable parameters. Click &quot;Execute
+              Now&quot; to run it.
             </div>
           )}
 
