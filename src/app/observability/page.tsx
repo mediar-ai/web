@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   RefreshCw,
   Database,
@@ -48,15 +48,16 @@ export default function ObservabilityPage() {
   const [logHostFilter, setLogHostFilter] = useState('');
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
-  const [deduplicateLogs, setDeduplicateLogs] = useState(false);
-  const [groupByTrace, setGroupByTrace] = useState(false); // Default to ungrouped for performance
-  const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
   const [logsToShow, setLogsToShow] = useState(50); // Pagination: show 50 logs at a time
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [availableFilters, setAvailableFilters] = useState<{
     hosts: string[];
     scopes: string[];
     severities: string[];
   }>({ hosts: [], scopes: [], severities: [] });
+
+  // Ref for infinite scroll
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Check if user has @mediar.ai email
   const checkAccess = useCallback(async () => {
@@ -139,90 +140,40 @@ export default function ObservabilityPage() {
   // Reset pagination when filters change
   useEffect(() => {
     setLogsToShow(50);
-  }, [logHostFilter, logScopeFilter, logSeverityFilter, searchQuery, groupByTrace, deduplicateLogs]);
+  }, [logHostFilter, logScopeFilter, logSeverityFilter, searchQuery]);
 
-  // Deduplicate consecutive logs
-  const displayedLogs = useMemo(() => {
-    if (!deduplicateLogs) return logs;
-
-    const deduplicated: LogEntry[] = [];
-    for (let i = 0; i < logs.length; i++) {
-      const current = logs[i];
-      const prev = logs[i - 1];
-
-      // Check if current log is identical to previous (ignoring timestamp)
-      if (prev &&
-          current.Body === prev.Body &&
-          current.SeverityText === prev.SeverityText &&
-          current.ScopeName === prev.ScopeName &&
-          current.HostName === prev.HostName) {
-        continue; // Skip duplicate
+  // Infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && !isLoadingMore && logs.length > logsToShow) {
+          setIsLoadingMore(true);
+          // Simulate loading delay for smooth UX
+          setTimeout(() => {
+            setLogsToShow(prev => prev + 50);
+            setIsLoadingMore(false);
+          }, 300);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1
       }
-
-      deduplicated.push(current);
-    }
-
-    return deduplicated;
-  }, [logs, deduplicateLogs]);
-
-  // Group logs by TraceID (Vercel-style)
-  const groupedLogs = useMemo(() => {
-    if (!groupByTrace) return null;
-
-    // ONLY show logs with valid TraceIDs when grouping is enabled
-    const logsWithTraceId = displayedLogs.filter(log =>
-      log.TraceId &&
-      log.TraceId.trim() !== '' &&
-      log.TraceId !== '00000000000000000000000000000000'
     );
 
-    // Apply pagination BEFORE grouping for performance
-    const paginatedLogs = logsWithTraceId.slice(0, logsToShow);
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
 
-    const groups = new Map<string, LogEntry[]>();
-
-    paginatedLogs.forEach(log => {
-      const traceId = log.TraceId!; // Safe because we filtered above
-
-      if (!groups.has(traceId)) {
-        groups.set(traceId, []);
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
       }
-      groups.get(traceId)!.push(log);
-    });
-
-    return Array.from(groups.entries()).map(([traceId, entries]) => {
-      // Sort logs by timestamp within group
-      const sortedEntries = entries.sort((a, b) =>
-        new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime()
-      );
-
-      return {
-        traceId,
-        logs: sortedEntries,
-        errorCount: sortedEntries.filter(e => e.SeverityText === 'ERROR' || e.SeverityText === 'FATAL').length,
-        warnCount: sortedEntries.filter(e => e.SeverityText === 'WARN').length,
-        infoCount: sortedEntries.filter(e => e.SeverityText === 'INFO').length,
-        debugCount: sortedEntries.filter(e => e.SeverityText === 'DEBUG').length,
-      };
-    }).sort((a, b) => {
-      // Sort groups by first log timestamp (newest first)
-      const aTime = new Date(a.logs[0].Timestamp).getTime();
-      const bTime = new Date(b.logs[0].Timestamp).getTime();
-      return bTime - aTime;
-    });
-  }, [displayedLogs, groupByTrace, logsToShow]);
-
-  const toggleTrace = (traceId: string) => {
-    setExpandedTraces(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(traceId)) {
-        newSet.delete(traceId);
-      } else {
-        newSet.add(traceId);
-      }
-      return newSet;
-    });
-  };
+    };
+  }, [isLoadingMore, logs.length, logsToShow]);
 
   if (!isLoaded) {
     return (
@@ -350,16 +301,8 @@ export default function ObservabilityPage() {
             </Button>
 
             {/* Last Updated */}
-            <span className="text-xs font-mono text-gray-600">
+            <span className="ml-auto text-xs font-mono text-gray-600">
               Updated: {formatLocalTimeOnly(lastRefresh.toISOString())}
-            </span>
-
-            {/* Log Count */}
-            <span className="ml-auto text-sm font-mono font-bold">
-              {groupByTrace
-                ? `${Math.min(logsToShow, displayedLogs.filter(log => log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000').length)} / ${displayedLogs.filter(log => log.TraceId && log.TraceId.trim() !== '' && log.TraceId !== '00000000000000000000000000000000').length} logs with traces`
-                : `${Math.min(logsToShow, displayedLogs.length)} / ${displayedLogs.length} logs`
-              }
             </span>
           </div>
         </div>
@@ -422,28 +365,6 @@ export default function ObservabilityPage() {
               ))}
             </select>
 
-            {/* Group by Trace Checkbox */}
-            <label className="flex items-center gap-2 px-3 py-1.5 border-2 border-black bg-white cursor-pointer hover:bg-gray-100">
-              <input
-                type="checkbox"
-                checked={groupByTrace}
-                onChange={(e) => setGroupByTrace(e.target.checked)}
-                className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black cursor-pointer"
-              />
-              <span className="font-mono text-xs uppercase font-bold">GROUP BY TRACE</span>
-            </label>
-
-            {/* Deduplicate Checkbox */}
-            <label className="flex items-center gap-2 px-3 py-1.5 border-2 border-black bg-white cursor-pointer hover:bg-gray-100">
-              <input
-                type="checkbox"
-                checked={deduplicateLogs}
-                onChange={(e) => setDeduplicateLogs(e.target.checked)}
-                className="w-4 h-4 border-2 border-black focus:ring-2 focus:ring-black cursor-pointer"
-              />
-              <span className="font-mono text-xs uppercase font-bold">DEDUPE</span>
-            </label>
-
             {/* Clear Filters */}
             {(logHostFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
               <button
@@ -478,297 +399,123 @@ export default function ObservabilityPage() {
           </div>
         ) : (
           <>
-            {/* Grouped View (Vercel-style) */}
-            {groupByTrace && groupedLogs ? (
-              <div className="space-y-1">
-                {groupedLogs.length === 0 ? (
-                  <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
-                    No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
-                  </div>
-                ) : (
-                  groupedLogs.map((group, groupIdx) => {
-                    const isExpanded = expandedTraces.has(group.traceId);
-                    const firstLog = group.logs[0];
-                    const severity = firstLog.SeverityText || 'INFO';
+            {/* Ungrouped View */}
+            <div className="space-y-1">
+              {logs.length === 0 ? (
+                <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
+                  No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
+                </div>
+              ) : (
+                logs.slice(0, logsToShow).map((log, i) => {
+                  const isSelected = selectedLog === log;
+                  const severity = log.SeverityText || 'INFO';
 
-                    return (
-                      <div key={groupIdx} className="border border-gray-300">
-                        {/* Group Header */}
-                        <button
-                          onClick={() => toggleTrace(group.traceId)}
-                          className="w-full hover:bg-gray-50 p-2 text-left transition-colors border-b border-gray-300"
-                        >
-                          <div className="flex items-center gap-3 font-mono text-xs">
-                            <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  return (
+                    <div key={i}>
+                      {/* Compact Log Line */}
+                      <button
+                        onClick={() => setSelectedLog(isSelected ? null : log)}
+                        className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
+                      >
+                        <div className="flex items-center gap-3 font-mono text-xs">
+                          {/* Time */}
+                          <span className="text-gray-500 w-20 flex-shrink-0">
+                            {formatTimeCompact(log.Timestamp)}
+                          </span>
 
-                            {/* Time */}
-                            <span className="text-gray-500 w-20 flex-shrink-0">
-                              {formatTimeCompact(firstLog.Timestamp)}
-                            </span>
+                          {/* Severity Badge */}
+                          <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(severity)} flex-shrink-0`}>
+                            {getSeverityIcon(severity)}
+                            {severity}
+                          </span>
 
-                            {/* Log Count */}
-                            <span className="font-bold text-black w-20 flex-shrink-0">
-                              {group.logs.length} {group.logs.length === 1 ? 'log' : 'logs'}
-                            </span>
+                          {/* Host */}
+                          <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
+                            {log.HostName || '-'}
+                          </span>
 
-                            {/* Summary Counts */}
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {group.errorCount > 0 && (
-                                <span className="px-2 py-0.5 bg-red-100 text-red-900 border border-red-300 rounded-sm font-bold">
-                                  {group.errorCount} ERROR
-                                </span>
-                              )}
-                              {group.warnCount > 0 && (
-                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-900 border border-yellow-300 rounded-sm font-bold">
-                                  {group.warnCount} WARN
-                                </span>
-                              )}
-                              {group.infoCount > 0 && (
-                                <span className="text-gray-600">
-                                  {group.infoCount} INFO
-                                </span>
-                              )}
+                          {/* Message (truncated) */}
+                          <span className="flex-1 truncate text-black">
+                            {log.Body}
+                          </span>
+
+                          {/* Expand Icon */}
+                          <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+
+                      {/* Expanded Details */}
+                      {isSelected && (
+                        <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <span className="font-bold uppercase text-gray-600">Timestamp:</span>
+                              <div className="mt-1">{log.Timestamp}</div>
                             </div>
-
-                            {/* First message preview */}
-                            <span className="flex-1 truncate text-gray-700">
-                              {firstLog.Body}
-                            </span>
-
-                            {/* TraceID badge */}
-                            <span className="text-gray-500 text-[10px] font-mono flex-shrink-0">
-                              {group.traceId.slice(0, 8)}...
-                            </span>
+                            <div>
+                              <span className="font-bold uppercase text-gray-600">Severity:</span>
+                              <div className="mt-1">{severity}</div>
+                            </div>
+                            <div>
+                              <span className="font-bold uppercase text-gray-600">Host:</span>
+                              <div className="mt-1">{log.HostName || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <span className="font-bold uppercase text-gray-600">Service:</span>
+                              <div className="mt-1">{log.ServiceName || 'N/A'}</div>
+                            </div>
                           </div>
-                        </button>
 
-                        {/* Expanded Logs */}
-                        {isExpanded && (
-                          <div className="bg-gray-50">
-                            {group.logs.map((log, logIdx) => {
-                              const isSelected = selectedLog === log;
-                              const logSeverity = log.SeverityText || 'INFO';
-
-                              return (
-                                <div key={logIdx} className="border-l-2 border-black ml-4">
-                                  {/* Log Line */}
-                                  <button
-                                    onClick={() => setSelectedLog(isSelected ? null : log)}
-                                    className="w-full hover:bg-white p-2 pl-4 text-left transition-colors border-b border-gray-200"
-                                  >
-                                    <div className="flex items-center gap-3 font-mono text-xs">
-                                      {/* Time */}
-                                      <span className="text-gray-500 w-20 flex-shrink-0">
-                                        {formatTimeCompact(log.Timestamp)}
-                                      </span>
-
-                                      {/* Severity Badge */}
-                                      <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(logSeverity)} flex-shrink-0`}>
-                                        {getSeverityIcon(logSeverity)}
-                                        {logSeverity}
-                                      </span>
-
-                                      {/* Host */}
-                                      <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
-                                        {log.HostName || '-'}
-                                      </span>
-
-                                      {/* Message */}
-                                      <span className="flex-1 truncate text-black">
-                                        {log.Body}
-                                      </span>
-
-                                      {/* Expand Icon */}
-                                      <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
-                                    </div>
-                                  </button>
-
-                                  {/* Expanded Log Details */}
-                                  {isSelected && (
-                                    <div className="bg-white border-2 border-black p-4 space-y-3 m-2 font-mono text-xs">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Timestamp:</span>
-                                          <div className="mt-1">{log.Timestamp}</div>
-                                        </div>
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Severity:</span>
-                                          <div className="mt-1">{logSeverity}</div>
-                                        </div>
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Host:</span>
-                                          <div className="mt-1">{log.HostName || 'N/A'}</div>
-                                        </div>
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Service:</span>
-                                          <div className="mt-1">{log.ServiceName || 'N/A'}</div>
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <span className="font-bold uppercase text-gray-600">Scope:</span>
-                                        <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
-                                          {log.ScopeName}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <span className="font-bold uppercase text-gray-600">Message:</span>
-                                        <div className="mt-1 p-2 bg-gray-50 border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
-                                          {log.Body}
-                                        </div>
-                                      </div>
-
-                                      {log.TraceId && (
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Trace ID:</span>
-                                          <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
-                                            {log.TraceId}
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {log.SpanId && (
-                                        <div>
-                                          <span className="font-bold uppercase text-gray-600">Span ID:</span>
-                                          <div className="mt-1 p-2 bg-gray-50 border border-gray-300 break-all">
-                                            {log.SpanId}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                          <div>
+                            <span className="font-bold uppercase text-gray-600">Scope:</span>
+                            <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
+                              {log.ScopeName}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : (
-              /* Ungrouped View (Original) */
-              <div className="space-y-1">
-                {displayedLogs.length === 0 ? (
-                  <div className="border-2 border-black p-8 text-center text-gray-600 font-mono">
-                    No logs found {logHostFilter || logSeverityFilter || logScopeFilter || searchQuery ? 'matching filters' : 'in selected time range'}
-                  </div>
-                ) : (
-                  displayedLogs.slice(0, logsToShow).map((log, i) => {
-                    const isSelected = selectedLog === log;
-                    const severity = log.SeverityText || 'INFO';
 
-                    return (
-                      <div key={i}>
-                        {/* Compact Log Line */}
-                        <button
-                          onClick={() => setSelectedLog(isSelected ? null : log)}
-                          className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
-                        >
-                          <div className="flex items-center gap-3 font-mono text-xs">
-                            {/* Time */}
-                            <span className="text-gray-500 w-20 flex-shrink-0">
-                              {formatTimeCompact(log.Timestamp)}
-                            </span>
-
-                            {/* Severity Badge */}
-                            <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 ${getSeverityClass(severity)} flex-shrink-0`}>
-                              {getSeverityIcon(severity)}
-                              {severity}
-                            </span>
-
-                            {/* Host */}
-                            <span className="text-gray-600 w-32 truncate flex-shrink-0" title={log.HostName || '-'}>
-                              {log.HostName || '-'}
-                            </span>
-
-                            {/* Message (truncated) */}
-                            <span className="flex-1 truncate text-black">
+                          <div>
+                            <span className="font-bold uppercase text-gray-600">Message:</span>
+                            <div className="mt-1 p-2 bg-white border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
                               {log.Body}
-                            </span>
-
-                            {/* Expand Icon */}
-                            <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
-                          </div>
-                        </button>
-
-                        {/* Expanded Details */}
-                        {isSelected && (
-                          <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Timestamp:</span>
-                                <div className="mt-1">{log.Timestamp}</div>
-                              </div>
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Severity:</span>
-                                <div className="mt-1">{severity}</div>
-                              </div>
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Host:</span>
-                                <div className="mt-1">{log.HostName || 'N/A'}</div>
-                              </div>
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Service:</span>
-                                <div className="mt-1">{log.ServiceName || 'N/A'}</div>
-                              </div>
                             </div>
+                          </div>
 
+                          {log.TraceId && (
                             <div>
-                              <span className="font-bold uppercase text-gray-600">Scope:</span>
+                              <span className="font-bold uppercase text-gray-600">Trace ID:</span>
                               <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                                {log.ScopeName}
+                                {log.TraceId}
                               </div>
                             </div>
+                          )}
 
+                          {log.SpanId && (
                             <div>
-                              <span className="font-bold uppercase text-gray-600">Message:</span>
-                              <div className="mt-1 p-2 bg-white border border-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
-                                {log.Body}
+                              <span className="font-bold uppercase text-gray-600">Span ID:</span>
+                              <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
+                                {log.SpanId}
                               </div>
                             </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
 
-                            {log.TraceId && (
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Trace ID:</span>
-                                <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                                  {log.TraceId}
-                                </div>
-                              </div>
-                            )}
-
-                            {log.SpanId && (
-                              <div>
-                                <span className="font-bold uppercase text-gray-600">Span ID:</span>
-                                <div className="mt-1 p-2 bg-white border border-gray-300 break-all">
-                                  {log.SpanId}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
+            {/* Infinite Scroll Loading Sentinel */}
+            {logs.length > logsToShow && (
+              <div ref={loadMoreRef} className="flex justify-center py-6">
+                {isLoadingMore ? (
+                  <div className="flex items-center gap-2 font-mono text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black" />
+                    Loading more logs...
+                  </div>
+                ) : (
+                  <div className="h-1" />
                 )}
-              </div>
-            )}
-
-            {/* Load More Button (Vercel-style pagination) */}
-            {((groupByTrace && groupedLogs && groupedLogs.length > 0) || (!groupByTrace && displayedLogs.length > logsToShow)) && (
-              <div className="flex justify-center py-6">
-                <Button
-                  onClick={() => setLogsToShow(prev => prev + 50)}
-                  className="bg-black text-white hover:bg-gray-800 border-2 border-black font-mono text-sm uppercase"
-                >
-                  Load More ({logsToShow} of {groupByTrace ? displayedLogs.filter(log =>
-                    log.TraceId &&
-                    log.TraceId.trim() !== '' &&
-                    log.TraceId !== '00000000000000000000000000000000'
-                  ).length : displayedLogs.length} logs)
-                </Button>
               </div>
             )}
           </>
