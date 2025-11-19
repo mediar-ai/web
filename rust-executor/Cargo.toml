@@ -41,6 +41,7 @@ opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-clie
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
 opentelemetry-appender-tracing = "0.27"
 opentelemetry-semantic-conventions = "0.27"
+tracing-opentelemetry = "0.28"
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies"] }
