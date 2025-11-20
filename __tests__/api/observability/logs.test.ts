@@ -175,6 +175,34 @@ describe('/api/observability/logs', () => {
     expect(data.filters.scopes).toEqual(['scope-1']);
   });
 
+  it('should specifically include rust-executor in host filters even if only present as ServiceName', async () => {
+    mockAuth.mockResolvedValue({ userId: 'user_123' } as any);
+
+    const mockFilters = {
+      hosts: ['host-1'],
+      services: ['mediar-workflow-executor-rust'], // rust-executor service name
+      scopes: ['scope-1'],
+      severities: ['INFO'],
+    };
+
+    const mockQuery = jest.fn().mockResolvedValue({
+      text: jest.fn().mockResolvedValue(JSON.stringify(mockFilters)),
+    });
+
+    mockCreateClient.mockReturnValue({
+      query: mockQuery,
+    } as any);
+
+    const request = new NextRequest(
+      'http://localhost:3000/api/observability/logs?getFilters=true'
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.filters.hosts).toContain('mediar-workflow-executor-rust');
+  });
+
   it('should handle ClickHouse errors gracefully', async () => {
     mockAuth.mockResolvedValue({ userId: 'user_123' } as any);
 

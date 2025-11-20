@@ -6,6 +6,7 @@ import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { Octokit } from '@octokit/rest';
+import { Buffer } from 'buffer';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1047,7 +1048,14 @@ function verifyWebhookSignature(
   const hmac = crypto.createHmac('sha256', process.env.GITHUB_WEBHOOK_SECRET);
   const digest = 'sha256=' + hmac.update(body).digest('hex');
 
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
+  const signatureBuffer = Buffer.from(signature);
+  const digestBuffer = Buffer.from(digest);
+
+  if (signatureBuffer.length !== digestBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(signatureBuffer, digestBuffer);
 }
 
 /**

@@ -1,13 +1,23 @@
 import { POST } from '@/app/api/webhooks/github/route';
 import { NextRequest } from 'next/server';
+import crypto from 'crypto';
 
 // Mock dependencies
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
+    rpc: jest.fn(() => Promise.resolve({ data: null, error: null })),
     from: jest.fn(() => ({
       select: jest.fn(() => ({
         eq: jest.fn(() => ({
           single: jest.fn(() => ({ data: null, error: null })),
+          order: jest.fn(() => ({
+            limit: jest.fn(() => ({
+              single: jest.fn(() => ({
+                data: { version_number: '1.0.0' },
+                error: null,
+              })),
+            })),
+          })),
         })),
       })),
       insert: jest.fn(() => ({
@@ -43,8 +53,18 @@ jest.mock('@/lib/workflow-file-manager', () => ({
 jest.mock('@octokit/rest', () => ({
   Octokit: jest.fn(() => ({
     repos: {
-      getContent: jest.fn(() =>
-        Promise.resolve({
+      getContent: jest.fn(params => {
+        if (params?.path?.endsWith('terminator.ts')) {
+          return Promise.resolve({
+            data: {
+              type: 'file',
+              content: Buffer.from(
+                `export const metadata = { name: 'Test Workflow', version: '1.0.0' };`
+              ).toString('base64'),
+            },
+          });
+        }
+        return Promise.resolve({
           data: [
             {
               type: 'file',
@@ -52,8 +72,8 @@ jest.mock('@octokit/rest', () => ({
               path: 'testfolder/script.js',
             },
           ],
-        })
-      ),
+        });
+      }),
     },
   })),
 }));
@@ -91,7 +111,6 @@ describe('GitHub Webhook Handler', () => {
     };
 
     const body = JSON.stringify(payload);
-    const crypto = await import('crypto');
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
@@ -124,7 +143,6 @@ describe('GitHub Webhook Handler', () => {
     };
 
     const body = JSON.stringify(payload);
-    const crypto = await import('crypto');
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
@@ -158,7 +176,6 @@ describe('GitHub Webhook Handler', () => {
     };
 
     const body = JSON.stringify(payload);
-    const crypto = await import('crypto');
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
@@ -210,7 +227,6 @@ describe('TypeScript Workflow Version Creation', () => {
     };
 
     const body = JSON.stringify(payload);
-    const crypto = await import('crypto');
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
@@ -248,7 +264,6 @@ describe('TypeScript Workflow Version Creation', () => {
     };
 
     const body = JSON.stringify(payload);
-    const crypto = await import('crypto');
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
