@@ -1,75 +1,81 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { POST } from './route';
+import { POST } from '@/app/api/webhooks/github/route';
 import { NextRequest } from 'next/server';
 
 // Mock dependencies
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn(() => ({ data: null, error: null }))
-        }))
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => ({
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          single: jest.fn(() => ({ data: null, error: null })),
+        })),
       })),
-      insert: vi.fn(() => ({
-        select: vi.fn(() => ({
-          single: vi.fn(() => ({ data: { id: 1 }, error: null }))
-        }))
+      insert: jest.fn(() => ({
+        select: jest.fn(() => ({
+          single: jest.fn(() => ({ data: { id: 1 }, error: null })),
+        })),
       })),
-      update: vi.fn(() => ({
-        eq: vi.fn(() => ({ data: null, error: null }))
-      }))
-    }))
-  }))
+      update: jest.fn(() => ({
+        eq: jest.fn(() => ({ data: null, error: null })),
+      })),
+    })),
+  })),
 }));
 
-vi.mock('@/lib/github-workflow-manager', () => ({
+jest.mock('@/lib/github-workflow-manager', () => ({
   githubWorkflowManager: {
-    getWorkflow: vi.fn(() => Promise.resolve({
-      yaml: 'test: yaml',
-      metadata: { sha: 'abc123' }
-    }))
-  }
+    getWorkflow: jest.fn(() =>
+      Promise.resolve({
+        yaml: 'test: yaml',
+        metadata: { sha: 'abc123' },
+      })
+    ),
+  },
 }));
 
-vi.mock('@/lib/workflow-file-manager', () => ({
-  WorkflowFileManager: vi.fn(() => ({
-    uploadWorkflowFiles: vi.fn(() => Promise.resolve({ success: true })),
-    getSignedUrls: vi.fn(() => Promise.resolve({}))
-  }))
+jest.mock('@/lib/workflow-file-manager', () => ({
+  WorkflowFileManager: jest.fn(() => ({
+    uploadWorkflowFiles: jest.fn(() => Promise.resolve({ success: true })),
+    getSignedUrls: jest.fn(() => Promise.resolve({})),
+  })),
 }));
 
-vi.mock('@octokit/rest', () => ({
-  Octokit: vi.fn(() => ({
+jest.mock('@octokit/rest', () => ({
+  Octokit: jest.fn(() => ({
     repos: {
-      getContent: vi.fn(() => Promise.resolve({
-        data: [
-          {
-            type: 'file',
-            name: 'script.js',
-            path: 'testfolder/script.js'
-          }
-        ]
-      }))
-    }
-  }))
+      getContent: jest.fn(() =>
+        Promise.resolve({
+          data: [
+            {
+              type: 'file',
+              name: 'script.js',
+              path: 'testfolder/script.js',
+            },
+          ],
+        })
+      ),
+    },
+  })),
 }));
 
 describe('GitHub Webhook Handler', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
     process.env.GITHUB_TOKEN = 'test-token';
   });
 
   it('should reject requests without valid signature', async () => {
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body: JSON.stringify({ ref: 'refs/heads/main' }),
-      headers: {
-        'x-hub-signature-256': 'invalid-signature'
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'refs/heads/main' }),
+        headers: {
+          'x-hub-signature-256': 'invalid-signature',
+        },
       }
-    });
+    );
 
     const response = await POST(request);
     const data = await response.json();
@@ -81,7 +87,7 @@ describe('GitHub Webhook Handler', () => {
   it('should ignore non-main/dev branch pushes', async () => {
     const payload = {
       ref: 'refs/heads/feature-branch',
-      commits: []
+      commits: [],
     };
 
     const body = JSON.stringify(payload);
@@ -89,13 +95,16 @@ describe('GitHub Webhook Handler', () => {
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body,
-      headers: {
-        'x-hub-signature-256': signature
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'x-hub-signature-256': signature,
+        },
       }
-    });
+    );
 
     const response = await POST(request);
     const data = await response.json();
@@ -109,9 +118,9 @@ describe('GitHub Webhook Handler', () => {
       commits: [
         {
           added: ['testworkflow/workflow.yaml'],
-          modified: []
-        }
-      ]
+          modified: [],
+        },
+      ],
     };
 
     const body = JSON.stringify(payload);
@@ -119,13 +128,16 @@ describe('GitHub Webhook Handler', () => {
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body,
-      headers: {
-        'x-hub-signature-256': signature
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'x-hub-signature-256': signature,
+        },
       }
-    });
+    );
 
     const response = await POST(request);
     const data = await response.json();
@@ -140,9 +152,9 @@ describe('GitHub Webhook Handler', () => {
       commits: [
         {
           added: ['testworkflow/workflow.yaml', 'testworkflow/script.js'],
-          modified: []
-        }
-      ]
+          modified: [],
+        },
+      ],
     };
 
     const body = JSON.stringify(payload);
@@ -150,13 +162,16 @@ describe('GitHub Webhook Handler', () => {
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body,
-      headers: {
-        'x-hub-signature-256': signature
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'x-hub-signature-256': signature,
+        },
       }
-    });
+    );
 
     const response = await POST(request);
     expect(response.status).toBeLessThan(400);
@@ -172,7 +187,7 @@ describe('GitHub Webhook Handler', () => {
 
 describe('TypeScript Workflow Version Creation', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
     process.env.GITHUB_TOKEN = 'test-token';
   });
@@ -183,13 +198,15 @@ describe('TypeScript Workflow Version Creation', () => {
       pusher: { name: 'developer' },
       head_commit: {
         message: 'feat: update typescript workflow',
-        author: { username: 'developer' }
+        author: { username: 'developer' },
       },
-      commits: [{
-        added: ['org-test_org/test_workflow_typescript/src/terminator.ts'],
-        modified: [],
-        removed: []
-      }]
+      commits: [
+        {
+          added: ['org-test_org/test_workflow_typescript/src/terminator.ts'],
+          modified: [],
+          removed: [],
+        },
+      ],
     };
 
     const body = JSON.stringify(payload);
@@ -197,11 +214,14 @@ describe('TypeScript Workflow Version Creation', () => {
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body,
-      headers: { 'x-hub-signature-256': signature }
-    });
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body,
+        headers: { 'x-hub-signature-256': signature },
+      }
+    );
 
     const response = await POST(request);
     const data = await response.json();
@@ -216,13 +236,15 @@ describe('TypeScript Workflow Version Creation', () => {
       pusher: { name: 'louis030195' },
       head_commit: {
         message: 'Update workflow: Test (v1.0.5)',
-        author: { username: 'louis030195' }
+        author: { username: 'louis030195' },
       },
-      commits: [{
-        added: [],
-        modified: ['test/workflow.yaml'],
-        removed: []
-      }]
+      commits: [
+        {
+          added: [],
+          modified: ['test/workflow.yaml'],
+          removed: [],
+        },
+      ],
     };
 
     const body = JSON.stringify(payload);
@@ -230,15 +252,20 @@ describe('TypeScript Workflow Version Creation', () => {
     const hmac = crypto.createHmac('sha256', 'test-secret');
     const signature = 'sha256=' + hmac.update(body).digest('hex');
 
-    const request = new NextRequest('http://localhost:3000/api/webhooks/github', {
-      method: 'POST',
-      body,
-      headers: { 'x-hub-signature-256': signature }
-    });
+    const request = new NextRequest(
+      'http://localhost:3000/api/webhooks/github',
+      {
+        method: 'POST',
+        body,
+        headers: { 'x-hub-signature-256': signature },
+      }
+    );
 
     const response = await POST(request);
     const data = await response.json();
 
-    expect(data.message).toBe('Ignored automated push (prevents duplicate versions)');
+    expect(data.message).toBe(
+      'Ignored automated push (prevents duplicate versions)'
+    );
   });
 });
