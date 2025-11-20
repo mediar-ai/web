@@ -380,7 +380,6 @@ export async function PATCH(
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
-    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg =
       workflow.organization_id && workflow.organization_id === orgId;
 
