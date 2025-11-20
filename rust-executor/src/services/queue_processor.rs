@@ -103,8 +103,13 @@ impl QueueProcessor {
                 .await?
                 .context("Workflow not found")?;
 
-            // Check for failure patterns before executing
-            if WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await? {
+            // Check for failure patterns before executing (unless skip flag is set)
+            let should_skip_cancellation_check = workflow
+                .skip_next_cancellation_check
+                .unwrap_or(false);
+
+            if !should_skip_cancellation_check
+                && WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await? {
                 warn!(
                     "Workflow {} has consecutive failures, skipping execution",
                     workflow.id
@@ -136,6 +141,11 @@ impl QueueProcessor {
                 }
 
                 return Ok(false);
+            } else if should_skip_cancellation_check {
+                info!(
+                    "Workflow {} has skip_next_cancellation_check=true, bypassing failure pattern check",
+                    workflow.id
+                );
             }
 
             // Get MCP endpoint from execution record (preferred) or execution params or environment

@@ -18,6 +18,7 @@ pub struct Workflow {
     pub preferred_format: Option<String>,
     pub automation_sequence: Option<Value>,
     pub automation_sequence_yaml: Option<String>,
+    pub skip_next_cancellation_check: Option<bool>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

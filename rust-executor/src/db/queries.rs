@@ -25,6 +25,7 @@ impl WorkflowQueries {
                 dw.preferred_format,
                 dwv.automation_sequence,
                 dwv.automation_sequence_yaml,
+                dw.skip_next_cancellation_check,
                 dw.created_at,
                 dw.updated_at
             FROM deployed_workflows dw
@@ -54,6 +55,7 @@ impl WorkflowQueries {
             preferred_format: row.get("preferred_format"),
             automation_sequence: row.get("automation_sequence"),
             automation_sequence_yaml: row.get("automation_sequence_yaml"),
+            skip_next_cancellation_check: row.get("skip_next_cancellation_check"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         });

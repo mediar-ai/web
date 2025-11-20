@@ -41,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]
         })),
         automation_sequence_yaml: None,
+        skip_next_cancellation_check: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
