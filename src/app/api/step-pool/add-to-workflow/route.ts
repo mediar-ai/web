@@ -116,13 +116,18 @@ export async function POST(request: NextRequest) {
 
     if (append_to_workflow) {
       // Append new steps to existing steps from LATEST version
-      const existingSteps = loadedWorkflow.automation_sequence?.steps || [];
+      // FIXED: Preserve all properties (variables, selectors, stop_on_error, etc.)
+      const workflow = loadedWorkflow.automation_sequence || {};
       updatedJson = {
-        steps: [...existingSteps, ...newSteps]
+        ...workflow,
+        steps: [...(workflow.steps || []), ...newSteps]
       };
     } else {
       // Replace with new steps only
+      // FIXED: Preserve all properties except steps
+      const workflow = loadedWorkflow.automation_sequence || {};
       updatedJson = {
+        ...workflow,
         steps: newSteps
       };
     }
