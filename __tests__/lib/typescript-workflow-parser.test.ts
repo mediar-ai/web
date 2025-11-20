@@ -1,23 +1,6 @@
 import { parseTypeScriptWorkflow } from '../../src/lib/typescript-workflow-parser';
 import assert from 'assert';
 
-console.log('🧪 Running TypeScript Workflow Parser Tests...');
-
-let passed = 0;
-let failed = 0;
-
-function test(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`✅ ${name}`);
-    passed++;
-  } catch (e: any) {
-    console.error(`❌ ${name}`);
-    console.error(`   Error: ${e.message}`);
-    failed++;
-  }
-}
-
 test('should parse simple single-line inputs', () => {
   const source = `
     import { createWorkflow, z } from "@mediar-ai/workflow";
@@ -109,6 +92,3 @@ test('should parse complex chained inputs', () => {
   assert.strictEqual(isActive?.type, 'boolean');
   assert.strictEqual(isActive?.defaultValue, true);
 });
-
-console.log(`\nTests completed: ${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
