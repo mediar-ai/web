@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
     // Check if user is Mediar admin
     const isAdmin = await isMediarAdmin();
     if (!isAdmin) {
-      return NextResponse.json({ error: 'Access denied - Mediar admin only' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Access denied - Mediar admin only' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest) {
         // Service health overview - grouped by hostname
         query = `
           SELECT
-            if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], ServiceName) as ServiceName,
+            if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName) as ServiceName,
             count() as total_spans,
             countIf(StatusCode = 'STATUS_CODE_ERROR') as errors,
             round((errors / total_spans) * 100, 2) as error_rate,
@@ -67,7 +70,7 @@ export async function GET(request: NextRequest) {
             SpanAttributes,
             toString(if(mapContains(SpanAttributes, 'workflow.name'), SpanAttributes['workflow.name'], '')) as workflow_name,
             toString(if(mapContains(SpanAttributes, 'workflow.total_steps'), SpanAttributes['workflow.total_steps'], '')) as total_steps,
-            toString(if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as host_name
+            toString(if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName)) as host_name
           FROM otel_traces
           WHERE SpanName = 'execute_sequence'
             AND Timestamp > now() - INTERVAL ${parseInt(hours)} HOUR
@@ -134,7 +137,7 @@ export async function GET(request: NextRequest) {
             toString(if(mapContains(SpanAttributes, 'step.number'), SpanAttributes['step.number'], '')) as workflow_step,
             toString(if(mapContains(SpanAttributes, 'step.total'), SpanAttributes['step.total'], '')) as total_steps,
             toString(if(mapContains(SpanAttributes, 'tool.name'), SpanAttributes['tool.name'], replaceRegexpOne(SpanName, '^step\\\\.', ''))) as tool_name,
-            toString(if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as host_name,
+            toString(if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName)) as host_name,
             toString(StatusMessage) as StatusMessage
           FROM otel_traces
           WHERE StatusCode = 'STATUS_CODE_ERROR'
@@ -166,12 +169,15 @@ export async function GET(request: NextRequest) {
         break;
 
       default:
-        return NextResponse.json({ error: 'Invalid metric type' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'Invalid metric type' },
+          { status: 400 }
+        );
     }
 
     const resultSet = await client.query({
       query,
-      format: 'JSONEachRow'
+      format: 'JSONEachRow',
     });
 
     const data = await resultSet.json();
@@ -181,15 +187,14 @@ export async function GET(request: NextRequest) {
       metric,
       hours: parseInt(hours),
       data,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     console.error('[Telemetry API] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to fetch telemetry data',
-        details: error instanceof Error ? error.message : String(error)
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );

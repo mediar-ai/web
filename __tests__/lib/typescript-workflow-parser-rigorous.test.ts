@@ -1,24 +1,6 @@
 import { parseTypeScriptWorkflow } from '../../src/lib/typescript-workflow-parser';
 import assert from 'assert';
 
-console.log('🧪 Running Rigorous TypeScript Workflow Parser Tests...');
-
-let passed = 0;
-let failed = 0;
-
-function test(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`✅ ${name}`);
-    passed++;
-  } catch (e: any) {
-    console.error(`❌ ${name}`);
-    console.error(`   Error: ${e.message}`);
-    // console.error(e.stack); // Uncomment for debugging
-    failed++;
-  }
-}
-
 test('should parse empty input schema', () => {
   const source = `
     import { createWorkflow, z } from "@mediar-ai/workflow";
@@ -253,6 +235,3 @@ test('should handle mixed types that are not standard primitives', () => {
   // All should be unknown based on current mapZodTypeToType implementation
   assert.strictEqual(metadata.inputs[0].type, 'unknown');
 });
-
-console.log(`\nTests completed: ${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
