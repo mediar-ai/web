@@ -273,7 +273,6 @@ impl McpClient {
     }
 
     /// Execute a tool with retry logic
-    #[allow(dead_code)]
     pub async fn execute_tool_with_retry(
         &self,
         tool_name: String,
