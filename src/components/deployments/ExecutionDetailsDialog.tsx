@@ -3,10 +3,7 @@
 import { CopyToClipboardButton } from '@/components/common/CopyToClipboardButton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import {
-  ApiRequestBlock,
-  CodeBlock,
-} from '@/components/ui/code-block';
+import { ApiRequestBlock, CodeBlock } from '@/components/ui/code-block';
 import {
   Dialog,
   DialogContent,
@@ -17,11 +14,25 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Execution } from '@/lib/workflow-types';
-import { Loader2, Terminal, XCircle, Sparkles, Download, FolderOpen, FileText, ChevronDown, ChevronRight, Monitor, Info, Search } from 'lucide-react';
+import {
+  Loader2,
+  Terminal,
+  XCircle,
+  Sparkles,
+  Download,
+  FolderOpen,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  Monitor,
+  Info,
+  Search,
+} from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
+import { AgentScreenTab } from './AgentScreenTab';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
@@ -204,7 +215,11 @@ interface CollapsibleSectionProps {
   defaultOpen?: boolean;
 }
 
-const CollapsibleSection = ({ title, children, defaultOpen = true }: CollapsibleSectionProps) => {
+const CollapsibleSection = ({
+  title,
+  children,
+  defaultOpen = true,
+}: CollapsibleSectionProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -220,11 +235,7 @@ const CollapsibleSection = ({ title, children, defaultOpen = true }: Collapsible
           <ChevronRight className="w-4 h-4" />
         )}
       </button>
-      {isOpen && (
-        <div className="p-4 border-t-2 border-black">
-          {children}
-        </div>
-      )}
+      {isOpen && <div className="p-4 border-t-2 border-black">{children}</div>}
     </div>
   );
 };
@@ -269,7 +280,10 @@ export function ExecutionDetailsDialog({
   };
 
   // Helper function to open file in Windows Explorer or with default app
-  const openFileInExplorer = async (filePath: string, action: 'select' | 'open' = 'select') => {
+  const openFileInExplorer = async (
+    filePath: string,
+    action: 'select' | 'open' = 'select'
+  ) => {
     try {
       const response = await fetch('/api/files/open', {
         method: 'POST',
@@ -280,7 +294,8 @@ export function ExecutionDetailsDialog({
       const data = await response.json();
 
       if (response.ok && data.success) {
-        const message = action === 'open' ? 'Opening file...' : 'Opening in Explorer...';
+        const message =
+          action === 'open' ? 'Opening file...' : 'Opening in Explorer...';
         toast.success(message, {
           description: data.path,
         });
@@ -308,9 +323,10 @@ export function ExecutionDetailsDialog({
     if (!execution || !execution.formatted_output) return null;
 
     try {
-      const output = typeof execution.formatted_output === 'string'
-        ? JSON.parse(execution.formatted_output)
-        : execution.formatted_output;
+      const output =
+        typeof execution.formatted_output === 'string'
+          ? JSON.parse(execution.formatted_output)
+          : execution.formatted_output;
 
       // Check if file_info exists at root or nested in data
       const fileInfo = output.file_info || output.data?.file_info;
@@ -324,7 +340,9 @@ export function ExecutionDetailsDialog({
             <div className="flex items-center justify-between border-2 border-black bg-gray-50 p-3 rounded">
               <div className="flex items-center gap-2">
                 <FolderOpen className="w-4 h-4" />
-                <span className="text-sm font-mono font-semibold">{fileName}</span>
+                <span className="text-sm font-mono font-semibold">
+                  {fileName}
+                </span>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -347,11 +365,7 @@ export function ExecutionDetailsDialog({
                 </Button>
               </div>
             </div>
-            <CodeBlock
-              title="Formatted Output"
-              language="json"
-              size="sm"
-            >
+            <CodeBlock title="Formatted Output" language="json" size="sm">
               {execution.formatted_output}
             </CodeBlock>
           </div>
@@ -360,22 +374,14 @@ export function ExecutionDetailsDialog({
 
       // No file path found, render normal CodeBlock
       return (
-        <CodeBlock
-          title="Formatted Output"
-          language="json"
-          size="sm"
-        >
+        <CodeBlock title="Formatted Output" language="json" size="sm">
           {execution.formatted_output}
         </CodeBlock>
       );
     } catch (error) {
       // If parsing fails, render normal CodeBlock
       return (
-        <CodeBlock
-          title="Formatted Output"
-          language="json"
-          size="sm"
-        >
+        <CodeBlock title="Formatted Output" language="json" size="sm">
           {execution.formatted_output}
         </CodeBlock>
       );
@@ -406,7 +412,8 @@ export function ExecutionDetailsDialog({
 
   // Fetch results for download
   const fetchExecutionResults = async () => {
-    if (!execution || executionResults !== null || loadingStates.results) return;
+    if (!execution || executionResults !== null || loadingStates.results)
+      return;
 
     setLoadingStates(prev => ({ ...prev, results: true }));
     try {
@@ -416,9 +423,12 @@ export function ExecutionDetailsDialog({
       const data = await response.json();
       if (data.success && data.execution) {
         setExecutionResults(data.execution.results);
-        if (data.execution.formatted_output) setFormattedOutput(data.execution.formatted_output);
-        if (data.execution.execution_logs) setExecutionLogs(data.execution.execution_logs);
-        if (data.execution.raw_mcp_response) setRawMcpResponse(data.execution.raw_mcp_response);
+        if (data.execution.formatted_output)
+          setFormattedOutput(data.execution.formatted_output);
+        if (data.execution.execution_logs)
+          setExecutionLogs(data.execution.execution_logs);
+        if (data.execution.raw_mcp_response)
+          setRawMcpResponse(data.execution.raw_mcp_response);
       }
     } catch (error) {
       console.error('Failed to fetch execution results:', error);
@@ -429,7 +439,8 @@ export function ExecutionDetailsDialog({
 
   // Fetch raw MCP response for complete logs download
   const fetchRawMcpResponse = async () => {
-    if (!execution || rawMcpResponse !== null || loadingStates.rawMcpResponse) return rawMcpResponse;
+    if (!execution || rawMcpResponse !== null || loadingStates.rawMcpResponse)
+      return rawMcpResponse;
 
     setLoadingStates(prev => ({ ...prev, rawMcpResponse: true }));
     try {
@@ -458,7 +469,8 @@ export function ExecutionDetailsDialog({
     setIsDownloadingLogs(true);
     try {
       // Fetch results if not already loaded
-      let resultsToDownload = rawMcpResponse || executionResults || execution.results;
+      let resultsToDownload =
+        rawMcpResponse || executionResults || execution.results;
 
       if (!resultsToDownload) {
         const fetchedResults = await fetchRawMcpResponse();
@@ -471,16 +483,20 @@ export function ExecutionDetailsDialog({
           status: execution.status,
           has_results: !!execution.results,
           has_rawMcpResponse: !!rawMcpResponse,
-          has_executionResults: !!executionResults
+          has_executionResults: !!executionResults,
         });
         toast.error('No execution data available for download', {
-          description: 'The execution may not have completed or results were not stored.'
+          description:
+            'The execution may not have completed or results were not stored.',
         });
         return;
       }
 
       // Format timestamp for filename
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .slice(0, -5);
       const filename = `execution-${execution.execution_id}-complete-execution-${timestamp}.json`;
 
       // Create a comprehensive execution data object with metadata
@@ -495,14 +511,17 @@ export function ExecutionDetailsDialog({
           completed_at: execution.completed_at,
           duration_seconds: execution.execution_duration_seconds,
           machine: execution.assigned_machine_name || null,
-          version: execution.version_number ? `v${execution.version_number}` : null,
+          version: execution.version_number
+            ? `v${execution.version_number}`
+            : null,
           client_id: execution.client_id || null,
           modal_call_id: execution.modal_call_id || null,
           error_message: execution.error_message || null,
         },
         execution_results: resultsToDownload,
         download_timestamp: new Date().toISOString(),
-        download_note: 'This file contains the complete execution data including all step results, environment variables, and logs'
+        download_note:
+          'This file contains the complete execution data including all step results, environment variables, and logs',
       };
 
       // Create blob and trigger download as JSON
@@ -518,15 +537,18 @@ export function ExecutionDetailsDialog({
       window.URL.revokeObjectURL(url);
 
       toast.success('Download started', {
-        description: `Downloading ${filename}`
+        description: `Downloading ${filename}`,
       });
     } catch (error) {
       console.error('Error downloading execution logs:', error, {
         execution_id: execution?.execution_id,
-        error_message: error instanceof Error ? error.message : 'Unknown error'
+        error_message: error instanceof Error ? error.message : 'Unknown error',
       });
       toast.error('Failed to download execution logs', {
-        description: error instanceof Error ? error.message : 'An unexpected error occurred'
+        description:
+          error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred',
       });
     } finally {
       setIsDownloadingLogs(false);
@@ -550,16 +572,20 @@ export function ExecutionDetailsDialog({
           execution_id: execution.execution_id,
           status: execution.status,
           has_results: !!execution.results,
-          has_executionResults: !!executionResults
+          has_executionResults: !!executionResults,
         });
         toast.error('No results data available for download', {
-          description: 'The execution may not have completed or results were not stored.'
+          description:
+            'The execution may not have completed or results were not stored.',
         });
         return;
       }
 
       // Format timestamp for filename
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .slice(0, -5);
       const filename = `execution-${execution.execution_id}-results-${timestamp}.json`;
 
       // Create a comprehensive results object
@@ -572,14 +598,18 @@ export function ExecutionDetailsDialog({
           completed_at: execution.completed_at,
           duration_seconds: execution.execution_duration_seconds,
           machine: execution.assigned_machine_name || null,
-          version: execution.version_number ? `v${execution.version_number}` : null,
+          version: execution.version_number
+            ? `v${execution.version_number}`
+            : null,
           error: execution.error_message || null,
         },
         results: resultsToDownload,
-        formatted_output: formattedOutput || execution.formatted_output ?
-          (typeof execution.formatted_output === 'string' ?
-            JSON.parse(execution.formatted_output) :
-            execution.formatted_output) : null,
+        formatted_output:
+          formattedOutput || execution.formatted_output
+            ? typeof execution.formatted_output === 'string'
+              ? JSON.parse(execution.formatted_output)
+              : execution.formatted_output
+            : null,
         generated_at: new Date().toISOString(),
       };
 
@@ -596,15 +626,18 @@ export function ExecutionDetailsDialog({
       window.URL.revokeObjectURL(url);
 
       toast.success('Download started', {
-        description: `Downloading ${filename}`
+        description: `Downloading ${filename}`,
       });
     } catch (error) {
       console.error('Error downloading results:', error, {
         execution_id: execution?.execution_id,
-        error_message: error instanceof Error ? error.message : 'Unknown error'
+        error_message: error instanceof Error ? error.message : 'Unknown error',
       });
       toast.error('Failed to download results', {
-        description: error instanceof Error ? error.message : 'An unexpected error occurred'
+        description:
+          error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred',
       });
     } finally {
       setIsDownloadingResults(false);
@@ -691,7 +724,9 @@ export function ExecutionDetailsDialog({
           className="flex-1 flex flex-col min-h-0"
         >
           <div className="px-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList
+              className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-4' : 'grid-cols-3'}`}
+            >
               <TabsTrigger value="summary" className="flex items-center gap-1">
                 <Info className="w-3 h-3" />
                 Summary
@@ -704,14 +739,15 @@ export function ExecutionDetailsDialog({
                 <Sparkles className="w-3 h-3" />
                 Q&A
               </TabsTrigger>
-              {/* COMMENTED OUT: Agent Screen tab - RDP shadow approach not working
               {execution?.assigned_machine_id && (
-                <TabsTrigger value="agent-screen" className="flex items-center gap-1">
+                <TabsTrigger
+                  value="agent-screen"
+                  className="flex items-center gap-1"
+                >
                   <Monitor className="w-3 h-3" />
                   Agent Screen
                 </TabsTrigger>
               )}
-              */}
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -720,7 +756,10 @@ export function ExecutionDetailsDialog({
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4">
-                  <CollapsibleSection title="Execution Info & Timing" defaultOpen={true}>
+                  <CollapsibleSection
+                    title="Execution Info & Timing"
+                    defaultOpen={true}
+                  >
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <h4 className="font-semibold mb-2">Execution Info</h4>
@@ -729,10 +768,14 @@ export function ExecutionDetailsDialog({
                             <dt className="text-muted-foreground">
                               Workflow ID:
                             </dt>
-                            <dd className="font-mono">{execution.workflow_id}</dd>
+                            <dd className="font-mono">
+                              {execution.workflow_id}
+                            </dd>
                           </div>
                           <div className="flex justify-between">
-                            <dt className="text-muted-foreground">Client ID:</dt>
+                            <dt className="text-muted-foreground">
+                              Client ID:
+                            </dt>
                             <dd className="font-mono text-xs">
                               {execution.client_id || '—'}
                             </dd>
@@ -778,7 +821,9 @@ export function ExecutionDetailsDialog({
                             <dt className="text-muted-foreground">Created:</dt>
                             <dd className="text-xs">
                               {execution.created_at
-                                ? new Date(execution.created_at).toLocaleString()
+                                ? new Date(
+                                    execution.created_at
+                                  ).toLocaleString()
                                 : '—'}
                             </dd>
                           </div>
@@ -786,12 +831,16 @@ export function ExecutionDetailsDialog({
                             <dt className="text-muted-foreground">Started:</dt>
                             <dd className="text-xs">
                               {execution.started_at
-                                ? new Date(execution.started_at).toLocaleString()
+                                ? new Date(
+                                    execution.started_at
+                                  ).toLocaleString()
                                 : '—'}
                             </dd>
                           </div>
                           <div className="flex justify-between">
-                            <dt className="text-muted-foreground">Completed:</dt>
+                            <dt className="text-muted-foreground">
+                              Completed:
+                            </dt>
                             <dd className="text-xs">
                               {execution.completed_at
                                 ? new Date(
@@ -814,7 +863,10 @@ export function ExecutionDetailsDialog({
                   </CollapsibleSection>
 
                   {execution.error_message && (
-                    <CollapsibleSection title="Error Message" defaultOpen={true}>
+                    <CollapsibleSection
+                      title="Error Message"
+                      defaultOpen={true}
+                    >
                       <Alert
                         variant="default"
                         className="border-black bg-gray-100"
@@ -828,75 +880,94 @@ export function ExecutionDetailsDialog({
                   )}
 
                   {execution.error_analysis && (
-                    <CollapsibleSection title="🤖 AI Error Analysis" defaultOpen={true}>
+                    <CollapsibleSection
+                      title="🤖 AI Error Analysis"
+                      defaultOpen={true}
+                    >
                       <div className="space-y-2">
                         <div className="prose prose-sm max-w-none bg-blue-50 p-4 rounded-lg border border-blue-200">
                           <div
                             dangerouslySetInnerHTML={{
                               __html: execution.error_analysis
-                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(
+                                  /\*\*(.*?)\*\*/g,
+                                  '<strong>$1</strong>'
+                                )
                                 .replace(/^- (.*?)$/gm, '<li>$1</li>')
                                 .replace(/(<li>[\s\S]*<\/li>)/, '<ul>$1</ul>')
                                 .replace(/\n\n/g, '</p><p>')
                                 .replace(/^/, '<p>')
-                                .replace(/$/, '</p>')
+                                .replace(/$/, '</p>'),
                             }}
                           />
                         </div>
                         {execution.error_analyzed_at && (
                           <p className="text-xs text-muted-foreground">
-                            Analyzed at: {new Date(execution.error_analyzed_at).toLocaleString()}
+                            Analyzed at:{' '}
+                            {new Date(
+                              execution.error_analyzed_at
+                            ).toLocaleString()}
                           </p>
                         )}
                       </div>
                     </CollapsibleSection>
                   )}
 
-                  {execution.screenshots && execution.screenshots.length > 0 && (
-                    <CollapsibleSection title="📸 Monitor Screenshots" defaultOpen={true}>
-                      <div className="grid grid-cols-2 gap-4">
-                        {execution.screenshots.map((screenshot, idx) => {
-                          const isUrl = screenshot.startsWith('http://') || screenshot.startsWith('https://');
+                  {execution.screenshots &&
+                    execution.screenshots.length > 0 && (
+                      <CollapsibleSection
+                        title="📸 Monitor Screenshots"
+                        defaultOpen={true}
+                      >
+                        <div className="grid grid-cols-2 gap-4">
+                          {execution.screenshots.map((screenshot, idx) => {
+                            const isUrl =
+                              screenshot.startsWith('http://') ||
+                              screenshot.startsWith('https://');
 
-                          // If URL contains supabase storage, route through API for org-level access control
-                          let imageSrc = isUrl ? screenshot : `data:image/png;base64,${screenshot}`;
-                          if (isUrl && screenshot.includes('supabase')) {
-                            // Extract filename from Supabase URL path
-                            // URL format: https://...supabase.../workflow-screenshots/{execution_id}/monitor_1.png
-                            const filename = screenshot.split('/').pop() || `monitor_${idx + 1}.png`;
-                            imageSrc = `/api/workflows/executions/screenshot/${execution.execution_id}/${filename}`;
-                          }
+                            // If URL contains supabase storage, route through API for org-level access control
+                            let imageSrc = isUrl
+                              ? screenshot
+                              : `data:image/png;base64,${screenshot}`;
+                            if (isUrl && screenshot.includes('supabase')) {
+                              // Extract filename from Supabase URL path
+                              // URL format: https://...supabase.../workflow-screenshots/{execution_id}/monitor_1.png
+                              const filename =
+                                screenshot.split('/').pop() ||
+                                `monitor_${idx + 1}.png`;
+                              imageSrc = `/api/workflows/executions/screenshot/${execution.execution_id}/${filename}`;
+                            }
 
-                          return (
-                            <div key={idx} className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <p className="text-xs font-mono text-muted-foreground">
-                                  Monitor {idx + 1}
-                                </p>
-                                <a
-                                  href={imageSrc}
-                                  download={`execution-${execution.execution_id}-monitor-${idx + 1}.png`}
-                                  className="text-xs font-mono hover:underline"
-                                >
-                                  Download
-                                </a>
+                            return (
+                              <div key={idx} className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-mono text-muted-foreground">
+                                    Monitor {idx + 1}
+                                  </p>
+                                  <a
+                                    href={imageSrc}
+                                    download={`execution-${execution.execution_id}-monitor-${idx + 1}.png`}
+                                    className="text-xs font-mono hover:underline"
+                                  >
+                                    Download
+                                  </a>
+                                </div>
+                                <div className="border-2 border-black rounded-md overflow-hidden bg-gray-50">
+                                  <Image
+                                    src={imageSrc}
+                                    alt={`Monitor ${idx + 1} screenshot`}
+                                    className="w-full h-auto"
+                                    width={1920}
+                                    height={1080}
+                                    unoptimized
+                                  />
+                                </div>
                               </div>
-                              <div className="border-2 border-black rounded-md overflow-hidden bg-gray-50">
-                                <Image
-                                  src={imageSrc}
-                                  alt={`Monitor ${idx + 1} screenshot`}
-                                  className="w-full h-auto"
-                                  width={1920}
-                                  height={1080}
-                                  unoptimized
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </CollapsibleSection>
-                  )}
+                            );
+                          })}
+                        </div>
+                      </CollapsibleSection>
+                    )}
 
                   <CollapsibleSection title="API Request" defaultOpen={false}>
                     <ApiRequestBlock
@@ -915,7 +986,10 @@ export function ExecutionDetailsDialog({
                   </CollapsibleSection>
 
                   {(execution.results || execution.execution_logs) && (
-                    <CollapsibleSection title="Full Execution Data" defaultOpen={true}>
+                    <CollapsibleSection
+                      title="Full Execution Data"
+                      defaultOpen={true}
+                    >
                       <div className="flex gap-2">
                         {execution.results && (
                           <Button
@@ -952,7 +1026,10 @@ export function ExecutionDetailsDialog({
                   )}
 
                   {execution.formatted_output && (
-                    <CollapsibleSection title="Formatted Output" defaultOpen={true}>
+                    <CollapsibleSection
+                      title="Formatted Output"
+                      defaultOpen={true}
+                    >
                       {renderFormattedOutputWithFileLinks()}
                     </CollapsibleSection>
                   )}
@@ -968,8 +1045,8 @@ export function ExecutionDetailsDialog({
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">
-                          Real-time server logs from the orchestrator during workflow
-                          execution.
+                          Real-time server logs from the orchestrator during
+                          workflow execution.
                         </p>
                         <div className="flex items-center gap-2">
                           <CopyToClipboardButton
@@ -1004,7 +1081,7 @@ export function ExecutionDetailsDialog({
                           type="text"
                           placeholder="Search logs..."
                           value={logSearchQuery}
-                          onChange={(e) => setLogSearchQuery(e.target.value)}
+                          onChange={e => setLogSearchQuery(e.target.value)}
                           className="w-full pl-10 pr-4 py-2 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
                         />
                       </div>
@@ -1014,9 +1091,15 @@ export function ExecutionDetailsDialog({
                             if (!logSearchQuery) return true;
                             const searchLower = logSearchQuery.toLowerCase();
                             return (
-                              log.message?.toLowerCase().includes(searchLower) ||
+                              log.message
+                                ?.toLowerCase()
+                                .includes(searchLower) ||
                               log.level?.toLowerCase().includes(searchLower) ||
-                              (log.timestamp && new Date(log.timestamp).toLocaleTimeString().toLowerCase().includes(searchLower))
+                              (log.timestamp &&
+                                new Date(log.timestamp)
+                                  .toLocaleTimeString()
+                                  .toLowerCase()
+                                  .includes(searchLower))
                             );
                           })
                           .map((log, idx) => (
@@ -1026,12 +1109,19 @@ export function ExecutionDetailsDialog({
                             >
                               <span className="text-muted-foreground">
                                 {log.timestamp
-                                  ? highlightText(new Date(log.timestamp).toLocaleTimeString(), logSearchQuery)
+                                  ? highlightText(
+                                      new Date(
+                                        log.timestamp
+                                      ).toLocaleTimeString(),
+                                      logSearchQuery
+                                    )
                                   : ''}
                               </span>
                               <Badge
                                 variant={
-                                  log.level === 'error' ? 'outline' : 'secondary'
+                                  log.level === 'error'
+                                    ? 'outline'
+                                    : 'secondary'
                                 }
                                 className={
                                   log.level === 'error'
@@ -1041,7 +1131,9 @@ export function ExecutionDetailsDialog({
                               >
                                 {log.level}
                               </Badge>
-                              <span className="flex-1">{highlightText(log.message, logSearchQuery)}</span>
+                              <span className="flex-1">
+                                {highlightText(log.message, logSearchQuery)}
+                              </span>
                             </div>
                           ))}
                       </div>
@@ -1068,7 +1160,6 @@ export function ExecutionDetailsDialog({
                 </div>
               )}
             </TabsContent>
-            {/* COMMENTED OUT: Agent Screen tab content - RDP shadow approach not working
             {execution?.assigned_machine_id && (
               <TabsContent value="agent-screen" className="h-full">
                 {isTabLoading || !execution ? (
@@ -1078,7 +1169,6 @@ export function ExecutionDetailsDialog({
                 )}
               </TabsContent>
             )}
-            */}
           </div>
         </Tabs>
       </DialogContent>
