@@ -25,6 +25,7 @@ fn test_typescript_workflow_detection_and_sequence_building() {
         preferred_format: None,
         automation_sequence: None,
         automation_sequence_yaml: None,
+        skip_next_cancellation_check: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
@@ -108,6 +109,7 @@ fn test_yaml_workflow_not_affected() {
                 arguments:
                   test: value
         "#.to_string()),
+        skip_next_cancellation_check: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
