@@ -2,20 +2,22 @@
 // Sends traces and logs to centralized OTLP collector (ClickHouse backend)
 
 use opentelemetry::KeyValue;
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    propagation::TraceContextPropagator,
-    runtime,
-    trace::TracerProvider as SdkTracerProvider,
-    logs::LoggerProvider as SdkLoggerProvider,
-    Resource,
+    logs::LoggerProvider as SdkLoggerProvider, propagation::TraceContextPropagator, runtime,
+    trace::TracerProvider as SdkTracerProvider, Resource,
 };
 use opentelemetry_semantic_conventions::{
     attribute::{SERVICE_NAME, SERVICE_VERSION},
     SCHEMA_URL,
 };
+use std::sync::OnceLock;
 use std::time::Duration;
 use tracing_subscriber::Layer;
+
+// Global logger provider - must be kept alive for logs to work
+static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 
 /// Initialize OpenTelemetry telemetry and logging
 /// Returns Some(layer) if successfully initialized, None if disabled/failed
@@ -63,7 +65,7 @@ where
     // Initialize telemetry provider and get the layer
     match init_telemetry_provider(&otlp_endpoint) {
         Ok(layer) => {
-            eprintln!("✓ OpenTelemetry layer initialized");
+            eprintln!("✓ OpenTelemetry layer initialized (traces + logs)");
             Some(layer)
         }
         Err(e) => {
@@ -74,7 +76,7 @@ where
 }
 
 /// Initialize the OpenTelemetry tracer and log provider
-/// Returns the OpenTelemetry layer that bridges tracing to OTLP
+/// Returns a combined layer that handles both traces and logs
 fn init_telemetry_provider<S>(otlp_endpoint: &str) -> anyhow::Result<impl Layer<S> + Send + Sync + 'static>
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a> + Send + Sync,
@@ -131,28 +133,38 @@ where
         .build()?;
 
     // Create logger provider with batch exporter
-    let _log_provider = SdkLoggerProvider::builder()
+    // IMPORTANT: Store this in a static OnceLock so it doesn't get dropped!
+    let logger_provider = SdkLoggerProvider::builder()
         .with_batch_exporter(log_exporter, runtime::Tokio)
         .with_resource(resource)
         .build();
 
-    // Note: We don't set a global logger provider - the tracing-opentelemetry layer
-    // will handle bridging tracing events to OpenTelemetry using the global tracer
+    // Store the logger provider in a global static to keep it alive
+    let provider_ref = LOGGER_PROVIDER.get_or_init(|| logger_provider);
 
     eprintln!("✓ OpenTelemetry tracer and logger providers created");
     eprintln!("  Logs will be sent to: {}/v1/logs", otlp_endpoint);
     eprintln!("  Traces will be sent to: {}/v1/traces", otlp_endpoint);
 
-    // Create the tracing-opentelemetry layer that bridges tracing spans/events to OTLP
-    // This layer will use the global tracer provider we set up above
-    let otel_layer = tracing_opentelemetry::layer();
+    // Create the tracing-opentelemetry layer for traces
+    let traces_layer = tracing_opentelemetry::layer();
 
-    Ok(otel_layer)
+    // Create the OpenTelemetryTracingBridge layer for logs
+    // This bridges tracing events (info!, error!, etc.) to OpenTelemetry logs
+    let logs_layer = OpenTelemetryTracingBridge::new(provider_ref);
+
+    // Combine both layers using .and_then()
+    let combined_layer = traces_layer.and_then(logs_layer);
+
+    Ok(combined_layer)
 }
-
 
 /// Shutdown OpenTelemetry cleanly
 #[allow(dead_code)]
 pub fn shutdown_telemetry() {
     opentelemetry::global::shutdown_tracer_provider();
+    // Also shutdown logger provider if it exists
+    if let Some(provider) = LOGGER_PROVIDER.get() {
+        let _ = provider.shutdown();
+    }
 }
