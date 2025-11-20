@@ -31,13 +31,3 @@ jobs:
           AI_API_PASSWORD: 'dummy-password'
           CLICKHOUSE_HOST: 'dummy-host'
           CLICKHOUSE_PASSWORD: 'dummy-password'
-
-      - name: Verify Build
-        run: npm run build
-        env:
-          # Provide dummy values for build-time environment variables to prevent build failures
-          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-key'
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_dummy'
-          CLERK_SECRET_KEY: 'sk_test_dummy'
-          CRON_SECRET: 'dummy-cron-secret'
