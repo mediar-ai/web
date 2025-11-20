@@ -681,9 +681,14 @@ impl QueueProcessor {
             serde_json::to_string_pretty(&args)?
         );
 
-        let result = mcp_client
-            .execute_tool_with_retry("execute_sequence".to_string(), Some(args.clone()), 3)
-            .await;
+        // Wrapped with 1-hour timeout
+        let result = match tokio::time::timeout(
+            std::time::Duration::from_secs(3600),
+            mcp_client.execute_tool_with_retry("execute_sequence".to_string(), Some(args.clone()), 3)
+        ).await {
+            Ok(res) => res,
+            Err(_) => Err(anyhow::anyhow!("Workflow execution timed out after 1 hour")),
+        };
 
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
 
