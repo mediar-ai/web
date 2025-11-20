@@ -250,6 +250,7 @@ impl WorkflowService {
                 status, category, github_folder, github_ref,
                 preferred_format,
                 automation_sequence, automation_sequence_yaml,
+                skip_next_cancellation_check,
                 created_at, updated_at
             FROM deployed_workflows_with_sequence
             WHERE status = 'deployed'
@@ -274,6 +275,7 @@ impl WorkflowService {
                 preferred_format: row.get("preferred_format"),
                 automation_sequence: row.get("automation_sequence"),
                 automation_sequence_yaml: row.get("automation_sequence_yaml"),
+                skip_next_cancellation_check: row.get("skip_next_cancellation_check"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             })
