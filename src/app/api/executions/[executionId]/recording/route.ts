@@ -55,11 +55,11 @@ export async function GET(
 
     // 3. Determine recording path parameters
     // We need the assigned machine name and the start/end times
-    // @ts-ignore - Supabase types inference with joins can be tricky
+    // @ts-expect-error - Supabase types inference with joins can be tricky
     const assignedMachineName = execution.remote_machines?.name;
-    // @ts-ignore
+    // @ts-expect-error - Supabase types inference with joins can be tricky
     const mcpEndpoint = execution.remote_machines?.mcp_endpoint;
-    // @ts-ignore
+    // @ts-expect-error - Supabase types inference with joins can be tricky
     const azureResourceId = execution.remote_machines?.azure_resource_id;
 
     console.log('[Recording API] Execution details:', {
