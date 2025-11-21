@@ -504,10 +504,104 @@ export const serverSideWorkflowTools = {
   },
 
   /**
-   * Get information about a specific step
+   * Search workflow YAML content for a pattern
    */
-  get_step_info: {
-    description: 'Get detailed information about a specific step',
+  search_workflow: {
+    description: 'Search workflow YAML content and return matching lines with context',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        workflow_id: {
+          type: SchemaType.NUMBER,
+          description: 'The workflow ID'
+        },
+        pattern: {
+          type: SchemaType.STRING,
+          description: 'Regex pattern to search (e.g., "click", "error", "step_.*")'
+        },
+        context_lines: {
+          type: SchemaType.NUMBER,
+          description: 'Number of lines before/after match (default: 3)'
+        }
+      },
+      required: ['pattern']  // workflow_id injected by backend from request context
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        pattern: string;
+        context_lines?: number;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Searching workflow:', params.workflow_id, 'pattern:', params.pattern);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Get YAML content
+        let content: string;
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          content = yaml.dump(currentVersion.jsonContent);
+        } else {
+          content = currentVersion.yamlContent || yaml.dump(currentVersion.jsonContent);
+        }
+
+        // Split into lines
+        const lines = content.split('\n');
+        const contextLines = params.context_lines ?? 3;
+
+        // Create regex from pattern
+        let regex: RegExp;
+        try {
+          regex = new RegExp(params.pattern, 'i');
+        } catch (e) {
+          throw new Error(`Invalid regex pattern: ${params.pattern}`);
+        }
+
+        // Find matches
+        const matches: Array<{
+          line_number: number;
+          content: string;
+          context_before: string[];
+          context_after: string[];
+        }> = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          if (regex.test(lines[i])) {
+            const startContext = Math.max(0, i - contextLines);
+            const endContext = Math.min(lines.length - 1, i + contextLines);
+
+            matches.push({
+              line_number: i + 1, // 1-based line numbers
+              content: lines[i],
+              context_before: lines.slice(startContext, i),
+              context_after: lines.slice(i + 1, endContext + 1)
+            });
+          }
+        }
+
+        return {
+          matches,
+          total_matches: matches.length,
+          total_lines: lines.length
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Get a specific step from the workflow
+   */
+  get_step: {
+    description: 'Get a specific step from the workflow',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
