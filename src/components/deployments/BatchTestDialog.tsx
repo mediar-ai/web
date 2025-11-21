@@ -684,7 +684,7 @@ export function BatchTestDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-black">
+      <DialogContent className="max-w-4xl max-h-[100vh] overflow-hidden flex flex-col border-black">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-2xl font-bold">
             Manual run options: {workflow.name}
