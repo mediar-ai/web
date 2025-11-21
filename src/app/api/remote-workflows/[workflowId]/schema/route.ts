@@ -524,7 +524,7 @@ export async function GET(
       const { data: versionData, error: versionError } = await supabase
         .from('deployed_workflow_versions')
         .select(
-          'automation_sequence, automation_sequence_yaml, preferred_format, version_number, workflow_id'
+          'automation_sequence, automation_sequence_yaml, preferred_format, version_number, workflow_id, typescript_metadata'
         )
         .eq('workflow_id', workflowIdNum)
         .eq('version_number', versionNumber)
@@ -625,6 +625,8 @@ export async function GET(
           ? automationSequence
           : [automationSequence],
         automation_sequence_yaml: versionData.automation_sequence_yaml,
+        preferred_format: versionData.preferred_format,
+        typescript_metadata: versionData.typescript_metadata,
       };
     } else {
       // STEP 2: Fetch workflow data with active version (need ownership data from main table)
@@ -688,7 +690,7 @@ export async function GET(
       const { data: activeWorkflow, error: workflowError } = await supabase
         .from('deployed_workflows_with_sequence')
         .select(
-          'id, name, description, version, status, automation_sequence, automation_sequence_yaml, estimated_duration_seconds'
+          'id, name, description, version, status, automation_sequence, automation_sequence_yaml, estimated_duration_seconds, preferred_format, typescript_metadata'
         )
         .eq('id', workflowIdNum)
         .single();
@@ -713,18 +715,60 @@ export async function GET(
     let expectedOutputs = {};
 
     try {
-      // Handle both object and array formats for automation_sequence
-      let automationSequenceArray;
-      if (workflow.automation_sequence) {
-        if (Array.isArray(workflow.automation_sequence)) {
-          automationSequenceArray = workflow.automation_sequence;
-        } else if (typeof workflow.automation_sequence === 'object') {
-          // Convert single object to array
-          automationSequenceArray = [workflow.automation_sequence];
-        }
-      }
+      // Handle TypeScript workflows
+      if (workflow.preferred_format === 'typescript' && workflow.typescript_metadata?.inputs) {
+        console.log(
+          `🔍 Processing TypeScript workflow ${workflowIdNum}...`
+        );
 
-      if (automationSequenceArray && automationSequenceArray.length > 0) {
+        const inputs = workflow.typescript_metadata.inputs;
+
+        inputs.forEach((input: any) => {
+          // Map TypeScript type to YAML type
+          let yamlType = input.type;
+          if (input.type === 'string') yamlType = 'text';
+
+          const paramConfig: any = {
+            type: yamlType,
+            label: input.name.charAt(0).toUpperCase() +
+                   input.name.slice(1).replace(/([A-Z])/g, ' $1').trim(),
+            description: input.description,
+            required: input.required,
+            default: input.defaultValue,
+          };
+
+          // Add enum options if available
+          if (input.enumOptions && input.enumOptions.length > 0) {
+            paramConfig.options = input.enumOptions;
+          }
+
+          (inputParameters as any)[input.name] = paramConfig;
+
+          // Set sample input from default value
+          if (input.defaultValue !== undefined) {
+            (sampleRequest as any)[input.name] = input.defaultValue;
+          } else if (input.required) {
+            (sampleRequest as any)[input.name] = '';
+          }
+        });
+
+        console.log(
+          `✅ Processed ${inputs.length} TypeScript input parameters`
+        );
+      } else {
+        // Handle YAML workflows
+        // Handle both object and array formats for automation_sequence
+        let automationSequenceArray;
+        if (workflow.automation_sequence) {
+          if (Array.isArray(workflow.automation_sequence)) {
+            automationSequenceArray = workflow.automation_sequence;
+          } else if (typeof workflow.automation_sequence === 'object') {
+            // Convert single object to array
+            automationSequenceArray = [workflow.automation_sequence];
+          }
+        }
+
+        if (automationSequenceArray && automationSequenceArray.length > 0) {
         console.log(
           `🔍 Analyzing automation sequence for workflow ${workflowIdNum}...`
         );
@@ -822,10 +866,11 @@ export async function GET(
         console.log(
           `[SUCCESS] Successfully analyzed schema: ${Object.keys(inputParameters).length} parameters found`
         );
-      } else {
-        console.log(
-          `[WARN]  No automation sequence found for workflow ${workflowIdNum}`
-        );
+        } else {
+          console.log(
+            `[WARN]  No automation sequence found for workflow ${workflowIdNum}`
+          );
+        }
       }
     } catch (e) {
       console.error(
