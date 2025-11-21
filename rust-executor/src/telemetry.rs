@@ -168,3 +168,29 @@ pub fn shutdown_telemetry() {
         let _ = provider.shutdown();
     }
 }
+
+/// Get the current trace ID as a hex string
+/// Returns None if not currently in a span or if telemetry is disabled
+pub fn current_trace_id() -> Option<String> {
+    use opentelemetry::trace::TraceContextExt;
+    use tracing::Span;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let span = Span::current();
+    let context = span.context();
+    let span_ref = context.span();
+    let span_context = span_ref.span_context();
+
+    if span_context.is_valid() {
+        Some(span_context.trace_id().to_string())
+    } else {
+        None
+    }
+}
+
+/// Record a structured attribute on the current span
+pub fn record_span_attribute(key: &str, value: impl Into<String>) {
+    use tracing::Span;
+    let span = Span::current();
+    span.record(key, value.into());
+}
