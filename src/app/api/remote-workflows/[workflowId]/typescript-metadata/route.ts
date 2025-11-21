@@ -135,7 +135,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         );
         const terminatorContent = await fetchWorkflowFromGitHub(
           workflow.github_folder,
-          workflow.clerk_org_id || ''
+          workflow.organization_id || ''
         );
 
         if (terminatorContent) {
