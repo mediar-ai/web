@@ -605,8 +605,7 @@ impl QueueProcessor {
 
         let start_time = Instant::now();
 
-        // Add debug logging similar to Python executor
-        debug!("Modal Function: execute_workflow");
+        // Add debug logging
         debug!(
             "MCP Endpoint: {}",
             execution
@@ -622,8 +621,7 @@ impl QueueProcessor {
         log_buffer.log_step(
             "INFO",
             format!(
-                "{} - workflow_executor - INFO - Modal Function: execute_workflow",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+                "Starting workflow execution (Rust Executor on Azure ACI)"
             ),
             None,
             None,
@@ -631,8 +629,7 @@ impl QueueProcessor {
         log_buffer.log_step(
             "INFO",
             format!(
-                "{} - workflow_executor - INFO - MCP Endpoint: {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                "MCP Endpoint: {}",
                 execution
                     .mcp_endpoint
                     .as_ref()
@@ -644,18 +641,8 @@ impl QueueProcessor {
         log_buffer.log_step(
             "INFO",
             format!(
-                "{} - workflow_executor - INFO - Workflow ID: {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                workflow.id
-            ),
-            None,
-            None,
-        );
-        log_buffer.log_step(
-            "INFO",
-            format!(
-                "{} - workflow_executor - INFO - Execution ID: {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                "Workflow ID: {}, Execution ID: {}",
+                workflow.id,
                 execution.id
             ),
             None,
@@ -750,8 +737,7 @@ impl QueueProcessor {
         log_buffer.log_with_context(
             "INFO",
             format!(
-                "{} - workflow_executor - INFO - Attempting to connect to MCP endpoint: {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                "Connecting to MCP server at {}",
                 execution
                     .mcp_endpoint
                     .as_ref()
@@ -764,8 +750,7 @@ impl QueueProcessor {
 
         log_buffer.log_step(
             "INFO",
-            format!("{} - workflow_executor - INFO - --- DETAILED LOGGING: Payload being sent to MCP ---",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            "--- MCP Request Payload ---".to_string(),
             None,
             None,
         );
@@ -773,9 +758,8 @@ impl QueueProcessor {
         log_buffer.log_step(
             "INFO",
             format!(
-                "{} - workflow_executor - INFO - Full Arguments Payload: {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                serde_json::to_string(&args).unwrap_or_else(|_| "serialization error".to_string())
+                "{}",
+                serde_json::to_string_pretty(&args).unwrap_or_else(|_| "serialization error".to_string())
             ),
             None,
             None,
@@ -783,32 +767,25 @@ impl QueueProcessor {
 
         log_buffer.log_step(
             "INFO",
-            format!(
-                "{} - workflow_executor - INFO - --- END DETAILED LOGGING ---",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
-            ),
+            "--- End Payload ---".to_string(),
             None,
             None,
         );
 
         log_buffer.log_step(
             "INFO",
-            format!(
-                "{} - workflow_executor - INFO - Initializing MCP session...",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
-            ),
+            "Initializing MCP session...".to_string(),
             None,
             None,
         );
 
-        // Log step information like Python executor
+        // Log step information
         if let Some(steps) = args.get("sequence").and_then(|s| s.as_array()) {
             let step_count = steps.len();
             log_buffer.log_step(
-                "info",
+                "INFO",
                 format!(
-                    "{} [INFO] Starting workflow execution ID: {} with {} steps",
-                    chrono::Local::now().format("%H:%M:%S"),
+                    "Starting workflow execution ID: {} with {} steps",
                     execution.id,
                     step_count
                 ),
@@ -816,7 +793,7 @@ impl QueueProcessor {
                 None,
             );
 
-            // Log each step like Python executor
+            // Log each step
             for (idx, step) in steps.iter().enumerate() {
                 if let Some(step_obj) = step.as_object() {
                     let tool_name = step_obj
@@ -826,10 +803,9 @@ impl QueueProcessor {
                     let step_num = idx + 1;
 
                     log_buffer.log_step(
-                        "info",
+                        "INFO",
                         format!(
-                            "{} [INFO] Executing step {}/{}: {}",
-                            chrono::Local::now().format("%H:%M:%S"),
+                            "Executing step {}/{}: {}",
                             step_num,
                             step_count,
                             tool_name
@@ -841,10 +817,9 @@ impl QueueProcessor {
                     // Log MCP request details
                     if let Some(args_value) = step_obj.get("arguments") {
                         log_buffer.log_step(
-                            "info",
+                            "INFO",
                             format!(
-                                "{} [INFO] MCP Request: {} -> {}",
-                                chrono::Local::now().format("%H:%M:%S"),
+                                "MCP Request: {} -> {}",
                                 tool_name,
                                 serde_json::to_string(args_value).unwrap_or_default()
                             ),
@@ -886,10 +861,7 @@ impl QueueProcessor {
                 debug!("MCP execute_sequence response: {:?}", tool_result);
                 log_buffer.log_step(
                     "INFO",
-                    format!(
-                        "{} - workflow_executor - INFO - MCP Response received",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
-                    ),
+                    "MCP Response received".to_string(),
                     None,
                     None,
                 );
@@ -926,10 +898,9 @@ impl QueueProcessor {
                                         step_obj.get("error").and_then(|e| e.as_str())
                                     {
                                         log_buffer.log_step(
-                                            "error",
+                                            "ERROR",
                                             format!(
-                                                "{} [ERROR] Step {} failed: {}",
-                                                chrono::Local::now().format("%H:%M:%S"),
+                                                "Step {} failed: {}",
                                                 step_id,
                                                 error
                                             ),
@@ -1003,9 +974,8 @@ impl QueueProcessor {
                 // Log the determination
                 if !success {
                     log_buffer.log_step(
-                        "error",
-                        format!("{} - workflow_executor - ERROR - Workflow execution failed (has_error: {}, has_step_failure: {}, has_steps_failure: {}, message_indicates_failure: {})",
-                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                        "ERROR",
+                        format!("Workflow execution failed (has_error: {}, has_step_failure: {}, has_steps_failure: {}, message_indicates_failure: {})",
                             has_error,
                             has_step_failure,
                             has_steps_failure,
@@ -1126,10 +1096,7 @@ impl QueueProcessor {
                 // Add error logging to buffer
                 log_buffer.log_step(
                     "ERROR",
-                    format!(
-                        "{} - workflow_executor - ERROR - MCP workflow execution error:",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
-                    ),
+                    "MCP workflow execution error".to_string(),
                     None,
                     None,
                 );
@@ -1148,11 +1115,7 @@ impl QueueProcessor {
 
                 log_buffer.log_step(
                     "ERROR",
-                    format!(
-                        "{} - workflow_executor - ERROR - MCP Error Context: {}",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        e
-                    ),
+                    format!("Error: {}", e),
                     None,
                     None,
                 );
@@ -1160,11 +1123,7 @@ impl QueueProcessor {
                 // Log the full error chain for debugging
                 log_buffer.log_step(
                     "ERROR",
-                    format!(
-                        "{} - workflow_executor - ERROR - Full error chain: {}",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        error_chain.join(" -> ")
-                    ),
+                    format!("Full error chain: {}", error_chain.join(" → ")),
                     None,
                     None,
                 );
@@ -1172,9 +1131,7 @@ impl QueueProcessor {
                 if let Some(ref extracted_error) = detailed_error {
                     log_buffer.log_step(
                         "ERROR",
-                        format!("{} - workflow_executor - ERROR - Extracted error: {}",
-                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                            extracted_error),
+                        format!("Detailed error: {}", extracted_error),
                         None,
                         None,
                     );
@@ -1182,8 +1139,7 @@ impl QueueProcessor {
 
                 log_buffer.log_step(
                     "ERROR",
-                    format!("{} - workflow_executor - ERROR - Real workflow execution failed: MCP Execution Failed: {}",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                    format!("Workflow execution failed: {}",
                         detailed_error.as_ref().unwrap_or(&e.to_string())),
                     None,
                     None,
