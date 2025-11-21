@@ -281,11 +281,33 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    // Extract computer name from storage path for logs query
+    // Path format: recordings/{computerName}/{date} or {date}/{computerName}
+    const pathParts = storagePath.split('/');
+    let computerName = machineName;
+
+    if (pathParts.length >= 2) {
+      // Try to extract computer name from path
+      const lastPart = pathParts[pathParts.length - 1];
+      const secondLastPart = pathParts[pathParts.length - 2];
+
+      // If last part is a date, computer name is second-to-last
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) {
+        computerName = secondLastPart;
+      } else {
+        computerName = lastPart;
+      }
+    }
+
+    console.log('[VM Recordings API] Extracted computer name:', computerName, 'from path:', storagePath);
+
     return NextResponse.json({
       success: true,
       machine: machineName,
+      computer_name: computerName,
       date,
       recordings,
+      storage_path: storagePath,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

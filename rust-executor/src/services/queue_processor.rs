@@ -1097,12 +1097,32 @@ impl QueueProcessor {
                     None,
                 );
 
+                // Log the full error chain
+                let mut error_chain = vec![e.to_string()];
+                let mut source = e.source();
+                while let Some(err) = source {
+                    error_chain.push(err.to_string());
+                    source = err.source();
+                }
+
                 log_buffer.log_step(
                     "debug",
                     format!(
                         "{} - workflow_executor - ERROR - MCP Error Context: {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
                         e
+                    ),
+                    None,
+                    None,
+                );
+
+                // Log the full error chain for debugging
+                log_buffer.log_step(
+                    "debug",
+                    format!(
+                        "{} - workflow_executor - ERROR - Full error chain: {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                        error_chain.join(" -> ")
                     ),
                     None,
                     None,

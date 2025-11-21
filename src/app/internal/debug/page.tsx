@@ -66,6 +66,24 @@ const formatDuration = (seconds: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+const formatTimeOfDay = (offsetSeconds: number, startTime: string | null) => {
+  if (!startTime || isNaN(offsetSeconds)) return '--:--:--';
+
+  try {
+    const startDate = new Date(startTime);
+    const currentTime = new Date(startDate.getTime() + offsetSeconds * 1000);
+
+    return currentTime.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  } catch (e) {
+    return '--:--:--';
+  }
+};
+
 const formatTimeCompact = (timestamp: string) => {
   if (!timestamp || timestamp === '') return 'N/A';
   const utcTimestamp = timestamp.includes('Z')
@@ -188,13 +206,18 @@ export default function InternalDebugPage() {
         );
         setRecordings(sortedRecordings);
 
-        // Fetch logs for the machine and date
+        // Fetch logs for the machine using the actual computer name from recordings response
+        // ClickHouse logs use HostName which is the Windows COMPUTERNAME
+        const computerName = recordingsData.computer_name || selectedMachine;
+        console.log('[Debug Page] Fetching logs for computer name:', computerName);
+
         const logsResponse = await fetch(
-          `/api/observability/logs?hours=24&service=${selectedMachine}`
+          `/api/observability/logs?hours=48&service=${encodeURIComponent(computerName)}`
         );
 
         if (logsResponse.ok) {
           const logsData = await logsResponse.json();
+          console.log('[Debug Page] Received logs:', logsData.logs?.length || 0);
           setLogs(logsData.logs || []);
         } else {
           console.error('Failed to fetch logs');
@@ -566,8 +589,8 @@ export default function InternalDebugPage() {
                 <div className="h-24 bg-white border-t-2 border-black p-4 flex flex-col justify-center space-y-3">
                   {/* Timeline Scrubber */}
                   <div className="flex items-center space-x-4">
-                    <div className="w-20 font-mono text-xs font-bold text-right tabular-nums">
-                      {formatDuration(globalTime)}
+                    <div className="w-24 font-mono text-xs font-bold text-right tabular-nums">
+                      {formatTimeOfDay(globalTime, startTime)}
                     </div>
 
                     <div className="flex-1 relative h-6 flex items-center">
@@ -612,8 +635,8 @@ export default function InternalDebugPage() {
                       />
                     </div>
 
-                    <div className="w-20 font-mono text-xs text-gray-500 tabular-nums">
-                      {formatDuration(totalDuration)}
+                    <div className="w-24 font-mono text-xs text-gray-500 tabular-nums">
+                      {formatTimeOfDay(totalDuration, startTime)}
                     </div>
                   </div>
 
