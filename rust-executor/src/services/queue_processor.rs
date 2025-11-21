@@ -257,7 +257,10 @@ impl QueueProcessor {
                     .await?;
 
                     // Get organization_id from workflow
-                    let org_id = workflow.organization_id.as_ref().map(|s| s.parse::<i64>().unwrap_or(0));
+                    let org_id = workflow
+                        .organization_id
+                        .as_ref()
+                        .map(|s| s.parse::<i64>().unwrap_or(0));
 
                     let executor = WorkflowExecutor::with_log_buffer(
                         mcp_client,
@@ -711,7 +714,8 @@ impl QueueProcessor {
         .await?;
 
         // Add more detailed logging
-        log_buffer.log_step(
+        // Add execution_id to log_buffer for consistent attribute attachment
+        log_buffer.log_with_context(
             "debug",
             format!(
                 "{} - workflow_executor - INFO - Attempting to connect to MCP endpoint: {}",
@@ -723,6 +727,7 @@ impl QueueProcessor {
             ),
             None,
             None,
+            Some(serde_json::json!({ "execution_id": execution.id })),
         );
 
         log_buffer.log_step(
@@ -1097,13 +1102,17 @@ impl QueueProcessor {
                     None,
                 );
 
-                // Log the full error chain
+                // Build the full error chain for better error messages
                 let mut error_chain = vec![e.to_string()];
                 let mut source = e.source();
                 while let Some(err) = source {
                     error_chain.push(err.to_string());
                     source = err.source();
                 }
+
+                // Try to extract the actual error from MCP stdout if present
+                // MCP errors often contain JSON in the message like: 'Workflow execution failed with exit code: Some(1)({"stdout":"..."})'
+                let detailed_error = Self::extract_mcp_error(&error_chain);
 
                 log_buffer.log_step(
                     "debug",
@@ -1128,20 +1137,34 @@ impl QueueProcessor {
                     None,
                 );
 
+                if let Some(ref extracted_error) = detailed_error {
+                    log_buffer.log_step(
+                        "debug",
+                        format!("{} - workflow_executor - ERROR - Extracted error: {}",
+                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
+                            extracted_error),
+                        None,
+                        None,
+                    );
+                }
+
                 log_buffer.log_step(
                     "debug",
                     format!("{} - workflow_executor - ERROR - Real workflow execution failed: MCP Execution Failed: {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        e),
+                        detailed_error.as_ref().unwrap_or(&e.to_string())),
                     None,
                     None,
                 );
+
+                // Use the detailed error if we extracted it, otherwise use full error chain
+                let error_message = detailed_error.unwrap_or_else(|| error_chain.join(" → "));
 
                 Ok(WorkflowResult {
                     success: false,
                     message: "TypeScript workflow execution failed".to_string(),
                     state: WorkflowState::Exception,
-                    error: Some(e.to_string()),
+                    error: Some(error_message),
                     data: None,
                     steps_completed: 0,
                     total_steps: 1,
@@ -1151,6 +1174,68 @@ impl QueueProcessor {
                 })
             }
         }
+    }
+
+    /// Extract detailed error message from MCP error chain
+    /// MCP errors often embed JSON with actual error details in stdout
+    fn extract_mcp_error(error_chain: &[String]) -> Option<String> {
+        for error_msg in error_chain {
+            // Look for patterns like: 'Workflow execution failed with exit code: Some(1)({"stdout":"..."})'
+            if let Some(json_start) = error_msg.find('{') {
+                if let Some(json_end) = error_msg.rfind('}') {
+                    let json_str = &error_msg[json_start..=json_end];
+
+                    // Try to parse the JSON
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        // Check for stdout field which often contains the real error
+                        if let Some(stdout) = json.get("stdout").and_then(|v| v.as_str()) {
+                            // Try to parse stdout as JSON too
+                            if let Ok(stdout_json) = serde_json::from_str::<serde_json::Value>(stdout) {
+                                // Look for error in result.error
+                                if let Some(error) = stdout_json
+                                    .get("result")
+                                    .and_then(|r| r.get("error"))
+                                    .and_then(|e| e.as_str())
+                                {
+                                    return Some(error.to_string());
+                                }
+
+                                // Look for top-level error
+                                if let Some(error) = stdout_json.get("error").and_then(|e| e.as_str()) {
+                                    return Some(error.to_string());
+                                }
+                            }
+
+                            // If stdout isn't JSON, return it as-is if it looks like an error
+                            if stdout.contains("Error") || stdout.contains("error") || stdout.contains("failed") {
+                                return Some(stdout.to_string());
+                            }
+                        }
+
+                        // Check for direct error field
+                        if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
+                            return Some(error.to_string());
+                        }
+                    }
+                }
+            }
+
+            // Look for "Mcp error:" pattern and extract the message after it
+            if error_msg.contains("Mcp error:") {
+                if let Some(mcp_error_start) = error_msg.find("Mcp error:") {
+                    let mcp_error = &error_msg[mcp_error_start + "Mcp error:".len()..].trim();
+                    // Clean up the error code prefix like "-32603: "
+                    if let Some(colon_pos) = mcp_error.find(':') {
+                        let cleaned_error = mcp_error[colon_pos + 1..].trim();
+                        if !cleaned_error.is_empty() && cleaned_error.len() > 20 {
+                            return Some(cleaned_error.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Generate a unique machine ID
