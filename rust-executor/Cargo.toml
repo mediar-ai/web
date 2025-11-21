@@ -60,6 +60,10 @@ octocrab = "0.41"
 # Base64 encoding/decoding
 base64 = "0.22"
 
+# Encryption (for secrets management)
+ring = "0.17"
+sha2 = "0.10"
+
 # Storage (Supabase compatible)
 object_store = { version = "0.11", features = ["http"] }
 url = "2.5"
