@@ -88,11 +88,11 @@ export async function GET(request: NextRequest) {
         success: true,
         filters: {
           hosts: hostOptions.sort(),
-          scopes: filtersData.scopes.filter((s: string) => s).sort(),
-          severities: filtersData.severities.filter((s: string) => s).sort(),
-          workflows: filtersData.workflows.filter((s: string) => s).sort(),
-          organizations: filtersData.organizations.filter((s: string) => s).sort(),
-          errorCategories: filtersData.errorCategories.filter((s: string) => s).sort(),
+          scopes: (filtersData.scopes || []).filter((s: string) => s).sort(),
+          severities: (filtersData.severities || []).filter((s: string) => s).sort(),
+          workflows: (filtersData.workflows || []).filter((s: string) => s).sort(),
+          organizations: (filtersData.organizations || []).filter((s: string) => s).sort(),
+          errorCategories: (filtersData.errorCategories || []).filter((s: string) => s).sort(),
         },
       });
     }
