@@ -116,7 +116,6 @@ export async function GET(request: NextRequest) {
       'progress_percentage',
       'current_step_index',
       'total_steps',
-      'formatted_output',
       'version_number',
       'workflow_version_id',
       'client_id',
@@ -127,7 +126,9 @@ export async function GET(request: NextRequest) {
     ];
 
     const selectFields = include_results
-      ? [...baseFields, 'execution_params', 'results'].join(', ')
+      ? [...baseFields, 'formatted_output', 'execution_params', 'results'].join(
+          ', '
+        )
       : baseFields.join(', ');
 
     let query = supabase
@@ -415,37 +416,10 @@ export async function GET(request: NextRequest) {
       ),
     ] as string[];
 
-    let orgNames: Record<string, string> = {};
-    if (orgIds.length > 0) {
-      // Create Clerk client to fetch organization names
-      const clerkClient = createClerkClient({
-        secretKey: process.env.CLERK_SECRET_KEY,
-      });
-
-      // Fetch each organization's name from Clerk
-      const orgPromises = orgIds.map(async orgId => {
-        try {
-          const org = await clerkClient.organizations.getOrganization({
-            organizationId: orgId,
-          });
-          return { id: orgId, name: org.name };
-        } catch (error) {
-          console.warn(
-            `Failed to fetch organization ${orgId} from Clerk:`,
-            error
-          );
-          return { id: orgId, name: null };
-        }
-      });
-
-      const orgs = await Promise.all(orgPromises);
-      orgNames = orgs.reduce((acc: Record<string, string>, o) => {
-        if (o.name) {
-          acc[o.id] = o.name;
-        }
-        return acc;
-      }, {});
-    }
+    // Use optimized Clerk cache
+    const { getOrganizationNames } = await import('@/lib/clerk-cache');
+    const orgNames =
+      orgIds.length > 0 ? await getOrganizationNames(orgIds) : {};
 
     // Format executions with computed metrics
     const formattedExecutions = (executions || []).map(execution => {
