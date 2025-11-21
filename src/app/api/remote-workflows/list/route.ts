@@ -602,7 +602,9 @@ export async function GET(request: NextRequest) {
           auto_paused_at,
           auto_pause_reason,
           consecutive_failures,
-          last_failure_message
+          last_failure_message,
+          preferred_format,
+          typescript_metadata
         `
         )
         .in('id', workflowIds);
@@ -628,7 +630,9 @@ export async function GET(request: NextRequest) {
             auto_paused_at: cw.auto_paused_at,
             auto_pause_reason: cw.auto_pause_reason,
             consecutive_failures: cw.consecutive_failures,
-            last_failure_message: cw.last_failure_message
+            last_failure_message: cw.last_failure_message,
+            preferred_format: cw.preferred_format,
+            typescript_metadata: cw.typescript_metadata
           };
         });
         console.log('[API] Total workflows with cron data in cronData:', Object.keys(cronData).filter(id => cronData[parseInt(id)].cron_expression).length);
@@ -742,11 +746,45 @@ export async function GET(request: NextRequest) {
       let sampleInputs: JSONObject = {};
 
       try {
-        if (
+        // Handle TypeScript workflows
+        if (workflow.preferred_format === 'typescript' && workflow.typescript_metadata?.inputs) {
+          // Transform TypeScript inputs to YAML parameter format
+          const inputs = workflow.typescript_metadata.inputs;
+
+          inputs.forEach((input: any) => {
+            // Map TypeScript type to YAML type
+            let yamlType = input.type;
+            if (input.type === 'string') yamlType = 'text';
+
+            const paramConfig: any = {
+              type: yamlType,
+              label: input.name.charAt(0).toUpperCase() +
+                     input.name.slice(1).replace(/([A-Z])/g, ' $1').trim(),
+              description: input.description,
+              required: input.required,
+              default: input.defaultValue,
+            };
+
+            // Add enum options if available
+            if (input.enumOptions && input.enumOptions.length > 0) {
+              paramConfig.options = input.enumOptions;
+            }
+
+            executionSchema[input.name] = paramConfig;
+
+            // Set sample input from default value
+            if (input.defaultValue !== undefined) {
+              sampleInputs[input.name] = input.defaultValue;
+            } else if (input.required) {
+              sampleInputs[input.name] = '';
+            }
+          });
+        } else if (
           workflow.automation_sequence &&
           Array.isArray(workflow.automation_sequence) &&
           workflow.automation_sequence.length > 0
         ) {
+          // Handle YAML workflows
           // Analyze the automation sequence for conditional logic
           const { coreVariables, conditionalVariables } =
             analyzeAutomationSequence(workflow.automation_sequence);
@@ -862,6 +900,9 @@ export async function GET(request: NextRequest) {
           auto_pause_reason: automationSequences[workflow.id]?.auto_pause_reason,
           consecutive_failures: automationSequences[workflow.id]?.consecutive_failures,
           last_failure_message: automationSequences[workflow.id]?.last_failure_message,
+          // Add TypeScript workflow fields
+          preferred_format: automationSequences[workflow.id]?.preferred_format,
+          typescript_metadata: automationSequences[workflow.id]?.typescript_metadata,
           // Add version-specific statistics as additional fields
           current_version_stats: {
             successful_runs: workflow.current_version_successful_runs,
