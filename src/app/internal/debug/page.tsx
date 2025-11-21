@@ -241,6 +241,7 @@ export default function InternalDebugPage() {
     }
 
     // Use the date + first recording time as the start reference
+    // Parse as LOCAL time (recordings use VM local time, typically UTC for Azure)
     const dateStr = selectedDate;
     const processed: ProcessedSegment[] = [];
 
@@ -249,16 +250,16 @@ export default function InternalDebugPage() {
     const firstTimeParts = firstRec.filename.replace('.mp4', '').split('-');
     const [firstH, firstM, firstS] = firstTimeParts.map(Number);
 
-    const timelineStart = new Date(`${dateStr}T00:00:00Z`);
-    timelineStart.setUTCHours(firstH, firstM, firstS, 0);
+    // Parse as local datetime (no Z means local time)
+    const timelineStart = new Date(`${dateStr}T${firstH.toString().padStart(2, '0')}:${firstM.toString().padStart(2, '0')}:${firstS.toString().padStart(2, '0')}`);
 
     for (let i = 0; i < recordings.length; i++) {
       const rec = recordings[i];
       const timeParts = rec.filename.replace('.mp4', '').split('-');
       const [hours, minutes, seconds] = timeParts.map(Number);
 
-      const segmentDate = new Date(`${dateStr}T00:00:00Z`);
-      segmentDate.setUTCHours(hours, minutes, seconds, 0);
+      // Parse as local datetime
+      const segmentDate = new Date(`${dateStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
 
       const diffSeconds = Math.floor(
         (segmentDate.getTime() - timelineStart.getTime()) / 1000
@@ -270,8 +271,7 @@ export default function InternalDebugPage() {
         const nextRec = recordings[i + 1];
         const nextTimeParts = nextRec.filename.replace('.mp4', '').split('-');
         const [nh, nm, ns] = nextTimeParts.map(Number);
-        const nextDate = new Date(`${dateStr}T00:00:00Z`);
-        nextDate.setUTCHours(nh, nm, ns, 0);
+        const nextDate = new Date(`${dateStr}T${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`);
         duration = Math.floor(
           (nextDate.getTime() - segmentDate.getTime()) / 1000
         );
