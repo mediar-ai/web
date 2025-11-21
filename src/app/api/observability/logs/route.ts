@@ -64,16 +64,18 @@ export async function GET(request: NextRequest) {
       const filtersText = await filtersResult.text();
       const filtersData = JSON.parse(filtersText.trim().split('\n')[0]);
 
-      // Merge hosts and services, remove empty/nulls, and dedup
-      const hostsAndServices = new Set([
-        ...(filtersData.hosts || []).filter((s: string) => s && s !== ''),
-        ...(filtersData.services || []).filter((s: string) => s && s !== ''),
-      ]);
+      // Keep hosts and services separate - prefer actual hostnames from ResourceAttributes
+      // If no host.name, fall back to ServiceName as identifier
+      const hosts = (filtersData.hosts || []).filter((s: string) => s && s !== '');
+      const services = (filtersData.services || []).filter((s: string) => s && s !== '');
+
+      // Use hosts if available, otherwise fall back to services
+      const hostOptions = hosts.length > 0 ? hosts : services;
 
       return NextResponse.json({
         success: true,
         filters: {
-          hosts: Array.from(hostsAndServices).sort(),
+          hosts: Array.from(new Set(hostOptions)).sort(),
           scopes: filtersData.scopes.filter((s: string) => s).sort(),
           severities: filtersData.severities.filter((s: string) => s).sort(),
         },
