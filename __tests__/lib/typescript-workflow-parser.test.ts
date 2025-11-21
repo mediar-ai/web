@@ -92,3 +92,69 @@ test('should parse complex chained inputs', () => {
   assert.strictEqual(isActive?.type, 'boolean');
   assert.strictEqual(isActive?.defaultValue, true);
 });
+
+test('should parse chained .step() calls (OneDrive workflow pattern)', () => {
+  const source = `
+    import { createWorkflow, z } from "@mediar-ai/workflow";
+
+    const inputSchema = z.object({
+      email: z.string().email().describe("Microsoft account email"),
+      password: z.string().describe("Microsoft account password"),
+      otp: z.string().optional().describe("2FA/OTP code (if required)"),
+    });
+
+    export default createWorkflow({
+      name: "OneDrive Authentication Workflow",
+      version: "1.0.7",
+      input: inputSchema,
+    })
+      .step(signOutOneDrive)
+      .step(launchOneDrive)
+      .step(detectLoginScreen)
+      .step(enterEmail)
+      .step(enterPassword)
+      .step(handle2FA)
+      .step(completeSetup)
+      .onSuccess(({ input, context }) => ({ success: true }))
+      .onError(async ({ error, context, step, logger }) => {
+        logger.error("Workflow failed");
+      })
+      .build();
+  `;
+
+  const metadata = parseTypeScriptWorkflow(source);
+
+  // Check workflow metadata
+  assert.strictEqual(metadata.name, 'OneDrive Authentication Workflow');
+  assert.strictEqual(metadata.version, '1.0.7');
+
+  // Check inputs
+  assert.strictEqual(metadata.inputs.length, 3);
+  const emailInput = metadata.inputs.find(i => i.name === 'email');
+  assert.ok(emailInput, 'email input should exist');
+  assert.strictEqual(emailInput?.type, 'string');
+  assert.strictEqual(emailInput?.description, 'Microsoft account email');
+
+  // Check steps are parsed from chained .step() calls
+  assert.strictEqual(metadata.steps.length, 7, 'Should have 7 steps from chained calls');
+  assert.strictEqual(metadata.steps[0].id, 'signOutOneDrive');
+  assert.strictEqual(metadata.steps[1].id, 'launchOneDrive');
+  assert.strictEqual(metadata.steps[2].id, 'detectLoginScreen');
+  assert.strictEqual(metadata.steps[3].id, 'enterEmail');
+  assert.strictEqual(metadata.steps[4].id, 'enterPassword');
+  assert.strictEqual(metadata.steps[5].id, 'handle2FA');
+  assert.strictEqual(metadata.steps[6].id, 'completeSetup');
+
+  // Check step names are properly formatted
+  assert.strictEqual(metadata.steps[0].name, 'Sign Out One Drive');
+  assert.strictEqual(metadata.steps[1].name, 'Launch One Drive');
+
+  // Check steps are linked
+  assert.deepStrictEqual(metadata.steps[0].next, ['launchOneDrive']);
+  assert.deepStrictEqual(metadata.steps[1].next, ['detectLoginScreen']);
+  assert.strictEqual(metadata.steps[6].next, undefined); // Last step has no next
+
+  // Check error handler is detected
+  assert.ok(metadata.errorHandler, 'Should have global error handler');
+  assert.strictEqual(metadata.errorHandler?.type, 'global');
+});
