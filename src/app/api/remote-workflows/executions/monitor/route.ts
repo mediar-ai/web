@@ -9,10 +9,10 @@ export async function POST(request: NextRequest) {
   try {
     // Verify service authentication
     const authHeader = request.headers.get('authorization');
-    const expectedKey = process.env.MODAL_SERVICE_API_KEY;
+    const expectedKey = process.env.MEDIAR_SERVICE_API_KEY;
 
     if (!expectedKey) {
-      console.error('MODAL_SERVICE_API_KEY not configured');
+      console.error('MEDIAR_SERVICE_API_KEY not configured');
       return NextResponse.json({ error: 'Service misconfigured' }, { status: 500 });
     }
 
