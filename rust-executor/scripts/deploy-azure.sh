@@ -135,7 +135,7 @@ fi
 # Set default values if not in .env
 DATABASE_URL="${DATABASE_URL:-postgresql://localhost/workflow_executor}"
 MCP_ENDPOINT="${MCP_ENDPOINT:-http://localhost:3000}"
-RUST_LOG="${RUST_LOG:-workflow_executor=info,tower_http=info}"
+RUST_LOG="${RUST_LOG:-workflow_executor=debug,tower_http=debug,info}"
 SUPABASE_URL="${SUPABASE_URL:-}"
 SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
 
