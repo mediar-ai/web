@@ -9,8 +9,6 @@
 /// Fix: Created extract_mcp_error() to parse error chain and extract
 ///      detailed error from stdout.result.error field
 
-use serde_json::json;
-
 /// Test extracting detailed error from nested MCP JSON response
 #[test]
 fn test_extract_error_from_mcp_stdout_json() {

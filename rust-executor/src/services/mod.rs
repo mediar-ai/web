@@ -9,5 +9,4 @@ pub use formatted_output::*;
 pub use github_loader::*;
 pub use monitor_client::*;
 pub use queue_processor::*;
-pub use secrets::*;
 pub use workflow_service::*;
