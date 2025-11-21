@@ -733,8 +733,9 @@ impl QueueProcessor {
         // Add execution params (with secrets injected) as inputs
         args.insert("inputs".to_string(), params_with_secrets);
 
-        // Add trace_id for distributed tracing (MCP server will use this)
+        // Add trace_id and execution_id for distributed tracing (MCP server will use these)
         args.insert("trace_id".to_string(), Value::String(trace_id.clone()));
+        args.insert("execution_id".to_string(), Value::String(execution.id.to_string()));
 
         // Update progress - executing TypeScript
         WorkflowQueries::update_execution_progress(
