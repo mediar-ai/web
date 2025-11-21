@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
       'progress_percentage',
       'current_step_index',
       'total_steps',
+      'formatted_output',
       'version_number',
       'workflow_version_id',
       'client_id',
@@ -126,9 +127,7 @@ export async function GET(request: NextRequest) {
     ];
 
     const selectFields = include_results
-      ? [...baseFields, 'formatted_output', 'execution_params', 'results'].join(
-          ', '
-        )
+      ? [...baseFields, 'execution_params', 'results'].join(', ')
       : baseFields.join(', ');
 
     let query = supabase
@@ -487,7 +486,12 @@ export async function GET(request: NextRequest) {
         error_message: executionAny.error_message,
         error_analysis: executionAny.error_analysis,
         error_analyzed_at: executionAny.error_analyzed_at,
-        formatted_output: executionAny.formatted_output,
+        formatted_output:
+          typeof executionAny.formatted_output === 'string' &&
+          executionAny.formatted_output.length > 5000
+            ? executionAny.formatted_output.substring(0, 5000) +
+              '... (truncated)'
+            : executionAny.formatted_output,
 
         // Metadata
         modal_call_id: executionAny.modal_call_id,
