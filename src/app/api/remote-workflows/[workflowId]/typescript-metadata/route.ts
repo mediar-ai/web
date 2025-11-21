@@ -12,8 +12,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseTypeScriptWorkflow } from '@/lib/typescript-workflow-parser';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +61,9 @@ async function fetchWorkflowFromGitHub(
     }
 
     const content = await response.text();
-    console.log(`[GitHub] Successfully fetched ${filePath} (${content.length} bytes)`);
+    console.log(
+      `[GitHub] Successfully fetched ${filePath} (${content.length} bytes)`
+    );
     return content;
   } catch (error) {
     console.error(`[GitHub] Error fetching ${filePath}:`, error);
@@ -127,113 +127,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // 4. Locate the TypeScript workflow files on disk
-    // Convention: /c/Users/{username}/Documents/workflows/org-{orgId}/{workflow-name}_typescript/
-    const workflowsBasePath =
-      process.env.WORKFLOWS_BASE_PATH || '/c/Users/louis/Documents/workflows';
-    const isDevelopment = process.env.NODE_ENV === 'development';
-
-    // Try to find the workflow directory
-    // Pattern: org-{orgId}/{workflow-slug}_typescript
-    let workflowPath: string | null = null;
-    let searchMethod: 'name_match' | 'workflow_id' | 'manual_override' | null =
-      null;
-
-    try {
-      // Development mode: Check for manual override first
-      if (isDevelopment && process.env.DEV_TYPESCRIPT_WORKFLOW_PATH) {
-        const devPath = process.env.DEV_TYPESCRIPT_WORKFLOW_PATH;
-        const terminatorPath = path.join(devPath, 'src', 'terminator.ts');
-        if (fs.existsSync(terminatorPath)) {
-          workflowPath = devPath;
-          searchMethod = 'manual_override';
-          console.log(`[DEV] Using manual workflow path: ${devPath}`);
-        }
-      }
-
-      if (!workflowPath) {
-        // List all org directories
-        const orgDirs = fs
-          .readdirSync(workflowsBasePath)
-          .filter(dir => dir.startsWith('org-'))
-          .map(dir => path.join(workflowsBasePath, dir));
-
-        // Search for workflow directory matching this workflow
-        for (const orgDir of orgDirs) {
-          if (!fs.existsSync(orgDir)) continue;
-
-          const workflowDirs = fs
-            .readdirSync(orgDir)
-            .filter(dir => dir.endsWith('_typescript'));
-
-          for (const dir of workflowDirs) {
-            const fullPath = path.join(orgDir, dir);
-            const terminatorPath = path.join(fullPath, 'src', 'terminator.ts');
-
-            if (fs.existsSync(terminatorPath)) {
-              // Check if the workflow name matches (fuzzy match)
-              const dirName = dir.replace('_typescript', '').replace(/_/g, ' ');
-              const workflowName = workflow.name
-                .toLowerCase()
-                .replace(/[^a-z0-9\s]/g, '');
-
-              if (
-                dirName.toLowerCase().includes(workflowName) ||
-                workflowName.includes(dirName.toLowerCase())
-              ) {
-                workflowPath = fullPath;
-                searchMethod = 'name_match';
-                break;
-              }
-            }
-          }
-
-          if (workflowPath) break;
-        }
-      }
-
-      // Development fallback: If no match found, use the first TypeScript workflow
-      if (!workflowPath && isDevelopment) {
-        console.log(
-          '[DEV] No name match found, attempting to use first TypeScript workflow as fallback'
-        );
-        const orgDirs = fs
-          .readdirSync(workflowsBasePath)
-          .filter(dir => dir.startsWith('org-'))
-          .map(dir => path.join(workflowsBasePath, dir));
-
-        for (const orgDir of orgDirs) {
-          if (!fs.existsSync(orgDir)) continue;
-
-          const workflowDirs = fs
-            .readdirSync(orgDir)
-            .filter(dir => dir.endsWith('_typescript'));
-
-          if (workflowDirs.length > 0) {
-            const firstWorkflow = path.join(orgDir, workflowDirs[0]);
-            const terminatorPath = path.join(
-              firstWorkflow,
-              'src',
-              'terminator.ts'
-            );
-            if (fs.existsSync(terminatorPath)) {
-              workflowPath = firstWorkflow;
-              searchMethod = 'workflow_id';
-              console.log(`[DEV] Using fallback workflow: ${workflowDirs[0]}`);
-              break;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error scanning workflow directories:', error);
-    }
-
-    // 5. Fallback to GitHub if filesystem not available (Vercel/production)
-    if (!workflowPath && workflow.github_folder) {
+    // 4. Fetch TypeScript workflow from GitHub
+    if (workflow.github_folder) {
       try {
         console.log(
-          `[GitHub Fallback] Fetching TypeScript workflow from GitHub: ${workflow.github_folder}`
+          `[GitHub] Fetching TypeScript workflow from GitHub: ${workflow.github_folder}`
         );
         const terminatorContent = await fetchWorkflowFromGitHub(
           workflow.github_folder,
@@ -263,56 +161,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
           });
         }
       } catch (githubError: any) {
-        console.error('[GitHub Fallback] Failed to fetch from GitHub:', githubError);
+        console.error('[GitHub] Failed to fetch from GitHub:', githubError);
         // Continue to error below
       }
     }
 
-    if (!workflowPath) {
-      const devHint = isDevelopment
-        ? '\n\nDevelopment tip: Set DEV_TYPESCRIPT_WORKFLOW_PATH=/path/to/your/workflow in .env.local to test locally'
-        : '';
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'TypeScript workflow files not found on disk or GitHub',
-          hint: `Ensure workflow is deployed in the workflows directory or GitHub${devHint}`,
-          searched_paths: workflowsBasePath,
-          github_folder: workflow.github_folder,
-          is_development: isDevelopment,
-        },
-        { status: 404 }
-      );
-    }
-
-    // 6. Parse the terminator.ts file from filesystem
-    const terminatorPath = path.join(workflowPath, 'src', 'terminator.ts');
-    const terminatorContent = fs.readFileSync(terminatorPath, 'utf-8');
-
-    // Parse TypeScript workflow
-    const metadata = parseTypeScriptWorkflow(terminatorContent);
-
-    // 7. Cache the metadata in the database
-    await supabase
-      .from('deployed_workflows')
-      .update({
-        typescript_metadata: metadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', workflowId);
-
-    // 8. Return the metadata
-    return NextResponse.json({
-      success: true,
-      metadata,
-      source: 'parsed',
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      workflow_path: workflowPath,
-      search_method: searchMethod,
-      is_development: isDevelopment,
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'TypeScript workflow files not found on GitHub',
+        hint: 'Ensure the workflow is synced to GitHub and the github_folder field is set',
+        github_folder: workflow.github_folder,
+      },
+      { status: 404 }
+    );
   } catch (error: any) {
     console.error('Error fetching TypeScript metadata:', error);
     return NextResponse.json(
