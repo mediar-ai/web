@@ -52,7 +52,7 @@ const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 import { getCorsHeaders } from '@/lib/cors';
 
 // Allowed models (per workspace rule)
-const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'] as const;
+const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-pro'] as const;
 const ANTHROPIC_MODELS = ['claude-sonnet-4-5-20250929'] as const;
 const ALLOWED_MODELS = [...VERTEX_MODELS, ...ANTHROPIC_MODELS] as const;
 type AllowedModel = (typeof ALLOWED_MODELS)[number];
