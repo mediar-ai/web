@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::interval;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -184,55 +184,69 @@ impl QueueProcessor {
             // Create a LogBuffer for this execution
             let log_buffer = LogBuffer::new();
 
-            // Execute workflow
+            // Execute workflow within a tracing span to capture execution_id
+            let execution_span =
+                tracing::info_span!("workflow_execution", execution_id = %execution.id);
+
             let start_time = Utc::now();
-            let mcp_client = McpClient::from_url_with_log_buffer(mcp_endpoint, log_buffer.clone());
 
-            // Check if this is a TypeScript workflow
-            let result = if workflow.preferred_format.as_deref() == Some("typescript") {
-                info!("Executing TypeScript workflow directly via MCP");
+            let result = async {
+                let mcp_client =
+                    McpClient::from_url_with_log_buffer(mcp_endpoint, log_buffer.clone());
 
-                // TypeScript workflows have only 1 step (the execute_sequence call)
-                WorkflowQueries::update_execution_progress(
-                    &self.db_pool,
-                    execution.id,
-                    0,
-                    1,
-                    Some("Executing TypeScript workflow".to_string()),
-                )
-                .await?;
+                // Check if this is a TypeScript workflow
+                if workflow.preferred_format.as_deref() == Some("typescript") {
+                    info!("Executing TypeScript workflow directly via MCP");
 
-                // Execute TypeScript workflow directly via MCP
-                self.execute_typescript_workflow(&mcp_client, &workflow, &execution, &log_buffer)
+                    // TypeScript workflows have only 1 step (the execute_sequence call)
+                    WorkflowQueries::update_execution_progress(
+                        &self.db_pool,
+                        execution.id,
+                        0,
+                        1,
+                        Some("Executing TypeScript workflow".to_string()),
+                    )
+                    .await?;
+
+                    // Execute TypeScript workflow directly via MCP
+                    self.execute_typescript_workflow(
+                        &mcp_client,
+                        &workflow,
+                        &execution,
+                        &log_buffer,
+                    )
                     .await
-            } else {
-                // Regular YAML workflow execution
-                info!("Executing YAML workflow");
+                } else {
+                    // Regular YAML workflow execution
+                    info!("Executing YAML workflow");
 
-                // Load workflow sequence
-                let sequence = self.load_workflow_sequence(&workflow).await?;
+                    // Load workflow sequence
+                    let sequence = self.load_workflow_sequence(&workflow).await?;
 
-                // Update total steps
-                let total_steps = sequence.count_steps() as u32;
-                WorkflowQueries::update_execution_progress(
-                    &self.db_pool,
-                    execution.id,
-                    0,
-                    total_steps,
-                    None,
-                )
-                .await?;
+                    // Update total steps
+                    let total_steps = sequence.count_steps() as u32;
+                    WorkflowQueries::update_execution_progress(
+                        &self.db_pool,
+                        execution.id,
+                        0,
+                        total_steps,
+                        None,
+                    )
+                    .await?;
 
-                // TODO: Get organization_id from workflow when available
-                let executor = WorkflowExecutor::with_log_buffer(
-                    mcp_client,
-                    sequence,
-                    execution.id,
-                    None,
-                    log_buffer.clone(),
-                );
-                executor.execute().await
-            };
+                    // TODO: Get organization_id from workflow when available
+                    let executor = WorkflowExecutor::with_log_buffer(
+                        mcp_client,
+                        sequence,
+                        execution.id,
+                        None,
+                        log_buffer.clone(),
+                    );
+                    executor.execute().await
+                }
+            }
+            .instrument(execution_span)
+            .await;
 
             // Update execution status based on result
             let end_time = Utc::now();
