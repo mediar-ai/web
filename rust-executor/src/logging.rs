@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info, trace, warn};
 
 /// Represents a single log entry with timestamp and metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +37,13 @@ impl LogBuffer {
     }
 
     /// Add a log entry with step context
-    pub fn log_step(&self, level: &str, message: String, step_id: Option<String>, tool_name: Option<String>) {
+    pub fn log_step(
+        &self,
+        level: &str,
+        message: String,
+        step_id: Option<String>,
+        tool_name: Option<String>,
+    ) {
         self.log_with_context(level, message, step_id, tool_name, None);
     }
 
@@ -49,6 +56,24 @@ impl LogBuffer {
         tool_name: Option<String>,
         data: Option<Value>,
     ) {
+        // Emit tracing event for real-time logging to ClickHouse
+        // This ensures that logs stored in the buffer (and later DB) are also available in real-time via OTLP
+        match level.to_lowercase().as_str() {
+            "error" => {
+                error!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+            }
+            "warn" | "warning" => {
+                warn!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+            }
+            "debug" => {
+                debug!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+            }
+            "trace" => {
+                trace!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+            }
+            _ => info!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
+        }
+
         let entry = LogEntry {
             timestamp: Utc::now(),
             level: level.to_string(),
