@@ -11,6 +11,8 @@ export interface LoadedWorkflow {
   id: number;
   name: string;
   automation_sequence: any;
+  preferred_format?: string;
+  typescript_metadata?: any;
   metadata: {
     source:
       | 'supabase_latest_version'
@@ -107,6 +109,8 @@ export class WorkflowLoader {
             id: workflow.id,
             name: workflow.name,
             automation_sequence: automationSequence,
+            preferred_format: workflow.preferred_format,
+            typescript_metadata: workflow.typescript_metadata,
             metadata: {
               source: 'supabase_latest_version',
               version: latestVersion.version_number,
@@ -126,6 +130,8 @@ export class WorkflowLoader {
           id: workflow.id,
           name: workflow.name,
           automation_sequence: workflow.automation_sequence,
+          preferred_format: workflow.preferred_format,
+          typescript_metadata: workflow.typescript_metadata,
           metadata: {
             source: 'supabase_active_fallback',
           },
@@ -147,6 +153,8 @@ export class WorkflowLoader {
           id: workflowWithSeq.id,
           name: workflowWithSeq.name,
           automation_sequence: workflowWithSeq.automation_sequence,
+          preferred_format: workflow.preferred_format,
+          typescript_metadata: workflow.typescript_metadata,
           metadata: {
             source: 'supabase_view_fallback',
           },
