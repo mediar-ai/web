@@ -541,10 +541,10 @@ export async function GET(
         );
       }
 
-      // STEP 2: Get basic workflow info with ownership data
+      // STEP 2: Get basic workflow info with ownership data (including typescript_metadata for fallback)
       const { data: workflowInfo, error: workflowInfoError } = await supabase
         .from('deployed_workflows')
-        .select('id, name, description, status, estimated_duration_seconds, created_by, organization_id')
+        .select('id, name, description, status, estimated_duration_seconds, created_by, organization_id, typescript_metadata, preferred_format')
         .eq('id', workflowIdNum)
         .single();
 
@@ -618,6 +618,7 @@ export async function GET(
       }
 
       // Combine data to match expected format
+      // Fallback to main workflow's typescript_metadata if version doesn't have it
       workflow = {
         ...workflowInfo,
         version: versionData.version_number,
@@ -625,8 +626,8 @@ export async function GET(
           ? automationSequence
           : [automationSequence],
         automation_sequence_yaml: versionData.automation_sequence_yaml,
-        preferred_format: versionData.preferred_format,
-        typescript_metadata: versionData.typescript_metadata,
+        preferred_format: versionData.preferred_format || workflowInfo.preferred_format,
+        typescript_metadata: versionData.typescript_metadata || workflowInfo.typescript_metadata,
       };
     } else {
       // STEP 2: Fetch workflow data with active version (need ownership data from main table)
@@ -718,7 +719,10 @@ export async function GET(
       // Handle TypeScript workflows
       if (workflow.preferred_format === 'typescript' && workflow.typescript_metadata?.inputs) {
         console.log(
-          `🔍 Processing TypeScript workflow ${workflowIdNum}...`
+          `🔍 Processing TypeScript workflow ${workflowIdNum} (version: ${workflow.version || 'active'})...`
+        );
+        console.log(
+          `📊 Found ${workflow.typescript_metadata.inputs.length} TypeScript inputs`
         );
 
         const inputs = workflow.typescript_metadata.inputs;
@@ -754,6 +758,10 @@ export async function GET(
 
         console.log(
           `✅ Processed ${inputs.length} TypeScript input parameters`
+        );
+      } else if (workflow.preferred_format === 'typescript') {
+        console.warn(
+          `⚠️ TypeScript workflow ${workflowIdNum} has no typescript_metadata or inputs`
         );
       } else {
         // Handle YAML workflows
