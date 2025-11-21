@@ -28,6 +28,15 @@ interface LogEntry {
   HostName?: string;
   TraceId?: string;
   SpanId?: string;
+  execution_id?: string;
+  workflow_id?: string;
+  workflow_name?: string;
+  organization_id?: string;
+  error_category?: string;
+  retry_count?: string;
+  execution_time_ms?: string;
+  mcp_endpoint?: string;
+  LogAttributes?: Record<string, any>;
 }
 
 export default function ObservabilityPage() {
@@ -48,13 +57,20 @@ export default function ObservabilityPage() {
   const [logHostFilter, setLogHostFilter] = useState('');
   const [logScopeFilter, setLogScopeFilter] = useState('');
   const [logSeverityFilter, setLogSeverityFilter] = useState('');
+  const [executionIdFilter, setExecutionIdFilter] = useState('');
+  const [workflowFilter, setWorkflowFilter] = useState('');
+  const [organizationFilter, setOrganizationFilter] = useState('');
+  const [errorCategoryFilter, setErrorCategoryFilter] = useState('');
   const [logsToShow, setLogsToShow] = useState(50); // Pagination: show 50 logs at a time
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [availableFilters, setAvailableFilters] = useState<{
     hosts: string[];
     scopes: string[];
     severities: string[];
-  }>({ hosts: [], scopes: [], severities: [] });
+    workflows: string[];
+    organizations: string[];
+    errorCategories: string[];
+  }>({ hosts: [], scopes: [], severities: [], workflows: [], organizations: [], errorCategories: [] });
 
   // Ref for infinite scroll
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -98,6 +114,10 @@ export default function ObservabilityPage() {
       if (logScopeFilter) params.set('scope', logScopeFilter);
       if (logSeverityFilter) params.set('severity', logSeverityFilter);
       if (searchQuery) params.set('search', searchQuery);
+      if (executionIdFilter) params.set('executionId', executionIdFilter);
+      if (workflowFilter) params.set('workflow', workflowFilter);
+      if (organizationFilter) params.set('organization', organizationFilter);
+      if (errorCategoryFilter) params.set('errorCategory', errorCategoryFilter);
 
       // Fetch logs from dedicated endpoint
       const response = await fetch(`/api/observability/logs?${params.toString()}`);
@@ -140,7 +160,7 @@ export default function ObservabilityPage() {
   // Reset pagination when filters change
   useEffect(() => {
     setLogsToShow(50);
-  }, [logHostFilter, logScopeFilter, logSeverityFilter, searchQuery]);
+  }, [logHostFilter, logScopeFilter, logSeverityFilter, searchQuery, executionIdFilter, workflowFilter, organizationFilter, errorCategoryFilter]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -313,7 +333,7 @@ export default function ObservabilityPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search logs by message, host, scope..."
+              placeholder="Search logs by message, host, scope, execution ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 border-2 border-black font-mono"
@@ -365,14 +385,63 @@ export default function ObservabilityPage() {
               ))}
             </select>
 
+            {/* Execution ID Input */}
+            <Input
+              type="text"
+              placeholder="Execution ID"
+              value={executionIdFilter}
+              onChange={(e) => setExecutionIdFilter(e.target.value)}
+              className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black w-32"
+            />
+
+            {/* Workflow Filter */}
+            <select
+              value={workflowFilter}
+              onChange={(e) => setWorkflowFilter(e.target.value)}
+              className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
+            >
+              <option value="">All Workflows</option>
+              {availableFilters.workflows.map(workflow => (
+                <option key={workflow} value={workflow}>{workflow}</option>
+              ))}
+            </select>
+
+            {/* Organization Filter */}
+            <select
+              value={organizationFilter}
+              onChange={(e) => setOrganizationFilter(e.target.value)}
+              className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
+            >
+              <option value="">All Organizations</option>
+              {availableFilters.organizations.map(org => (
+                <option key={org} value={org}>{org}</option>
+              ))}
+            </select>
+
+            {/* Error Category Filter */}
+            <select
+              value={errorCategoryFilter}
+              onChange={(e) => setErrorCategoryFilter(e.target.value)}
+              className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black bg-white"
+            >
+              <option value="">All Error Types</option>
+              {availableFilters.errorCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+
             {/* Clear Filters */}
-            {(logHostFilter || logSeverityFilter || logScopeFilter || searchQuery) && (
+            {(logHostFilter || logSeverityFilter || logScopeFilter || searchQuery || executionIdFilter || workflowFilter || organizationFilter || errorCategoryFilter) && (
               <button
                 onClick={() => {
                   setLogHostFilter('');
                   setLogSeverityFilter('');
                   setLogScopeFilter('');
                   setSearchQuery('');
+                  setExecutionIdFilter('');
+                  setWorkflowFilter('');
+                  setOrganizationFilter('');
+                  setErrorCategoryFilter('');
                 }}
                 className="px-3 py-1.5 border-2 border-black bg-white text-black hover:bg-black hover:text-white font-mono text-xs flex items-center gap-1"
               >
@@ -465,6 +534,63 @@ export default function ObservabilityPage() {
                               <div className="mt-1">{log.ServiceName || 'N/A'}</div>
                             </div>
                           </div>
+
+                          {/* Workflow Context - only show if present */}
+                          {(log.execution_id || log.workflow_name || log.organization_id) && (
+                            <div className="border-t-2 border-gray-300 pt-3 mt-3">
+                              <span className="font-bold uppercase text-gray-600 mb-2 block">Workflow Context:</span>
+                              <div className="grid grid-cols-2 gap-4">
+                                {log.execution_id && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Execution ID:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.execution_id}</div>
+                                  </div>
+                                )}
+                                {log.workflow_id && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Workflow ID:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.workflow_id}</div>
+                                  </div>
+                                )}
+                                {log.workflow_name && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Workflow Name:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.workflow_name}</div>
+                                  </div>
+                                )}
+                                {log.organization_id && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Organization:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.organization_id}</div>
+                                  </div>
+                                )}
+                                {log.error_category && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Error Category:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.error_category}</div>
+                                  </div>
+                                )}
+                                {log.retry_count && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Retry Count:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.retry_count}</div>
+                                  </div>
+                                )}
+                                {log.execution_time_ms && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">Execution Time:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.execution_time_ms}ms</div>
+                                  </div>
+                                )}
+                                {log.mcp_endpoint && (
+                                  <div>
+                                    <span className="font-bold uppercase text-gray-500 text-xxs">MCP Endpoint:</span>
+                                    <div className="mt-1 p-2 bg-white border border-gray-300 break-all">{log.mcp_endpoint}</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           <div>
                             <span className="font-bold uppercase text-gray-600">Scope:</span>
