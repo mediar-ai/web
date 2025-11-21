@@ -318,7 +318,7 @@ export default function InternalDebugPage() {
         };
       })
       .filter(log => log.timeOffset >= 0 && log.timeOffset <= totalDuration)
-      .sort((a, b) => a.timeOffset - b.timeOffset);
+      .sort((a, b) => b.timeOffset - a.timeOffset); // Newest first (reverse chronological)
   }, [logs, startTime, totalDuration]);
 
   // Initialize first segment
@@ -403,8 +403,9 @@ export default function InternalDebugPage() {
   useEffect(() => {
     if (!logsScrollRef.current || processedLogs.length === 0) return;
 
+    // Find the first log where timeOffset <= globalTime (since logs are sorted newest-first)
     const currentLogIndex = processedLogs.findIndex(
-      log => log.timeOffset >= globalTime
+      log => log.timeOffset <= globalTime
     );
 
     if (currentLogIndex >= 0) {
