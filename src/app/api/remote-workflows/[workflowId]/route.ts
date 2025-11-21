@@ -197,6 +197,8 @@ export async function GET(
       id: loadedWorkflow.id,
       name: loadedWorkflow.name,
       status: status,
+      preferred_format: loadedWorkflow.preferred_format,
+      typescript_metadata: loadedWorkflow.typescript_metadata,
 
       // Permission/Ownership Information
       created_by: workflowOwnership.created_by,
