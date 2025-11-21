@@ -62,9 +62,9 @@ export async function getExecutionLogs(
       WHERE
         ServiceName = 'mediar-workflow-executor-rust'
         AND (
-          Body ILIKE {execId: String}
+          Body ILIKE {execIdPattern: String}
           OR
-          LogAttributes['execution_id'] = {execId: String}
+          LogAttributes['execution_id'] = {execIdExact: String}
         )
       ORDER BY Timestamp ASC
       LIMIT {limit: UInt32}
@@ -73,7 +73,8 @@ export async function getExecutionLogs(
     const resultSet = await clickhouse.query({
       query,
       query_params: {
-        execId: `%${execIdStr}%`,
+        execIdPattern: `%${execIdStr}%`,  // For ILIKE wildcard search
+        execIdExact: execIdStr,            // For exact attribute match
         limit,
       },
       format: 'JSONEachRow',

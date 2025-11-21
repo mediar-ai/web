@@ -97,6 +97,9 @@ export async function GET(
     // 2. New structure from script: recordings/{machine_name}/{date}
     pathsToCheck.push(`recordings/${machineName}/${dateFolder}`);
 
+    // 3. Another variation: recordings/{date}/{machine_name}
+    pathsToCheck.push(`recordings/${dateFolder}/${machineName}`);
+
     // 3. Check MCP endpoint hostname variants
     if (mcpEndpoint) {
       try {
@@ -135,6 +138,7 @@ export async function GET(
         if (mcpName && mcpName !== machineName) {
           pathsToCheck.push(`${dateFolder}/${mcpName}`);
           pathsToCheck.push(`recordings/${mcpName}/${dateFolder}`);
+          pathsToCheck.push(`recordings/${dateFolder}/${mcpName}`);
         }
       } catch (e) {
         console.warn('[Recording API] Error parsing MCP endpoint:', e);
@@ -172,6 +176,7 @@ export async function GET(
             const variants = [
               `${dateFolder}/${computerName}`,
               `recordings/${computerName}/${dateFolder}`,
+              `recordings/${dateFolder}/${computerName}`,
             ];
             for (const variant of variants) {
               if (!pathsToCheck.includes(variant)) {
@@ -238,23 +243,30 @@ export async function GET(
         .from('workflow-files')
         .list(dateFolder);
 
-      availableFolders = dateContents?.map(f => f.name) || [];
+      // Also check inside recordings/{date}
+      const { data: recordingsDateContents } = await supabase.storage
+        .from('workflow-files')
+        .list(`recordings/${dateFolder}`);
+
+      const discoveredPaths = [
+        ...(dateContents?.map(f => `${dateFolder}/${f.name}`) || []),
+        ...(recordingsDateContents?.map(
+          f => `recordings/${dateFolder}/${f.name}`
+        ) || []),
+      ];
+
+      availableFolders = discoveredPaths;
       console.log(
-        '[Recording API] Available folders in date directory:',
+        '[Recording API] Available folders in discovery directories:',
         availableFolders
       );
 
-      // Try each folder in the date directory that we haven't checked yet
-      for (const folder of availableFolders) {
-        // Skip files, we want folders
-        if (!folder) continue;
-
-        const fuzzyPath = `${dateFolder}/${folder}`;
-
+      // Try each discovered path
+      for (const fuzzyPath of availableFolders) {
         // Skip if we already checked this path exactly
         if (pathsToCheck.includes(fuzzyPath)) continue;
 
-        console.log(`[Recording API] Checking fuzzy path: ${fuzzyPath}`);
+        console.log(`[Recording API] Checking discovered path: ${fuzzyPath}`);
         const { data: fuzzyFiles, error: fuzzyError } = await supabase.storage
           .from('workflow-files')
           .list(fuzzyPath, {
