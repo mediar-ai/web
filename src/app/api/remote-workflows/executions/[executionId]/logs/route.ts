@@ -184,11 +184,31 @@ export async function GET(
         if (chLogs.length > 0) {
           return NextResponse.json({
             success: true,
-            logs: chLogs.map((log: any) => ({
-              timestamp: log.timestamp,
-              level: (log.level || 'INFO').toLowerCase(),
-              message: log.message,
-            })),
+            logs: chLogs.map((log: any) => {
+              // Normalize ClickHouse timestamp (replace space with T, truncate nanoseconds)
+              let timestamp = log.timestamp;
+              if (timestamp && typeof timestamp === 'string') {
+                // Replace space with T for ISO format
+                timestamp = timestamp.replace(' ', 'T');
+                // Truncate nanoseconds to milliseconds (keep up to 3 decimal places)
+                // Format: 2025-11-21T02:17:53.886367070 -> 2025-11-21T02:17:53.886
+                timestamp = timestamp.replace(/(\.\d{3})\d+/, '$1');
+                // If no timezone, assume UTC (append Z)
+                if (
+                  !timestamp.endsWith('Z') &&
+                  !timestamp.includes('+') &&
+                  !timestamp.includes('-')
+                ) {
+                  timestamp += 'Z';
+                }
+              }
+
+              return {
+                timestamp: timestamp,
+                level: (log.level || 'INFO').toLowerCase(),
+                message: log.message,
+              };
+            }),
             count: chLogs.length,
             source: 'clickhouse',
           });
