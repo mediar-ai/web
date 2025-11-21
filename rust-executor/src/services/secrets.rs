@@ -6,7 +6,7 @@ use sqlx::{Pool, Postgres, Row};
 use std::collections::HashMap;
 use std::env;
 use sha2::{Sha256, Digest};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 const IV_LENGTH: usize = 12; // 96 bits for GCM
 
