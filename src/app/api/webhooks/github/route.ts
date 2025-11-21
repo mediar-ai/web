@@ -438,6 +438,7 @@ export async function POST(request: NextRequest) {
                 automation_sequence: metadata,
                 automation_sequence_yaml: null,
                 preferred_format: 'typescript',
+                typescript_metadata: metadata,
                 is_active: false,
                 change_notes: `Synced from GitHub (TypeScript)`,
               })
