@@ -27,6 +27,7 @@ import {
   Monitor,
   Info,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -409,6 +410,27 @@ export function ExecutionDetailsDialog({
       setLoadingStates(prev => ({ ...prev, logs: false }));
     }
   }, [execution, executionLogs, loadingStates.logs]);
+
+  const forceRefreshLogs = async () => {
+    if (!execution || loadingStates.logs) return;
+
+    setLoadingStates(prev => ({ ...prev, logs: true }));
+    try {
+      const response = await fetch(
+        `/api/remote-workflows/executions/${execution.execution_id}/logs`
+      );
+      const data = await response.json();
+      if (data.success && data.logs) {
+        setExecutionLogs(data.logs || []);
+        toast.success('Logs refreshed');
+      }
+    } catch (error) {
+      console.error('Failed to fetch execution logs:', error);
+      toast.error('Failed to refresh logs');
+    } finally {
+      setLoadingStates(prev => ({ ...prev, logs: false }));
+    }
+  };
 
   // Fetch results for download
   const fetchExecutionResults = async () => {
@@ -1076,7 +1098,9 @@ export function ExecutionDetailsDialog({
               )}
             </TabsContent>
             <TabsContent value="logs">
-              {isTabLoading || !execution || loadingStates.logs ? (
+              {isTabLoading ||
+              !execution ||
+              (loadingStates.logs && !executionLogs) ? (
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4 h-full flex flex-col">
@@ -1088,6 +1112,22 @@ export function ExecutionDetailsDialog({
                           workflow execution.
                         </p>
                         <div className="flex items-center gap-2">
+                          {execution?.executor_type === 'rust' && (
+                            <Button
+                              variant="black-outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={forceRefreshLogs}
+                              disabled={loadingStates.logs}
+                            >
+                              <RefreshCw
+                                className={`w-3 h-3 mr-1 ${
+                                  loadingStates.logs ? 'animate-spin' : ''
+                                }`}
+                              />
+                              Refresh
+                            </Button>
+                          )}
                           <CopyToClipboardButton
                             contentToCopy={
                               executionLogs
