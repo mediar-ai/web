@@ -22,9 +22,11 @@ export async function GET(request: NextRequest) {
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
 
     // Get effective organization context
-    const { orgId, isMediarOrg: _isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(
-      viewOrgId === 'ALL' ? null : viewOrgId
-    );
+    const {
+      orgId,
+      isMediarOrg: _isMediarOrg,
+      isMediarAdmin,
+    } = await getEffectiveOrgId(viewOrgId === 'ALL' ? null : viewOrgId);
 
     if (!orgId) {
       return NextResponse.json(
@@ -99,14 +101,29 @@ export async function GET(request: NextRequest) {
     // Heavy fields (execution_params, results) are only included when include_results=true
     // Include machine assignment info and client_id
     const baseFields = [
-      'id', 'workflow_id', 'status', 'started_at', 'completed_at',
-      'execution_duration_seconds', 'error_message', 'error_analysis',
-      'error_analyzed_at', 'modal_call_id', 'created_at', 'updated_at',
-      'progress_percentage', 'current_step_index', 'total_steps',
-      'formatted_output', 'version_number', 'workflow_version_id',
-      'client_id', 'assigned_machine_id',
+      'id',
+      'workflow_id',
+      'status',
+      'started_at',
+      'completed_at',
+      'execution_duration_seconds',
+      'error_message',
+      'error_analysis',
+      'error_analyzed_at',
+      'modal_call_id',
+      'created_at',
+      'updated_at',
+      'progress_percentage',
+      'current_step_index',
+      'total_steps',
+      'formatted_output',
+      'version_number',
+      'workflow_version_id',
+      'client_id',
+      'assigned_machine_id',
+      'executor_type',
       'remote_machines(name)',
-      'deployed_workflows!inner(id, name, description, category, organization_id)'
+      'deployed_workflows!inner(id, name, description, category, organization_id)',
     ];
 
     const selectFields = include_results
@@ -146,10 +163,14 @@ export async function GET(request: NextRequest) {
     if (status) {
       if (status === 'EXCEPTION') {
         // Filter by formatted_output containing "exception": true (with or without spaces)
-        query = query.or('formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%');
+        query = query.or(
+          'formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%'
+        );
       } else if (status === 'SKIPPED') {
         // Filter by formatted_output containing "skipped": true (with or without spaces)
-        query = query.or('formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%');
+        query = query.or(
+          'formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%'
+        );
       } else {
         // Regular database status filter
         query = query.eq('status', status);
@@ -229,7 +250,8 @@ export async function GET(request: NextRequest) {
           // Search across all fields (default behavior)
           // Note: id is bigint and cannot be cast in filter, so we search text fields only
           // If search is numeric, also check for exact ID match
-          const searchPattern = search_mode === 'exact' ? search : `*${search}*`;
+          const searchPattern =
+            search_mode === 'exact' ? search : `*${search}*`;
           const numericId = parseInt(search);
           if (!isNaN(numericId)) {
             // If search term is numeric, add ID equality check to OR conditions
@@ -249,7 +271,10 @@ export async function GET(request: NextRequest) {
     const { data: executions, error } = await query;
 
     if (error) {
-      console.error('Supabase query error in /api/remote-workflows/executions:', error);
+      console.error(
+        'Supabase query error in /api/remote-workflows/executions:',
+        error
+      );
       throw new Error(`Database query failed: ${error.message}`);
     }
 
@@ -265,9 +290,13 @@ export async function GET(request: NextRequest) {
     // Apply same status filter logic to count query
     if (status) {
       if (status === 'EXCEPTION') {
-        countQuery = countQuery.or('formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%');
+        countQuery = countQuery.or(
+          'formatted_output.like.%"exception": true%,formatted_output.like.%"exception":true%'
+        );
       } else if (status === 'SKIPPED') {
-        countQuery = countQuery.or('formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%');
+        countQuery = countQuery.or(
+          'formatted_output.like.%"skipped": true%,formatted_output.like.%"skipped":true%'
+        );
       } else {
         countQuery = countQuery.eq('status', status);
       }
@@ -327,7 +356,8 @@ export async function GET(request: NextRequest) {
           // Search across all fields (default behavior)
           // Note: id is bigint and cannot be cast in filter, so we search text fields only
           // If search is numeric, also check for exact ID match
-          const countSearchPattern = search_mode === 'exact' ? search : `*${search}*`;
+          const countSearchPattern =
+            search_mode === 'exact' ? search : `*${search}*`;
           const numericCountId = parseInt(search);
           if (!isNaN(numericCountId)) {
             // If search term is numeric, add ID equality check to OR conditions
@@ -347,9 +377,13 @@ export async function GET(request: NextRequest) {
     const { count: totalCount } = await countQuery;
 
     // Get machine names for all executions that have assigned_machine_id
-    const machineIds = [...new Set((executions || [])
-      .map((e: any) => e.assigned_machine_id)
-      .filter(Boolean))] as number[];
+    const machineIds = [
+      ...new Set(
+        (executions || [])
+          .map((e: any) => e.assigned_machine_id)
+          .filter(Boolean)
+      ),
+    ] as number[];
 
     let machineNames: Record<number, string> = {};
     if (machineIds.length > 0) {
@@ -358,21 +392,28 @@ export async function GET(request: NextRequest) {
         .select('id, name')
         .in('id', machineIds);
 
-      machineNames = (machines || []).reduce((acc: Record<number, string>, m) => {
-        acc[m.id] = m.name;
-        return acc;
-      }, {});
+      machineNames = (machines || []).reduce(
+        (acc: Record<number, string>, m) => {
+          acc[m.id] = m.name;
+          return acc;
+        },
+        {}
+      );
     }
 
     // Get organization names for all executions from Clerk
-    const orgIds = [...new Set((executions || [])
-      .map((e: any) => {
-        const workflow = Array.isArray(e.deployed_workflows)
-          ? e.deployed_workflows[0]
-          : e.deployed_workflows;
-        return workflow?.organization_id;
-      })
-      .filter(Boolean))] as string[];
+    const orgIds = [
+      ...new Set(
+        (executions || [])
+          .map((e: any) => {
+            const workflow = Array.isArray(e.deployed_workflows)
+              ? e.deployed_workflows[0]
+              : e.deployed_workflows;
+            return workflow?.organization_id;
+          })
+          .filter(Boolean)
+      ),
+    ] as string[];
 
     let orgNames: Record<string, string> = {};
     if (orgIds.length > 0) {
@@ -382,12 +423,17 @@ export async function GET(request: NextRequest) {
       });
 
       // Fetch each organization's name from Clerk
-      const orgPromises = orgIds.map(async (orgId) => {
+      const orgPromises = orgIds.map(async orgId => {
         try {
-          const org = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+          const org = await clerkClient.organizations.getOrganization({
+            organizationId: orgId,
+          });
           return { id: orgId, name: org.name };
         } catch (error) {
-          console.warn(`Failed to fetch organization ${orgId} from Clerk:`, error);
+          console.warn(
+            `Failed to fetch organization ${orgId} from Clerk:`,
+            error
+          );
           return { id: orgId, name: null };
         }
       });
@@ -409,15 +455,22 @@ export async function GET(request: NextRequest) {
         : executionAny.deployed_workflows;
 
       // Calculate runtime
-      const startedAt = executionAny.started_at ? new Date(executionAny.started_at) : null;
-      const completedAt = executionAny.completed_at ? new Date(executionAny.completed_at) : null;
+      const startedAt = executionAny.started_at
+        ? new Date(executionAny.started_at)
+        : null;
+      const completedAt = executionAny.completed_at
+        ? new Date(executionAny.completed_at)
+        : null;
       const now = new Date();
-      
+
       let runtimeSeconds = 0;
       if (startedAt) {
-        const endTime = completedAt || (executionAny.status === 'running' ? now : null);
+        const endTime =
+          completedAt || (executionAny.status === 'running' ? now : null);
         if (endTime) {
-          runtimeSeconds = Math.floor((endTime.getTime() - startedAt.getTime()) / 1000);
+          runtimeSeconds = Math.floor(
+            (endTime.getTime() - startedAt.getTime()) / 1000
+          );
         }
       }
 
@@ -432,7 +485,8 @@ export async function GET(request: NextRequest) {
           : null,
 
         // Version info
-        version_number: executionAny.version_number || executionAny.workflow_version_number,
+        version_number:
+          executionAny.version_number || executionAny.workflow_version_number,
         workflow_version_id: executionAny.workflow_version_id,
 
         status: executionAny.status,
@@ -448,9 +502,12 @@ export async function GET(request: NextRequest) {
 
         // Status flags
         is_running: executionAny.status === 'running',
-        is_completed: ['completed', 'failed', 'cancelled'].includes(executionAny.status),
+        is_completed: ['completed', 'failed', 'cancelled'].includes(
+          executionAny.status
+        ),
         is_successful: executionAny.status === 'completed',
-        has_error: executionAny.status === 'failed' && !!executionAny.error_message,
+        has_error:
+          executionAny.status === 'failed' && !!executionAny.error_message,
 
         // Error info
         error_message: executionAny.error_message,
@@ -475,14 +532,14 @@ export async function GET(request: NextRequest) {
         // Quick access URLs
         endpoints: {
           details: `/api/remote-workflows/executions/${executionAny.id}`,
-          workflow_details: `/api/remote-workflows/${executionAny.workflow_id}`
+          workflow_details: `/api/remote-workflows/${executionAny.workflow_id}`,
         },
 
         // Conditionally include detailed data if requested
         ...(include_results && {
           execution_params: executionAny.execution_params || {},
-          results: executionAny.results || {}
-        })
+          results: executionAny.results || {},
+        }),
       };
 
       return formattedExecution;
@@ -491,13 +548,17 @@ export async function GET(request: NextRequest) {
     // Calculate summary statistics
     const summary = {
       total_executions: totalCount || 0,
-      by_status: formattedExecutions.reduce((acc: Record<string, number>, exec) => {
-        acc[exec.status] = (acc[exec.status] || 0) + 1;
-        return acc;
-      }, {}),
-      successful_executions: formattedExecutions.filter(e => e.is_successful).length,
+      by_status: formattedExecutions.reduce(
+        (acc: Record<string, number>, exec) => {
+          acc[exec.status] = (acc[exec.status] || 0) + 1;
+          return acc;
+        },
+        {}
+      ),
+      successful_executions: formattedExecutions.filter(e => e.is_successful)
+        .length,
       failed_executions: formattedExecutions.filter(e => e.has_error).length,
-      running_executions: formattedExecutions.filter(e => e.is_running).length
+      running_executions: formattedExecutions.filter(e => e.is_running).length,
     };
 
     const responseData = {
@@ -510,7 +571,7 @@ export async function GET(request: NextRequest) {
         offset,
         has_more: (totalCount || 0) > offset + limit,
         current_page: Math.floor(offset / limit) + 1,
-        total_pages: Math.ceil((totalCount || 0) / limit)
+        total_pages: Math.ceil((totalCount || 0) / limit),
       },
       filters: {
         workflow_id: workflow_id ? parseInt(workflow_id) : null,
@@ -524,10 +585,10 @@ export async function GET(request: NextRequest) {
           ...(workflow_id && { workflow_id: parseInt(workflow_id) }),
           ...(status && { status }),
           ...(machine && { machine }),
-          ...(search && { search, search_field, search_mode })
-        }
+          ...(search && { search, search_field, search_mode }),
+        },
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Cache the response for documentation
@@ -545,24 +606,23 @@ export async function GET(request: NextRequest) {
         search_mode: search_mode || 'contains',
         limit,
         offset,
-        include_results
+        include_results,
       },
-      executionTimeMs: 50 // placeholder
+      executionTimeMs: 50, // placeholder
     });
 
     return NextResponse.json(responseData);
-    
   } catch (error) {
     console.error('[ERROR] Error listing executions:', error);
-    
+
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to retrieve executions',
         details: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
   }
-} 
+}

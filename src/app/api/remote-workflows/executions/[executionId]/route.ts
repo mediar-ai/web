@@ -131,7 +131,7 @@ export async function GET(
     // Conditionally fetch heavy fields based on detail level requested
     const selectFields = full_detailed_response
       ? '*, raw_logs, execution_logs, results, formatted_output, screenshots'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, screenshots';
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, screenshots, executor_type';
 
     const { data: execution, error } = await supabase
       .from('workflow_executions')
@@ -179,7 +179,9 @@ export async function GET(
     // STEP 2: Get workflow details and verify authorization
     const { data: workflow } = await supabase
       .from('deployed_workflows')
-      .select('id, name, description, version, category, created_by, organization_id')
+      .select(
+        'id, name, description, version, category, created_by, organization_id'
+      )
       .eq('id', typedExecution.workflow_id)
       .single();
 
@@ -197,7 +199,8 @@ export async function GET(
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+    const isSameOrg =
+      workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
     // Allow ANY member of an organization with access (not just admins)
@@ -218,7 +221,13 @@ export async function GET(
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (
+      !isMediarOrg &&
+      !isMediarAdmin &&
+      !isOwner &&
+      !(isOrgAdmin && isSameOrg) &&
+      !hasOrgAccess
+    ) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized read of execution ${executionIdNum} (workflow ${typedExecution.workflow_id})`
       );
@@ -282,7 +291,12 @@ export async function GET(
       if (!logs) return [];
 
       // If logs is already in the correct format (array of objects with timestamp, level, message)
-      if (Array.isArray(logs) && logs.length > 0 && typeof logs[0] === 'object' && 'message' in logs[0]) {
+      if (
+        Array.isArray(logs) &&
+        logs.length > 0 &&
+        typeof logs[0] === 'object' &&
+        'message' in logs[0]
+      ) {
         return logs;
       }
 
@@ -291,23 +305,34 @@ export async function GET(
         return logs.map((log: any) => {
           // Try to parse timestamp and level from string format like "[2025-09-23T00:11:42.828574] Starting workflow..."
           const timestampMatch = String(log).match(/^\[([^\]]+)\]/);
-          const timestamp = timestampMatch ? timestampMatch[1] : new Date().toISOString();
-          const messageWithoutTimestamp = String(log).replace(/^\[[^\]]+\]\s*/, '');
+          const timestamp = timestampMatch
+            ? timestampMatch[1]
+            : new Date().toISOString();
+          const messageWithoutTimestamp = String(log).replace(
+            /^\[[^\]]+\]\s*/,
+            ''
+          );
 
           // Try to detect log level from message content
           let level = 'info';
-          if (messageWithoutTimestamp.toLowerCase().includes('error') || messageWithoutTimestamp.toLowerCase().includes('fail')) {
+          if (
+            messageWithoutTimestamp.toLowerCase().includes('error') ||
+            messageWithoutTimestamp.toLowerCase().includes('fail')
+          ) {
             level = 'error';
           } else if (messageWithoutTimestamp.toLowerCase().includes('warn')) {
             level = 'warn';
-          } else if (messageWithoutTimestamp.toLowerCase().includes('success') || messageWithoutTimestamp.toLowerCase().includes('complet')) {
+          } else if (
+            messageWithoutTimestamp.toLowerCase().includes('success') ||
+            messageWithoutTimestamp.toLowerCase().includes('complet')
+          ) {
             level = 'success';
           }
 
           return {
             timestamp,
             level,
-            message: messageWithoutTimestamp
+            message: messageWithoutTimestamp,
           };
         });
       }
@@ -329,14 +354,17 @@ export async function GET(
         workflow_category: workflow?.category || 'general',
 
         // Execution version info (the actual version that was executed)
-        version_number: typedExecution.version_number || typedExecution.workflow_version_number,
+        version_number:
+          typedExecution.version_number ||
+          typedExecution.workflow_version_number,
         workflow_version_id: typedExecution.workflow_version_id,
 
         // Status info
         status: typedExecution.status,
         // Granular execution status from results (e.g., completed_with_errors)
         execution_status:
-          (typedExecution.results && typedExecution.results.execution_status) || typedExecution.status,
+          (typedExecution.results && typedExecution.results.execution_status) ||
+          typedExecution.status,
         is_running: isRunning,
         is_completed: isCompleted,
         is_successful: isSuccessful,
@@ -359,7 +387,9 @@ export async function GET(
 
         // Error info (if any)
         error_message: typedExecution.error_message || null,
-        error_details: (typedExecution.results && typedExecution.results.error_details) || null,
+        error_details:
+          (typedExecution.results && typedExecution.results.error_details) ||
+          null,
 
         // Execution details
         modal_call_id: typedExecution.modal_call_id,
@@ -368,6 +398,7 @@ export async function GET(
 
         // Machine assignment info
         assigned_machine_id: typedExecution.assigned_machine_id || null,
+        executor_type: typedExecution.executor_type,
         assigned_machine_name: assignedMachineName,
 
         // Transform and include execution logs (always include for completed executions)
@@ -400,7 +431,8 @@ export async function GET(
         },
 
         // Results (only if completed and available)
-        results: isCompleted && typedExecution.results ? typedExecution.results : null,
+        results:
+          isCompleted && typedExecution.results ? typedExecution.results : null,
 
         // Human-friendly formatted output (if available)
         formatted_output: typedExecution.formatted_output || null,
@@ -415,7 +447,8 @@ export async function GET(
             execution_logs: typedExecution.execution_logs || [],
             has_raw_logs: !!typedExecution.raw_logs,
             has_execution_logs: !!(
-              typedExecution.execution_logs && typedExecution.execution_logs.length > 0
+              typedExecution.execution_logs &&
+              typedExecution.execution_logs.length > 0
             ),
           },
         }),
@@ -432,11 +465,13 @@ export async function GET(
           steps_completed:
             (typedExecution.results &&
               typedExecution.results.performance_metrics &&
-              typedExecution.results.performance_metrics.successful_steps) || 0,
+              typedExecution.results.performance_metrics.successful_steps) ||
+            0,
           steps_failed:
             (typedExecution.results &&
               typedExecution.results.performance_metrics &&
-              typedExecution.results.performance_metrics.failed_steps) || 0,
+              typedExecution.results.performance_metrics.failed_steps) ||
+            0,
           total_steps_attempted:
             (typedExecution.results &&
               typedExecution.results.performance_metrics &&
@@ -446,7 +481,8 @@ export async function GET(
           quotes_found:
             (typedExecution.results &&
               typedExecution.results.quotes &&
-              typedExecution.results.quotes.length) || 0,
+              typedExecution.results.quotes.length) ||
+            0,
           error_stage:
             (typedExecution.results && typedExecution.results.error_stage) ||
             (hasError ? 'execution' : null),
@@ -562,7 +598,8 @@ export async function DELETE(
     // STEP 2: Fetch execution and workflow to check authorization
     const { data: execution, error: fetchError } = await supabase
       .from('workflow_executions')
-      .select(`
+      .select(
+        `
         id,
         status,
         workflow_id,
@@ -572,7 +609,8 @@ export async function DELETE(
           created_by,
           organization_id
         )
-      `)
+      `
+      )
       .eq('id', executionIdNum)
       .single();
 
@@ -604,7 +642,8 @@ export async function DELETE(
       : (execution as any).deployed_workflows;
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+    const isSameOrg =
+      workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
     // Allow ANY member of an organization with access (not just admins)
@@ -625,12 +664,21 @@ export async function DELETE(
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (
+      !isMediarOrg &&
+      !isMediarAdmin &&
+      !isOwner &&
+      !(isOrgAdmin && isSameOrg) &&
+      !hasOrgAccess
+    ) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized delete for execution ${executionIdNum} (workflow ${(execution as any).workflow_id})`
       );
       return NextResponse.json(
-        { error: 'Forbidden - You do not have permission to delete this execution' },
+        {
+          error:
+            'Forbidden - You do not have permission to delete this execution',
+        },
         { status: 403 }
       );
     }

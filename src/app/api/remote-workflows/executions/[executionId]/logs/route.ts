@@ -1,13 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import {
+  getExecutionLogs,
+  getLogsByTraceId,
+  getTraceIdForExecution,
+} from '@/lib/clickhouse';
 
 // Transform execution_logs to the format expected by the UI
 const transformExecutionLogs = (logs: any): any[] => {
   if (!logs) return [];
 
   // If logs is already in the correct format (array of objects with timestamp, level, message)
-  if (Array.isArray(logs) && logs.length > 0 && typeof logs[0] === 'object' && 'message' in logs[0]) {
+  if (
+    Array.isArray(logs) &&
+    logs.length > 0 &&
+    typeof logs[0] === 'object' &&
+    'message' in logs[0]
+  ) {
     return logs;
   }
 
@@ -16,23 +26,31 @@ const transformExecutionLogs = (logs: any): any[] => {
     return logs.map((log: any) => {
       // Try to parse timestamp and level from string format like "[2025-09-23T00:11:42.828574] Starting workflow..."
       const timestampMatch = String(log).match(/^\[([^\]]+)\]/);
-      const timestamp = timestampMatch ? timestampMatch[1] : new Date().toISOString();
+      const timestamp = timestampMatch
+        ? timestampMatch[1]
+        : new Date().toISOString();
       const messageWithoutTimestamp = String(log).replace(/^\[[^\]]+\]\s*/, '');
 
       // Try to detect log level from message content
       let level = 'info';
-      if (messageWithoutTimestamp.toLowerCase().includes('error') || messageWithoutTimestamp.toLowerCase().includes('fail')) {
+      if (
+        messageWithoutTimestamp.toLowerCase().includes('error') ||
+        messageWithoutTimestamp.toLowerCase().includes('fail')
+      ) {
         level = 'error';
       } else if (messageWithoutTimestamp.toLowerCase().includes('warn')) {
         level = 'warn';
-      } else if (messageWithoutTimestamp.toLowerCase().includes('success') || messageWithoutTimestamp.toLowerCase().includes('complet')) {
+      } else if (
+        messageWithoutTimestamp.toLowerCase().includes('success') ||
+        messageWithoutTimestamp.toLowerCase().includes('complet')
+      ) {
         level = 'success';
       }
 
       return {
         timestamp,
         level,
-        message: messageWithoutTimestamp
+        message: messageWithoutTimestamp,
       };
     });
   }
@@ -71,17 +89,20 @@ export async function GET(
     // STEP 2: Get execution WITH workflow info for authorization check
     const { data: execution, error } = await supabase
       .from('workflow_executions')
-      .select(`
+      .select(
+        `
         id,
         execution_logs,
         workflow_id,
+        executor_type,
         deployed_workflows!inner(
           id,
           name,
           created_by,
           organization_id
         )
-      `)
+      `
+      )
       .eq('id', executionIdNum)
       .single();
 
@@ -105,7 +126,8 @@ export async function GET(
       : execution.deployed_workflows;
     const isOwner = workflow.created_by === authenticatedUserId;
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
+    const isSameOrg =
+      workflow.organization_id && workflow.organization_id === orgId;
 
     // Check workflow_organization_access table for organization-based access
     let hasOrgAccess = false;
@@ -125,7 +147,13 @@ export async function GET(
     // - User is the workflow owner
     // - User is org admin in the same org (legacy organization_id field)
     // - User's organization has access via workflow_organization_access table
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (
+      !isMediarOrg &&
+      !isMediarAdmin &&
+      !isOwner &&
+      !(isOrgAdmin && isSameOrg) &&
+      !hasOrgAccess
+    ) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}) attempted unauthorized access to execution ${executionIdNum} logs`
       );
@@ -135,13 +163,52 @@ export async function GET(
       );
     }
 
+    // Check if this is a Rust executor run
+    // The Rust executor streams logs to OpenTelemetry -> ClickHouse
+    // This provides real-time logs without waiting for DB updates
+    const executorType = (execution as any).executor_type;
+
+    if (executorType === 'rust') {
+      try {
+        // Try to fetch logs from ClickHouse
+        let chLogs = await getExecutionLogs(executionIdNum);
+
+        // If no logs found by execution ID, try finding trace ID
+        if (chLogs.length === 0) {
+          const traceId = await getTraceIdForExecution(executionIdNum);
+          if (traceId) {
+            chLogs = await getLogsByTraceId(traceId);
+          }
+        }
+
+        if (chLogs.length > 0) {
+          return NextResponse.json({
+            success: true,
+            logs: chLogs.map((log: any) => ({
+              timestamp: log.timestamp,
+              level: (log.level || 'INFO').toLowerCase(),
+              message: log.message,
+            })),
+            count: chLogs.length,
+            source: 'clickhouse',
+          });
+        }
+      } catch (e) {
+        console.error('[LOGS] Failed to fetch from ClickHouse:', e);
+        // Fall through to DB logs if ClickHouse fails
+      }
+    }
+
     // Transform logs to expected format
-    const transformedLogs = transformExecutionLogs((execution as any).execution_logs);
+    const transformedLogs = transformExecutionLogs(
+      (execution as any).execution_logs
+    );
 
     return NextResponse.json({
       success: true,
       logs: transformedLogs,
       count: transformedLogs.length,
+      source: 'database',
     });
   } catch (error) {
     console.error('[ERROR] Error fetching execution logs:', error);
