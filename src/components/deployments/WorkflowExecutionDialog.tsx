@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { WorkflowWithSettings } from '@/lib/workflow-types';
 import { TypeScriptWorkflowMetadata } from '@/lib/typescript-workflow-parser';
-import { Play, Loader2, AlertCircle, Clock } from 'lucide-react';
+import { Play, Loader2, AlertCircle, Clock, Key, X } from 'lucide-react';
 import cronstrue from 'cronstrue';
+
+interface Secret {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 interface WorkflowExecutionDialogProps {
   workflow: WorkflowWithSettings | null;
@@ -68,6 +74,47 @@ export function WorkflowExecutionDialog({
   const [inputParameters, setInputParameters] = useState<Record<string, any>>(
     {}
   );
+  const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
+  const [showSecretsDropdown, setShowSecretsDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch secrets when dialog opens
+  useEffect(() => {
+    if (!open) return;
+
+    const fetchSecrets = async () => {
+      try {
+        setLoadingSecrets(true);
+        const response = await fetch('/api/secrets');
+        if (!response.ok) throw new Error('Failed to fetch secrets');
+        const data = await response.json();
+        setSecrets(data.secrets || []);
+      } catch (err) {
+        console.error('Error loading secrets:', err);
+      } finally {
+        setLoadingSecrets(false);
+      }
+    };
+
+    fetchSecrets();
+  }, [open]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSecretsDropdown(null);
+      }
+    };
+
+    if (showSecretsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showSecretsDropdown]);
 
   // Fetch TypeScript metadata if needed
   useEffect(() => {
@@ -127,10 +174,24 @@ export function WorkflowExecutionDialog({
     if (workflow) {
       // Initialize parameters from transformed input_parameters
       const defaultParams: Record<string, any> = {};
+
+      // Load last-used values from localStorage (workflow-specific)
+      const storageKey = `workflow-params-${workflow.id}`;
+      let lastUsedParams: Record<string, any> = {};
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          lastUsedParams = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.error('Error loading last-used params from localStorage:', e);
+      }
+
       if (inputParameters) {
         Object.entries(inputParameters).forEach(
           ([key, config]: [string, any]) => {
-            defaultParams[key] = config.default || '';
+            // Prefer last-used value, fallback to default
+            defaultParams[key] = lastUsedParams[key] ?? config.default ?? '';
           }
         );
       }
@@ -145,6 +206,26 @@ export function WorkflowExecutionDialog({
     setExecuting(true);
     setError(null);
 
+    // Save parameters to localStorage (excluding secret placeholders for privacy)
+    try {
+      const storageKey = `workflow-params-${workflow.id}`;
+      const paramsToSave: Record<string, any> = {};
+
+      Object.entries(parameters).forEach(([key, value]) => {
+        // Don't save secret placeholders to localStorage
+        if (typeof value === 'string' && value.match(/^\$\{.+\}$/)) {
+          // Keep the placeholder in saved params (it's just a reference, not the secret value)
+          paramsToSave[key] = value;
+        } else {
+          paramsToSave[key] = value;
+        }
+      });
+
+      localStorage.setItem(storageKey, JSON.stringify(paramsToSave));
+    } catch (e) {
+      console.error('Error saving params to localStorage:', e);
+    }
+
     try {
       const response = await fetch(
         `/api/remote-workflows/${workflow.id}/execute`,
@@ -154,7 +235,7 @@ export function WorkflowExecutionDialog({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            execution_params: parameters,
+            parameters: parameters, // Changed from execution_params to parameters
           }),
         }
       );
@@ -278,53 +359,150 @@ export function WorkflowExecutionDialog({
                 Workflow Parameters
               </h3>
               {Object.entries(inputParameters).map(
-                ([key, config]: [string, any]) => (
-                  <div key={key} className="space-y-2">
-                    <Label
-                      htmlFor={key}
-                      className="font-mono text-xs text-gray-600 uppercase"
-                    >
-                      {config.label || key}
-                      {config.required && (
-                        <span className="text-red-500 ml-1">*</span>
+                ([key, config]: [string, any]) => {
+                  const isSecretValue = typeof parameters[key] === 'string' &&
+                    parameters[key].match(/^\$\{.+\}$/);
+
+                  return (
+                    <div key={key} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor={key}
+                          className="font-mono text-xs text-gray-600 uppercase"
+                        >
+                          {config.label || key}
+                          {config.required && (
+                            <span className="text-red-500 ml-1">*</span>
+                          )}
+                        </Label>
+                        {/* Secrets selector button */}
+                        <div className="relative" ref={showSecretsDropdown === key ? dropdownRef : null}>
+                          <Button
+                            type="button"
+                            variant="black-outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowSecretsDropdown(showSecretsDropdown === key ? null : key);
+                            }}
+                            className="h-6 px-2 text-xs"
+                            title="Select from secrets"
+                          >
+                            <Key className="w-3 h-3" />
+                          </Button>
+
+                          {/* Secrets dropdown */}
+                          {showSecretsDropdown === key && (
+                            <div className="absolute right-0 top-full mt-1 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto">
+                              {loadingSecrets ? (
+                                <div className="p-4 text-center">
+                                  <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                                  <p className="text-xs text-gray-600 mt-2">Loading secrets...</p>
+                                </div>
+                              ) : secrets.length === 0 ? (
+                                <div className="p-4 text-center">
+                                  <p className="text-xs text-gray-600">No secrets configured</p>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Go to Settings → Secrets to create one
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  {secrets.map((secret) => (
+                                    <button
+                                      key={secret.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setParameters({
+                                          ...parameters,
+                                          [key]: `\${${secret.name}}`,
+                                        });
+                                        setShowSecretsDropdown(null);
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-200 last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Key className="w-3 h-3 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-mono text-xs font-bold truncate">
+                                            {secret.name}
+                                          </p>
+                                          {secret.description && (
+                                            <p className="text-xs text-gray-500 truncate">
+                                              {secret.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {config.description && (
+                        <p className="text-xs text-gray-500">
+                          {config.description}
+                        </p>
                       )}
-                    </Label>
-                    {config.description && (
-                      <p className="text-xs text-gray-500">
-                        {config.description}
-                      </p>
-                    )}
-                    {config.type === 'text' || config.type === 'multiline' ? (
-                      <Textarea
-                        id={key}
-                        value={parameters[key] || ''}
-                        onChange={e =>
-                          setParameters({
-                            ...parameters,
-                            [key]: e.target.value,
-                          })
-                        }
-                        placeholder={config.placeholder || config.default || ''}
-                        rows={3}
-                        className="font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
-                      />
-                    ) : (
-                      <Input
-                        id={key}
-                        type={config.type === 'number' ? 'number' : 'text'}
-                        value={parameters[key] || ''}
-                        onChange={e =>
-                          setParameters({
-                            ...parameters,
-                            [key]: e.target.value,
-                          })
-                        }
-                        placeholder={config.placeholder || config.default || ''}
-                        className="font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
-                      />
-                    )}
-                  </div>
-                )
+
+                      {/* Display secret indicator or input field */}
+                      {isSecretValue ? (
+                        <div className="relative">
+                          <div className="flex items-center gap-2 p-3 bg-gray-50 border-2 border-black font-mono text-sm">
+                            <Key className="w-4 h-4 flex-shrink-0" />
+                            <span className="flex-1">
+                              Using secret: <strong>{parameters[key].replace(/^\$\{(.+)\}$/, '$1')}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setParameters({
+                                  ...parameters,
+                                  [key]: '',
+                                });
+                              }}
+                              className="p-1 hover:bg-black hover:text-white transition-colors"
+                              title="Clear secret"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : config.type === 'text' || config.type === 'multiline' ? (
+                        <Textarea
+                          id={key}
+                          value={parameters[key] || ''}
+                          onChange={e =>
+                            setParameters({
+                              ...parameters,
+                              [key]: e.target.value,
+                            })
+                          }
+                          placeholder={config.placeholder || config.default || ''}
+                          rows={3}
+                          className="font-mono text-sm border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                        />
+                      ) : (
+                        <Input
+                          id={key}
+                          type={config.type === 'number' ? 'number' : 'text'}
+                          value={parameters[key] || ''}
+                          onChange={e =>
+                            setParameters({
+                              ...parameters,
+                              [key]: e.target.value,
+                            })
+                          }
+                          placeholder={config.placeholder || config.default || ''}
+                          className="font-mono border-2 border-black focus:outline-none focus:ring-2 focus:ring-black"
+                        />
+                      )}
+                    </div>
+                  );
+                }
               )}
             </div>
           )}
