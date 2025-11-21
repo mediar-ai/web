@@ -60,18 +60,18 @@ impl LogBuffer {
         // This ensures that logs stored in the buffer (and later DB) are also available in real-time via OTLP
         match level.to_lowercase().as_str() {
             "error" => {
-                error!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                error!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "warn" | "warning" => {
-                warn!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                warn!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "debug" => {
-                debug!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                debug!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "trace" => {
-                trace!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                trace!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
-            _ => info!(step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
+            _ => info!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
         }
 
         let entry = LogEntry {

@@ -205,13 +205,26 @@ if [ -n "$SUPABASE_URL" ]; then
 fi
 
 if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-# Add Monitor API credentials if availableif [ -n "$APP_URL" ]; then    ENV_VARS+=("APP_URL=$APP_URL")    echo "   ✅ Including APP_URL in deployment"fiif [ -n "$MEDIAR_SERVICE_API_KEY" ]; then    ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")    echo "   ✅ Including MEDIAR_SERVICE_API_KEY in deployment"fi
     ENV_VARS+=("SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY")
-# Add Monitor API credentials if availableif [ -n "$APP_URL" ]; then    ENV_VARS+=("APP_URL=$APP_URL")    echo "   ✅ Including APP_URL in deployment"fiif [ -n "$MEDIAR_SERVICE_API_KEY" ]; then    ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")    echo "   ✅ Including MEDIAR_SERVICE_API_KEY in deployment"fi
     echo "   ✅ Including SUPABASE_SERVICE_ROLE_KEY in deployment"
-# Add Monitor API credentials if availableif [ -n "$APP_URL" ]; then    ENV_VARS+=("APP_URL=$APP_URL")    echo "   ✅ Including APP_URL in deployment"fiif [ -n "$MEDIAR_SERVICE_API_KEY" ]; then    ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")    echo "   ✅ Including MEDIAR_SERVICE_API_KEY in deployment"fi
 fi
-# Add Monitor API credentials if availableif [ -n "$APP_URL" ]; then    ENV_VARS+=("APP_URL=$APP_URL")    echo "   ✅ Including APP_URL in deployment"fiif [ -n "$MEDIAR_SERVICE_API_KEY" ]; then    ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")    echo "   ✅ Including MEDIAR_SERVICE_API_KEY in deployment"fi
+
+# Add Monitor API credentials if available
+if [ -n "$APP_URL" ]; then
+    ENV_VARS+=("APP_URL=$APP_URL")
+    echo "   ✅ Including APP_URL in deployment"
+fi
+
+if [ -n "$MEDIAR_SERVICE_API_KEY" ]; then
+    ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")
+    echo "   ✅ Including MEDIAR_SERVICE_API_KEY in deployment"
+fi
+
+# Add secrets encryption key if available
+if [ -n "$SECRETS_ENCRYPTION_KEY" ]; then
+    ENV_VARS+=("SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY")
+    echo "   ✅ Including SECRETS_ENCRYPTION_KEY in deployment"
+fi
 
 az container create \
     --resource-group "$RESOURCE_GROUP" \

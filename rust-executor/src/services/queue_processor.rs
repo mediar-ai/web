@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
+use opentelemetry::trace::TraceContextExt;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::interval;
 use tracing::{error, info, info_span, warn, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -605,7 +607,16 @@ impl QueueProcessor {
 
         let start_time = Instant::now();
 
+        // Extract trace_id from current OpenTelemetry span
+        let trace_id = tracing::Span::current()
+            .context()
+            .span()
+            .span_context()
+            .trace_id()
+            .to_string();
+
         // Add debug logging
+        debug!(trace_id = %trace_id, "Extracted trace_id for distributed tracing");
         debug!(
             "MCP Endpoint: {}",
             execution
@@ -721,6 +732,9 @@ impl QueueProcessor {
 
         // Add execution params (with secrets injected) as inputs
         args.insert("inputs".to_string(), params_with_secrets);
+
+        // Add trace_id for distributed tracing (MCP server will use this)
+        args.insert("trace_id".to_string(), Value::String(trace_id.clone()));
 
         // Update progress - executing TypeScript
         WorkflowQueries::update_execution_progress(
