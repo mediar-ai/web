@@ -23,6 +23,54 @@ interface RouteContext {
   }>;
 }
 
+/**
+ * Fetch TypeScript workflow from GitHub workflows repository
+ * @param githubFolder - The workflow folder name (e.g., "onedrive_auth_typescript")
+ * @param orgId - The Clerk organization ID
+ * @returns The terminator.ts file content, or null if not found
+ */
+async function fetchWorkflowFromGitHub(
+  githubFolder: string,
+  orgId: string
+): Promise<string | null> {
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    console.error('[GitHub] GITHUB_TOKEN not configured');
+    return null;
+  }
+
+  // GitHub workflows repo: mediar-ai/workflows
+  // Path: org-{orgId}/{githubFolder}/src/terminator.ts
+  const owner = 'mediar-ai';
+  const repo = 'workflows';
+  const filePath = `org-${orgId}/${githubFolder}/src/terminator.ts`;
+
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${githubToken}`,
+        Accept: 'application/vnd.github.v3.raw', // Get raw file content
+      },
+    });
+
+    if (!response.ok) {
+      console.error(
+        `[GitHub] Failed to fetch ${filePath}: ${response.status} ${response.statusText}`
+      );
+      return null;
+    }
+
+    const content = await response.text();
+    console.log(`[GitHub] Successfully fetched ${filePath} (${content.length} bytes)`);
+    return content;
+  } catch (error) {
+    console.error(`[GitHub] Error fetching ${filePath}:`, error);
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { workflowId } = await context.params;
@@ -181,6 +229,45 @@ export async function GET(request: NextRequest, context: RouteContext) {
       console.error('Error scanning workflow directories:', error);
     }
 
+    // 5. Fallback to GitHub if filesystem not available (Vercel/production)
+    if (!workflowPath && workflow.github_folder) {
+      try {
+        console.log(
+          `[GitHub Fallback] Fetching TypeScript workflow from GitHub: ${workflow.github_folder}`
+        );
+        const terminatorContent = await fetchWorkflowFromGitHub(
+          workflow.github_folder,
+          workflow.clerk_org_id || ''
+        );
+
+        if (terminatorContent) {
+          // Parse TypeScript workflow from GitHub content
+          const metadata = parseTypeScriptWorkflow(terminatorContent);
+
+          // Cache the metadata in the database
+          await supabase
+            .from('deployed_workflows')
+            .update({
+              typescript_metadata: metadata,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', workflowId);
+
+          return NextResponse.json({
+            success: true,
+            metadata,
+            source: 'github',
+            workflow_id: workflowId,
+            workflow_name: workflow.name,
+            github_folder: workflow.github_folder,
+          });
+        }
+      } catch (githubError: any) {
+        console.error('[GitHub Fallback] Failed to fetch from GitHub:', githubError);
+        // Continue to error below
+      }
+    }
+
     if (!workflowPath) {
       const devHint = isDevelopment
         ? '\n\nDevelopment tip: Set DEV_TYPESCRIPT_WORKFLOW_PATH=/path/to/your/workflow in .env.local to test locally'
@@ -189,23 +276,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         {
           success: false,
-          error: 'TypeScript workflow files not found on disk',
-          hint: `Ensure workflow is deployed in the workflows directory${devHint}`,
+          error: 'TypeScript workflow files not found on disk or GitHub',
+          hint: `Ensure workflow is deployed in the workflows directory or GitHub${devHint}`,
           searched_paths: workflowsBasePath,
+          github_folder: workflow.github_folder,
           is_development: isDevelopment,
         },
         { status: 404 }
       );
     }
 
-    // 5. Parse the terminator.ts file
+    // 6. Parse the terminator.ts file from filesystem
     const terminatorPath = path.join(workflowPath, 'src', 'terminator.ts');
     const terminatorContent = fs.readFileSync(terminatorPath, 'utf-8');
 
     // Parse TypeScript workflow
     const metadata = parseTypeScriptWorkflow(terminatorContent);
 
-    // 6. Cache the metadata in the database
+    // 7. Cache the metadata in the database
     await supabase
       .from('deployed_workflows')
       .update({
@@ -214,7 +302,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       })
       .eq('id', workflowId);
 
-    // 7. Return the metadata
+    // 8. Return the metadata
     return NextResponse.json({
       success: true,
       metadata,
