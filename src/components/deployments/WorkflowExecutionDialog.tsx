@@ -77,7 +77,9 @@ export function WorkflowExecutionDialog({
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loadingSecrets, setLoadingSecrets] = useState(false);
   const [showSecretsDropdown, setShowSecretsDropdown] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<'below' | 'above'>('below');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Fetch secrets when dialog opens
   useEffect(() => {
@@ -99,6 +101,29 @@ export function WorkflowExecutionDialog({
 
     fetchSecrets();
   }, [open]);
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (showSecretsDropdown && buttonRefs.current[showSecretsDropdown]) {
+      const button = buttonRefs.current[showSecretsDropdown];
+      if (button) {
+        const buttonRect = button.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - buttonRect.bottom;
+        const spaceAbove = buttonRect.top;
+
+        // Assume dropdown height of ~256px (max-h-64 = 16rem = 256px)
+        const dropdownHeight = 256;
+
+        // If not enough space below but more space above, show above
+        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+          setDropdownPosition('above');
+        } else {
+          setDropdownPosition('below');
+        }
+      }
+    }
+  }, [showSecretsDropdown]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -378,6 +403,9 @@ export function WorkflowExecutionDialog({
                         {/* Secrets selector button */}
                         <div className="relative" ref={showSecretsDropdown === key ? dropdownRef : null}>
                           <Button
+                            ref={(el) => {
+                              buttonRefs.current[key] = el;
+                            }}
                             type="button"
                             variant="black-outline"
                             size="sm"
@@ -392,7 +420,11 @@ export function WorkflowExecutionDialog({
 
                           {/* Secrets dropdown */}
                           {showSecretsDropdown === key && (
-                            <div className="absolute right-0 top-full mt-1 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto">
+                            <div className={`absolute right-0 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto custom-scrollbar ${
+                              dropdownPosition === 'above'
+                                ? 'bottom-full mb-1'
+                                : 'top-full mt-1'
+                            }`}>
                               {loadingSecrets ? (
                                 <div className="p-4 text-center">
                                   <Loader2 className="w-4 h-4 animate-spin mx-auto" />
