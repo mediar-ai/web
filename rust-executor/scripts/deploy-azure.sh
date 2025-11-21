@@ -176,7 +176,7 @@ ENV_VARS=(
     "MCP_ENDPOINT=$MCP_ENDPOINT"
     "ENVIRONMENT=$ENVIRONMENT"
     "OTEL_SDK_ENABLED=true"
-    "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-mcp-s3-mount-test.eastus.azurecontainer.io:4318"
+    "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-mcp-vm2-rg.eastus.azurecontainer.io:4318"
     "AZURE_CONTAINER_NAME=$CONTAINER_NAME"
     "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
 )
