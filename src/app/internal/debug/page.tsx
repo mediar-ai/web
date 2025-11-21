@@ -727,14 +727,19 @@ export default function InternalDebugPage() {
                           globalTime < log.timeOffset + 1;
 
                         return (
-                          <div
+                          <button
                             key={i}
                             data-log-index={i}
+                            onClick={() => {
+                              // Jump video to this log's timestamp
+                              handleScrub([log.timeOffset]);
+                              setIsPlaying(true);
+                            }}
                             className={cn(
-                              'border p-2 font-mono text-xs transition-all',
+                              'w-full text-left border p-2 font-mono text-xs transition-all cursor-pointer',
                               isActive
                                 ? 'border-2 border-black bg-yellow-50'
-                                : 'border-gray-300 hover:border-gray-400'
+                                : 'border-gray-300 hover:border-black hover:bg-gray-50'
                             )}
                           >
                             <div className="flex items-center gap-3">
@@ -761,7 +766,7 @@ export default function InternalDebugPage() {
                                 {log.Body}
                               </span>
                             </div>
-                          </div>
+                          </button>
                         );
                       })
                     )}
