@@ -79,12 +79,16 @@ export async function getExecutionLogs(
       format: 'JSONEachRow',
     });
 
-    const logs: LogEntry[] = [];
-    for await (const row of resultSet.stream()) {
-      logs.push(row as unknown as LogEntry);
-    }
-
-    return logs;
+    const results = (await resultSet.json()) as any[];
+    return results.map(row => ({
+      timestamp: row.timestamp || row.Timestamp,
+      level: row.level || row.SeverityText,
+      message: row.message || row.Body,
+      service: row.service || row.ServiceName,
+      span_id: row.span_id || row.SpanId,
+      trace_id: row.trace_id || row.TraceId,
+      attributes: row.attributes || row.LogAttributes,
+    }));
   } catch (error) {
     console.error('[ClickHouse] Failed to query logs:', error);
     return [];
@@ -124,9 +128,9 @@ export async function getTraceIdForExecution(
       format: 'JSONEachRow',
     });
 
-    const rows = (await resultSet.json()) as Array<{ TraceId: string }>;
+    const rows = (await resultSet.json()) as any[];
     if (rows && rows.length > 0) {
-      return rows[0].TraceId;
+      return rows[0].TraceId || rows[0].trace_id;
     }
 
     // Fallback: Search in otel_logs if not found in traces
@@ -154,9 +158,9 @@ export async function getTraceIdForExecution(
       format: 'JSONEachRow',
     });
 
-    const logRows = (await logsResultSet.json()) as Array<{ TraceId: string }>;
+    const logRows = (await logsResultSet.json()) as any[];
     if (logRows && logRows.length > 0) {
-      return logRows[0].TraceId;
+      return logRows[0].TraceId || logRows[0].trace_id;
     }
 
     return null;
@@ -201,12 +205,16 @@ export async function getLogsByTraceId(
       format: 'JSONEachRow',
     });
 
-    const logs: LogEntry[] = [];
-    for await (const row of resultSet.stream()) {
-      logs.push(row as unknown as LogEntry);
-    }
-
-    return logs;
+    const results = (await resultSet.json()) as any[];
+    return results.map(row => ({
+      timestamp: row.timestamp || row.Timestamp,
+      level: row.level || row.SeverityText,
+      message: row.message || row.Body,
+      service: row.service || row.ServiceName,
+      span_id: row.span_id || row.SpanId,
+      trace_id: row.trace_id || row.TraceId,
+      attributes: row.attributes || row.LogAttributes,
+    }));
   } catch (error) {
     console.error('[ClickHouse] Failed to query logs by trace ID:', error);
     return [];
