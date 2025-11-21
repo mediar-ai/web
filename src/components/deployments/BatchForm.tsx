@@ -758,7 +758,29 @@ const ParameterField = ({
   const [inputValue, setInputValue] = useState('');
   const [inputError, setInputError] = useState<string | undefined>();
   const [showSecretsDropdown, setShowSecretsDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<'below' | 'above'>('below');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (showSecretsDropdown && buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const spaceBelow = viewportHeight - buttonRect.bottom;
+      const spaceAbove = buttonRect.top;
+
+      // Assume dropdown height of ~256px (max-h-64 = 16rem = 256px)
+      const dropdownHeight = 256;
+
+      // If not enough space below but more space above, show above
+      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+        setDropdownPosition('above');
+      } else {
+        setDropdownPosition('below');
+      }
+    }
+  }, [showSecretsDropdown]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -905,6 +927,7 @@ const ParameterField = ({
         />
         <div className="flex gap-1 flex-shrink-0 relative" ref={dropdownRef}>
           <Button
+            ref={buttonRef}
             size="icon"
             variant="outline"
             onClick={() => setShowSecretsDropdown(!showSecretsDropdown)}
@@ -926,7 +949,11 @@ const ParameterField = ({
 
           {/* Secrets dropdown */}
           {showSecretsDropdown && (
-            <div className="absolute right-0 top-full mt-1 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto">
+            <div className={`absolute right-0 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto custom-scrollbar ${
+              dropdownPosition === 'above'
+                ? 'bottom-full mb-1'
+                : 'top-full mt-1'
+            }`}>
               {loadingSecrets ? (
                 <div className="p-4 text-center">
                   <Loader2 className="w-4 h-4 animate-spin mx-auto" />
