@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::interval;
-use tracing::{error, info, warn, Instrument};
+use tracing::{error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -95,15 +95,28 @@ impl QueueProcessor {
         let execution = WorkflowQueries::claim_execution(&self.db_pool, &self.machine_id).await?;
 
         if let Some(execution) = execution {
-            info!(
-                "Claimed execution {} for workflow {}",
-                execution.id, execution.workflow_id
-            );
-
             // Get workflow details
             let workflow = WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id)
                 .await?
                 .context("Workflow not found")?;
+
+            // Create a span with execution context for all logs
+            let execution_span = info_span!(
+                "queue_process_execution",
+                execution_id = %execution.id,
+                workflow_id = %workflow.id,
+                workflow_name = %workflow.name,
+                organization_id = %workflow.organization_id.as_ref().unwrap_or(&"".to_string()),
+                machine_id = %self.machine_id,
+                otel.kind = "consumer"
+            );
+
+            info!(
+                execution_id = %execution.id,
+                workflow_id = %workflow.id,
+                workflow_name = %workflow.name,
+                "Claimed execution from queue"
+            );
 
             // Check for failure patterns before executing (unless skip flag is set)
             let should_skip_cancellation_check =
@@ -113,8 +126,9 @@ impl QueueProcessor {
                 && WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await?
             {
                 warn!(
-                    "Workflow {} has consecutive failures, skipping execution",
-                    workflow.id
+                    execution_id = %execution.id,
+                    workflow_id = %workflow.id,
+                    "Workflow has consecutive failures, cancelling execution"
                 );
 
                 // Cancel the execution
@@ -148,19 +162,17 @@ impl QueueProcessor {
                 return Ok(false);
             } else if should_skip_cancellation_check {
                 info!(
-                    "Workflow {} has skip_next_cancellation_check=true, bypassing failure pattern check",
-                    workflow.id
+                    execution_id = %execution.id,
+                    workflow_id = %workflow.id,
+                    "Bypassing failure pattern check (skip_next_cancellation_check=true)"
                 );
             }
 
             // Get MCP endpoint from execution record (preferred) or execution params or environment
             info!(
-                "DEBUG: execution.mcp_endpoint = {:?}",
-                execution.mcp_endpoint
-            );
-            info!(
-                "DEBUG: execution.execution_params = {:?}",
-                execution.execution_params
+                execution_id = %execution.id,
+                mcp_endpoint_from_record = ?execution.mcp_endpoint,
+                "Getting MCP endpoint for execution"
             );
 
             let mcp_endpoint = execution
@@ -179,14 +191,14 @@ impl QueueProcessor {
                         .unwrap_or_else(|_| "http://localhost:3000".to_string())
                 });
 
-            info!("DEBUG: Final mcp_endpoint = {}", mcp_endpoint);
+            info!(
+                execution_id = %execution.id,
+                mcp_endpoint = %mcp_endpoint,
+                "Using MCP endpoint for workflow execution"
+            );
 
             // Create a LogBuffer for this execution
             let log_buffer = LogBuffer::new();
-
-            // Execute workflow within a tracing span to capture execution_id
-            let execution_span =
-                tracing::info_span!("workflow_execution", execution_id = %execution.id);
 
             let start_time = Utc::now();
 
@@ -196,7 +208,12 @@ impl QueueProcessor {
 
                 // Check if this is a TypeScript workflow
                 if workflow.preferred_format.as_deref() == Some("typescript") {
-                    info!("Executing TypeScript workflow directly via MCP");
+                    info!(
+                        execution_id = %execution.id,
+                        workflow_id = %workflow.id,
+                        format = "typescript",
+                        "Executing TypeScript workflow via MCP"
+                    );
 
                     // TypeScript workflows have only 1 step (the execute_sequence call)
                     WorkflowQueries::update_execution_progress(
@@ -218,7 +235,12 @@ impl QueueProcessor {
                     .await
                 } else {
                     // Regular YAML workflow execution
-                    info!("Executing YAML workflow");
+                    info!(
+                        execution_id = %execution.id,
+                        workflow_id = %workflow.id,
+                        format = "yaml",
+                        "Executing YAML workflow"
+                    );
 
                     // Load workflow sequence
                     let sequence = self.load_workflow_sequence(&workflow).await?;
@@ -234,18 +256,19 @@ impl QueueProcessor {
                     )
                     .await?;
 
-                    // TODO: Get organization_id from workflow when available
+                    // Get organization_id from workflow
+                    let org_id = workflow.organization_id.as_ref().map(|s| s.parse::<i64>().unwrap_or(0));
+
                     let executor = WorkflowExecutor::with_log_buffer(
                         mcp_client,
                         sequence,
                         execution.id,
-                        None,
+                        org_id,
                         log_buffer.clone(),
                     );
                     executor.execute().await
                 }
             }
-            .instrument(execution_span)
             .await;
 
             // Update execution status based on result
@@ -334,13 +357,14 @@ impl QueueProcessor {
                     .await?;
 
                     info!(
-                        "Execution {} completed with status: {:?}",
-                        execution.id,
-                        if workflow_result.success {
-                            "success"
-                        } else {
-                            "failure"
-                        }
+                        execution_id = %execution.id,
+                        workflow_id = %workflow.id,
+                        status = ?status,
+                        success = %workflow_result.success,
+                        steps_completed = %workflow_result.steps_completed,
+                        total_steps = %workflow_result.total_steps,
+                        execution_time_ms = %workflow_result.execution_time_ms,
+                        "Execution completed"
                     );
 
                     // Notify monitor endpoint
@@ -373,14 +397,15 @@ impl QueueProcessor {
                     }
                 }
                 Err(e) => {
-                    error!("Execution {} failed: {}", execution.id, e);
-
                     let error_message = e.to_string();
                     let error_category = classify_error(&error_message);
 
-                    info!(
-                        "Error classified as: {:?} for execution {}",
-                        error_category, execution.id
+                    error!(
+                        execution_id = %execution.id,
+                        workflow_id = %workflow.id,
+                        error = %error_message,
+                        error_category = ?error_category,
+                        "Execution failed"
                     );
 
                     // Get logs from log_buffer
@@ -400,12 +425,14 @@ impl QueueProcessor {
                         let next_retry_at = Utc::now() + delay;
 
                         info!(
-                            "Scheduling retry {}/{} for execution {} at {} (delay: {}s)",
-                            retry_count,
-                            self.retry_config.max_infrastructure_retries,
-                            execution.id,
-                            next_retry_at,
-                            delay.as_secs()
+                            execution_id = %execution.id,
+                            workflow_id = %workflow.id,
+                            retry_count = %retry_count,
+                            max_retries = %self.retry_config.max_infrastructure_retries,
+                            next_retry_at = %next_retry_at,
+                            delay_secs = %delay.as_secs(),
+                            error_category = ?error_category,
+                            "Scheduling execution retry"
                         );
 
                         WorkflowQueries::schedule_retry(
@@ -446,9 +473,12 @@ impl QueueProcessor {
                             ErrorCategory::Unknown => "unknown",
                         };
 
-                        info!(
-                            "Marking execution {} as permanently failed: {:?}",
-                            execution.id, error_category
+                        warn!(
+                            execution_id = %execution.id,
+                            workflow_id = %workflow.id,
+                            error_category = ?error_category,
+                            retry_count = %execution.retry_count,
+                            "Marking execution as permanently failed"
                         );
 
                         WorkflowQueries::mark_failed_permanently(
@@ -495,7 +525,7 @@ impl QueueProcessor {
                 }
             }
 
-            return Ok(true);
+            return async { Ok(true) }.instrument(execution_span).await;
         }
 
         Ok(false)
@@ -514,13 +544,20 @@ impl QueueProcessor {
 
             match github_loader.load_workflow(github_folder, github_ref).await {
                 Ok(yaml_content) => {
-                    info!("Loaded workflow from GitHub: {}", github_folder);
+                    info!(
+                        workflow_id = %workflow.id,
+                        github_folder = %github_folder,
+                        github_ref = %github_ref,
+                        "Loaded workflow from GitHub"
+                    );
                     return WorkflowSequence::from_yaml(&yaml_content);
                 }
                 Err(e) => {
                     warn!(
-                        "Failed to load from GitHub: {}, falling back to database",
-                        e
+                        workflow_id = %workflow.id,
+                        github_folder = %github_folder,
+                        error = %e,
+                        "Failed to load from GitHub, falling back to database"
                     );
                 }
             }
@@ -529,14 +566,22 @@ impl QueueProcessor {
         // Priority 2: Use YAML from database
         if let Some(yaml) = &workflow.automation_sequence_yaml {
             if !yaml.is_empty() {
-                info!("Loading workflow from database YAML");
+                info!(
+                    workflow_id = %workflow.id,
+                    source = "database_yaml",
+                    "Loading workflow from database YAML"
+                );
                 return WorkflowSequence::from_yaml(yaml);
             }
         }
 
         // Priority 3: Use JSON from database
         if let Some(json) = &workflow.automation_sequence {
-            info!("Loading workflow from database JSON");
+            info!(
+                workflow_id = %workflow.id,
+                source = "database_json",
+                "Loading workflow from database JSON"
+            );
             return WorkflowSequence::from_value(json.clone());
         }
 
@@ -636,7 +681,13 @@ impl QueueProcessor {
         // Default to src/terminator.ts (most common location)
         let file_url = format!("file://{workflow_base_path}/src/terminator.ts");
 
-        info!("TypeScript workflow URL: {}", file_url);
+        info!(
+            execution_id = %execution.id,
+            workflow_id = %workflow.id,
+            organization_id = %clerk_org_id,
+            file_url = %file_url,
+            "TypeScript workflow path resolved"
+        );
 
         // Build arguments object (like terminator CLI does)
         let mut args = Map::new();

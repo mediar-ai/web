@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 use sqlx::Row;
-use tracing::{error, info, warn};
+use tracing::{error, info, info_span, warn, Instrument};
 
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::{McpClient, WorkflowExecutor};
@@ -29,41 +29,12 @@ impl WorkflowService {
 
     /// Execute a workflow by ID
     pub async fn execute_workflow(&self, request: ExecutionRequest) -> Result<ExecutionResponse> {
-        info!(
-            "Processing workflow execution request for workflow {}",
-            request.workflow_id
-        );
-
-        // Get workflow from database
+        // Get workflow from database first (before creating span)
         let workflow = WorkflowQueries::get_workflow(&self.db_pool, request.workflow_id)
             .await?
             .context("Workflow not found")?;
 
-        // Check if workflow is deployed
-        if workflow.status != crate::models::WorkflowStatus::Deployed {
-            return Ok(ExecutionResponse {
-                execution_id: 0, // Will not be used since this is an error response
-                status: ExecutionStatus::Failed,
-                message: "Workflow is not deployed".to_string(),
-                result: None,
-                error: Some("Workflow must be deployed to execute".to_string()),
-                started_at: None,
-                completed_at: None,
-                logs: None,
-            });
-        }
-
-        // Load workflow sequence
-        let sequence = self
-            .load_workflow_sequence(&workflow, request.execution_params.as_ref())
-            .await?;
-
-        // Validate sequence
-        sequence
-            .validate()
-            .context("Workflow sequence validation failed")?;
-
-        // Create execution record
+        // Create execution record early to get execution_id for tracing
         let execution_id = WorkflowQueries::create_execution(
             &self.db_pool,
             request.workflow_id,
@@ -72,75 +43,154 @@ impl WorkflowService {
         )
         .await?;
 
-        info!(
-            "Created execution {} for workflow {}",
-            execution_id, request.workflow_id
+        // Create a span with structured attributes for this workflow execution
+        let workflow_name = workflow.name.clone();
+        let org_id = workflow.organization_id.clone().unwrap_or_default();
+
+        let span = info_span!(
+            "execute_workflow",
+            execution_id = %execution_id,
+            workflow_id = %request.workflow_id,
+            workflow_name = %workflow_name,
+            organization_id = %org_id,
+            mcp_endpoint = %request.mcp_endpoint,
+            otel.kind = "server"
         );
 
-        // Create MCP client
-        let mcp_client = McpClient::from_url(request.mcp_endpoint.clone());
+        async move {
+            info!(
+                execution_id = %execution_id,
+                workflow_id = %request.workflow_id,
+                workflow_name = %workflow_name,
+                "Processing workflow execution request"
+            );
 
-        // Execute workflow
-        // TODO: Get organization_id from workflow or request when available
-        let executor = WorkflowExecutor::new(mcp_client, sequence, execution_id, None);
-        let result = executor.execute().await;
-
-        // Update execution status
-        match &result {
-            Ok(workflow_result) => {
-                WorkflowQueries::update_execution_status(
-                    &self.db_pool,
-                    execution_id,
-                    if workflow_result.success {
-                        ExecutionStatus::Completed
-                    } else {
-                        ExecutionStatus::Failed
-                    },
-                    workflow_result.error.clone(),
-                    Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
-                    workflow_result.data.clone(),
-                )
-                .await?;
-                Ok(ExecutionResponse {
-                    execution_id,
-                    status: if workflow_result.success {
-                        ExecutionStatus::Completed
-                    } else {
-                        ExecutionStatus::Failed
-                    },
-                    message: workflow_result.message.clone(),
-                    result: workflow_result.data.clone(),
-                    error: workflow_result.error.clone(),
-                    started_at: Some(chrono::Utc::now()),
-                    completed_at: Some(chrono::Utc::now()),
-                    logs: None,
-                })
-            }
-            Err(e) => {
-                error!("Workflow execution failed: {}", e);
-
-                WorkflowQueries::update_execution_status(
-                    &self.db_pool,
-                    execution_id,
-                    ExecutionStatus::Failed,
-                    Some(e.to_string()),
-                    None,
-                    None,
-                )
-                .await?;
-
-                Ok(ExecutionResponse {
+            // Check if workflow is deployed
+            if workflow.status != crate::models::WorkflowStatus::Deployed {
+                let trace_id = crate::telemetry::current_trace_id();
+                return Ok(ExecutionResponse {
                     execution_id,
                     status: ExecutionStatus::Failed,
-                    message: "Workflow execution failed".to_string(),
+                    message: "Workflow is not deployed".to_string(),
                     result: None,
-                    error: Some(e.to_string()),
-                    started_at: Some(chrono::Utc::now()),
-                    completed_at: Some(chrono::Utc::now()),
+                    error: Some("Workflow must be deployed to execute".to_string()),
+                    started_at: None,
+                    completed_at: None,
                     logs: None,
-                })
+                    trace_id,
+                });
+            }
+
+            // Load workflow sequence
+            let sequence = self
+                .load_workflow_sequence(&workflow, request.execution_params.as_ref())
+                .await?;
+
+            // Validate sequence
+            sequence
+                .validate()
+                .context("Workflow sequence validation failed")?;
+
+            info!(
+                execution_id = %execution_id,
+                workflow_id = %request.workflow_id,
+                "Execution record created, starting workflow"
+            );
+
+            // Create MCP client
+            let mcp_client = McpClient::from_url(request.mcp_endpoint.clone());
+
+            // Execute workflow
+            let executor = WorkflowExecutor::new(
+                mcp_client,
+                sequence,
+                execution_id,
+                workflow.organization_id.as_ref().map(|s| s.parse::<i64>().unwrap_or(0)),
+            );
+            let result = executor.execute().await;
+
+            // Update execution status
+            match &result {
+                Ok(workflow_result) => {
+                    let status = if workflow_result.success {
+                        ExecutionStatus::Completed
+                    } else {
+                        ExecutionStatus::Failed
+                    };
+
+                    info!(
+                        execution_id = %execution_id,
+                        workflow_id = %request.workflow_id,
+                        status = ?status,
+                        success = %workflow_result.success,
+                        steps_completed = %workflow_result.steps_completed,
+                        total_steps = %workflow_result.total_steps,
+                        execution_time_ms = %workflow_result.execution_time_ms,
+                        "Workflow execution completed"
+                    );
+
+                    WorkflowQueries::update_execution_status(
+                        &self.db_pool,
+                        execution_id,
+                        status.clone(),
+                        workflow_result.error.clone(),
+                        Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
+                        workflow_result.data.clone(),
+                    )
+                    .await?;
+
+                    // Get trace_id from current span
+                    let trace_id = crate::telemetry::current_trace_id();
+
+                    Ok(ExecutionResponse {
+                        execution_id,
+                        status,
+                        message: workflow_result.message.clone(),
+                        result: workflow_result.data.clone(),
+                        error: workflow_result.error.clone(),
+                        started_at: Some(chrono::Utc::now()),
+                        completed_at: Some(chrono::Utc::now()),
+                        logs: None,
+                        trace_id,
+                    })
+                }
+                Err(e) => {
+                    error!(
+                        execution_id = %execution_id,
+                        workflow_id = %request.workflow_id,
+                        error = %e,
+                        "Workflow execution failed"
+                    );
+
+                    WorkflowQueries::update_execution_status(
+                        &self.db_pool,
+                        execution_id,
+                        ExecutionStatus::Failed,
+                        Some(e.to_string()),
+                        None,
+                        None,
+                    )
+                    .await?;
+
+                    // Get trace_id from current span
+                    let trace_id = crate::telemetry::current_trace_id();
+
+                    Ok(ExecutionResponse {
+                        execution_id,
+                        status: ExecutionStatus::Failed,
+                        message: "Workflow execution failed".to_string(),
+                        result: None,
+                        error: Some(e.to_string()),
+                        started_at: Some(chrono::Utc::now()),
+                        completed_at: Some(chrono::Utc::now()),
+                        logs: None,
+                        trace_id,
+                    })
+                }
             }
         }
+        .instrument(span)
+        .await
     }
 
     /// Load workflow sequence from GitHub or database
@@ -164,13 +214,20 @@ impl WorkflowService {
                 .await
             {
                 Ok(yaml_content) => {
-                    info!("Loaded workflow from GitHub: {}", github_folder);
+                    info!(
+                        workflow_id = %workflow.id,
+                        github_folder = %github_folder,
+                        github_ref = %github_ref,
+                        "Loaded workflow from GitHub"
+                    );
                     return WorkflowSequence::from_yaml(&yaml_content);
                 }
                 Err(e) => {
                     warn!(
-                        "Failed to load from GitHub: {}, falling back to database",
-                        e
+                        workflow_id = %workflow.id,
+                        github_folder = %github_folder,
+                        error = %e,
+                        "Failed to load from GitHub, falling back to database"
                     );
                 }
             }
@@ -179,14 +236,22 @@ impl WorkflowService {
         // Priority 2: Use YAML from database
         if let Some(yaml) = &workflow.automation_sequence_yaml {
             if !yaml.is_empty() {
-                info!("Loading workflow from database YAML");
+                info!(
+                    workflow_id = %workflow.id,
+                    source = "database_yaml",
+                    "Loading workflow from database YAML"
+                );
                 return WorkflowSequence::from_yaml(yaml);
             }
         }
 
         // Priority 3: Use JSON from database
         if let Some(json) = &workflow.automation_sequence {
-            info!("Loading workflow from database JSON");
+            info!(
+                workflow_id = %workflow.id,
+                source = "database_json",
+                "Loading workflow from database JSON"
+            );
             return WorkflowSequence::from_value(json.clone());
         }
 
