@@ -212,6 +212,13 @@ export async function GET(
             count: chLogs.length,
             source: 'clickhouse',
           });
+        } else {
+          // If ClickHouse logs are empty, fall back to DB logs
+          // This handles cases where ClickHouse ingestion might be delayed or failed
+          // but the database has been updated by the executor
+          console.log(
+            `[LOGS] No logs found in ClickHouse for execution ${executionIdNum}, falling back to DB`
+          );
         }
       } catch (e) {
         console.error('[LOGS] Failed to fetch from ClickHouse:', e);
