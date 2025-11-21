@@ -1048,6 +1048,8 @@ const ParameterRow = ({
   onAddDynamicValue,
   onRemoveDynamicValue,
   onSetObjectValue,
+  secrets,
+  loadingSecrets,
 }: {
   path: string;
   schemaItem: SchemaItem;
@@ -1056,6 +1058,8 @@ const ParameterRow = ({
   onAddDynamicValue: (path: string, value: string) => string | undefined;
   onRemoveDynamicValue: (path: string, index: number) => void;
   onSetObjectValue: (path: string, value: JsonValue) => void;
+  secrets: Secret[];
+  loadingSecrets: boolean;
 }) => {
   // Handle array-type variables with item_schema
   if (schemaItem.type === 'array' && schemaItem.item_schema) {
@@ -1128,6 +1132,8 @@ const ParameterRow = ({
                             onAddDynamicValue={onAddDynamicValue}
                             onRemoveDynamicValue={onRemoveDynamicValue}
                             onSetObjectValue={onSetObjectValue}
+                            secrets={secrets}
+                            loadingSecrets={loadingSecrets}
                           />
                         )
                       )}
@@ -1577,6 +1583,8 @@ export function BatchForm({
             onAddDynamicValue={handleAddDynamicValue}
             onRemoveDynamicValue={handleRemoveDynamicValue}
             onSetObjectValue={handleSetObjectValue}
+            secrets={secrets}
+            loadingSecrets={loadingSecrets}
           />
         ))}
       </div>
@@ -1667,6 +1675,8 @@ export function BatchForm({
                   onAddDynamicValue={handleAddDynamicValue}
                   onRemoveDynamicValue={handleRemoveDynamicValue}
                   onSetObjectValue={handleSetObjectValue}
+                  secrets={secrets}
+                  loadingSecrets={loadingSecrets}
                 />
               );
             })}

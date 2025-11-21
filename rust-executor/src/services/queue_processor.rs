@@ -698,10 +698,40 @@ impl QueueProcessor {
         args.insert("include_detailed_results".to_string(), Value::Bool(true));
         args.insert("stop_on_error".to_string(), Value::Bool(true));
 
-        // Add execution params as inputs
-        if let Some(params) = &execution.execution_params {
-            args.insert("inputs".to_string(), params.clone());
-        }
+        // Load and inject org secrets into execution params
+        let params_with_secrets = if let Some(params) = &execution.execution_params {
+            match crate::services::secrets::load_org_secrets(&self.db_pool, clerk_org_id).await {
+                Ok(secrets) => {
+                    if !secrets.is_empty() {
+                        info!(
+                            execution_id = %execution.id,
+                            secret_count = %secrets.len(),
+                            "Loaded org secrets for workflow execution"
+                        );
+                        crate::services::secrets::inject_secrets_into_params(
+                            params.clone(),
+                            &secrets,
+                            true, // enable placeholder substitution
+                        )
+                    } else {
+                        params.clone()
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        execution_id = %execution.id,
+                        error = %e,
+                        "Failed to load org secrets, continuing without secrets"
+                    );
+                    params.clone()
+                }
+            }
+        } else {
+            Value::Object(Map::new())
+        };
+
+        // Add execution params (with secrets injected) as inputs
+        args.insert("inputs".to_string(), params_with_secrets);
 
         // Update progress - executing TypeScript
         WorkflowQueries::update_execution_progress(
