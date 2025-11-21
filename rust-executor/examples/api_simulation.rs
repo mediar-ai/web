@@ -92,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         started_at: None,
         completed_at: None,
         logs: None,
+        trace_id: None,
     };
     println!("   {{");
     println!(
