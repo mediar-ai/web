@@ -189,6 +189,7 @@ pub fn current_trace_id() -> Option<String> {
 }
 
 /// Record a structured attribute on the current span
+#[allow(dead_code)]
 pub fn record_span_attribute(key: &str, value: impl Into<String>) {
     use tracing::Span;
     let span = Span::current();
