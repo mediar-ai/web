@@ -486,12 +486,49 @@ export async function GET(request: NextRequest) {
         error_message: executionAny.error_message,
         error_analysis: executionAny.error_analysis,
         error_analyzed_at: executionAny.error_analyzed_at,
-        formatted_output:
-          typeof executionAny.formatted_output === 'string' &&
-          executionAny.formatted_output.length > 5000
-            ? executionAny.formatted_output.substring(0, 5000) +
-              '... (truncated)'
-            : executionAny.formatted_output,
+        formatted_output: (() => {
+          const output = executionAny.formatted_output;
+          if (typeof output !== 'string') return output;
+          if (output.length <= 5000) return output;
+
+          // Try to parse as JSON to preserve structure for the UI parser
+          if (output.trim().startsWith('{')) {
+            try {
+              const parsed = JSON.parse(output);
+              // Create a slim version preserving critical fields for the dashboard UI
+              const slim: any = { _truncated: true };
+              // Preserve fields used by getParserMessage
+              if (parsed.message) slim.message = parsed.message;
+              if (parsed.error_summary)
+                slim.error_summary = parsed.error_summary;
+              if (parsed.failure_details)
+                slim.failure_details = parsed.failure_details;
+              if (parsed.data) {
+                // Preserve data summary and error
+                slim.data = {};
+                if (parsed.data.summary)
+                  slim.data.summary = parsed.data.summary;
+                if (parsed.data.error) slim.data.error = parsed.data.error;
+                // Preserve keys for "Data: key1, key2..." display
+                if (
+                  typeof parsed.data === 'object' &&
+                  !Array.isArray(parsed.data)
+                ) {
+                  Object.keys(parsed.data)
+                    .slice(0, 5)
+                    .forEach(k => {
+                      if (!slim.data[k]) slim.data[k] = '...';
+                    });
+                }
+              }
+              return JSON.stringify(slim);
+            } catch (e) {
+              // Fall through to simple truncation
+            }
+          }
+
+          return output.substring(0, 5000) + '... (truncated)';
+        })(),
 
         // Metadata
         modal_call_id: executionAny.modal_call_id,
