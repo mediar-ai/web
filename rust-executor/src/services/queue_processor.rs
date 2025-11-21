@@ -11,8 +11,10 @@ use crate::config::{classify_error, ErrorCategory, RetryConfig};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::logging::LogBuffer;
 use crate::mcp::{McpClient, WorkflowExecutor};
-use crate::models::{ExecutionStatus, WorkflowSequence, WorkflowState, WorkflowResult, StepStatus};
-use crate::services::{GitHubLoader, MonitorClient, format_success, format_failure, format_exception};
+use crate::models::{ExecutionStatus, StepStatus, WorkflowResult, WorkflowSequence, WorkflowState};
+use crate::services::{
+    format_exception, format_failure, format_success, GitHubLoader, MonitorClient,
+};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
@@ -104,12 +106,12 @@ impl QueueProcessor {
                 .context("Workflow not found")?;
 
             // Check for failure patterns before executing (unless skip flag is set)
-            let should_skip_cancellation_check = workflow
-                .skip_next_cancellation_check
-                .unwrap_or(false);
+            let should_skip_cancellation_check =
+                workflow.skip_next_cancellation_check.unwrap_or(false);
 
             if !should_skip_cancellation_check
-                && WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await? {
+                && WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await?
+            {
                 warn!(
                     "Workflow {} has consecutive failures, skipping execution",
                     workflow.id
@@ -137,7 +139,10 @@ impl QueueProcessor {
                     )
                     .await
                 {
-                    warn!("Failed to send monitor notification for cancelled execution: {}", e);
+                    warn!(
+                        "Failed to send monitor notification for cancelled execution: {}",
+                        e
+                    );
                 }
 
                 return Ok(false);
@@ -198,7 +203,8 @@ impl QueueProcessor {
                 .await?;
 
                 // Execute TypeScript workflow directly via MCP
-                self.execute_typescript_workflow(&mcp_client, &workflow, &execution, &log_buffer).await
+                self.execute_typescript_workflow(&mcp_client, &workflow, &execution, &log_buffer)
+                    .await
             } else {
                 // Regular YAML workflow execution
                 info!("Executing YAML workflow");
@@ -223,7 +229,7 @@ impl QueueProcessor {
                     sequence,
                     execution.id,
                     None,
-                    log_buffer.clone()
+                    log_buffer.clone(),
                 );
                 executor.execute().await
             };
@@ -250,21 +256,24 @@ impl QueueProcessor {
                         Some(format_success(
                             &workflow_result.message,
                             workflow_result.data.as_ref(),
-                            workflow_result.execution_time_ms
+                            workflow_result.execution_time_ms,
                         ))
                     } else {
                         // Use format_failure for failed executions
                         // Convert step_results to Value array
-                        let step_results_values: Vec<serde_json::Value> = workflow_result.step_results
+                        let step_results_values: Vec<serde_json::Value> = workflow_result
+                            .step_results
                             .iter()
                             .map(|sr| serde_json::to_value(sr).unwrap_or(serde_json::json!({})))
                             .collect();
 
                         // If we have step_results from TypeScript workflow in data, use those
                         let step_results = if let Some(data) = &workflow_result.data {
-                            if let Some(steps) = data.get("step_results").and_then(|v| v.as_array()) {
+                            if let Some(steps) = data.get("step_results").and_then(|v| v.as_array())
+                            {
                                 steps.clone()
-                            } else if let Some(steps) = data.get("steps").and_then(|v| v.as_array()) {
+                            } else if let Some(steps) = data.get("steps").and_then(|v| v.as_array())
+                            {
                                 steps.clone()
                             } else {
                                 step_results_values
@@ -277,17 +286,20 @@ impl QueueProcessor {
                         let error_type = match workflow_result.state {
                             WorkflowState::Exception => "Exception",
                             WorkflowState::Failure => "WorkflowFailure",
-                            _ => "Error"
+                            _ => "Error",
                         };
 
                         let error_stage = "workflow_execution";
 
                         Some(format_failure(
-                            &workflow_result.error.clone().unwrap_or_else(|| "Workflow execution failed".to_string()),
+                            &workflow_result
+                                .error
+                                .clone()
+                                .unwrap_or_else(|| "Workflow execution failed".to_string()),
                             error_type,
                             error_stage,
                             &step_results,
-                            workflow_result.execution_time_ms
+                            workflow_result.execution_time_ms,
                         ))
                     };
 
@@ -296,7 +308,11 @@ impl QueueProcessor {
                         execution.id,
                         status.clone(),
                         workflow_result.error.clone(),
-                        Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
+                        Some(
+                            serde_json::to_value(&workflow_result.step_results)
+                                .ok()
+                                .unwrap_or(serde_json::json!([])),
+                        ),
                         formatted_output,
                         Some(raw_logs),
                         Some(execution_logs),
@@ -348,7 +364,10 @@ impl QueueProcessor {
                     let error_message = e.to_string();
                     let error_category = classify_error(&error_message);
 
-                    info!("Error classified as: {:?} for execution {}", error_category, execution.id);
+                    info!(
+                        "Error classified as: {:?} for execution {}",
+                        error_category, execution.id
+                    );
 
                     // Get logs from log_buffer
                     let raw_logs = log_buffer.to_text();
@@ -357,7 +376,8 @@ impl QueueProcessor {
                     // Determine if we should retry
                     let should_retry = error_category == ErrorCategory::Infrastructure
                         && self.retry_config.enabled
-                        && execution.retry_count < self.retry_config.max_infrastructure_retries as i32;
+                        && execution.retry_count
+                            < self.retry_config.max_infrastructure_retries as i32;
 
                     if should_retry {
                         // Schedule retry
@@ -367,8 +387,11 @@ impl QueueProcessor {
 
                         info!(
                             "Scheduling retry {}/{} for execution {} at {} (delay: {}s)",
-                            retry_count, self.retry_config.max_infrastructure_retries,
-                            execution.id, next_retry_at, delay.as_secs()
+                            retry_count,
+                            self.retry_config.max_infrastructure_retries,
+                            execution.id,
+                            next_retry_at,
+                            delay.as_secs()
                         );
 
                         WorkflowQueries::schedule_retry(
@@ -381,21 +404,26 @@ impl QueueProcessor {
                         .await?;
 
                         // Notify monitor about scheduled retry
-                        let _ = self.monitor_client.notify_execution_status(
-                            execution.id,
-                            workflow.id,
-                            Some(workflow.name.clone()),
-                            ExecutionStatus::Queued,
-                            Some(format!(
-                                "Infrastructure failure. Retry {}/{} scheduled for {}",
-                                retry_count, self.retry_config.max_infrastructure_retries, next_retry_at
-                            )),
-                            None,
-                            Some(start_time),
-                            Some(end_time),
-                            Some(execution_time),
-                            "rust_executor_retry_scheduled",
-                        ).await;
+                        let _ = self
+                            .monitor_client
+                            .notify_execution_status(
+                                execution.id,
+                                workflow.id,
+                                Some(workflow.name.clone()),
+                                ExecutionStatus::Queued,
+                                Some(format!(
+                                    "Infrastructure failure. Retry {}/{} scheduled for {}",
+                                    retry_count,
+                                    self.retry_config.max_infrastructure_retries,
+                                    next_retry_at
+                                )),
+                                None,
+                                Some(start_time),
+                                Some(end_time),
+                                Some(execution_time),
+                                "rust_executor_retry_scheduled",
+                            )
+                            .await;
                     } else {
                         // Mark as permanently failed
                         let error_cat_str = match error_category {
@@ -404,7 +432,10 @@ impl QueueProcessor {
                             ErrorCategory::Unknown => "unknown",
                         };
 
-                        info!("Marking execution {} as permanently failed: {:?}", execution.id, error_category);
+                        info!(
+                            "Marking execution {} as permanently failed: {:?}",
+                            execution.id, error_category
+                        );
 
                         WorkflowQueries::mark_failed_permanently(
                             &self.db_pool,
@@ -431,18 +462,21 @@ impl QueueProcessor {
                         )
                         .await?;
 
-                        let _ = self.monitor_client.notify_execution_status(
-                            execution.id,
-                            workflow.id,
-                            Some(workflow.name.clone()),
-                            ExecutionStatus::Failed,
-                            Some(error_message),
-                            None,
-                            Some(start_time),
-                            Some(end_time),
-                            Some(execution_time),
-                            "rust_executor_failed_permanently",
-                        ).await;
+                        let _ = self
+                            .monitor_client
+                            .notify_execution_status(
+                                execution.id,
+                                workflow.id,
+                                Some(workflow.name.clone()),
+                                ExecutionStatus::Failed,
+                                Some(error_message),
+                                None,
+                                Some(start_time),
+                                Some(end_time),
+                                Some(execution_time),
+                                "rust_executor_failed_permanently",
+                            )
+                            .await;
                     }
                 }
             }
@@ -511,7 +545,13 @@ impl QueueProcessor {
 
         // Add debug logging similar to Python executor
         debug!("Modal Function: execute_workflow");
-        debug!("MCP Endpoint: {}", execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string()));
+        debug!(
+            "MCP Endpoint: {}",
+            execution
+                .mcp_endpoint
+                .as_ref()
+                .unwrap_or(&"N/A".to_string())
+        );
         debug!("Workflow ID: {}", workflow.id);
         debug!("Execution ID: {}", execution.id);
         debug!("Start Time: {:?}", chrono::Utc::now());
@@ -519,31 +559,43 @@ impl QueueProcessor {
         // Log to buffer for UI display
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Modal Function: execute_workflow", chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            format!(
+                "{} - workflow_executor - INFO - Modal Function: execute_workflow",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+            ),
             None,
             None,
         );
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - MCP Endpoint: {}",
+            format!(
+                "{} - workflow_executor - INFO - MCP Endpoint: {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string())),
+                execution
+                    .mcp_endpoint
+                    .as_ref()
+                    .unwrap_or(&"N/A".to_string())
+            ),
             None,
             None,
         );
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Workflow ID: {}",
+            format!(
+                "{} - workflow_executor - INFO - Workflow ID: {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                workflow.id),
+                workflow.id
+            ),
             None,
             None,
         );
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Execution ID: {}",
+            format!(
+                "{} - workflow_executor - INFO - Execution ID: {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                execution.id),
+                execution.id
+            ),
             None,
             None,
         );
@@ -596,9 +648,14 @@ impl QueueProcessor {
         // Add more detailed logging
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Attempting to connect to MCP endpoint: {}",
+            format!(
+                "{} - workflow_executor - INFO - Attempting to connect to MCP endpoint: {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                execution.mcp_endpoint.as_ref().unwrap_or(&"N/A".to_string())),
+                execution
+                    .mcp_endpoint
+                    .as_ref()
+                    .unwrap_or(&"N/A".to_string())
+            ),
             None,
             None,
         );
@@ -613,39 +670,46 @@ impl QueueProcessor {
 
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Full Arguments Payload: {}",
+            format!(
+                "{} - workflow_executor - INFO - Full Arguments Payload: {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                serde_json::to_string(&args).unwrap_or_else(|_| "serialization error".to_string())),
+                serde_json::to_string(&args).unwrap_or_else(|_| "serialization error".to_string())
+            ),
             None,
             None,
         );
 
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - --- END DETAILED LOGGING ---",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            format!(
+                "{} - workflow_executor - INFO - --- END DETAILED LOGGING ---",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+            ),
             None,
             None,
         );
 
         log_buffer.log_step(
             "debug",
-            format!("{} - workflow_executor - INFO - Initializing MCP session...",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+            format!(
+                "{} - workflow_executor - INFO - Initializing MCP session...",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+            ),
             None,
             None,
         );
 
         // Log step information like Python executor
-        if let Some(steps) = args.get("sequence")
-            .and_then(|s| s.as_array()) {
+        if let Some(steps) = args.get("sequence").and_then(|s| s.as_array()) {
             let step_count = steps.len();
             log_buffer.log_step(
                 "info",
-                format!("{} [INFO] Starting workflow execution ID: {} with {} steps",
+                format!(
+                    "{} [INFO] Starting workflow execution ID: {} with {} steps",
                     chrono::Local::now().format("%H:%M:%S"),
                     execution.id,
-                    step_count),
+                    step_count
+                ),
                 None,
                 None,
             );
@@ -653,18 +717,21 @@ impl QueueProcessor {
             // Log each step like Python executor
             for (idx, step) in steps.iter().enumerate() {
                 if let Some(step_obj) = step.as_object() {
-                    let tool_name = step_obj.get("tool_name")
+                    let tool_name = step_obj
+                        .get("tool_name")
                         .and_then(|t| t.as_str())
                         .unwrap_or("unknown");
                     let step_num = idx + 1;
 
                     log_buffer.log_step(
                         "info",
-                        format!("{} [INFO] Executing step {}/{}: {}",
+                        format!(
+                            "{} [INFO] Executing step {}/{}: {}",
                             chrono::Local::now().format("%H:%M:%S"),
                             step_num,
                             step_count,
-                            tool_name),
+                            tool_name
+                        ),
                         Some(format!("step_{idx}")),
                         Some(tool_name.to_string()),
                     );
@@ -673,10 +740,12 @@ impl QueueProcessor {
                     if let Some(args_value) = step_obj.get("arguments") {
                         log_buffer.log_step(
                             "info",
-                            format!("{} [INFO] MCP Request: {} -> {}",
+                            format!(
+                                "{} [INFO] MCP Request: {} -> {}",
                                 chrono::Local::now().format("%H:%M:%S"),
                                 tool_name,
-                                serde_json::to_string(args_value).unwrap_or_default()),
+                                serde_json::to_string(args_value).unwrap_or_default()
+                            ),
                             Some(format!("step_{idx}")),
                             Some(tool_name.to_string()),
                         );
@@ -694,8 +763,14 @@ impl QueueProcessor {
         // Wrapped with 1-hour timeout
         let result = match tokio::time::timeout(
             std::time::Duration::from_secs(3600),
-            mcp_client.execute_tool_with_retry("execute_sequence".to_string(), Some(args.clone()), 3)
-        ).await {
+            mcp_client.execute_tool_with_retry(
+                "execute_sequence".to_string(),
+                Some(args.clone()),
+                3,
+            ),
+        )
+        .await
+        {
             Ok(res) => res,
             Err(_) => Err(anyhow::anyhow!("Workflow execution timed out after 1 hour")),
         };
@@ -709,8 +784,10 @@ impl QueueProcessor {
                 debug!("MCP execute_sequence response: {:?}", tool_result);
                 log_buffer.log_step(
                     "debug",
-                    format!("{} - workflow_executor - INFO - MCP Response received",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+                    format!(
+                        "{} - workflow_executor - INFO - MCP Response received",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+                    ),
                     None,
                     None,
                 );
@@ -731,23 +808,29 @@ impl QueueProcessor {
                         for (idx, step) in steps.iter().enumerate() {
                             if let Some(step_obj) = step.as_object() {
                                 let step_id = format!("step_{idx}");
-                                let status = step_obj.get("status")
+                                let status = step_obj
+                                    .get("status")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("unknown");
 
-                                let is_failed = status == "failed" || status == "error" ||
-                                               step_obj.get("error").is_some();
+                                let is_failed = status == "failed"
+                                    || status == "error"
+                                    || step_obj.get("error").is_some();
 
                                 if is_failed {
                                     has_failure = true;
                                     // Log the step failure
-                                    if let Some(error) = step_obj.get("error").and_then(|e| e.as_str()) {
+                                    if let Some(error) =
+                                        step_obj.get("error").and_then(|e| e.as_str())
+                                    {
                                         log_buffer.log_step(
                                             "error",
-                                            format!("{} [ERROR] Step {} failed: {}",
+                                            format!(
+                                                "{} [ERROR] Step {} failed: {}",
                                                 chrono::Local::now().format("%H:%M:%S"),
                                                 step_id,
-                                                error),
+                                                error
+                                            ),
                                             Some(step_id.clone()),
                                             None,
                                         );
@@ -765,10 +848,10 @@ impl QueueProcessor {
                     .and_then(|o| o.get("message"))
                     .and_then(|v| v.as_str())
                     .map(|msg| {
-                        msg.contains("failed") ||
-                        msg.contains("Failed") ||
-                        msg.contains("error") ||
-                        msg.contains("Error")
+                        msg.contains("failed")
+                            || msg.contains("Failed")
+                            || msg.contains("error")
+                            || msg.contains("Error")
                     })
                     .unwrap_or(false);
 
@@ -784,34 +867,46 @@ impl QueueProcessor {
                                 .and_then(|v| v.as_str())
                                 .map(|status| status == "failed" || status == "error")
                                 .unwrap_or(false)
-                            || step.as_object()
-                                .and_then(|s| s.get("error"))
-                                .is_some()
+                                || step.as_object().and_then(|s| s.get("error")).is_some()
                         })
                     })
                     .unwrap_or(false);
 
                 // Determine success/failure
-                let success = if has_error || has_step_failure || has_steps_failure || message_indicates_failure {
+                let success = if has_error
+                    || has_step_failure
+                    || has_steps_failure
+                    || message_indicates_failure
+                {
                     false
                 } else {
-                    // Only trust success: true if explicitly set
-                    tool_result
+                    // Check for explicit success boolean
+                    let explicit_success = tool_result
                         .as_object()
                         .and_then(|o| o.get("success"))
                         .and_then(|v| v.as_bool())
-                        .filter(|s| *s) // Only accept true, not false
-                        .unwrap_or(false) // Default to failure if not specified or false
+                        .unwrap_or(false);
+
+                    // Check for status string being "success"
+                    let status_success = tool_result
+                        .as_object()
+                        .and_then(|o| o.get("status"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "success")
+                        .unwrap_or(false);
+
+                    explicit_success || status_success
                 };
 
                 // Log the determination
                 if !success {
                     log_buffer.log_step(
                         "error",
-                        format!("{} - workflow_executor - ERROR - Workflow execution failed (has_error: {}, has_step_failure: {}, message_indicates_failure: {})",
+                        format!("{} - workflow_executor - ERROR - Workflow execution failed (has_error: {}, has_step_failure: {}, has_steps_failure: {}, message_indicates_failure: {})",
                             chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
                             has_error,
                             has_step_failure,
+                            has_steps_failure,
                             message_indicates_failure),
                         None,
                         None,
@@ -834,19 +929,21 @@ impl QueueProcessor {
                             })
                         });
 
-                    step_error.or_else(|| {
-                        tool_result
-                            .as_object()
-                            .and_then(|o| o.get("error"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    }).or_else(|| {
-                        tool_result
-                            .as_object()
-                            .and_then(|o| o.get("message"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
+                    step_error
+                        .or_else(|| {
+                            tool_result
+                                .as_object()
+                                .and_then(|o| o.get("error"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                        })
+                        .or_else(|| {
+                            tool_result
+                                .as_object()
+                                .and_then(|o| o.get("message"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                        })
                 } else {
                     None
                 };
@@ -889,10 +986,9 @@ impl QueueProcessor {
                     .and_then(|v| v.as_array())
                     .and_then(|arr| {
                         // Try to convert JSON values to StepResult structs
-                        let results: Vec<crate::models::StepResult> = arr.iter()
-                            .filter_map(|step| {
-                                serde_json::from_value(step.clone()).ok()
-                            })
+                        let results: Vec<crate::models::StepResult> = arr
+                            .iter()
+                            .filter_map(|step| serde_json::from_value(step.clone()).ok())
                             .collect();
                         if results.is_empty() {
                             None
@@ -903,7 +999,8 @@ impl QueueProcessor {
                     .unwrap_or_else(Vec::new);
 
                 // Calculate steps completed based on step results
-                let steps_completed = step_results.iter()
+                let steps_completed = step_results
+                    .iter()
                     .filter(|sr| sr.status == StepStatus::Success)
                     .count() as u32;
                 let total_steps = step_results.len() as u32;
@@ -927,17 +1024,21 @@ impl QueueProcessor {
                 // Add error logging to buffer
                 log_buffer.log_step(
                     "debug",
-                    format!("{} - workflow_executor - ERROR - MCP workflow execution error:",
-                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")),
+                    format!(
+                        "{} - workflow_executor - ERROR - MCP workflow execution error:",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f")
+                    ),
                     None,
                     None,
                 );
 
                 log_buffer.log_step(
                     "debug",
-                    format!("{} - workflow_executor - ERROR - MCP Error Context: {}",
+                    format!(
+                        "{} - workflow_executor - ERROR - MCP Error Context: {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                        e),
+                        e
+                    ),
                     None,
                     None,
                 );
@@ -1029,7 +1130,10 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert!(!success, "Should be marked as failure when message contains 'failed'");
+        assert!(
+            !success,
+            "Should be marked as failure when message contains 'failed'"
+        );
     }
 
     #[test]
@@ -1042,7 +1146,10 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert!(!success, "Should be marked as failure when success is false");
+        assert!(
+            !success,
+            "Should be marked as failure when success is false"
+        );
     }
 
     #[test]
@@ -1056,6 +1163,22 @@ mod tests {
 
         let success = determine_success(&tool_result);
         assert!(success, "Should be marked as success when success is true");
+    }
+
+    #[test]
+    fn test_status_determination_with_status_success() {
+        use serde_json::json;
+
+        let tool_result = json!({
+            "status": "success",
+            "message": "Workflow completed successfully"
+        });
+
+        let success = determine_success(&tool_result);
+        assert!(
+            success,
+            "Should be marked as success when status is 'success'"
+        );
     }
 
     #[test]
@@ -1073,7 +1196,10 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert!(!success, "Should be marked as failure when steps array contains failure");
+        assert!(
+            !success,
+            "Should be marked as failure when steps array contains failure"
+        );
     }
 
     #[test]
@@ -1086,7 +1212,10 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert!(!success, "Should default to failure when no explicit success indicator");
+        assert!(
+            !success,
+            "Should default to failure when no explicit success indicator"
+        );
     }
 
     #[test]
@@ -1109,7 +1238,10 @@ mod tests {
         });
 
         let success = determine_success(&tool_result);
-        assert!(!success, "Real failure case from execution #22062 should be marked as failure");
+        assert!(
+            !success,
+            "Real failure case from execution #22062 should be marked as failure"
+        );
     }
 
     // Helper function for tests - replicates the status determination logic
@@ -1130,9 +1262,7 @@ mod tests {
                         .and_then(|v| v.as_str())
                         .map(|status| status == "failed" || status == "error")
                         .unwrap_or(false)
-                    || step.as_object()
-                        .and_then(|s| s.get("error"))
-                        .is_some()
+                        || step.as_object().and_then(|s| s.get("error")).is_some()
                 })
             })
             .unwrap_or(false);
@@ -1148,9 +1278,7 @@ mod tests {
                         .and_then(|v| v.as_str())
                         .map(|status| status == "failed" || status == "error")
                         .unwrap_or(false)
-                    || step.as_object()
-                        .and_then(|s| s.get("error"))
-                        .is_some()
+                        || step.as_object().and_then(|s| s.get("error")).is_some()
                 })
             })
             .unwrap_or(false);
@@ -1160,21 +1288,30 @@ mod tests {
             .and_then(|o| o.get("message"))
             .and_then(|v| v.as_str())
             .map(|msg| {
-                msg.contains("failed") ||
-                msg.contains("Failed") ||
-                msg.contains("error") ||
-                msg.contains("Error")
+                msg.contains("failed")
+                    || msg.contains("Failed")
+                    || msg.contains("error")
+                    || msg.contains("Error")
             })
             .unwrap_or(false);
 
         if has_error || has_step_failure || has_steps_failure || message_indicates_failure {
             false
         } else {
-            tool_result
+            let explicit_success = tool_result
                 .as_object()
                 .and_then(|o| o.get("success"))
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false) // Default to failure if not specified
+                .unwrap_or(false);
+
+            let status_success = tool_result
+                .as_object()
+                .and_then(|o| o.get("status"))
+                .and_then(|v| v.as_str())
+                .map(|s| s == "success")
+                .unwrap_or(false);
+
+            explicit_success || status_success
         }
     }
 }
