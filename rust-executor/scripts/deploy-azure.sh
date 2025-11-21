@@ -168,6 +168,23 @@ fi
 
 echo "🚢 Deploying new container..."
 
+# ==============================================================================
+# Dynamically discover OTEL collector endpoint
+# ==============================================================================
+echo "🔍 Discovering OTEL collector endpoint..."
+
+# Try to find OTEL collector by name pattern
+OTEL_FQDN=$(az container list --query "[?contains(name, 'otel')].ipAddress.fqdn" -o tsv | head -n 1)
+
+if [ -n "$OTEL_FQDN" ]; then
+    OTEL_ENDPOINT="http://${OTEL_FQDN}:4318"
+    echo "✅ Found OTEL collector: $OTEL_ENDPOINT"
+else
+    # Fallback to known endpoint if discovery fails
+    OTEL_ENDPOINT="http://otel-collector-mcp-vm2-rg.eastus.azurecontainer.io:4318"
+    echo "⚠️  Could not discover OTEL collector, using fallback: $OTEL_ENDPOINT"
+fi
+
 # Build environment variables array
 ENV_VARS=(
     "PORT=$PORT"
@@ -176,7 +193,7 @@ ENV_VARS=(
     "MCP_ENDPOINT=$MCP_ENDPOINT"
     "ENVIRONMENT=$ENVIRONMENT"
     "OTEL_SDK_ENABLED=true"
-    "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-mcp-vm2-rg.eastus.azurecontainer.io:4318"
+    "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_ENDPOINT"
     "AZURE_CONTAINER_NAME=$CONTAINER_NAME"
     "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
 )
