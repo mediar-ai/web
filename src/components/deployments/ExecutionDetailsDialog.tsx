@@ -60,156 +60,6 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-// COMMENTED OUT: Agent Screen tab - RDP shadow approach not working
-/*
-interface AgentScreenTabProps {
-  executionId: number;
-}
-
-const AgentScreenTab = ({ executionId }: AgentScreenTabProps) => {
-  const [rdpUrl, setRdpUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [connectionInfo, setConnectionInfo] = useState<{
-    machine_name?: string;
-    connection_name?: string;
-  } | null>(null);
-
-  useEffect(() => {
-    const fetchRdpUrl = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch(`/api/rdp/access?execution_id=${executionId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to get RDP access');
-        }
-
-        setRdpUrl(data.connection_url);
-        setConnectionInfo({
-          machine_name: data.machine_name,
-          connection_name: data.connection_name,
-        });
-      } catch (err) {
-        console.error('Error fetching RDP URL:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load RDP connection');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRdpUrl();
-  }, [executionId]);
-
-  if (loading) {
-    return (
-      <div className="h-full flex flex-col gap-4">
-        <Alert className="border-black bg-blue-50">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertDescription>
-            <p className="font-semibold">Loading agent screen access...</p>
-            <p className="text-sm mt-1">Authenticating and establishing secure connection</p>
-          </AlertDescription>
-        </Alert>
-        <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white flex items-center justify-center" style={{ minHeight: '600px' }}>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    const isMachineNotFound = error.includes('Machine not found') || error.includes('no assigned machine');
-
-    return (
-      <div className="h-full flex flex-col gap-4">
-        <Alert className="border-black bg-yellow-50">
-          <XCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription>
-            <p className="font-semibold text-yellow-900">
-              {isMachineNotFound ? 'No Agent Machine Assigned' : 'Unable to connect to agent screen'}
-            </p>
-            <p className="text-sm mt-1 text-yellow-800">
-              {isMachineNotFound
-                ? 'This execution was run without a specific machine assignment. Agent screen viewing is only available for executions with assigned machines.'
-                : error
-              }
-            </p>
-          </AlertDescription>
-        </Alert>
-        <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white flex items-center justify-center" style={{ minHeight: '600px' }}>
-          <div className="text-center text-muted-foreground">
-            <XCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
-            <p className="text-sm">
-              {isMachineNotFound
-                ? 'This execution has no machine assignment'
-                : 'RDP connection unavailable'
-              }
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const openCrispChat = () => {
-    // Trigger Crisp chat widget
-    if (typeof window !== 'undefined' && (window as any).$crisp) {
-      (window as any).$crisp.push(['do', 'chat:open']);
-      (window as any).$crisp.push(['do', 'message:send', ['text', 'Hi! I\'m interested in learning more about the production plan for Agent Screen.']]);
-    }
-  };
-
-  return (
-    <div className="h-full flex flex-col gap-4">
-      {/* Security Warning Banner *\/}
-      <div className="bg-red-50 border-2 border-red-600 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 mt-0.5">
-            <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div className="text-left flex-1">
-            <h4 className="font-bold text-red-900 mb-1">Important Security Notice</h4>
-            <p className="text-sm text-red-800 mb-2">
-              Please do not expose sensitive data on this machine. These are shared development environments.
-            </p>
-            <div className="flex items-center gap-2">
-              <p className="text-sm text-red-800">
-                Need a production plan with dedicated, isolated machines?
-              </p>
-              <button
-                onClick={openCrispChat}
-                className="px-3 py-1 bg-white text-black border-2 border-black hover:bg-black hover:text-white font-bold text-xs uppercase transition-all whitespace-nowrap"
-              >
-                Talk to Us
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Embedded Guacamole Viewer *\/}
-      <div className="flex-1 border-2 border-black rounded-md overflow-hidden bg-white" style={{ minHeight: '600px' }}>
-        {rdpUrl && (
-          <iframe
-            src={rdpUrl}
-            className="w-full h-full"
-            style={{ border: 'none' }}
-            title={`Agent Screen - ${connectionInfo?.machine_name || 'Machine'}`}
-            allow="clipboard-read; clipboard-write"
-          />
-        )}
-      </div>
-    </div>
-  );
-};
-*/
-
 interface CollapsibleSectionProps {
   title: string;
   children: React.ReactNode;
@@ -1104,30 +954,30 @@ export function ExecutionDetailsDialog({
                 <LoadingSkeleton />
               ) : (
                 <div className="space-y-4 h-full flex flex-col">
-                  {executionLogs && executionLogs.length > 0 ? (
-                    <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">
-                          Real-time server logs from the orchestrator during
-                          workflow execution.
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {execution?.executor_type === 'rust' && (
-                            <Button
-                              variant="black-outline"
-                              size="sm"
-                              className="h-7 px-2"
-                              onClick={forceRefreshLogs}
-                              disabled={loadingStates.logs}
-                            >
-                              <RefreshCw
-                                className={`w-3 h-3 mr-1 ${
-                                  loadingStates.logs ? 'animate-spin' : ''
-                                }`}
-                              />
-                              Refresh
-                            </Button>
-                          )}
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Real-time server logs from the orchestrator during
+                      workflow execution.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {execution?.executor_type === 'rust' && (
+                        <Button
+                          variant="black-outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={forceRefreshLogs}
+                          disabled={loadingStates.logs}
+                        >
+                          <RefreshCw
+                            className={`w-3 h-3 mr-1 ${
+                              loadingStates.logs ? 'animate-spin' : ''
+                            }`}
+                          />
+                          Refresh
+                        </Button>
+                      )}
+                      {executionLogs && executionLogs.length > 0 && (
+                        <>
                           <CopyToClipboardButton
                             contentToCopy={
                               executionLogs
@@ -1152,8 +1002,13 @@ export function ExecutionDetailsDialog({
                             )}
                             Download Complete (JSON)
                           </Button>
-                        </div>
-                      </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {executionLogs && executionLogs.length > 0 ? (
+                    <div className="space-y-2 flex-1 flex flex-col min-h-0">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
