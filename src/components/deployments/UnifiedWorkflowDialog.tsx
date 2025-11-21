@@ -764,53 +764,53 @@ export function UnifiedWorkflowDialog({
           className="mt-2 flex-1 flex flex-col overflow-hidden"
         >
           <TabsList
-            className={`grid w-full ${workflow.preferred_format === 'typescript' ? 'grid-cols-8' : 'grid-cols-7'} px-8 py-2 bg-transparent gap-2`}
+            className={`grid w-full ${workflow.preferred_format === 'typescript' ? 'grid-cols-8' : 'grid-cols-7'} px-6 py-3 bg-transparent gap-3`}
           >
             <TabsTrigger
               value="overview"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <BarChart3 className="w-4 h-4 mr-2" />
               Overview
             </TabsTrigger>
             <TabsTrigger
               value="workflow"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <Workflow className="w-4 h-4 mr-2" />
               Workflow
             </TabsTrigger>
             <TabsTrigger
               value="parameters"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <FileInput className="w-4 h-4 mr-2" />
               Inputs
             </TabsTrigger>
             <TabsTrigger
               value="schedule"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <Clock className="w-4 h-4 mr-2" />
               Schedule
             </TabsTrigger>
             <TabsTrigger
               value="versions"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <GitBranch className="w-4 h-4 mr-2" />
               Versions
             </TabsTrigger>
             <TabsTrigger
               value="machines"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <Server className="w-4 h-4 mr-2" />
               Machines
             </TabsTrigger>
             <TabsTrigger
               value="usage"
-              className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
             >
               <Terminal className="w-4 h-4 mr-2" />
               API
@@ -818,7 +818,7 @@ export function UnifiedWorkflowDialog({
             {workflow.preferred_format === 'typescript' && (
               <TabsTrigger
                 value="typescript"
-                className="rounded-lg data-[state=active]:bg-black data-[state=active]:text-white"
+                className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors"
               >
                 <Code2 className="w-4 h-4 mr-2" />
                 TypeScript
