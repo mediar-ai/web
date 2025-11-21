@@ -123,11 +123,11 @@ export function analyzeToolResults(
 
 /**
  * Estimate token count for a message history
- * Uses rough approximation: 4 characters ≈ 1 token
+ * Uses rough approximation: 3 characters ≈ 1 token (conservative estimate)
  */
 export function estimateTokens(content: any): number {
   const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-  return Math.round(contentStr.length / 4);
+  return Math.round(contentStr.length / 3);
 }
 
 /**

@@ -18,7 +18,8 @@ import {
   logToolCalls,
   analyzeToolResults,
   checkTokenLimit,
-  logProviderDiagnostics
+  logProviderDiagnostics,
+  estimateTokens
 } from './utils';
 
 /**
@@ -394,8 +395,19 @@ export async function handleAnthropicChat(params: AIProviderRequest): Promise<AI
     turnCount++;
     console.log(`[ANTHROPIC] Turn ${turnCount}: Creating message...`);
 
-    // Check token limits before sending
-    checkTokenLimit(anthropicHistory, 'ANTHROPIC', 200000, 150000);
+    // Check token limits before sending - include ALL request parameters
+    const totalRequestContent = {
+      messages: anthropicHistory,
+      system: system || '',
+      tools: anthropicTools,
+    };
+    checkTokenLimit(totalRequestContent, 'ANTHROPIC', 200000, 150000);
+
+    // Log breakdown for debugging
+    const historyTokens = estimateTokens(anthropicHistory);
+    const systemTokens = estimateTokens(system || '');
+    const toolsTokens = estimateTokens(anthropicTools);
+    console.log(`[ANTHROPIC] Token breakdown - History: ~${historyTokens.toLocaleString()}, System: ~${systemTokens.toLocaleString()}, Tools: ~${toolsTokens.toLocaleString()}`);
 
     try {
       // Create message with Anthropic SDK
