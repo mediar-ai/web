@@ -150,9 +150,11 @@ export default function InternalDebugPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [globalTime, setGlobalTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const logsScrollRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch machines on mount
   useEffect(() => {
@@ -399,9 +401,9 @@ export default function InternalDebugPage() {
     }
   }, [activeSegment, globalTime, isPlaying, playbackSpeed]);
 
-  // Auto-scroll logs to current time
+  // Auto-scroll logs to current time (only when enabled)
   useEffect(() => {
-    if (!logsScrollRef.current || processedLogs.length === 0) return;
+    if (!autoScrollEnabled || !logsScrollRef.current || processedLogs.length === 0) return;
 
     // Find the first log where timeOffset <= globalTime (since logs are sorted newest-first)
     const currentLogIndex = processedLogs.findIndex(
@@ -421,7 +423,37 @@ export default function InternalDebugPage() {
         });
       }
     }
-  }, [globalTime, processedLogs]);
+  }, [globalTime, processedLogs, autoScrollEnabled]);
+
+  // Detect manual scrolling and disable auto-scroll temporarily
+  useEffect(() => {
+    const scrollContainer = logsScrollRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      // User is manually scrolling - disable auto-scroll
+      setAutoScrollEnabled(false);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Re-enable auto-scroll after 3 seconds of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setAutoScrollEnabled(true);
+      }, 3000);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Check access
   useEffect(() => {
@@ -735,6 +767,8 @@ export default function InternalDebugPage() {
                               // Jump video to this log's timestamp
                               handleScrub([log.timeOffset]);
                               setIsPlaying(true);
+                              // Re-enable auto-scroll when clicking a log
+                              setAutoScrollEnabled(true);
                             }}
                             className={cn(
                               'w-full text-left border p-2 font-mono text-xs transition-all cursor-pointer',
