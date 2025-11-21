@@ -10,10 +10,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CornerDownLeft, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { CornerDownLeft, X, Key, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import '@/styles/custom-scrollbar.css';
+
+interface Secret {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 type JsonValue =
   | string
@@ -735,6 +741,8 @@ const ParameterField = ({
   error,
   schema,
   disabled = false,
+  secrets,
+  loadingSecrets,
 }: {
   label: string;
   path: string;
@@ -744,9 +752,29 @@ const ParameterField = ({
   error?: string;
   schema: SchemaItem;
   disabled?: boolean;
+  secrets: Secret[];
+  loadingSecrets: boolean;
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [inputError, setInputError] = useState<string | undefined>();
+  const [showSecretsDropdown, setShowSecretsDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSecretsDropdown(false);
+      }
+    };
+
+    if (showSecretsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showSecretsDropdown]);
 
   const handleAddValue = () => {
     if (disabled) return;
@@ -865,7 +893,7 @@ const ParameterField = ({
     }
 
     return (
-      <div className="w-56 flex gap-1">
+      <div className="w-56 flex gap-1 relative">
         <Input
           type={schema.type === 'number' ? 'number' : 'text'}
           value={inputValue}
@@ -875,15 +903,79 @@ const ParameterField = ({
           placeholder={placeholder}
           disabled={disabled}
         />
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={handleAddValue}
-          className="h-6 w-6 flex-shrink-0 border-black p-0.5"
-          disabled={disabled}
-        >
-          <CornerDownLeft className="h-3 w-3" />
-        </Button>
+        <div className="flex gap-1 flex-shrink-0 relative" ref={dropdownRef}>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => setShowSecretsDropdown(!showSecretsDropdown)}
+            className="h-6 w-6 border-black p-0.5"
+            disabled={disabled}
+            title="Select from secrets"
+          >
+            <Key className="h-3 w-3" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={handleAddValue}
+            className="h-6 w-6 border-black p-0.5"
+            disabled={disabled}
+          >
+            <CornerDownLeft className="h-3 w-3" />
+          </Button>
+
+          {/* Secrets dropdown */}
+          {showSecretsDropdown && (
+            <div className="absolute right-0 top-full mt-1 w-64 bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-y-auto">
+              {loadingSecrets ? (
+                <div className="p-4 text-center">
+                  <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                  <p className="text-xs text-gray-600 mt-2">Loading secrets...</p>
+                </div>
+              ) : secrets.length === 0 ? (
+                <div className="p-4 text-center">
+                  <p className="text-xs text-gray-600">No secrets configured</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Go to Settings → Secrets to create one
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  {secrets.map((secret) => (
+                    <button
+                      key={secret.id}
+                      type="button"
+                      onClick={() => {
+                        const secretPlaceholder = `\${${secret.name}}`;
+                        const err = onAddValue(path, secretPlaceholder);
+                        if (!err) {
+                          setShowSecretsDropdown(false);
+                        } else {
+                          setInputError(err);
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-200 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Key className="w-3 h-3 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-mono text-xs font-bold truncate">
+                            {secret.name}
+                          </p>
+                          {secret.description && (
+                            <p className="text-xs text-gray-500 truncate">
+                              {secret.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -1009,6 +1101,8 @@ const ParameterRow = ({
           onRemoveValue={onRemoveDynamicValue}
           error={errors[path]}
           schema={schemaItem}
+          secrets={secrets}
+          loadingSecrets={loadingSecrets}
         />
         <div className="pl-6 mt-2 space-y-3">
           {Object.entries(schemaItem.controls).map(
@@ -1061,6 +1155,8 @@ const ParameterRow = ({
       onRemoveValue={onRemoveDynamicValue}
       error={errors[path]}
       schema={schemaItem}
+      secrets={secrets}
+      loadingSecrets={loadingSecrets}
     />
   );
 };
@@ -1135,6 +1231,27 @@ export function BatchForm({
     Record<string, JsonValue[]>
   >(initializeDynamicValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
+
+  // Fetch secrets on mount
+  useEffect(() => {
+    const fetchSecrets = async () => {
+      try {
+        setLoadingSecrets(true);
+        const response = await fetch('/api/secrets');
+        if (!response.ok) throw new Error('Failed to fetch secrets');
+        const data = await response.json();
+        setSecrets(data.secrets || []);
+      } catch (err) {
+        console.error('Error loading secrets:', err);
+      } finally {
+        setLoadingSecrets(false);
+      }
+    };
+
+    fetchSecrets();
+  }, []);
 
   const validateValue = useCallback(
     (path: string, value: string): string | undefined => {
