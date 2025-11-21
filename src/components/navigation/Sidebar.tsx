@@ -18,7 +18,8 @@ import {
   Bell,
   Users,
   User,
-  Key
+  Key,
+  Monitor
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -90,6 +91,7 @@ export function Sidebar() {
     },
     { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
     { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
+    { label: 'VM Timeline', href: '/internal/debug', icon: Monitor, mediarOnly: true },
   ], []);
 
   const filteredNav = useMemo(() => {
