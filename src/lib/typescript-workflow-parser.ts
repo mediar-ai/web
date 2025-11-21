@@ -77,11 +77,87 @@ export function parseTypeScriptWorkflow(
         }
       }
     }
+
+    // Check for export default createWorkflow(...).step(...).build() pattern
+    if (
+      ts.isExportAssignment(node) &&
+      !node.isExportEquals &&
+      ts.isCallExpression(node.expression)
+    ) {
+      parseChainedWorkflow(node.expression, metadata, sourceFile);
+    }
+
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
   return metadata;
+}
+
+// ============================================================================
+// Chained Workflow Parsing (for .step().step().build() pattern)
+// ============================================================================
+
+function parseChainedWorkflow(
+  node: ts.CallExpression,
+  metadata: TypeScriptWorkflowMetadata,
+  sourceFile: ts.SourceFile
+) {
+  // Collect all chained method calls
+  const chain: Array<{ method: string; call: ts.CallExpression }> = [];
+  let current: ts.Node = node;
+
+  // Walk up the chain
+  while (ts.isCallExpression(current)) {
+    if (ts.isPropertyAccessExpression(current.expression)) {
+      const methodName = current.expression.name.text;
+      chain.unshift({ method: methodName, call: current });
+      current = current.expression.expression;
+    } else if (ts.isIdentifier(current.expression)) {
+      // Found createWorkflow call
+      if (current.expression.text === 'createWorkflow') {
+        if (
+          current.arguments.length > 0 &&
+          ts.isObjectLiteralExpression(current.arguments[0])
+        ) {
+          parseWorkflowObject(current.arguments[0], metadata, sourceFile);
+        }
+      }
+      break;
+    } else {
+      current = current.expression;
+    }
+  }
+
+  // Parse chained method calls
+  const stepFunctions: string[] = [];
+  for (const { method, call } of chain) {
+    if (method === 'step') {
+      if (call.arguments.length > 0 && ts.isIdentifier(call.arguments[0])) {
+        stepFunctions.push(call.arguments[0].text);
+      }
+    } else if (method === 'onError') {
+      if (call.arguments.length > 0) {
+        metadata.errorHandler = {
+          type: 'global',
+          code: call.arguments[0].getText(sourceFile),
+        };
+      }
+    }
+    // onSuccess is handled as part of the workflow completion, not as metadata
+  }
+
+  // Convert step functions to step metadata
+  if (stepFunctions.length > 0 && metadata.steps.length === 0) {
+    metadata.steps = stepFunctions.map((stepName, index) => ({
+      id: stepName,
+      name: toTitleCase(stepName),
+      type: 'action' as const,
+      position: { x: 100, y: 100 + index * 120 },
+      next:
+        index < stepFunctions.length - 1 ? [stepFunctions[index + 1]] : undefined,
+    }));
+  }
 }
 
 // ============================================================================
