@@ -64,18 +64,21 @@ export async function GET(request: NextRequest) {
       const filtersText = await filtersResult.text();
       const filtersData = JSON.parse(filtersText.trim().split('\n')[0]);
 
-      // Keep hosts and services separate - prefer actual hostnames from ResourceAttributes
-      // If no host.name, fall back to ServiceName as identifier
-      const hosts = (filtersData.hosts || []).filter((s: string) => s && s !== '');
+      // Prefer ServiceName over host.name because Modal generates ugly SandboxHost-* names
+      // Only include actual meaningful hostnames (like mcp-vm2, container names)
+      const hosts = (filtersData.hosts || [])
+        .filter((s: string) => s && s !== '')
+        .filter((s: string) => !s.startsWith('SandboxHost-')); // Filter out Modal sandbox names
+
       const services = (filtersData.services || []).filter((s: string) => s && s !== '');
 
-      // Use hosts if available, otherwise fall back to services
-      const hostOptions = hosts.length > 0 ? hosts : services;
+      // Combine services and meaningful hosts, prefer services
+      const hostOptions = Array.from(new Set([...services, ...hosts]));
 
       return NextResponse.json({
         success: true,
         filters: {
-          hosts: Array.from(new Set(hostOptions)).sort(),
+          hosts: hostOptions.sort(),
           scopes: filtersData.scopes.filter((s: string) => s).sort(),
           severities: filtersData.severities.filter((s: string) => s).sort(),
         },
