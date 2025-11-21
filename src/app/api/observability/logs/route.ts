@@ -20,6 +20,12 @@ export async function GET(request: NextRequest) {
     const searchQuery = searchParams.get('search') || '';
     const getFilters = searchParams.get('getFilters') === 'true';
 
+    // New LogAttributes filters
+    const executionIdFilter = searchParams.get('executionId') || '';
+    const workflowFilter = searchParams.get('workflow') || '';
+    const organizationFilter = searchParams.get('organization') || '';
+    const errorCategoryFilter = searchParams.get('errorCategory') || '';
+
     // Create ClickHouse client with environment variables
     const clickhouseHost = process.env.CLICKHOUSE_HOST;
     const clickhouseUser = process.env.CLICKHOUSE_USER || 'default';
@@ -51,7 +57,10 @@ export async function GET(request: NextRequest) {
           groupArray(DISTINCT if(mapContains(ResourceAttributes, 'host.name'), ResourceAttributes['host.name'], '')) as hosts,
           groupArray(DISTINCT ServiceName) as services,
           groupArray(DISTINCT ScopeName) as scopes,
-          groupArray(DISTINCT SeverityText) as severities
+          groupArray(DISTINCT SeverityText) as severities,
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'workflow_name') AND LogAttributes['workflow_name'] != '', LogAttributes['workflow_name'], '')) as workflows,
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'organization_id') AND LogAttributes['organization_id'] != '', LogAttributes['organization_id'], '')) as organizations,
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] != '', LogAttributes['error_category'], '')) as errorCategories
         FROM otel_logs_filtered
         WHERE Timestamp > now() - INTERVAL ${hours} HOUR
       `;
@@ -81,6 +90,9 @@ export async function GET(request: NextRequest) {
           hosts: hostOptions.sort(),
           scopes: filtersData.scopes.filter((s: string) => s).sort(),
           severities: filtersData.severities.filter((s: string) => s).sort(),
+          workflows: filtersData.workflows.filter((s: string) => s).sort(),
+          organizations: filtersData.organizations.filter((s: string) => s).sort(),
+          errorCategories: filtersData.errorCategories.filter((s: string) => s).sort(),
         },
       });
     }
@@ -109,6 +121,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // New LogAttributes filters
+    if (executionIdFilter) {
+      conditions.push(`(mapContains(LogAttributes, 'execution_id') AND LogAttributes['execution_id'] = '${executionIdFilter}')`);
+    }
+    if (workflowFilter) {
+      conditions.push(`(mapContains(LogAttributes, 'workflow_name') AND LogAttributes['workflow_name'] = '${workflowFilter}')`);
+    }
+    if (organizationFilter) {
+      conditions.push(`(mapContains(LogAttributes, 'organization_id') AND LogAttributes['organization_id'] = '${organizationFilter}')`);
+    }
+    if (errorCategoryFilter) {
+      conditions.push(`(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] = '${errorCategoryFilter}')`);
+    }
+
     const whereClause =
       conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : '';
 
@@ -122,7 +148,16 @@ export async function GET(request: NextRequest) {
         ServiceName,
         TraceId,
         SpanId,
-        if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName) as HostName
+        if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName) as HostName,
+        if(mapContains(LogAttributes, 'execution_id'), LogAttributes['execution_id'], '') as execution_id,
+        if(mapContains(LogAttributes, 'workflow_id'), LogAttributes['workflow_id'], '') as workflow_id,
+        if(mapContains(LogAttributes, 'workflow_name'), LogAttributes['workflow_name'], '') as workflow_name,
+        if(mapContains(LogAttributes, 'organization_id'), LogAttributes['organization_id'], '') as organization_id,
+        if(mapContains(LogAttributes, 'error_category'), LogAttributes['error_category'], '') as error_category,
+        if(mapContains(LogAttributes, 'retry_count'), LogAttributes['retry_count'], '') as retry_count,
+        if(mapContains(LogAttributes, 'execution_time_ms'), LogAttributes['execution_time_ms'], '') as execution_time_ms,
+        if(mapContains(LogAttributes, 'mcp_endpoint'), LogAttributes['mcp_endpoint'], '') as mcp_endpoint,
+        LogAttributes
       FROM otel_logs_filtered
       WHERE Timestamp > now() - INTERVAL ${hours} HOUR
       ${whereClause}
@@ -138,6 +173,10 @@ export async function GET(request: NextRequest) {
         severity: severityFilter || 'all',
         traceId: traceIdFilter || 'none',
         search: searchQuery || 'none',
+        executionId: executionIdFilter || 'none',
+        workflow: workflowFilter || 'none',
+        organization: organizationFilter || 'none',
+        errorCategory: errorCategoryFilter || 'none',
       }
     );
 
@@ -178,6 +217,10 @@ export async function GET(request: NextRequest) {
         severity: severityFilter || null,
         traceId: traceIdFilter || null,
         search: searchQuery || null,
+        executionId: executionIdFilter || null,
+        workflow: workflowFilter || null,
+        organization: organizationFilter || null,
+        errorCategory: errorCategoryFilter || null,
       },
     });
   } catch (error) {
