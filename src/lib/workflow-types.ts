@@ -47,7 +47,7 @@ export interface Workflow {
   successful_runs: number;
   failed_runs: number;
   cancelled_runs: number;
-  skipped_runs?: number;  // Optional for backward compatibility
+  skipped_runs?: number; // Optional for backward compatibility
   total_executions: number;
   // Cron scheduling fields
   cron_expression?: string | null;
@@ -85,11 +85,11 @@ export interface Workflow {
   };
   created_at: string;
   updated_at: string;
-  last_activity_at?: string;  // When workflow was last active (execution completed, stats updated)
-  last_modified_at?: string;  // When workflow definition was last modified (from active version)
+  last_activity_at?: string; // When workflow was last active (execution completed, stats updated)
+  last_modified_at?: string; // When workflow definition was last modified (from active version)
   // Organization fields (populated for Mediar admins)
   organization_id?: string;
-  is_public?: boolean;  // Whether workflow is publicly accessible to all organizations
+  is_public?: boolean; // Whether workflow is publicly accessible to all organizations
   shared_with_orgs?: string[];
 }
 
@@ -142,7 +142,15 @@ export interface Execution {
   workflow_name: string;
   workflow_organization_id?: string | null;
   workflow_organization_name?: string | null;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'error' | 'timeout' | 'skipped';
+  status:
+    | 'queued'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'error'
+    | 'timeout'
+    | 'skipped';
   execution_status?: string; // Granular status like 'completed_with_errors'
   created_at: string;
   started_at?: string;
@@ -157,6 +165,7 @@ export interface Execution {
   // Machine assignment info
   assigned_machine_id?: number;
   assigned_machine_name?: string;
+  executor_type?: 'python' | 'rust' | null;
   // Version information
   version_number?: string;
   workflow_version_id?: number;
@@ -193,7 +202,13 @@ export interface LiveExecutionStatus {
   workflow_id: number;
   workflow_name: string;
   workflow_description: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped';
+  status:
+    | 'queued'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'skipped';
   progress_percentage: number;
   current_step_index: number;
   total_steps: number;

@@ -670,6 +670,45 @@ export function ExecutionDetailsDialog({
     }
   }, [activeTab, executionLogs, fetchExecutionLogs]);
 
+  // Poll for logs when execution is running and logs tab is active
+  useEffect(() => {
+    let intervalId: any;
+
+    const isRunning =
+      execution &&
+      ['running', 'queued'].includes(execution.status.toLowerCase());
+
+    // Only poll for Rust executor logs (which stream to ClickHouse)
+    // Python/Modal logs are only available after execution completes
+    const isRustExecutor = execution?.executor_type === 'rust';
+
+    if (open && activeTab === 'logs' && isRunning && isRustExecutor) {
+      // Poll every 1 second for real-time updates
+      intervalId = setInterval(async () => {
+        if (!execution) return;
+        try {
+          const response = await fetch(
+            `/api/remote-workflows/executions/${execution.execution_id}/logs`
+          );
+          const data = await response.json();
+          if (data.success && data.logs) {
+            setExecutionLogs(prev => {
+              // Only update if log count has changed to avoid unnecessary re-renders
+              if (prev && prev.length === data.logs.length) return prev;
+              return data.logs;
+            });
+          }
+        } catch (error) {
+          console.error('Error polling logs:', error);
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [open, activeTab, execution]);
+
   useEffect(() => {
     if (isTabLoading) {
       // Short delay to allow the loading skeleton to render before the potentially blocking content
