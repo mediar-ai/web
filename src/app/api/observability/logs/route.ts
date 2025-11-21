@@ -110,7 +110,28 @@ export async function GET(request: NextRequest) {
       );
     }
     if (severityFilter) {
-      conditions.push(`SeverityText = '${severityFilter}'`);
+      // Hierarchical severity filtering: show selected level AND all higher severities
+      // Log level hierarchy: DEBUG (1) < INFO (2) < WARN (3) < ERROR (4) < FATAL (5)
+      const severityLevels: Record<string, number> = {
+        'DEBUG': 1,
+        'INFO': 2,
+        'WARN': 3,
+        'WARNING': 3, // alias for WARN
+        'ERROR': 4,
+        'FATAL': 5,
+      };
+
+      const selectedLevel = severityLevels[severityFilter.toUpperCase()] || 0;
+
+      if (selectedLevel > 0) {
+        // Build list of severity levels >= selected level
+        const allowedLevels = Object.keys(severityLevels)
+          .filter(level => severityLevels[level] >= selectedLevel)
+          .map(level => `'${level}'`)
+          .join(', ');
+
+        conditions.push(`SeverityText IN (${allowedLevels})`);
+      }
     }
     if (traceIdFilter) {
       conditions.push(`TraceId = '${traceIdFilter}'`);
