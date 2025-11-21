@@ -681,8 +681,10 @@ impl QueueProcessor {
         // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
         let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
 
-        // Default to src/terminator.ts (most common location)
-        let file_url = format!("file://{workflow_base_path}/src/terminator.ts");
+        // Pass workflow root directory - MCP will auto-detect terminator.ts or src/terminator.ts
+        // This ensures the entire workflow directory (including package.json, all subdirectories)
+        // gets copied when MCP uses local-copy mode, not just the src/ folder
+        let file_url = format!("file://{workflow_base_path}");
 
         info!(
             execution_id = %execution.id,
