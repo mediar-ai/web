@@ -81,7 +81,7 @@ export async function getExecutionLogs(
 
     const logs: LogEntry[] = [];
     for await (const row of resultSet.stream()) {
-      logs.push(row as LogEntry);
+      logs.push(row as unknown as LogEntry);
     }
 
     return logs;
@@ -203,7 +203,7 @@ export async function getLogsByTraceId(
 
     const logs: LogEntry[] = [];
     for await (const row of resultSet.stream()) {
-      logs.push(row as LogEntry);
+      logs.push(row as unknown as LogEntry);
     }
 
     return logs;
