@@ -5,9 +5,30 @@ import { headers } from 'next/headers';
 
 /**
  * Check if the current user is a Mediar admin (has @mediar.ai email)
+ * Supports both Clerk sessions and desktop bearer tokens
  */
 export async function isMediarAdmin(): Promise<boolean> {
   try {
+    // First, check for desktop token authentication
+    const headersList = await headers();
+    const authHeader = headersList.get('authorization');
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const validation = await validateDesktopToken(token);
+        if (validation.valid && validation.email) {
+          const hasMediarEmail = validation.email.toLowerCase().endsWith('@mediar.ai');
+          if (hasMediarEmail) {
+            return true;
+          }
+        }
+      } catch (error) {
+        // Fall through to Clerk auth
+      }
+    }
+
+    // Fall back to Clerk authentication
     const user = await currentUser();
     if (!user) return false;
 
