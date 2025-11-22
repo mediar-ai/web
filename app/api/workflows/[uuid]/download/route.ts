@@ -155,7 +155,7 @@ export async function GET(
     }
 
     // Fetch from GitHub (with auth if private repo)
-    const githubToken = process.env.GITHUB_WORKFLOW_TOKEN;
+    const githubToken = process.env.GITHUB_TOKEN;
 
     const headers: Record<string, string> = {
       'User-Agent': 'mediar-workflow-downloader/1.0',
