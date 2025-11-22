@@ -181,6 +181,18 @@ function AdminPageContent() {
     }
   }, [machineColumnVisibility]);
 
+// Add click outside handler
+useEffect(() => {
+  const handleClickOutside = (e: MouseEvent) => {
+    const dropdown = document.getElementById('machine-columns-dropdown');
+    const button = (e.target as HTMLElement).closest('button');
+    if (dropdown && !dropdown.contains(e.target as Node) && !button?.textContent?.includes('COLUMNS')) {
+      dropdown.classList.add('hidden');
+    }
+  };
+  document.addEventListener('click', handleClickOutside);
+  return () => document.removeEventListener('click', handleClickOutside);
+}, []);
   useEffect(() => {
     if (isGlobalAdmin) {
       fetchAllOrganizations();
@@ -1081,7 +1093,7 @@ function AdminPageContent() {
                         <h3 className="font-mono font-bold">
                           MACHINE REGISTRY
                         </h3>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 relative">
                           <button
                             onClick={() => {
                               const dropdown = document.getElementById('machine-columns-dropdown');
@@ -1089,13 +1101,13 @@ function AdminPageContent() {
                                 dropdown.classList.toggle('hidden');
                               }
                             }}
-                            className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white flex items-center gap-1 relative"
+                            className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white flex items-center gap-1 "
                           >
                             <Columns3 className="w-3 h-3" />
                             COLUMNS
                             <ChevronDown className="w-3 h-3" />
                           </button>
-                          <div id="machine-columns-dropdown" className="hidden absolute top-12 right-4 z-50 bg-white border-2 border-black shadow-lg min-w-[180px]">
+                          <div id="machine-columns-dropdown" className="hidden absolute top-10 right-0 z-50 bg-white border-2 border-black shadow-lg min-w-[180px]">
                             <div className="font-mono uppercase text-xs p-2 border-b border-gray-200 font-bold">
                               Toggle Columns
                             </div>
@@ -1492,11 +1504,10 @@ function AdminPageContent() {
                                       ) : (
                                         '-'
                                       )}
-                                      <td className="px-2 py-2" style={{ display: machineColumnVisibility.version === false ? "none" : "" }}>
-                                        <div className="font-mono text-xs">
-                                          {(machine as any).mcp_version || '-'}
-                                        </div>
-                                      </td>
+                                  </td>
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.version === false ? "none" : "" }}>
+                                    <div className="font-mono text-xs">
+                                      {(machine as any).mcp_version || '-'}
                                     </div>
                                   </td>
                                   <td className="px-2 py-2" style={{ display: machineColumnVisibility.organizations === false ? "none" : "" }}>
