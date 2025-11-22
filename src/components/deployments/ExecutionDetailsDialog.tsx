@@ -28,6 +28,8 @@ import {
   Info,
   Search,
   RefreshCw,
+  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -113,6 +115,7 @@ export function ExecutionDetailsDialog({
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
   const [isDownloadingResults, setIsDownloadingResults] = useState(false);
   const [logSearchQuery, setLogSearchQuery] = useState('');
+  const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
 
   // Helper function to highlight search query in text
   const highlightText = (text: string, query: string) => {
@@ -1019,7 +1022,7 @@ export function ExecutionDetailsDialog({
                           className="w-full pl-10 pr-4 py-2 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
                         />
                       </div>
-                      <div className="flex-1 min-h-0 overflow-auto border border-black rounded-md bg-white p-4">
+                      <div className="flex-1 min-h-0 overflow-auto space-y-1">
                         {executionLogs
                           .filter(log => {
                             if (!logSearchQuery) return true;
@@ -1036,40 +1039,83 @@ export function ExecutionDetailsDialog({
                                   .includes(searchLower))
                             );
                           })
-                          .map((log, idx) => (
-                            <div
-                              key={idx}
-                              className="flex gap-2 text-xs font-mono"
-                            >
-                              <span className="text-muted-foreground">
-                                {log.timestamp
-                                  ? highlightText(
-                                      new Date(
-                                        log.timestamp
-                                      ).toLocaleTimeString(),
-                                      logSearchQuery
-                                    )
-                                  : ''}
-                              </span>
-                              <Badge
-                                variant={
-                                  log.level === 'error'
-                                    ? 'outline'
-                                    : 'secondary'
-                                }
-                                className={
-                                  log.level === 'error'
-                                    ? 'border-black text-black'
-                                    : 'text-xs'
-                                }
-                              >
-                                {log.level}
-                              </Badge>
-                              <span className="flex-1">
-                                {highlightText(log.message, logSearchQuery)}
-                              </span>
-                            </div>
-                          ))}
+                          .map((log, idx) => {
+                            const isExpanded = expandedLogIndex === idx;
+                            const level = log.level || 'info';
+                            const timestamp = log.timestamp ? new Date(log.timestamp) : null;
+
+                            return (
+                              <div key={idx}>
+                                {/* Compact Log Line */}
+                                <button
+                                  onClick={() => setExpandedLogIndex(isExpanded ? null : idx)}
+                                  className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
+                                >
+                                  <div className="flex items-center gap-3 font-mono text-xs">
+                                    {/* Time */}
+                                    <span className="text-gray-500 w-20 flex-shrink-0">
+                                      {timestamp ? timestamp.toLocaleTimeString() : '-'}
+                                    </span>
+
+                                    {/* Level Badge */}
+                                    <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 flex-shrink-0 ${
+                                      level === 'error' ? 'border-black bg-black text-white' :
+                                      level === 'warn' || level === 'warning' ? 'border-black bg-white text-black' :
+                                      'border-gray-400 bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {level === 'error' && <AlertCircle className="w-3 h-3" />}
+                                      {(level === 'warn' || level === 'warning') && <AlertTriangle className="w-3 h-3" />}
+                                      {level === 'info' && <Info className="w-3 h-3" />}
+                                      {level.toUpperCase()}
+                                    </span>
+
+                                    {/* Message (truncated) */}
+                                    <span className="flex-1 truncate text-black">
+                                      {log.message}
+                                    </span>
+
+                                    {/* Expand Icon */}
+                                    <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                  </div>
+                                </button>
+
+                                {/* Expanded Details */}
+                                {isExpanded && (
+                                  <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <span className="font-bold uppercase text-gray-600">Timestamp:</span>
+                                        <div className="mt-1">{timestamp ? timestamp.toISOString() : 'N/A'}</div>
+                                      </div>
+                                      <div>
+                                        <span className="font-bold uppercase text-gray-600">Level:</span>
+                                        <div className="mt-1">{level.toUpperCase()}</div>
+                                      </div>
+                                    </div>
+
+                                    <div className="border-t-2 border-gray-300 pt-3">
+                                      <span className="font-bold uppercase text-gray-600 mb-2 block">Message:</span>
+                                      <div className="p-3 bg-white border border-gray-300 break-all whitespace-pre-wrap">
+                                        {log.message}
+                                      </div>
+                                    </div>
+
+                                    {/* Additional context if available */}
+                                    {(log as any).context && (
+                                      <div className="border-t-2 border-gray-300 pt-3">
+                                        <span className="font-bold uppercase text-gray-600 mb-2 block">Context:</span>
+                                        <div className="p-3 bg-white border border-gray-300">
+                                          <pre className="text-xs overflow-auto">
+                                            {JSON.stringify((log as any).context, null, 2)}
+                                          </pre>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
                   ) : (
