@@ -227,10 +227,6 @@ export const serverSideWorkflowTools = {
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID to update'
-        },
         step_identifier: {
           type: SchemaType.STRING,
           description: 'Step ID, name, or numeric index (as string)'
@@ -356,16 +352,12 @@ export const serverSideWorkflowTools = {
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID to update'
-        },
         step_identifier: {
           type: SchemaType.STRING,
           description: 'Step ID, name, or numeric index (supports negative indices)'
         },
       },
-      required: ['step_identifier']  // workflow_id removed - injected by backend from request context
+      required: ['step_identifier']
     },
     execute: async (
       params: {
@@ -462,13 +454,8 @@ export const serverSideWorkflowTools = {
     description: 'Get the current workflow YAML content',
     parameters: {
       type: SchemaType.OBJECT,
-      properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID to retrieve'
-        }
-      },
-      required: []  // workflow_id removed - injected by backend from request context
+      properties: {},
+      required: []
     },
     execute: async (
       params: { workflow_id: number },
@@ -511,10 +498,6 @@ export const serverSideWorkflowTools = {
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID'
-        },
         pattern: {
           type: SchemaType.STRING,
           description: 'Regex pattern to search (e.g., "click", "error", "step_.*")'
@@ -524,7 +507,7 @@ export const serverSideWorkflowTools = {
           description: 'Number of lines before/after match (default: 3)'
         }
       },
-      required: ['pattern']  // workflow_id injected by backend from request context
+      required: ['pattern']
     },
     execute: async (
       params: {
@@ -605,16 +588,12 @@ export const serverSideWorkflowTools = {
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID'
-        },
         step_identifier: {
           type: SchemaType.STRING,
           description: 'Step ID, name, or numeric index'
         },
       },
-      required: ['step_identifier']  // workflow_id removed - injected by backend from request context
+      required: ['step_identifier']
     },
     execute: async (
       params: {
@@ -673,10 +652,6 @@ export const serverSideWorkflowTools = {
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        workflow_id: {
-          type: SchemaType.NUMBER,
-          description: 'The workflow ID to update'
-        },
         from_index: {
           type: SchemaType.NUMBER,
           description: 'Current position of step (0-based)'
@@ -686,7 +661,7 @@ export const serverSideWorkflowTools = {
           description: 'Target position for step (0-based)'
         }
       },
-      required: ['from_index', 'to_index']  // workflow_id removed - injected by backend from request context
+      required: ['from_index', 'to_index']
     },
     execute: async (
       params: {
