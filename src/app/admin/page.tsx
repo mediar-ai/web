@@ -1064,49 +1064,49 @@ function AdminPageContent() {
                             <thead className="bg-gray-50">
                               <tr>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '180px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   NAME
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   STATUS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '120px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
                                 >
                                   HEALTH
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '120px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
                                 >
                                   IP ADDRESS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '140px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   AZURE ID
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   VERSION
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '140px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   ORGANIZATIONS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-right font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-right font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   ACTIONS
@@ -1116,27 +1116,27 @@ function AdminPageContent() {
                             <tbody className="divide-y divide-gray-200">
                               {[1, 2, 3].map(i => (
                                 <tr key={i} className="animate-pulse">
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
                                     <div className="h-3 bg-gray-100 rounded w-48"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-6 bg-gray-200 rounded w-20"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-4 bg-gray-200 rounded w-24 mb-1"></div>
                                     <div className="h-3 bg-gray-100 rounded w-32"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-3 bg-gray-200 rounded w-28"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-3 bg-gray-200 rounded w-24"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="h-6 bg-gray-200 rounded w-20"></div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="flex items-center justify-end gap-1">
                                       <div className="h-8 w-8 bg-gray-200 rounded"></div>
                                       <div className="h-8 w-8 bg-gray-200 rounded"></div>
@@ -1153,49 +1153,49 @@ function AdminPageContent() {
                             <thead className="bg-gray-50">
                               <tr>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '180px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   NAME
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   STATUS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '120px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
                                 >
                                   HEALTH
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '120px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
                                 >
                                   IP ADDRESS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '140px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   AZURE ID
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   VERSION
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '140px' }}
+                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '90px' }}
                                 >
                                   ORGANIZATIONS
                                 </th>
                                 <th
-                                  className="px-3 py-3 text-right font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  className="px-2 py-2 text-right font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   ACTIONS
@@ -1208,7 +1208,7 @@ function AdminPageContent() {
                                   key={machine.id}
                                   className="hover:bg-gray-50"
                                 >
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div>
                                       {editingMachine === machine.id ? (
                                         <input
@@ -1274,7 +1274,7 @@ function AdminPageContent() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     {editingMachine === machine.id ? (
                                       <select
                                         value={editedMachineData.status}
@@ -1311,7 +1311,7 @@ function AdminPageContent() {
                                       </span>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="space-y-1">
                                       {machine.status === 'active' ? (
                                         <>
@@ -1405,7 +1405,7 @@ function AdminPageContent() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="font-mono text-xs">
                                       {(() => {
                                         try {
@@ -1421,7 +1421,7 @@ function AdminPageContent() {
                                       })()}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="font-mono text-xs">
                                       {machine.azure_resource_id ? (
                                         <a
@@ -1438,14 +1438,14 @@ function AdminPageContent() {
                                       ) : (
                                         '-'
                                       )}
-                                      <td className="px-3 py-3">
+                                      <td className="px-2 py-2">
                                         <div className="font-mono text-xs">
                                           {(machine as any).mcp_version || '-'}
                                         </div>
                                       </td>
                                     </div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="flex items-center gap-1">
                                       {(machineIsGlobal[machine.id] ??
                                       false) ? (
@@ -1481,7 +1481,7 @@ function AdminPageContent() {
                                       </button>
                                     </div>
                                   </td>
-                                  <td className="px-3 py-3">
+                                  <td className="px-2 py-2">
                                     <div className="flex items-center justify-end gap-1">
                                       {editingMachine === machine.id ? (
                                         <>
