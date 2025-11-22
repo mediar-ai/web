@@ -617,21 +617,11 @@ export function UnifiedWorkflowDialog({
 
   if (!workflow) return null;
 
-  console.log('[DEBUG] UnifiedWorkflowDialog workflow:', {
-    id: workflow.id,
-    name: workflow.name,
-    preferred_format: workflow.preferred_format,
-    has_ts_metadata: !!workflow.typescript_metadata,
-    ts_metadata_type: typeof workflow.typescript_metadata,
-  });
-
   // Check if workflow has detailed info (is WorkflowOverview)
   const hasDetailedInfo = 'input_parameters' in workflow;
   const isTypescript =
     workflow.preferred_format === 'typescript' ||
     !!workflow.typescript_metadata;
-
-  console.log('[DEBUG] isTypescript result:', isTypescript);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -773,10 +763,19 @@ export function UnifiedWorkflowDialog({
         )}
 
         <Tabs
-          defaultValue="overview"
+          defaultValue={isTypescript ? 'typescript' : 'overview'}
           className="mt-2 flex-1 flex flex-col overflow-hidden"
         >
           <TabsList className="flex w-full justify-start px-6 py-3 bg-transparent gap-2 h-auto overflow-x-auto border-0">
+            {isTypescript && (
+              <TabsTrigger
+                value="typescript"
+                className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
+              >
+                <Code2 className="w-4 h-4 mr-2" />
+                TypeScript
+              </TabsTrigger>
+            )}
             <TabsTrigger
               value="overview"
               className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
@@ -826,15 +825,6 @@ export function UnifiedWorkflowDialog({
               <Terminal className="w-4 h-4 mr-2" />
               API
             </TabsTrigger>
-            {isTypescript && (
-              <TabsTrigger
-                value="typescript"
-                className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
-              >
-                <Code2 className="w-4 h-4 mr-2" />
-                TypeScript
-              </TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent
