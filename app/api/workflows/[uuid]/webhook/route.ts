@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/src/lib/supabase-server';
+import { createServerClient } from '@/lib/supabase-server';
 
 /**
  * GitHub Release Webhook Handler

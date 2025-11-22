@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { createServerClient } from '@/src/lib/supabase-server';
+import { createServerClient } from '@/lib/supabase-server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
