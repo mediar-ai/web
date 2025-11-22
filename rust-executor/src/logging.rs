@@ -69,21 +69,24 @@ impl LogBuffer {
         // Emit tracing event for real-time logging to ClickHouse
         // Include execution_id if available for distributed tracing correlation
         let execution_id = self.execution_id.as_deref().unwrap_or("");
+        let step_id_str = step_id.as_deref().unwrap_or("");
+        let tool_name_str = tool_name.as_deref().unwrap_or("");
+        let data_str = data.as_ref().map(|v| v.to_string()).unwrap_or_default();
 
         match level.to_lowercase().as_str() {
             "error" => {
-                error!(log_source = "executor", execution_id = %execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                error!(log_source = "executor", execution_id = %execution_id, step_id = %step_id_str, tool_name = %tool_name_str, data = %data_str, "{}", message)
             }
             "warn" | "warning" => {
-                warn!(log_source = "executor", execution_id = %execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                warn!(log_source = "executor", execution_id = %execution_id, step_id = %step_id_str, tool_name = %tool_name_str, data = %data_str, "{}", message)
             }
             "debug" => {
-                debug!(log_source = "executor", execution_id = %execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                debug!(log_source = "executor", execution_id = %execution_id, step_id = %step_id_str, tool_name = %tool_name_str, data = %data_str, "{}", message)
             }
             "trace" => {
-                trace!(log_source = "executor", execution_id = %execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                trace!(log_source = "executor", execution_id = %execution_id, step_id = %step_id_str, tool_name = %tool_name_str, data = %data_str, "{}", message)
             }
-            _ => info!(log_source = "executor", execution_id = %execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
+            _ => info!(log_source = "executor", execution_id = %execution_id, step_id = %step_id_str, tool_name = %tool_name_str, data = %data_str, "{}", message),
         }
 
         let entry = LogEntry {
