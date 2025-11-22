@@ -25,15 +25,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { uuid: string } }
+  props: { params: Promise<{ uuid: string }> }
 ) {
   try {
+    const params = await props.params;
     const authHeader = req.headers.get('authorization');
     let authenticatedOrgId: string | null = null;
     let authMethod: 'clerk' | 'service_token' = 'clerk';
 
     // Try Clerk authentication first (user sessions)
-    const { userId, orgId } = auth();
+    const { userId, orgId } = await auth();
 
     if (userId && orgId) {
       // User session authentication
