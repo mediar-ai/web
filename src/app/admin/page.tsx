@@ -181,18 +181,18 @@ function AdminPageContent() {
     }
   }, [machineColumnVisibility]);
 
-// Add click outside handler
-useEffect(() => {
-  const handleClickOutside = (e: MouseEvent) => {
-    const dropdown = document.getElementById('machine-columns-dropdown');
-    const button = (e.target as HTMLElement).closest('button');
-    if (dropdown && !dropdown.contains(e.target as Node) && !button?.textContent?.includes('COLUMNS')) {
-      dropdown.classList.add('hidden');
-    }
-  };
-  document.addEventListener('click', handleClickOutside);
-  return () => document.removeEventListener('click', handleClickOutside);
-}, []);
+  // Click outside handler for dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const dropdown = document.getElementById('machine-columns-dropdown');
+      const button = (e.target as HTMLElement).closest('button');
+      if (dropdown && !dropdown.contains(e.target as Node) && !button?.textContent?.includes('COLUMNS')) {
+        dropdown.classList.add('hidden');
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
   useEffect(() => {
     if (isGlobalAdmin) {
       fetchAllOrganizations();
