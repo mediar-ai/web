@@ -4,8 +4,8 @@ import {
   searchTerminatorDocs as searchDocs,
 } from '@/lib/terminator-docs-service';
 import { auth } from '@clerk/nextjs/server';
-import type { FunctionDeclaration } from '@google-cloud/vertexai';
-import { VertexAI } from '@google-cloud/vertexai';
+import type { FunctionDeclaration, Content } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -1428,7 +1428,8 @@ Answer the user's question helpfully and thoroughly by using the available tools
       ? JSON.parse(credentialsJson)
       : undefined;
 
-    const vertexAI = new VertexAI({
+    const genAI = new GoogleGenAI({
+      vertexai: true,
       project,
       location,
       googleAuthOptions: credentials
@@ -1437,29 +1438,12 @@ Answer the user's question helpfully and thoroughly by using the available tools
               client_email: credentials.client_email,
               private_key: credentials.private_key,
             },
-            scopes: ['https://www.googleapis.com/auth/cloud-platform'],
           }
         : undefined,
     });
 
-    // Get the model with tools
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: model,
-      tools:
-        functionDeclarations.length > 0
-          ? [{ functionDeclarations }]
-          : undefined,
-      systemInstruction: {
-        parts: [{ text: enrichedContext }],
-      } as any,
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-      },
-    });
-
-    // Convert message history to Vertex format
-    const history = messages.slice(0, -1).map((msg: any) => ({
+    // Convert message history to new SDK format
+    const history: Content[] = messages.slice(0, -1).map((msg: any) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }],
     }));
@@ -1470,8 +1454,19 @@ Answer the user's question helpfully and thoroughly by using the available tools
       `[Q&A API] Starting conversation with ${history.length} previous messages using ${model}`
     );
 
-    // Start chat
-    const chat = generativeModel.startChat({ history: history as any });
+    // Create chat session using new SDK
+    const chat = genAI.chats.create({
+      model: model,
+      history,
+      config: {
+        systemInstruction: enrichedContext,
+        temperature: 0.7,
+        maxOutputTokens: 8192,
+        tools: functionDeclarations.length > 0
+          ? [{ functionDeclarations }]
+          : undefined,
+      },
+    });
 
     // Multi-turn conversation loop
     let finalText = '';
@@ -1482,18 +1477,18 @@ Answer the user's question helpfully and thoroughly by using the available tools
       turnCount++;
       console.log(`[Q&A API] Turn ${turnCount}: Sending message to model`);
 
-      const result = await sendMessageWithRetry(chat, userMessage, {
+      const response = await sendMessageWithRetry(chat, userMessage, {
         maxRetries: 3,
         baseDelayMs: 1000,
         messageType: 'user message',
       });
-      const response = result.response;
-      const candidate = response.candidates?.[0];
+      const candidates = response.candidates;
 
-      if (!candidate) {
+      if (!candidates || candidates.length === 0) {
         throw new Error('No candidate in response');
       }
 
+      const candidate = candidates[0];
       const parts = candidate.content?.parts || [];
 
       // Extract text parts
@@ -1571,7 +1566,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
         );
 
         // Continue the conversation with tool results
-        const nextResult = await sendMessageWithRetry(
+        const nextResponse = await sendMessageWithRetry(
           chat,
           functionResponseParts,
           {
@@ -1580,10 +1575,10 @@ Answer the user's question helpfully and thoroughly by using the available tools
             messageType: 'tool results',
           }
         );
-        const nextResponse = nextResult.response;
-        const nextCandidate = nextResponse.candidates?.[0];
+        const nextCandidates = nextResponse.candidates;
 
-        if (nextCandidate) {
+        if (nextCandidates && nextCandidates.length > 0) {
+          const nextCandidate = nextCandidates[0];
           const nextParts = nextCandidate.content?.parts || [];
           const nextTextParts = nextParts
             .filter((p: any) => p.text)

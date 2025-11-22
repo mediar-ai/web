@@ -3,7 +3,10 @@
  * These tools allow AI to access and query recent workflow execution logs from the desktop app
  */
 
-import { SchemaType } from '@google-cloud/vertexai';
+import { Type } from '@google/genai';
+
+// Alias for backward compatibility
+const SchemaType = Type;
 import { getRedisClient } from '@/lib/redis-client';
 import * as devQueryTools from '@/lib/dev-execution-query-tools';
 

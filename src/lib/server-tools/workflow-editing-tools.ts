@@ -6,7 +6,10 @@
  * while maintaining GitHub sync and avoiding API overhead.
  */
 
-import { SchemaType } from '@google-cloud/vertexai';
+import { Type } from '@google/genai';
+
+// Alias for backward compatibility
+const SchemaType = Type;
 import * as yaml from 'js-yaml';
 import { workflowVersionService } from '@/lib/services/workflow-version-service';
 

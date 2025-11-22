@@ -5,7 +5,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
-import { SchemaType } from '@google-cloud/vertexai';
+import { Type } from '@google/genai';
+
+// Alias for backward compatibility
+const SchemaType = Type;
 import { loadTerminatorDocs, searchTerminatorDocs } from '@/lib/terminator-docs-service';
 // NOTE: terminator-api-service functions are inlined below to avoid Turbopack chunking issues with fs/path
 

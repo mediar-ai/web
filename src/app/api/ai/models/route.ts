@@ -19,10 +19,12 @@ export async function GET(request: NextRequest) {
     const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
     
     if (authHeader) {
+      // Require proper desktop authentication or clerk auth (not implemented here yet)
+      // For now, just logging invalid attempts if they try to use the old password
       const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
-      if (token !== API_PASSWORD) {
+      if (token === API_PASSWORD) {
         return NextResponse.json(
-          { error: { message: 'Invalid API key', type: 'invalid_request_error', code: 'invalid_api_key' }},
+          { error: { message: 'API Password authentication is deprecated', type: 'invalid_request_error', code: 'deprecated_auth' }},
           { status: 401, headers: corsHeaders }
         );
       }

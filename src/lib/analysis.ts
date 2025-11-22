@@ -1,5 +1,5 @@
 import { getVertexGenAI } from '@/lib/vertexai';
-import type { Part } from '@google-cloud/vertexai';
+import type { Part } from '@google/genai';
 
 const MODEL_NAME = "gemini-2.5-flash";
 

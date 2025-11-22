@@ -3,72 +3,6 @@
  * Uses text-embedding-004 model (768 dimensions)
  */
 
-import { VertexAI } from '@google-cloud/vertexai';
-
-// Initialize Vertex AI client
-const getVertexAI = () => {
-  const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
-  const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
-
-  // Detect environment
-  const isVercel = process.env.VERCEL === '1';
-  const hasDirectCredentials = !!(
-    process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY
-  );
-  const hasBase64Credentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
-
-  // Method 1: Direct credentials (recommended for Vercel)
-  if (hasDirectCredentials) {
-    return new VertexAI({
-      project,
-      location,
-      googleAuthOptions: {
-        credentials: {
-          client_email: process.env.GOOGLE_CLIENT_EMAIL!,
-          private_key: process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
-        },
-        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-      },
-    });
-  }
-
-  // Method 2: Base64 credentials
-  if (hasBase64Credentials) {
-    const credentialsJson = Buffer.from(
-      process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64!,
-      'base64'
-    ).toString('utf-8');
-    const credentials = JSON.parse(credentialsJson);
-
-    return new VertexAI({
-      project,
-      location,
-      googleAuthOptions: {
-        credentials: {
-          client_email: credentials.client_email,
-          private_key: credentials.private_key,
-        },
-        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-      },
-    });
-  }
-
-  // Method 3: File-based credentials (local development)
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !isVercel) {
-    return new VertexAI({
-      project,
-      location,
-      googleAuthOptions: {
-        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-      },
-    });
-  }
-
-  throw new Error(
-    'No valid Google Cloud credentials found. Set GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY or GOOGLE_APPLICATION_CREDENTIALS_BASE64'
-  );
-};
-
 /**
  * Generate a single embedding using Vertex AI text-embedding-004
  * @param text Text to embed (max ~20,000 characters)
@@ -80,7 +14,6 @@ export async function generateEmbedding(
   dimensions: 256 | 512 | 768 = 768
 ): Promise<number[]> {
   try {
-    const vertexAI = getVertexAI();
     const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
     const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
 
@@ -94,7 +27,7 @@ export async function generateEmbedding(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${await getAccessToken(vertexAI)}`,
+          Authorization: `Bearer ${await getAccessToken()}`,
         },
         body: JSON.stringify({
           instances: [
@@ -139,7 +72,6 @@ export async function generateEmbeddingBatch(
   dimensions: 256 | 512 | 768 = 768
 ): Promise<number[][]> {
   try {
-    const vertexAI = getVertexAI();
     const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
     const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
 
@@ -159,7 +91,7 @@ export async function generateEmbeddingBatch(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${await getAccessToken(vertexAI)}`,
+          Authorization: `Bearer ${await getAccessToken()}`,
         },
         body: JSON.stringify({
           instances,
@@ -199,7 +131,6 @@ export async function generateQueryEmbedding(
   dimensions: 256 | 512 | 768 = 768
 ): Promise<number[]> {
   try {
-    const vertexAI = getVertexAI();
     const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
     const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
 
@@ -211,7 +142,7 @@ export async function generateQueryEmbedding(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${await getAccessToken(vertexAI)}`,
+          Authorization: `Bearer ${await getAccessToken()}`,
         },
         body: JSON.stringify({
           instances: [
@@ -248,7 +179,7 @@ export async function generateQueryEmbedding(
 /**
  * Helper to get access token for Vertex AI
  */
-async function getAccessToken(_vertexAI: VertexAI): Promise<string> {
+async function getAccessToken(): Promise<string> {
   // Use GoogleAuth to get token
   const { GoogleAuth } = await import('google-auth-library');
   
