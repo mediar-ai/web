@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/src/lib/supabase-server';
 
 /**
  * GitHub Release Webhook Handler
@@ -76,7 +76,7 @@ export async function POST(
       );
     }
 
-    const supabase = createClient();
+    const supabase = createServerClient();
 
     // Update existing workflow with release metadata
     const { data: workflow, error: updateError } = await supabase
