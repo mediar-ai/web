@@ -27,20 +27,13 @@ export async function POST(
     // Verify webhook secret
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.MEDIAR_WEBHOOK_SECRET}`;
-    const params = await props.params;
-    const webhookSecret = process.env.MEDIAR_WEBHOOK_SECRET;
 
-    // Try Clerk authentication
-    // Wrap in try-catch since route is excluded from Clerk middleware
-    let userId: string | null = null;
-    let orgId: string | null = null;
-    
-    try {
-      const authResult = await auth();
-      userId = authResult.userId;
-      orgId = authResult.orgId;
-    } catch (error) {
-      // Clerk auth not available for webhooks
+    if (!process.env.MEDIAR_WEBHOOK_SECRET) {
+      console.error('MEDIAR_WEBHOOK_SECRET not configured');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     if (authHeader !== expectedAuth) {
