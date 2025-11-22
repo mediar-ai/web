@@ -45,9 +45,6 @@ const getRedisClient = async () => {
 // architectures with native function calling
 // =================================================================
 
-// Auth
-const _API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
-
 // CORS (using shared helper)
 import { getCorsHeaders } from '@/lib/cors';
 
