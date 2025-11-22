@@ -1183,12 +1183,12 @@ function AdminPageContent() {
                                   AZURE ID
                                 </th>
                                 <th
-                                <th
                                   className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '100px' }}
                                 >
                                   VERSION
                                 </th>
+                                <th
                                   className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '140px' }}
                                 >
@@ -1438,11 +1438,11 @@ function AdminPageContent() {
                                       ) : (
                                         '-'
                                       )}
-                                  <td className="px-3 py-3">
-                                    <div className="font-mono text-xs">
-                                      {(machine as any).mcp_version || '-'}
-                                    </div>
-                                  </td>
+                                      <td className="px-3 py-3">
+                                        <div className="font-mono text-xs">
+                                          {(machine as any).mcp_version || '-'}
+                                        </div>
+                                      </td>
                                     </div>
                                   </td>
                                   <td className="px-3 py-3">
