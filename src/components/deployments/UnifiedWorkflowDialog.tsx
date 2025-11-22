@@ -617,11 +617,21 @@ export function UnifiedWorkflowDialog({
 
   if (!workflow) return null;
 
+  console.log('[DEBUG] UnifiedWorkflowDialog workflow:', {
+    id: workflow.id,
+    name: workflow.name,
+    preferred_format: workflow.preferred_format,
+    has_ts_metadata: !!workflow.typescript_metadata,
+    ts_metadata_type: typeof workflow.typescript_metadata,
+  });
+
   // Check if workflow has detailed info (is WorkflowOverview)
   const hasDetailedInfo = 'input_parameters' in workflow;
   const isTypescript =
     workflow.preferred_format === 'typescript' ||
     !!workflow.typescript_metadata;
+
+  console.log('[DEBUG] isTypescript result:', isTypescript);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
