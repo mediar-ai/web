@@ -231,6 +231,7 @@ export async function GET(
   }
 
   const { workflowId } = await params;
+  console.log(`[DEBUG] Overview API hit for ${workflowId}`);
   const workflowIdNum = parseInt(workflowId);
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -284,15 +285,12 @@ export async function GET(
     .eq('id', workflowId)
     .single();
 
-  console.log(
-    `[Overview API] Workflow ${workflowId} ownership data:`,
-    workflowOwnership
-      ? {
-          id: workflowOwnership.id,
-          preferred_format: workflowOwnership.preferred_format,
-        }
-      : 'null'
-  );
+  console.log(`[DEBUG] Workflow ownership data:`, {
+    id: workflowOwnership?.id,
+    preferred_format: workflowOwnership?.preferred_format,
+    has_typescript_metadata: !!workflowOwnership?.typescript_metadata,
+    github_folder: workflowOwnership?.github_folder,
+  });
 
   if (ownershipError || !workflowOwnership) {
     return NextResponse.json(
@@ -428,9 +426,15 @@ export async function GET(
     );
   }
 
-  console.log(
-    `[Overview API] Constructing response for ${workflow.id}, preferred_format: ${workflowOwnership.preferred_format}`
-  );
+  const calculatedFormat =
+    workflowOwnership.preferred_format ||
+    (workflowOwnership.typescript_metadata ||
+    (workflowOwnership.github_folder &&
+      workflowOwnership.github_folder.includes('typescript'))
+      ? 'typescript'
+      : 'yaml');
+
+  console.log(`[DEBUG] Calculated format: ${calculatedFormat}`);
 
   const responsePayload = {
     id: workflow.id,
@@ -441,13 +445,7 @@ export async function GET(
     is_executable: workflow.status === 'deployed',
     category: workflow.category,
     estimated_duration_seconds: workflow.current_version_avg_duration,
-    preferred_format:
-      workflowOwnership.preferred_format ||
-      (workflowOwnership.typescript_metadata ||
-      (workflowOwnership.github_folder &&
-        workflowOwnership.github_folder.includes('typescript'))
-        ? 'typescript'
-        : 'yaml'),
+    preferred_format: calculatedFormat,
     typescript_metadata: workflowOwnership.typescript_metadata,
     input_parameters: executionSchema,
     expected_outputs: expectedOutputs,
