@@ -625,7 +625,7 @@ export function UnifiedWorkflowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col rounded-2xl border-0 shadow-2xl p-0 overflow-hidden">
+      <DialogContent className="max-w-6xl h-[85vh] flex flex-col rounded-2xl border-0 shadow-2xl p-0 overflow-hidden">
         <DialogHeader>
           {/* Inline Editable Title */}
           {isEditingName ? (
