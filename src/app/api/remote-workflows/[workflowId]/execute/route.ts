@@ -646,19 +646,35 @@ export async function POST(
         );
 
         // Try to find an alternative machine the org has access to
+        // Must filter by organization access (is_global=true OR has explicit assignment)
         const { data: alternativeMachine } = await supabase
           .from('available_machines_with_load')
-          .select('id, name, mcp_endpoint')
+          .select('id, name, mcp_endpoint, is_global')
           .eq('status', 'active')
           .gt('available_capacity', 0)
-          .order('load_percentage')
-          .limit(1);
+          .order('load_percentage');
 
-        if (!alternativeMachine || alternativeMachine.length === 0) {
+        // Filter to machines the org actually has access to
+        let accessibleMachine = null;
+        if (alternativeMachine && alternativeMachine.length > 0) {
+          for (const machine of alternativeMachine) {
+            // Check if org has access to this machine
+            const { data: machineAccess } = await supabase.rpc('check_machine_access', {
+              p_machine_id: machine.id,
+              p_organization_id: workflowOrgId
+            });
+            if (machineAccess) {
+              accessibleMachine = machine;
+              break;
+            }
+          }
+        }
+
+        if (!accessibleMachine) {
           return NextResponse.json(
             {
               error: `Organization ${workflowOrgId} does not have access to machine ${assigned_machine_id}`,
-              details: 'No alternative machines available for this organization'
+              details: 'No alternative machines available that this organization has access to'
             },
             { status: 403 }
           );
@@ -666,10 +682,10 @@ export async function POST(
 
         // Use the alternative machine
         console.log(
-          `[INFO] Switching to alternative machine ${alternativeMachine[0].id} that org ${workflowOrgId} has access to`
+          `[INFO] Switching to alternative machine ${accessibleMachine.id} that org ${workflowOrgId} has access to`
         );
-        assigned_machine_id = alternativeMachine[0].id;
-        mcp_endpoint = alternativeMachine[0].mcp_endpoint;
+        assigned_machine_id = accessibleMachine.id;
+        mcp_endpoint = accessibleMachine.mcp_endpoint;
         assignment_reason = 'Organization-accessible fallback machine';
       }
     }
