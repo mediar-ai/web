@@ -1748,6 +1748,23 @@ function AdminPageContent() {
                                           </button>
                                           <button
                                             onClick={() =>
+                                              handleUpdateMachineVersion(
+                                                machine.id,
+                                                machine.name
+                                              )
+                                            }
+                                            disabled={updatingMachine === machine.id}
+                                            className={`p-1 border border-black ${updatingMachine === machine.id ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'hover:bg-blue-600 hover:text-white hover:border-blue-600'}`}
+                                            title="Update MCP version"
+                                          >
+                                            {updatingMachine === machine.id ? (
+                                              <RefreshCw className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <RefreshCw className="w-4 h-4" />
+                                            )}
+                                          </button>
+                                          <button
+                                            onClick={() =>
                                               handleDeleteMachine(
                                                 machine.id,
                                                 machine.name
