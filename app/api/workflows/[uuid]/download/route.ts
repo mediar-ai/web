@@ -27,6 +27,7 @@ export async function GET(
   req: NextRequest,
   props: { params: Promise<{ uuid: string }> }
 ) {
+  try {
     const params = await props.params;
     const authHeader = req.headers.get('authorization');
     let authenticatedOrgId: string | null = null;
@@ -40,7 +41,7 @@ export async function GET(
     try {
       const authResult = await auth();
       userId = authResult.userId;
-      orgId = authResult.orgId;
+      orgId = authResult.orgId ?? null;
     } catch (error) {
       // Clerk auth not available, will try service token
     }
