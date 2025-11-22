@@ -619,6 +619,9 @@ export function UnifiedWorkflowDialog({
 
   // Check if workflow has detailed info (is WorkflowOverview)
   const hasDetailedInfo = 'input_parameters' in workflow;
+  const isTypescript =
+    workflow.preferred_format === 'typescript' ||
+    !!workflow.typescript_metadata;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -813,7 +816,7 @@ export function UnifiedWorkflowDialog({
               <Terminal className="w-4 h-4 mr-2" />
               API
             </TabsTrigger>
-            {workflow.preferred_format === 'typescript' && (
+            {isTypescript && (
               <TabsTrigger
                 value="typescript"
                 className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
@@ -907,7 +910,7 @@ export function UnifiedWorkflowDialog({
             className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
           >
             {/* Show message for TypeScript workflows */}
-            {workflow.preferred_format === 'typescript' && (
+            {isTypescript && (
               <Alert className="border-2 border-black rounded-lg">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
@@ -917,7 +920,7 @@ export function UnifiedWorkflowDialog({
               </Alert>
             )}
 
-            {workflow.preferred_format !== 'typescript' && (
+            {!isTypescript && (
               <div className="flex items-center gap-3 p-4 bg-white border-2 border-black rounded-lg">
                 <span className="font-mono font-bold text-sm uppercase">
                   Version:
@@ -1792,14 +1795,16 @@ body: JSON.stringify(${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs :
           </TabsContent>
 
           {/* TypeScript Workflow Tab */}
-          {workflow.preferred_format === 'typescript' && (
+          {isTypescript && (
             <TabsContent
               value="typescript"
               className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
             >
               <TypeScriptWorkflowTab
                 workflowId={workflow.id}
-                workflowFormat={workflow.preferred_format}
+                workflowFormat={
+                  isTypescript ? 'typescript' : workflow.preferred_format
+                }
               />
             </TabsContent>
           )}
