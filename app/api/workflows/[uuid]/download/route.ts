@@ -27,14 +27,23 @@ export async function GET(
   req: NextRequest,
   props: { params: Promise<{ uuid: string }> }
 ) {
-  try {
     const params = await props.params;
     const authHeader = req.headers.get('authorization');
     let authenticatedOrgId: string | null = null;
     let authMethod: 'clerk' | 'service_token' = 'clerk';
 
     // Try Clerk authentication first (user sessions)
-    const { userId, orgId } = await auth();
+    // Wrap in try-catch since route is excluded from Clerk middleware
+    let userId: string | null = null;
+    let orgId: string | null = null;
+    
+    try {
+      const authResult = await auth();
+      userId = authResult.userId;
+      orgId = authResult.orgId;
+    } catch (error) {
+      // Clerk auth not available, will try service token
+    }
 
     if (userId && orgId) {
       // User session authentication
