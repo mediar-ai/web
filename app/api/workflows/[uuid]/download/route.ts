@@ -33,74 +33,49 @@ export async function GET(
     let authenticatedOrgId: string | null = null;
     let authMethod: 'clerk' | 'service_token' = 'clerk';
 
-    // Try Clerk authentication first (user sessions)
-    // Wrap in try-catch since route is excluded from Clerk middleware
-    let userId: string | null = null;
-    let orgId: string | null = null;
-    
-    try {
-      const authResult = await auth();
-      userId = authResult.userId;
-      orgId = authResult.orgId ?? null;
-    } catch (error) {
-      // Clerk auth not available, will try service token
-    }
-
-    if (userId && orgId) {
-      // User session authentication
-      authenticatedOrgId = orgId;
-      authMethod = 'clerk';
-    } else if (authHeader?.startsWith('Bearer ')) {
-      // Service token authentication (for VMs/scheduled tasks)
+    // Check for Bearer token (service token OR could be Clerk)
+    if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      
       const supabase = createServerClient();
 
-      // Verify service token
-      const { data: machines, error: tokenError } = await supabase.rpc(
+      // Try service token verification first
+      const { data: machines } = await supabase.rpc(
         'verify_machine_service_token',
         { p_service_token: token }
       );
 
-      if (tokenError || !machines || machines.length === 0) {
-        console.warn('Invalid service token attempt:', {
-          hasToken: !!token,
-          error: tokenError?.message,
-        });
-        return NextResponse.json(
-          { error: 'Invalid or expired service token' },
-          { status: 401 }
-        );
+      if (machines && machines.length > 0) {
+        // Valid service token
+        const orgIdHeader = req.headers.get('x-organization-id');
+        if (!orgIdHeader) {
+          return NextResponse.json(
+            { error: 'Missing X-Organization-ID header', hint: 'Service token auth requires org ID' },
+            { status: 400 }
+          );
+        }
+        authenticatedOrgId = orgIdHeader;
+        authMethod = 'service_token';
+        console.log('Service token auth:', { machine: machines[0].machine_name, org_id: authenticatedOrgId });
       }
+    }
 
-      const machine = machines[0];
-      
-      // Service token is valid, but we need org ID from request
-      const orgIdHeader = req.headers.get('x-organization-id');
-      if (!orgIdHeader) {
-        return NextResponse.json(
-          {
-            error: 'Missing X-Organization-ID header',
-            hint: 'Service token auth requires org ID to be specified',
-          },
-          { status: 400 }
-        );
+    // If not authenticated via service token, try Clerk session
+    if (!authenticatedOrgId) {
+      try {
+        const { userId, orgId } = await auth();
+        if (userId && orgId) {
+          authenticatedOrgId = orgId;
+          authMethod = 'clerk';
+        }
+      } catch (error) {
+        // Clerk not available, ignore
       }
+    }
 
-      authenticatedOrgId = orgIdHeader;
-      authMethod = 'service_token';
-
-      console.log('Service token auth:', {
-        machine_id: machine.machine_id,
-        machine_name: machine.machine_name,
-        org_id: authenticatedOrgId,
-      });
-    } else {
+    // Final auth check
+    if (!authenticatedOrgId) {
       return NextResponse.json(
-        {
-          error: 'Unauthorized',
-          hint: 'Provide either Clerk session or service token in Authorization header',
-        },
+        { error: 'Unauthorized', hint: 'Provide Clerk session or service token in Authorization header' },
         { status: 401 }
       );
     }
