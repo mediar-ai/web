@@ -26,6 +26,8 @@ import {
   RefreshCw,
   Cpu,
   Search,
+  Columns3,
+  ChevronDown,
 } from 'lucide-react';
 // import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
@@ -88,6 +90,28 @@ function AdminPageContent() {
   const [orgSearchQuery, setOrgSearchQuery] = useState('');
 
   const [updatingMachine, setUpdatingMachine] = useState<number | null>(null);
+  const [machineColumnVisibility, setMachineColumnVisibility] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('admin-machines-columns');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Failed to parse saved column visibility:', e);
+        }
+      }
+    }
+    return {
+      name: true,
+      status: true,
+      health: true,
+      ip_address: true,
+      azure_id: true,
+      version: true,
+      organizations: true,
+      actions: true,
+    };
+  });
   // Check if user is Mediar admin
   const hasMediarEmail =
     user?.emailAddresses?.some(email =>
@@ -150,6 +174,13 @@ function AdminPageContent() {
   };
 
   // Fetch all organizations if global admin
+  // Save column visibility to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('admin-machines-columns', JSON.stringify(machineColumnVisibility));
+    }
+  }, [machineColumnVisibility]);
+
   useEffect(() => {
     if (isGlobalAdmin) {
       fetchAllOrganizations();
@@ -1050,13 +1081,60 @@ function AdminPageContent() {
                         <h3 className="font-mono font-bold">
                           MACHINE REGISTRY
                         </h3>
-                        <button
-                          onClick={fetchMachines}
-                          className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white flex items-center gap-1"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          REFRESH
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const dropdown = document.getElementById('machine-columns-dropdown');
+                              if (dropdown) {
+                                dropdown.classList.toggle('hidden');
+                              }
+                            }}
+                            className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white flex items-center gap-1 relative"
+                          >
+                            <Columns3 className="w-3 h-3" />
+                            COLUMNS
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                          <div id="machine-columns-dropdown" className="hidden absolute top-12 right-4 z-50 bg-white border-2 border-black shadow-lg min-w-[180px]">
+                            <div className="font-mono uppercase text-xs p-2 border-b border-gray-200 font-bold">
+                              Toggle Columns
+                            </div>
+                            {[
+                              { id: 'name', label: 'Name' },
+                              { id: 'status', label: 'Status' },
+                              { id: 'health', label: 'Health' },
+                              { id: 'ip_address', label: 'IP Address' },
+                              { id: 'azure_id', label: 'Azure ID' },
+                              { id: 'version', label: 'Version' },
+                              { id: 'organizations', label: 'Orgs' },
+                            ].map(({ id, label }) => (
+                              <label
+                                key={id}
+                                className="flex items-center gap-2 p-2 hover:bg-gray-100 cursor-pointer font-mono text-sm"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={machineColumnVisibility[id] !== false}
+                                  onChange={(e) => {
+                                    setMachineColumnVisibility({
+                                      ...machineColumnVisibility,
+                                      [id]: e.target.checked,
+                                    });
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                          <button
+                            onClick={fetchMachines}
+                            className="px-2 py-1 font-mono text-xs border border-black hover:bg-black hover:text-white flex items-center gap-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            REFRESH
+                          </button>
+                        </div>
                       </div>
                       {loadingMachines ? (
                         <div className="overflow-x-auto w-full border-t border-gray-200">
