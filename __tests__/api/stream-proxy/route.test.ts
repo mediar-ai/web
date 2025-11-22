@@ -6,8 +6,8 @@
 import { POST, OPTIONS } from '@/app/api/stream-proxy/route';
 import { NextRequest } from 'next/server';
 
-// Mock Vertex AI
-jest.mock('@google-cloud/vertexai', () => {
+// Mock Google Gen AI
+jest.mock('@google/genai', () => {
   const mockGenerateContentStream = jest.fn().mockResolvedValue({
     stream: (async function* () {
       yield {
@@ -27,7 +27,7 @@ jest.mock('@google-cloud/vertexai', () => {
   }));
 
   return {
-    VertexAI: jest.fn().mockImplementation(() => ({
+    GoogleGenAI: jest.fn().mockImplementation(() => ({
       getGenerativeModel: mockGetGenerativeModel,
     })),
   };
