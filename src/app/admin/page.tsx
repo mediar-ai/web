@@ -87,6 +87,7 @@ function AdminPageContent() {
   }>({});
   const [orgSearchQuery, setOrgSearchQuery] = useState('');
 
+  const [updatingMachine, setUpdatingMachine] = useState<number | null>(null);
   // Check if user is Mediar admin
   const hasMediarEmail =
     user?.emailAddresses?.some(email =>
@@ -1094,6 +1095,12 @@ function AdminPageContent() {
                                 </th>
                                 <th
                                   className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
+                                >
+                                  VERSION
+                                </th>
+                                <th
+                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '140px' }}
                                 >
                                   ORGANIZATIONS
@@ -1176,6 +1183,12 @@ function AdminPageContent() {
                                   AZURE ID
                                 </th>
                                 <th
+                                <th
+                                  className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
+                                  style={{ minWidth: '100px' }}
+                                >
+                                  VERSION
+                                </th>
                                   className="px-3 py-3 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
                                   style={{ minWidth: '140px' }}
                                 >
@@ -1425,6 +1438,11 @@ function AdminPageContent() {
                                       ) : (
                                         '-'
                                       )}
+                                  <td className="px-3 py-3">
+                                    <div className="font-mono text-xs">
+                                      {(machine as any).mcp_version || '-'}
+                                    </div>
+                                  </td>
                                     </div>
                                   </td>
                                   <td className="px-3 py-3">
@@ -1539,7 +1557,7 @@ function AdminPageContent() {
                               {machines.length === 0 && (
                                 <tr>
                                   <td
-                                    colSpan={7}
+                                    colSpan={8}
                                     className="px-4 py-8 text-center text-gray-500 font-mono"
                                   >
                                     No machines registered

@@ -163,6 +163,11 @@ export async function GET(request: Request) {
           if (healthResponse.uptime_seconds !== undefined) {
             updateData.uptime_seconds = healthResponse.uptime_seconds;
           }
+          // Update MCP version if the health response includes it
+          if (healthResponse.version !== undefined) {
+            updateData.mcp_version = healthResponse.version;
+          }
+
 
           // Only add optional fields if they exist on the machine
           if ('health_details' in machine) {
