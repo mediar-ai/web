@@ -159,6 +159,7 @@ export async function GET(
 
     const headers: Record<string, string> = {
       'User-Agent': 'mediar-workflow-downloader/1.0',
+      'Accept': 'application/octet-stream', // Required for private repo asset downloads
     };
 
     if (githubToken) {
