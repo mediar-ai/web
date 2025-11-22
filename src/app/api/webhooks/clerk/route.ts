@@ -121,14 +121,33 @@ export async function POST(req: Request) {
 
         console.log(`[Clerk Webhook] ✓ Created personal workspace: ${workspaceName} (${personalOrg.id})`);
 
-        // Add user as owner
-        await client.organizations.createOrganizationMembership({
-          organizationId: personalOrg.id,
-          userId: userId,
-          role: 'org:owner'
-        });
+        // Add user as owner with retry logic for race conditions
+        let _membershipCreated = false;
+        const maxRetries = 3;
 
-        console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} as owner of personal workspace`);
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            await client.organizations.createOrganizationMembership({
+              organizationId: personalOrg.id,
+              userId: userId,
+              role: 'org:owner'
+            });
+            _membershipCreated = true;
+            console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} as owner of personal workspace`);
+            break;
+          } catch (membershipError: any) {
+            if (membershipError.status === 404 && attempt < maxRetries - 1) {
+              // User might not be fully propagated yet, wait and retry
+              const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+              console.log(`[Clerk Webhook] User not ready (404), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+              // Log error but continue with database inserts
+              console.error(`[Clerk Webhook] ✗ Failed to add ${primaryEmail} as owner after ${attempt + 1} attempts:`, membershipError);
+              break;
+            }
+          }
+        }
 
         // Insert user into mediar_users table
         const userName = [first_name, last_name].filter(Boolean).join(' ') || primaryEmail;
@@ -183,15 +202,27 @@ export async function POST(req: Request) {
           console.log(`[Clerk Webhook] Adding Mediar admin ${primaryEmail} to Mediar organizations`);
 
           for (const mediarOrgId of MEDIAR_ORG_IDS) {
-            try {
-              await client.organizations.createOrganizationMembership({
-                organizationId: mediarOrgId,
-                userId: userId,
-                role: 'org:admin'
-              });
-              console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} to Mediar org: ${mediarOrgId}`);
-            } catch (err) {
-              console.error(`[Clerk Webhook] ✗ Failed to add ${primaryEmail} to Mediar org ${mediarOrgId}:`, err);
+            let _added = false;
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              try {
+                await client.organizations.createOrganizationMembership({
+                  organizationId: mediarOrgId,
+                  userId: userId,
+                  role: 'org:admin'
+                });
+                console.log(`[Clerk Webhook] ✓ Added ${primaryEmail} to Mediar org: ${mediarOrgId}`);
+                _added = true;
+                break;
+              } catch (err: any) {
+                if (err.status === 404 && attempt < maxRetries - 1) {
+                  const delay = Math.pow(2, attempt) * 1000;
+                  console.log(`[Clerk Webhook] Retrying Mediar org membership in ${delay}ms...`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                  console.error(`[Clerk Webhook] ✗ Failed to add ${primaryEmail} to Mediar org ${mediarOrgId} after ${attempt + 1} attempts:`, err);
+                  break;
+                }
+              }
             }
           }
         }
