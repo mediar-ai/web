@@ -1230,52 +1230,28 @@ function AdminPageContent() {
                           <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                               <tr>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '90px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.name === false ? "none" : "", minWidth: '90px' }}>
                                   NAME
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '100px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.status === false ? "none" : "", minWidth: '100px' }}>
                                   STATUS
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '100px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.health === false ? "none" : "", minWidth: '100px' }}>
                                   HEALTH
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '100px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.ip_address === false ? "none" : "", minWidth: '100px' }}>
                                   IP ADDRESS
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '90px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.azure_id === false ? "none" : "", minWidth: '90px' }}>
                                   AZURE ID
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '100px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.version === false ? "none" : "", minWidth: '100px' }}>
                                   VERSION
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '90px' }}
-                                >
+                                <th className="px-2 py-2 text-left font-mono text-xs text-gray-600 whitespace-nowrap" style={{ display: machineColumnVisibility.organizations === false ? "none" : "", minWidth: '90px' }}>
                                   ORGANIZATIONS
                                 </th>
-                                <th
-                                  className="px-2 py-2 text-right font-mono text-xs text-gray-600 whitespace-nowrap"
-                                  style={{ minWidth: '100px' }}
-                                >
+                                <th className="px-2 py-2 text-right font-mono text-xs text-gray-600 whitespace-nowrap" style={{ minWidth: '100px' }}>
                                   ACTIONS
                                 </th>
                               </tr>
@@ -1286,7 +1262,7 @@ function AdminPageContent() {
                                   key={machine.id}
                                   className="hover:bg-gray-50"
                                 >
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.name === false ? "none" : "" }}>
                                     <div>
                                       {editingMachine === machine.id ? (
                                         <input
@@ -1352,7 +1328,7 @@ function AdminPageContent() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.status === false ? "none" : "" }}>
                                     {editingMachine === machine.id ? (
                                       <select
                                         value={editedMachineData.status}
@@ -1389,7 +1365,7 @@ function AdminPageContent() {
                                       </span>
                                     )}
                                   </td>
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.health === false ? "none" : "" }}>
                                     <div className="space-y-1">
                                       {machine.status === 'active' ? (
                                         <>
@@ -1483,7 +1459,7 @@ function AdminPageContent() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.ip_address === false ? "none" : "" }}>
                                     <div className="font-mono text-xs">
                                       {(() => {
                                         try {
@@ -1499,7 +1475,7 @@ function AdminPageContent() {
                                       })()}
                                     </div>
                                   </td>
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.azure_id === false ? "none" : "" }}>
                                     <div className="font-mono text-xs">
                                       {machine.azure_resource_id ? (
                                         <a
@@ -1516,14 +1492,14 @@ function AdminPageContent() {
                                       ) : (
                                         '-'
                                       )}
-                                      <td className="px-2 py-2">
+                                      <td className="px-2 py-2" style={{ display: machineColumnVisibility.version === false ? "none" : "" }}>
                                         <div className="font-mono text-xs">
                                           {(machine as any).mcp_version || '-'}
                                         </div>
                                       </td>
                                     </div>
                                   </td>
-                                  <td className="px-2 py-2">
+                                  <td className="px-2 py-2" style={{ display: machineColumnVisibility.organizations === false ? "none" : "" }}>
                                     <div className="flex items-center gap-1">
                                       {(machineIsGlobal[machine.id] ??
                                       false) ? (
