@@ -284,6 +284,16 @@ export async function GET(
     .eq('id', workflowId)
     .single();
 
+  console.log(
+    `[Overview API] Workflow ${workflowId} ownership data:`,
+    workflowOwnership
+      ? {
+          id: workflowOwnership.id,
+          preferred_format: workflowOwnership.preferred_format,
+        }
+      : 'null'
+  );
+
   if (ownershipError || !workflowOwnership) {
     return NextResponse.json(
       { success: false, error: 'Workflow not found' },
@@ -417,6 +427,10 @@ export async function GET(
       e
     );
   }
+
+  console.log(
+    `[Overview API] Constructing response for ${workflow.id}, preferred_format: ${workflowOwnership.preferred_format}`
+  );
 
   const responsePayload = {
     id: workflow.id,
