@@ -24,7 +24,7 @@ import { createClient } from 'redis';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 import { analyzeToolResults, checkTokenLimit, logProviderDiagnostics } from './providers/utils';
-import { getVertexModelName, getVertexGenAI } from '@/lib/vertexai';
+import { getVertexModelName, getVertexGenAI as _getVertexGenAI } from '@/lib/vertexai';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -46,7 +46,7 @@ const getRedisClient = async () => {
 // =================================================================
 
 // Auth
-const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
+const _API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 
 // CORS (using shared helper)
 import { getCorsHeaders } from '@/lib/cors';
@@ -414,7 +414,7 @@ function isRetryableError(error: any): boolean {
 }
 
 // Helper function to retry Vertex AI sendMessage with exponential backoff
-async function sendMessageWithRetry(
+async function _sendMessageWithRetry(
   chat: any,
   message: any,
   options: {
@@ -1450,8 +1450,15 @@ export async function POST(request: NextRequest) {
             break;
           }
 
-          // Add the model's response with tool calls to history
-          if (finalResult.text || finalResult.toolCalls.length > 0) {
+          // Add the model's response with tool calls to history - use rawParts to preserve thought_signature
+          if (finalResult.rawParts && finalResult.rawParts.length > 0) {
+            // Use raw parts from response (preserves thought_signature)
+            finalHistory.push({
+              role: 'model',
+              parts: finalResult.rawParts,
+            });
+          } else if (finalResult.text || finalResult.toolCalls.length > 0) {
+            // Fallback: reconstruct parts (for non-Gemini 3 or missing rawParts)
             const modelParts: Array<{ text?: string; functionCall?: any }> = [];
             if (finalResult.text) {
               modelParts.push({ text: finalResult.text });
@@ -1497,8 +1504,15 @@ export async function POST(request: NextRequest) {
           // They were sent via toolResults parameter for immediate processing only
         }
 
-        // Add final model response to history
-        if (finalResult.text || finalResult.toolCalls.length > 0) {
+        // Add final model response to history - use rawParts to preserve thought_signature for Gemini 3
+        if (finalResult.rawParts && finalResult.rawParts.length > 0) {
+          // Use raw parts from response (preserves thought_signature)
+          finalHistory.push({
+            role: 'model',
+            parts: finalResult.rawParts,
+          });
+        } else if (finalResult.text || finalResult.toolCalls.length > 0) {
+          // Fallback: reconstruct parts (for non-Gemini 3 or missing rawParts)
           const modelParts: Array<{ text?: string; functionCall?: any }> = [];
           if (finalResult.text) {
             modelParts.push({ text: finalResult.text });
