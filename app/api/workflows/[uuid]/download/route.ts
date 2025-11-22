@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/src/lib/supabase-server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -43,7 +43,7 @@ export async function GET(
       // Service token authentication (for VMs/scheduled tasks)
       const token = authHeader.substring(7);
       
-      const supabase = createClient();
+      const supabase = createServerClient();
 
       // Verify service token
       const { data: machines, error: tokenError } = await supabase.rpc(
@@ -106,7 +106,7 @@ export async function GET(
     }
 
     // Check org has access to this workflow
-    const supabase = createClient();
+    const supabase = createServerClient();
     const { data: hasAccess, error: accessError } = await supabase.rpc(
       'check_org_workflow_access',
       {
