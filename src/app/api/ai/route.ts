@@ -227,9 +227,33 @@ function createSessionId(): string {
  * @returns Truncated result with metadata
  */
 function truncateToolResult(result: any, maxChars: number = 500): any {
-  if (!result) return result;
+  // Gemini API requires function_response.response to be an object (Struct), not a primitive
+  // Wrap strings/primitives in an object
+  if (result === null || result === undefined) {
+    return { result: null };
+  }
 
-  const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+  // If result is a string, wrap it in an object
+  if (typeof result === 'string') {
+    if (result.length <= maxChars) {
+      return { result };
+    }
+    // Truncate long strings
+    return {
+      _truncated: true,
+      _originalLength: result.length,
+      result: result.substring(0, maxChars),
+      summary: `[Result truncated from ${result.length} to ${maxChars} chars]`
+    };
+  }
+
+  // If result is a number or boolean, wrap it
+  if (typeof result !== 'object') {
+    return { result };
+  }
+
+  // Result is already an object - check if it needs truncation
+  const resultStr = JSON.stringify(result);
 
   if (resultStr.length <= maxChars) {
     return result;
@@ -477,9 +501,11 @@ async function handleVertexChat(params: {
   input?: string;
   toolResults?: Array<{ name: string; result: any }>;
   generationConfig?: { temperature?: number; maxOutputTokens?: number };
+  thinkingLevel?: 'low' | 'high';
 }): Promise<{
   text: string;
   toolCalls: Array<{ name: string; args: Record<string, any>; id?: string }>;
+  rawParts?: any[];
   finishReason: 'stop' | 'tool_calls';
   metrics: { elapsedMs: number; tokens?: any };
 }> {
@@ -492,6 +518,7 @@ async function handleVertexChat(params: {
     input,
     toolResults,
     generationConfig,
+    thinkingLevel,
   } = params;
 
   const t0 = Date.now();
@@ -527,10 +554,11 @@ async function handleVertexChat(params: {
     analyzeToolResults(toolResults, 'VERTEX');
 
     // Format function responses for new SDK
+    // Use truncateToolResult to ensure response is always an object (Gemini API requirement)
     const functionResponseParts: Part[] = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
-        response: tr.result,
+        response: truncateToolResult(tr.result, 500),
       },
     }));
 
@@ -572,7 +600,7 @@ async function handleVertexChat(params: {
   // Add thinking config for Gemini 3 models (use thinking_level, not legacy thinkingBudget)
   if (isGemini3) {
     config.thinkingConfig = {
-      thinkingLevel: 'low', // 'low' for fast responses, 'high' for complex reasoning
+      thinkingLevel: thinkingLevel || 'low', // 'low' for fast responses, 'high' for complex reasoning
     };
   }
 
@@ -689,8 +717,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const sessionId = body.sessionId as string | undefined;
     const requestedModel = (body.model as string) || 'gemini-2.5-flash';
-    // Map user-friendly model names to actual Vertex AI model names
-    const model = getVertexModelName(requestedModel);
     const input = body.input as string | undefined;
     let history = (body.history as VertexMessage[]) || [];
     const system = (body.system as string) || undefined;
@@ -698,6 +724,7 @@ export async function POST(request: NextRequest) {
     const generationConfig = body.generationConfig as
       | { temperature?: number; maxOutputTokens?: number }
       | undefined;
+    const thinkingLevel = body.thinkingLevel as 'low' | 'high' | undefined;
     const tools = body.tools as
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
       | undefined;
@@ -1278,6 +1305,7 @@ export async function POST(request: NextRequest) {
       input,
       toolResults,
       generationConfig,
+      thinkingLevel,
     });
 
     // Log response stats
@@ -1367,6 +1395,7 @@ export async function POST(request: NextRequest) {
           functionDeclarations,
           toolResults: serverToolResults,
           generationConfig,
+          thinkingLevel,
         });
 
         console.log('🎯 Continuation result:', {
@@ -1455,6 +1484,7 @@ export async function POST(request: NextRequest) {
             functionDeclarations,
             toolResults: moreServerTools,
             generationConfig,
+            thinkingLevel,
           });
 
           console.log('🎯 Additional continuation result:', {
