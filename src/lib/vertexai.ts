@@ -300,13 +300,11 @@ export function getVertexModelName(inputModelName: string): string {
   };
   
   const mappedModel = modelMap[inputModelName];
-  
+
   if (!mappedModel) {
-    console.warn(`⚠️ Unknown model name: ${inputModelName}, falling back to gemini-2.5-flash`);
-    return 'gemini-2.5-flash'; // Safe default
+    throw new Error(`Unknown Vertex AI model: ${inputModelName}. Allowed models: ${Object.keys(modelMap).join(', ')}`);
   }
-  
-  // Model mapping: ${inputModelName} → ${mappedModel}
+
   return mappedModel;
 }
 

@@ -71,23 +71,12 @@ export function logToolCalls(toolCalls: Array<{ name: string; args?: any }>, pro
  */
 export const ALLOWED_MODELS = {
   vertex: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  anthropic: [
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
-    'claude-3-5-sonnet-latest',
-    'claude-3-5-haiku-latest'
-  ]
+  anthropic: ['claude-sonnet-4-5-20250929']
 } as const;
 
 export function getProviderForModel(model: string): 'vertex' | 'anthropic' | null {
   if ((ALLOWED_MODELS.vertex as readonly string[]).includes(model)) return 'vertex';
   if ((ALLOWED_MODELS.anthropic as readonly string[]).includes(model)) return 'anthropic';
-
-  // Check by prefix as fallback
-  if (model.startsWith('gemini-')) return 'vertex';
-  if (model.startsWith('claude-')) return 'anthropic';
-
   return null;
 }
 
