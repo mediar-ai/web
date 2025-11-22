@@ -196,7 +196,7 @@ export function WorkflowExecutionDialog({
   }, [workflow]);
 
   useEffect(() => {
-    if (workflow) {
+    if (workflow && Object.keys(inputParameters).length > 0) {
       // Initialize parameters from transformed input_parameters
       const defaultParams: Record<string, any> = {};
 
@@ -212,18 +212,16 @@ export function WorkflowExecutionDialog({
         console.error('Error loading last-used params from localStorage:', e);
       }
 
-      if (inputParameters) {
-        Object.entries(inputParameters).forEach(
-          ([key, config]: [string, any]) => {
-            // Prefer last-used value, fallback to default
-            defaultParams[key] = lastUsedParams[key] ?? config.default ?? '';
-          }
-        );
-      }
+      Object.entries(inputParameters).forEach(
+        ([key, config]: [string, any]) => {
+          // Prefer last-used value, fallback to default
+          defaultParams[key] = lastUsedParams[key] ?? config.default ?? '';
+        }
+      );
       setParameters(defaultParams);
       setCronEnabled(workflow.cron_enabled || false);
     }
-  }, [workflow, inputParameters]);
+  }, [workflow?.id, inputParameters]);
 
   const handleExecute = async () => {
     if (!workflow) return;
