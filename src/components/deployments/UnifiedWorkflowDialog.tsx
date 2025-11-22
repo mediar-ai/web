@@ -766,7 +766,7 @@ export function UnifiedWorkflowDialog({
           defaultValue={isTypescript ? 'typescript' : 'overview'}
           className="mt-2 flex-1 flex flex-col overflow-hidden"
         >
-          <TabsList className="flex w-full justify-start px-6 py-3 bg-transparent gap-2 h-auto overflow-x-auto border-0">
+          <TabsList className="flex w-full justify-center px-6 py-3 bg-transparent gap-2 h-auto overflow-x-auto border-0">
             {isTypescript && (
               <TabsTrigger
                 value="typescript"
