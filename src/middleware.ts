@@ -29,6 +29,7 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/cron/scheduler(.*)',
   '/api/cron/health-check-supabase(.*)',
   '/api/cron/process-pending-notifications(.*)',
+  '/api/workflows/:uuid/download', // Workflow download via service token (VMs)
   '/api/ai/execution-qa/context(.*)', // Allow context loading without auth (data is org-scoped)
   '/api/agents(.*)', // Allow agent streaming for desktop app (has own auth via Bearer token)
 ]);
