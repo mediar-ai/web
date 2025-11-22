@@ -110,7 +110,7 @@ try {
 
 export async function POST(
   request: Request,
-  { params }: { params: { machineId: string } }
+  { params }: { params: Promise<{ machineId: string }> }
 ) {
   if (!supabase) {
     return NextResponse.json(
@@ -120,7 +120,8 @@ export async function POST(
   }
 
   try {
-    const machineId = parseInt(params.machineId);
+    const { machineId: id } = await params;
+    const machineId = parseInt(id);
     const { version = 'latest' } = await request.json();
 
     // Fetch machine details
@@ -166,7 +167,10 @@ export async function POST(
 
     // Initialize Azure SDK client
     const credential = new DefaultAzureCredential();
-    const computeClient = new ComputeManagementClient(credential, subscriptionId);
+    const computeClient = new ComputeManagementClient(
+      credential,
+      subscriptionId
+    );
 
     // Execute Run Command using Azure SDK
     const runCommandParams = {
