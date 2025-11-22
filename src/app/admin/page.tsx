@@ -407,6 +407,46 @@ function AdminPageContent() {
     }
   };
 
+  const handleUpdateMachineVersion = async (
+    machineId: number,
+    machineName: string
+  ) => {
+    if (
+      !confirm(
+        `Update MCP agent on "${machineName}" to latest version? This will take ~30 seconds.`
+      )
+    ) {
+      return;
+    }
+
+    setUpdatingMachine(machineId);
+    try {
+      const response = await fetch(
+        `/api/admin/machines/${machineId}/update-version`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: 'latest' }),
+        }
+      );
+
+      if (response.ok) {
+        toast.success(
+          `Update triggered for ${machineName}. Version will update in ~30s.`
+        );
+        setTimeout(() => fetchMachines(), 35000);
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to update: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error updating machine:', error);
+      toast.error('Failed to trigger update');
+    } finally {
+      setUpdatingMachine(null);
+    }
+  };
+
   const handleDeleteMachine = async (
     machineId: number,
     machineName: string
