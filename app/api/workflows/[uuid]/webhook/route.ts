@@ -19,9 +19,11 @@ import { createServerClient } from '@/lib/supabase-server';
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { uuid: string } }
+  props: { params: Promise<{ uuid: string }> }
 ) {
   try {
+    const params = await props.params;
+    
     // Verify webhook secret
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.MEDIAR_WEBHOOK_SECRET}`;
