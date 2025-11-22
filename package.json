@@ -30,7 +30,7 @@
     "@clerk/nextjs": "^6.23.0",
     "@clickhouse/client": "^1.12.1",
     "@google-cloud/aiplatform": "^4.2.0",
-    "@google-cloud/vertexai": "^1.10.0",
+    "@google/genai": "^1.30.0",
     "@google/generative-ai": "^0.24.1",
     "@mastra/core": "^0.21.1",
     "@mediar-ai/terminator": "^0.22.18",

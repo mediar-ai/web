@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { getVertexGenAI } from '@/lib/vertexai';
-import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { WORKFLOW_EDIT_PROMPT } from '@/lib/prompts';
 
 // const getGenAI = () => {

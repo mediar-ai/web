@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { getVertexGenAI } from '@/lib/vertexai';
-import { HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
 import { createClient } from '@supabase/supabase-js';
 // import { v2AnalysisSchema } from '@/lib/llmSchemas';

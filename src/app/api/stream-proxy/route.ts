@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { VertexAI, Content, FunctionDeclaration, Part } from '@google-cloud/vertexai';
+import { GoogleGenAI, Content, FunctionDeclaration, Part } from '@google/genai';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { convertMcpToolToVertex } from '@/lib/vertex-schema-converter';
 import { getCorsHeaders } from '@/lib/cors';
@@ -47,11 +47,7 @@ async function authenticate(request: NextRequest): Promise<boolean> {
 
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    if (token === API_PASSWORD) {
-      console.log('[Stream Proxy] Authenticated with API password');
-      return true;
-    }
-
+    
     try {
       const validation = await validateDesktopToken(token);
       if (validation.valid) {
@@ -64,20 +60,15 @@ async function authenticate(request: NextRequest): Promise<boolean> {
     return false;
   }
 
-  if (authHeader.startsWith('Basic ')) {
-    const decoded = Buffer.from(authHeader.substring(6), 'base64').toString();
-    const [, password] = decoded.split(':');
-    return password === API_PASSWORD;
-  }
-
   return false;
 }
 
-function initVertexAI(): VertexAI {
+function initGenAI(): GoogleGenAI {
   const credentialsJson = Buffer.from(VERTEX_CREDENTIALS_BASE64, 'base64').toString('utf-8');
   const credentials = JSON.parse(credentialsJson);
 
-  return new VertexAI({
+  return new GoogleGenAI({
+    vertexai: true,
     project: GOOGLE_CLOUD_PROJECT,
     location: VERTEX_AI_LOCATION,
     googleAuthOptions: {
@@ -112,14 +103,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
 
-    const vertexAI = initVertexAI();
-    const model = vertexAI.getGenerativeModel({
-      model: body.model || 'gemini-2.5-flash', // Updated to stable 2.5 model
-      generationConfig: {
-        temperature: body.temperature ?? 0.7,
-        maxOutputTokens: body.maxTokens ?? 8192,
-      },
-    });
+    const genAI = initGenAI();
+    const modelName = body.model || 'gemini-2.5-flash';
 
     // Convert messages to Vertex AI Content format
     const contents: Content[] = convertMessagesToVertex(body.messages);
@@ -138,10 +123,15 @@ export async function POST(req: NextRequest) {
       })
     }] : undefined;
 
-    // Start streaming response
-    const result = await model.generateContentStream({
+    // Start streaming response using new SDK
+    const result = await genAI.models.generateContentStream({
+      model: modelName,
       contents,
-      tools,
+      config: {
+        temperature: body.temperature ?? 0.7,
+        maxOutputTokens: body.maxTokens ?? 8192,
+        tools,
+      },
     });
 
     // Create SSE stream
@@ -152,12 +142,15 @@ export async function POST(req: NextRequest) {
         const emittedFunctionCalls = new Set<string>();
 
         try {
-          for await (const chunk of result.stream) {
-            // Extract text
-            const candidate = chunk.candidates?.[0];
-            if (!candidate) continue;
+          for await (const chunk of result) {
+            // Extract text from new SDK format
+            const candidates = chunk.candidates;
+            if (!candidates || candidates.length === 0) continue;
 
-            const textParts = candidate.content.parts.filter(p => 'text' in p);
+            const candidate = candidates[0];
+            if (!candidate.content?.parts) continue;
+
+            const textParts = candidate.content.parts.filter((p: Part) => 'text' in p);
             if (textParts.length > 0) {
               for (const part of textParts) {
                 if ('text' in part && part.text) {
@@ -169,7 +162,7 @@ export async function POST(req: NextRequest) {
             }
 
             // Check for function calls
-            const functionCalls = candidate.content.parts.filter(p => 'functionCall' in p);
+            const functionCalls = candidate.content.parts.filter((p: Part) => 'functionCall' in p);
             if (functionCalls.length > 0) {
               let hasNewFunctionCall = false;
 

@@ -1,5 +1,5 @@
 import { WORKFLOW_EXPORT_ENHANCEMENT_PROMPT } from '@/lib/prompts';
-import { getVertexAIModel } from '@/lib/vertexai';
+import { getVertexGenAI } from '@/lib/vertexai';
 import { generateEnhancedWorkflowYAML } from '@/lib/workflowExportHelpers';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
@@ -245,8 +245,9 @@ async function generateEnhancedExportWithLLM(
   });
 
   try {
-    const model = getVertexAIModel('gemini-2.5-pro');
-    
+    const genAI = getVertexGenAI();
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+
     const prompt = `${WORKFLOW_EXPORT_ENHANCEMENT_PROMPT}
 
 **Context Data:**

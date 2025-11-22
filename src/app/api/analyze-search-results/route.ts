@@ -36,9 +36,9 @@ async function generateContentWithRetry(
   } = {}
 ): Promise<any> {
   const { maxRetries = 3, baseDelayMs = 1000 } = options;
-  
+
   let lastError: any;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
@@ -46,7 +46,7 @@ async function generateContentWithRetry(
         console.log(`[SEARCH-RETRY] Attempt ${attempt + 1}/${maxRetries + 1} - waiting ${delayMs}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
-      
+
       console.log(`[SEARCH-HTTP] Calling Vertex AI generateContent (attempt ${attempt + 1}/${maxRetries + 1})`);
       const result = await model.generateContent(params);
       
@@ -221,7 +221,9 @@ Event ${i + 1}:
     );
 
     const aiResponse = result.response;
-    const aiAnalysis = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const aiAnalysis = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                       aiResponse?.text ||
+                       '';
 
     if (!aiAnalysis || aiAnalysis.trim() === '') {
       console.error('[ERROR] Empty AI response from Vertex AI');

@@ -1,5 +1,4 @@
-import type { GenerateContentRequest, GenerateContentResponse, SafetySetting } from '@google-cloud/vertexai';
-import { HarmBlockThreshold, HarmCategory, VertexAI } from '@google-cloud/vertexai';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 
 
 
@@ -111,40 +110,39 @@ export async function withHealthMonitoring<T>(
   }
 }
 
-// Initialize Vertex AI with proper credential handling
-const getVertexAIConfig = () => {
+// Initialize Google GenAI with Vertex AI backend
+const getVertexAIConfig = (): GoogleGenAI => {
   const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
   const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
-  
+
   // Detect environment
   const isVercel = process.env.VERCEL === '1';
   const hasFileCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
   const hasBase64Credentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
   const hasDirectCredentials = !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY);
-  
-  // Environment detection (debug logs removed for cleaner output)
+
+  // Common scopes for Google Cloud Platform
+  const scopes = [
+    'https://www.googleapis.com/auth/cloud-platform',
+    'https://www.googleapis.com/auth/cloud-platform.read-only'
+  ];
 
   // Method 1: File-based credentials (prioritize for local development)
   if (hasFileCredentials && !isVercel) {
-    // Using file-based credentials
-    
-    return new VertexAI({
+    return new GoogleGenAI({
+      vertexai: true,
       project,
       location,
       googleAuthOptions: {
-        scopes: [
-          'https://www.googleapis.com/auth/cloud-platform',
-          'https://www.googleapis.com/auth/cloud-platform.read-only'
-        ]
+        scopes
       }
     });
   }
 
   // Method 2: Direct credentials (recommended for Vercel)
   if (hasDirectCredentials) {
-    // Using direct credentials
-    
-    return new VertexAI({
+    return new GoogleGenAI({
+      vertexai: true,
       project,
       location,
       googleAuthOptions: {
@@ -152,29 +150,25 @@ const getVertexAIConfig = () => {
           client_email: process.env.GOOGLE_CLIENT_EMAIL!,
           private_key: process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
         },
-        scopes: [
-          'https://www.googleapis.com/auth/cloud-platform',
-          'https://www.googleapis.com/auth/cloud-platform.read-only'
-        ]
+        scopes
       }
     });
   }
 
   // Method 3: Base64 credentials (fallback)
   if (hasBase64Credentials) {
-    // Using base64 credentials
-    
     try {
       const base64Credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64!;
       const credentialsJson = Buffer.from(base64Credentials, 'base64').toString('utf-8');
       const credentials = JSON.parse(credentialsJson);
-      
+
       // Validate required fields
       if (!credentials.client_email || !credentials.private_key) {
         throw new Error('Invalid credentials: missing client_email or private_key');
       }
-      
-      return new VertexAI({
+
+      return new GoogleGenAI({
+        vertexai: true,
         project,
         location,
         googleAuthOptions: {
@@ -182,10 +176,7 @@ const getVertexAIConfig = () => {
             client_email: credentials.client_email,
             private_key: credentials.private_key,
           },
-          scopes: [
-            'https://www.googleapis.com/auth/cloud-platform',
-            'https://www.googleapis.com/auth/cloud-platform.read-only'
-          ]
+          scopes
         }
       });
     } catch (error) {
@@ -195,48 +186,83 @@ const getVertexAIConfig = () => {
   }
 
   // Fallback: Default credentials
-  // Using default credentials
-  return new VertexAI({
+  return new GoogleGenAI({
+    vertexai: true,
     project,
     location,
     googleAuthOptions: {
-      scopes: [
-        'https://www.googleapis.com/auth/cloud-platform',
-        'https://www.googleapis.com/auth/cloud-platform.read-only'
-      ]
+      scopes
     }
   });
 };
 
-// Create Vertex AI instance
-let vertexAI: VertexAI;
+// Create Google GenAI instance with Vertex AI backend
+let genAI: GoogleGenAI;
 
 try {
-  vertexAI = getVertexAIConfig();
-  // Vertex AI initialized successfully
+  genAI = getVertexAIConfig();
+  // Google GenAI with Vertex AI backend initialized successfully
 } catch (error) {
-  console.error('❌ Failed to initialize Vertex AI:', error);
+  console.error('❌ Failed to initialize Google GenAI:', error);
   throw error;
 }
 
-// Create a Google AI Studio-compatible interface
+// Export a compatible interface for existing code
+// Provides getGenerativeModel for backward compatibility
 export function getVertexGenAI() {
   return {
-    getGenerativeModel: (config: { model: string; safetySettings?: SafetySetting[] }) => {
-      // 🔄 Automatically map model names to Vertex AI equivalents
+    // Direct access to the GenAI instance
+    _client: genAI,
+
+    // Backward compatible method that wraps the new SDK
+    getGenerativeModel: (config: { model: string; safetySettings?: any[] }) => {
       const vertexModelName = getVertexModelName(config.model);
-      // Using Vertex AI model: ${vertexModelName}
-      
-      return vertexAI.getGenerativeModel({
-        model: vertexModelName,
-        safetySettings: config.safetySettings,
-      });
-    }
+
+      return {
+        // Wrap generateContent to use the new SDK's models.generateContent
+        generateContent: async (params: any) => {
+          const contents = params.contents?.[0]?.parts?.[0]?.text ||
+                          (Array.isArray(params.contents) ? params.contents : params.contents);
+
+          const result = await genAI.models.generateContent({
+            model: vertexModelName,
+            contents: typeof contents === 'string' ? contents : JSON.stringify(contents),
+            config: {
+              ...params.generationConfig,
+              safetySettings: config.safetySettings,
+            },
+          });
+
+          // Return in a format compatible with old SDK
+          return {
+            response: result,
+          };
+        },
+
+        // Wrap startChat for chat sessions
+        startChat: (chatParams?: any) => {
+          // Note: Chat functionality may need additional implementation
+          return {
+            sendMessage: async (message: string) => {
+              const result = await genAI.models.generateContent({
+                model: vertexModelName,
+                contents: message,
+                config: {
+                  safetySettings: config.safetySettings,
+                  ...chatParams?.generationConfig,
+                },
+              });
+
+              return {
+                response: result,
+              };
+            },
+          };
+        },
+      };
+    },
   };
 }
-
-// Export types for compatibility
-export type { GenerateContentRequest, SafetySetting };
 
 // Helper function to get the right model name for Vertex AI
 export function getVertexModelName(inputModelName: string): string {
@@ -248,6 +274,10 @@ export function getVertexModelName(inputModelName: string): string {
     'gemini-2.5-pro-preview-05-06': 'gemini-2.5-pro', // Map preview to stable
     'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro', // Map preview to stable
     
+    // 🔥 GEMINI 3 (Latest Generation - requires global endpoint)
+    'gemini-3-pro': 'gemini-3-pro-preview',
+    'gemini-3-pro-preview': 'gemini-3-pro-preview',
+
     'gemini-2.5-flash': 'gemini-2.5-flash',
     'gemini-2.5-flash-preview-09-2025': 'gemini-2.5-flash-preview-09-2025', // Latest preview
     'gemini-2.5-flash-preview-05-20': 'gemini-2.5-flash', // Map old preview to stable
@@ -280,12 +310,9 @@ export function getVertexModelName(inputModelName: string): string {
   return mappedModel;
 }
 
-// Get generative model directly (for advanced usage)
-export function getVertexAIModel(modelName: string) {
-  const vertexModelName = getVertexModelName(modelName);
-  return vertexAI.preview.getGenerativeModel({
-    model: vertexModelName,
-  });
+// Get generative model name (for advanced usage)
+export function getVertexAIModel(modelName: string): string {
+  return getVertexModelName(modelName);
 }
 
 /**
@@ -441,7 +468,7 @@ export async function callVertexWithStructuredOutput(
     onProgress?.(stage, elapsed);
   };
 
-  reportProgress('Initializing VertexAI model');
+  reportProgress('Initializing Vertex AI');
 
   const genAI = getVertexGenAI();
   const model = genAI.getGenerativeModel({
@@ -453,9 +480,10 @@ export async function callVertexWithStructuredOutput(
       { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     ],
   });
-  
+
   const fullPrompt = `${prompt}\n\nContext:\n${JSON.stringify(context, null, 2)}`;
   console.log(`📏 Full prompt length: ${fullPrompt.length} characters`);
+  console.log(`🤖 Using model: ${getVertexModelName(modelName)}`);
 
   // Retry loop with exponential backoff
   while (attempt <= maxRetries) {
@@ -494,29 +522,33 @@ export async function callVertexWithStructuredOutput(
         },
       });
 
-      reportProgress('Waiting for VertexAI response');
+      reportProgress('Waiting for Vertex AI response');
 
       // Race between timeout and actual request
       const result = await Promise.race([requestPromise, timeoutPromise]);
-      
+
       const requestElapsed = Date.now() - attemptStartTime;
       reportProgress(`Received response in ${requestElapsed}ms`);
 
       // TypeScript check - result should be the generateContent response
       if (!result || typeof result !== 'object' || !('response' in result)) {
-        throw new Error('Invalid response structure from VertexAI');
+        throw new Error('Invalid response structure from Vertex AI');
       }
 
-      const response = (result as { response: GenerateContentResponse }).response;
-      
+      const response = (result as { response: any }).response;
+
       // 🔥 CAPTURE USAGE METADATA FOR TOKEN TRACKING
-      const usageMetadata = response.usageMetadata;
+      const usageMetadata = response?.usageMetadata;
       if (includeUsageMetadata) {
         console.log('📊 Vertex AI usage metadata:', usageMetadata);
       }
 
-      if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const rawText = response.candidates[0].content.parts[0].text;
+      // Extract text from the response
+      const rawText = response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                      response?.text ||
+                      null;
+
+      if (rawText) {
         reportProgress('Processing response');
         console.log('✅ Vertex AI structured output successful');
         
@@ -588,11 +620,11 @@ export async function callVertexWithStructuredOutput(
         }
       }
       
-      console.error("No valid response from Vertex AI model:", response);
-      
+      console.error("No valid response from Google GenAI model:", response);
+
       // If it's our last attempt, throw the error
       if (attempt > maxRetries) {
-        throw new Error('Failed to get valid response from Vertex AI model');
+        throw new Error('Failed to get valid response from Google GenAI model');
       }
       
       // Otherwise, continue to retry

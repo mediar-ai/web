@@ -17,14 +17,14 @@ import {
   getDevLogToolDeclarations,
   isDevLogTool,
 } from '@/lib/server-tools/dev-log-tools';
-import type { FunctionDeclaration } from '@google-cloud/vertexai';
-import { VertexAI } from '@google-cloud/vertexai';
+import { GoogleGenAI, FunctionDeclaration, Content, Part } from '@google/genai';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from 'redis';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 import { analyzeToolResults, checkTokenLimit, logProviderDiagnostics } from './providers/utils';
+import { getVertexModelName, getVertexGenAI } from '@/lib/vertexai';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -52,7 +52,7 @@ const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 import { getCorsHeaders } from '@/lib/cors';
 
 // Allowed models (per workspace rule)
-const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-pro'] as const;
+const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-pro-preview'] as const;
 const ANTHROPIC_MODELS = ['claude-sonnet-4-5-20250929'] as const;
 const ALLOWED_MODELS = [...VERTEX_MODELS, ...ANTHROPIC_MODELS] as const;
 type AllowedModel = (typeof ALLOWED_MODELS)[number];
@@ -95,13 +95,7 @@ async function authenticate(request: NextRequest): Promise<{
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
 
-    // First, check if it's the API password
-    if (token === API_PASSWORD) {
-      console.log('[AI API] Authenticated with API password');
-      return { authenticated: true, userId: null, orgId: null };
-    }
-
-    // Otherwise, try to validate as desktop token
+    // Try to validate as desktop token
     try {
       const validation = await validateDesktopToken(token);
       if (validation.valid) {
@@ -119,18 +113,13 @@ async function authenticate(request: NextRequest): Promise<{
       console.error('[AI API] Desktop token validation error:', error);
     }
 
-    // Token didn't match password or desktop validation failed
+    // Desktop validation failed
     return { authenticated: false, userId: null, orgId: null };
   }
 
   if (authHeader.startsWith('Basic ')) {
-    const decoded = Buffer.from(authHeader.substring(6), 'base64').toString();
-    const [, password] = decoded.split(':');
-    return {
-      authenticated: password === API_PASSWORD,
-      userId: null,
-      orgId: null,
-    };
+    // Basic auth removed - requires Bearer token
+    return { authenticated: false, userId: null, orgId: null };
   }
 
   return { authenticated: false, userId: null, orgId: null };
@@ -480,7 +469,7 @@ async function sendMessageWithRetry(
 
 // Stateless chat handling with history reconstruction ----
 async function handleVertexChat(params: {
-  vertexAI: VertexAI;
+  genAI: GoogleGenAI;
   model: VertexModel;
   system?: string;
   history: VertexMessage[];
@@ -495,7 +484,7 @@ async function handleVertexChat(params: {
   metrics: { elapsedMs: number; tokens?: any };
 }> {
   const {
-    vertexAI,
+    genAI,
     model,
     system,
     history,
@@ -507,24 +496,11 @@ async function handleVertexChat(params: {
 
   const t0 = Date.now();
 
-  // Create fresh chat instance with provided history
-  const gm = vertexAI.getGenerativeModel({
-    model,
-    generationConfig: {
-      temperature: generationConfig?.temperature ?? 0.7,
-      maxOutputTokens: generationConfig?.maxOutputTokens ?? 1000,
-    },
-    tools: functionDeclarations.length ? [{ functionDeclarations }] : undefined,
-    systemInstruction: system
-      ? ({ parts: [{ text: system }] } as any)
-      : undefined,
-  });
-
-  // Start chat with provided history
-  const chat = gm.startChat({ history: history as any });
+  // Map user-friendly model name to actual Vertex AI model name
+  const mappedModel = getVertexModelName(model);
 
   console.log(
-    `[VERTEX] Created chat with ${history.length} history message(s)`
+    `[VERTEX] Processing request with ${history.length} history message(s)`
   );
 
   // Log provider configuration
@@ -539,8 +515,10 @@ async function handleVertexChat(params: {
   // Check token limits
   checkTokenLimit(history, 'VERTEX', 200000, 150000);
 
-  // Send message to chat with retry logic
-  let response;
+  // Build contents array for the new SDK
+  const contents: Content[] = [...history] as Content[];
+
+  // Add new message or tool results
   if (toolResults && toolResults.length > 0) {
     // Continuing conversation with tool results
     console.log(`[AI API] 🔧 Sending ${toolResults.length} tool result(s)`);
@@ -548,43 +526,100 @@ async function handleVertexChat(params: {
     // Analyze tool results for potential issues
     analyzeToolResults(toolResults, 'VERTEX');
 
-    // Format function responses for Vertex AI SDK
-    // Vertex AI requires: { name, response: { name, content: <actual_result> } }
-    const functionResponseParts = toolResults.map(tr => ({
+    // Format function responses for new SDK
+    const functionResponseParts: Part[] = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
-        response: {
-          name: tr.name, // Name must be repeated in response
-          content: tr.result, // Actual tool result goes in content
-        },
+        response: tr.result,
       },
     }));
 
-    // Send as array of parts with retry logic
-    response = await sendMessageWithRetry(chat, functionResponseParts as any, {
-      maxRetries: 3,
-      baseDelayMs: 1000,
-      messageType: 'tool results',
+    contents.push({
+      role: 'user',
+      parts: functionResponseParts,
     });
   } else if (input) {
     // New user message
     console.log(`[AI API] 💬 Sending user message (${input.length} chars)`);
 
-    // Send with retry logic
-    response = await sendMessageWithRetry(chat, input, {
-      maxRetries: 3,
-      baseDelayMs: 1000,
-      messageType: 'user message',
+    contents.push({
+      role: 'user',
+      parts: [{ text: input }],
     });
   } else {
     throw new Error('Either input or toolResults must be provided');
   }
 
-  // Parse response
-  const candidate = (response as any)?.response?.candidates?.[0];
+  // Check if this is a Gemini 3 model for thinking config
+  const isGemini3 = mappedModel.includes('gemini-3');
+
+  // Build the generation config
+  const config: any = {
+    temperature: generationConfig?.temperature ?? 0.7,
+    maxOutputTokens: generationConfig?.maxOutputTokens ?? 1000,
+  };
+
+  // Add system instruction if provided
+  if (system) {
+    config.systemInstruction = system;
+  }
+
+  // Add tools if provided
+  if (functionDeclarations.length > 0) {
+    config.tools = [{ functionDeclarations }];
+  }
+
+  // Add thinking config for Gemini 3 models (use thinking_level, not legacy thinkingBudget)
+  if (isGemini3) {
+    config.thinkingConfig = {
+      thinkingLevel: 'low', // 'low' for fast responses, 'high' for complex reasoning
+    };
+  }
+
+  // Call the API with retry logic
+  let response;
+  let lastError: Error | null = null;
+  const maxRetries = 3;
+  const baseDelayMs = 1000;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await genAI.models.generateContent({
+        model: mappedModel,
+        contents,
+        config,
+      });
+      break; // Success, exit retry loop
+    } catch (error: any) {
+      lastError = error;
+      const statusCode = error?.status || error?.code || 0;
+
+      // Check if retryable
+      const retryableStatusCodes = [429, 500, 503];
+      const isRetryable = retryableStatusCodes.includes(statusCode) ||
+        error?.message?.includes('timeout') ||
+        error?.message?.includes('ECONNRESET');
+
+      if (!isRetryable || attempt === maxRetries) {
+        console.error(`[AI API] ❌ Request failed after ${attempt + 1} attempt(s):`, error?.message);
+        throw error;
+      }
+
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.log(`[AI API] ⚠️ Attempt ${attempt + 1} failed (${statusCode}), retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  if (!response) {
+    throw lastError || new Error('No response from Vertex AI');
+  }
+
+  // Parse response - new SDK returns response directly
+  const candidate = response?.candidates?.[0];
   const parts = candidate?.content?.parts || [];
   const textParts = parts
-    .filter((p: any) => p.text)
+    .filter((p: any) => p.text && !p.thought) // Exclude thinking text
     .map((p: any) => p.text as string);
   const functionCalls = parts
     .filter((p: any) => p.functionCall)
@@ -597,7 +632,7 @@ async function handleVertexChat(params: {
   }));
 
   // Extract usage stats
-  const usageMetadata = (response as any)?.response?.usageMetadata;
+  const usageMetadata = response?.usageMetadata;
   const tokenStats = usageMetadata
     ? {
         promptTokenCount: usageMetadata.promptTokenCount,
@@ -615,6 +650,7 @@ async function handleVertexChat(params: {
   return {
     text,
     toolCalls,
+    rawParts: parts, // Preserve raw parts including thought_signature for Gemini 3
     finishReason:
       toolCalls.length > 0 ? ('tool_calls' as const) : ('stop' as const),
     metrics: {
@@ -652,7 +688,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const sessionId = body.sessionId as string | undefined;
-    const model = (body.model as string) || 'gemini-2.5-flash';
+    const requestedModel = (body.model as string) || 'gemini-2.5-flash';
+    // Map user-friendly model names to actual Vertex AI model names
+    const model = getVertexModelName(requestedModel);
     const input = body.input as string | undefined;
     let history = (body.history as VertexMessage[]) || [];
     const system = (body.system as string) || undefined;
@@ -667,8 +705,8 @@ export async function POST(request: NextRequest) {
       | Array<{ id: string; name: string; result: any }>
       | undefined;
 
-    // Validate model first
-    if (!validateModel(model)) {
+    // Validate requested model first (before mapping to actual Vertex AI name)
+    if (!validateModel(requestedModel)) {
       return NextResponse.json(
         { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` },
         { status: 400, headers: corsHeaders }
@@ -681,16 +719,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine provider based on model
-    const provider: 'vertex' | 'anthropic' = isAnthropicModel(model)
+    // Determine provider based on requested model (before mapping)
+    const provider: 'vertex' | 'anthropic' = isAnthropicModel(requestedModel)
       ? 'anthropic'
       : 'vertex';
-    console.log(`[AI API] Using provider: ${provider} for model: ${model}`);
+    console.log(`[AI API] Using provider: ${provider} for model: ${requestedModel}`);
 
     // Load session from KV if sessionId provided
     let actualSessionId = sessionId;
     let sessionSystem = system;
-    let sessionModel: AllowedModel = model;
+    let sessionModel: AllowedModel = requestedModel as AllowedModel;
     let cachedTools: FunctionDeclaration[] | undefined = undefined;
 
     if (sessionId) {
@@ -702,7 +740,7 @@ export async function POST(request: NextRequest) {
 
         // CRITICAL: Allow model switching mid-session (e.g., Gemini → Claude)
         // Client's requested model takes precedence over stored model
-        const requestedProvider = isAnthropicModel(model)
+        const requestedProvider = isAnthropicModel(requestedModel)
           ? 'anthropic'
           : 'vertex';
         const storedProvider = sessionData.provider || 'vertex';
@@ -713,14 +751,20 @@ export async function POST(request: NextRequest) {
             `[AI API] 🔄 Provider switch detected: ${storedProvider} → ${requestedProvider}`
           );
           console.log(
-            `[AI API] Switching model from ${sessionData.model} → ${model}`
+            `[AI API] Switching model from ${sessionData.model} → ${requestedModel}`
           );
-          sessionModel = model; // Use client's requested model
+          sessionModel = requestedModel as AllowedModel; // Use client's requested model
 
           // When switching providers, we'll convert history format on-demand in provider-specific code
           // The vertexToAnthropicHistory function will handle Vertex → Anthropic conversion
+        } else if (requestedModel !== sessionData.model) {
+          // Same provider but different model - allow model switching within provider
+          console.log(
+            `[AI API] 🔄 Model switch within ${storedProvider}: ${sessionData.model} → ${requestedModel}`
+          );
+          sessionModel = requestedModel as AllowedModel;
         } else {
-          // Same provider - use stored model (maintain consistency within provider)
+          // Same provider and same model - use stored model
           sessionModel = sessionData.model;
         }
 
@@ -1188,9 +1232,17 @@ export async function POST(request: NextRequest) {
     ).toString('utf-8');
     const credentials = JSON.parse(credentialsJson);
 
-    const vertexAI = new VertexAI({
+    // Gemini 3 requires global endpoint
+    const mappedModel = getVertexModelName(sessionModel);
+    const isGemini3 = mappedModel.includes('gemini-3');
+    const location = isGemini3 ? 'global' : (process.env.VERTEX_AI_LOCATION || 'us-central1');
+
+    console.log(`[AI API] Using Vertex AI (location: ${location}) for model: ${mappedModel}`);
+
+    const genAI = new GoogleGenAI({
+      vertexai: true,
       project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-      location: process.env.VERTEX_AI_LOCATION || 'us-central1',
+      location,
       googleAuthOptions: {
         credentials: {
           client_email: credentials.client_email,
@@ -1218,7 +1270,7 @@ export async function POST(request: NextRequest) {
     });
 
     const result = await handleVertexChat({
-      vertexAI,
+      genAI,
       model: sessionModel as VertexModel,
       system: sessionSystem,
       history,
@@ -1284,14 +1336,7 @@ export async function POST(request: NextRequest) {
           `🔄 Auto-continuing with ${serverToolResults.length} server tool results`
         );
 
-        // Update history with the tool calls
-        const toolCallParts = serverToolResults.map(tr => ({
-          functionCall: {
-            name: tr.name,
-            args: result.toolCalls.find(tc => tc.name === tr.name)?.args || {},
-          },
-        }));
-
+        // Update history with the tool calls - use rawParts to preserve thought_signature for Gemini 3
         const updatedHistoryWithCalls = [...history];
         if (input) {
           updatedHistoryWithCalls.push({
@@ -1299,9 +1344,15 @@ export async function POST(request: NextRequest) {
             parts: [{ text: input }],
           });
         }
+        // Use raw parts from response to preserve thought_signature (required for Gemini 3)
         updatedHistoryWithCalls.push({
           role: 'model',
-          parts: toolCallParts,
+          parts: result.rawParts || serverToolResults.map(tr => ({
+            functionCall: {
+              name: tr.name,
+              args: result.toolCalls.find(tc => tc.name === tr.name)?.args || {},
+            },
+          })),
         });
 
         // Don't add tool results to history yet - they'll be sent via toolResults parameter
@@ -1309,7 +1360,7 @@ export async function POST(request: NextRequest) {
 
         // Call Vertex again with tool results
         const continuationResult = await handleVertexChat({
-          vertexAI,
+          genAI,
           model: sessionModel as VertexModel,
           system: sessionSystem,
           history: updatedHistoryWithCalls,
@@ -1397,7 +1448,7 @@ export async function POST(request: NextRequest) {
             `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
           );
           finalResult = await handleVertexChat({
-            vertexAI,
+            genAI,
             model: sessionModel as VertexModel,
             system: sessionSystem,
             history: finalHistory,
@@ -1487,28 +1538,37 @@ export async function POST(request: NextRequest) {
     // They are only sent to the AI provider via the toolResults parameter
     // This prevents re-sending large tool results on every subsequent turn
 
-    // Add model response to history
-    const modelParts: Array<{ text?: string; functionCall?: any }> = [];
-    if (result.text) {
-      modelParts.push({ text: result.text });
-    }
-    if (result.toolCalls.length > 0) {
-      result.toolCalls.forEach(tc => {
-        modelParts.push({
-          functionCall: {
-            name: tc.name,
-            args: tc.args,
-            ...(tc.id && { id: tc.id }), // Preserve ID for Anthropic multi-turn support
-          },
-        });
-      });
-    }
-
-    if (modelParts.length > 0) {
+    // Add model response to history - use rawParts to preserve thought_signature for Gemini 3
+    if (result.rawParts && result.rawParts.length > 0) {
+      // Use raw parts from response (preserves thought_signature)
       updatedHistory.push({
         role: 'model',
-        parts: modelParts,
+        parts: result.rawParts,
       });
+    } else {
+      // Fallback: reconstruct parts (for non-Gemini 3 or missing rawParts)
+      const modelParts: Array<{ text?: string; functionCall?: any }> = [];
+      if (result.text) {
+        modelParts.push({ text: result.text });
+      }
+      if (result.toolCalls.length > 0) {
+        result.toolCalls.forEach(tc => {
+          modelParts.push({
+            functionCall: {
+              name: tc.name,
+              args: tc.args,
+              ...(tc.id && { id: tc.id }), // Preserve ID for Anthropic multi-turn support
+            },
+          });
+        });
+      }
+
+      if (modelParts.length > 0) {
+        updatedHistory.push({
+          role: 'model',
+          parts: modelParts,
+        });
+      }
     }
 
     // Save updated session to KV

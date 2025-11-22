@@ -18,8 +18,6 @@ async function authenticate(request: NextRequest): Promise<boolean> {
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
 
-    if (token === API_PASSWORD) return true;
-
     try {
       const validation = await validateDesktopToken(token);
       if (validation.valid) return true;
