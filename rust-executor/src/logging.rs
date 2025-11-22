@@ -22,12 +22,22 @@ pub struct LogEntry {
 #[derive(Clone)]
 pub struct LogBuffer {
     entries: Arc<Mutex<Vec<LogEntry>>>,
+    execution_id: Option<String>,
 }
 
 impl LogBuffer {
     pub fn new() -> Self {
         Self {
             entries: Arc::new(Mutex::new(Vec::new())),
+            execution_id: None,
+        }
+    }
+
+    /// Create a new LogBuffer with an execution ID for distributed tracing
+    pub fn with_execution_id(execution_id: impl Into<String>) -> Self {
+        Self {
+            entries: Arc::new(Mutex::new(Vec::new())),
+            execution_id: Some(execution_id.into()),
         }
     }
 
@@ -57,21 +67,23 @@ impl LogBuffer {
         data: Option<Value>,
     ) {
         // Emit tracing event for real-time logging to ClickHouse
-        // This ensures that logs stored in the buffer (and later DB) are also available in real-time via OTLP
+        // Include execution_id if available for distributed tracing correlation
+        let execution_id = self.execution_id.as_deref();
+
         match level.to_lowercase().as_str() {
             "error" => {
-                error!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                error!(log_source = "executor", execution_id = ?execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "warn" | "warning" => {
-                warn!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                warn!(log_source = "executor", execution_id = ?execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "debug" => {
-                debug!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                debug!(log_source = "executor", execution_id = ?execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
             "trace" => {
-                trace!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
+                trace!(log_source = "executor", execution_id = ?execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message)
             }
-            _ => info!(log_source = "executor", step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
+            _ => info!(log_source = "executor", execution_id = ?execution_id, step_id = ?step_id, tool_name = ?tool_name, data = ?data, "{}", message),
         }
 
         let entry = LogEntry {

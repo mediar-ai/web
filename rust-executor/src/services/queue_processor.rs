@@ -1,12 +1,10 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use opentelemetry::trace::TraceContextExt;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::interval;
 use tracing::{error, info, info_span, warn, Instrument};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -199,8 +197,8 @@ impl QueueProcessor {
                 "Using MCP endpoint for workflow execution"
             );
 
-            // Create a LogBuffer for this execution
-            let log_buffer = LogBuffer::new();
+            // Create a LogBuffer for this execution with execution_id for correlation
+            let log_buffer = LogBuffer::with_execution_id(execution.id.to_string());
 
             let start_time = Utc::now();
 
@@ -274,6 +272,7 @@ impl QueueProcessor {
                     executor.execute().await
                 }
             }
+            .instrument(execution_span.clone())
             .await;
 
             // Update execution status based on result
@@ -530,7 +529,7 @@ impl QueueProcessor {
                 }
             }
 
-            return async { Ok(true) }.instrument(execution_span).await;
+            return Ok(true);
         }
 
         Ok(false)
@@ -607,13 +606,9 @@ impl QueueProcessor {
 
         let start_time = Instant::now();
 
-        // Extract trace_id from current OpenTelemetry span
-        let trace_id = tracing::Span::current()
-            .context()
-            .span()
-            .span_context()
-            .trace_id()
-            .to_string();
+        // Extract trace_id from current OpenTelemetry span using helper
+        let trace_id = crate::telemetry::current_trace_id()
+            .unwrap_or_else(|| "00000000000000000000000000000000".to_string());
 
         // Add debug logging
         debug!(trace_id = %trace_id, "Extracted trace_id for distributed tracing");
