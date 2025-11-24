@@ -1,4 +1,4 @@
-name: Deploy Rust Executor to Azure (Optimized)
+name: Deploy Rust Executor to Azure
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'rust-executor/**'
-      - '.github/workflows/deploy-rust-executor-optimized.yml'
+      - '.github/workflows/deploy-rust-executor.yml'
   workflow_dispatch:
 
 jobs:
@@ -21,27 +21,61 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          cache: true # Cache ~/.cargo and target/
+          cache: true
 
       - name: Run Tests
         run: |
           cd rust-executor
           cargo test --lib --tests --verbose
 
-  # Build and deploy in parallel with tests
+  # Build and deploy
   deploy:
     runs-on: ubuntu-latest
-    # Remove needs: [test] to run in parallel, or keep to run after tests pass
-    # needs: [test]  # Uncomment for safety (sequential)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          ACR_NAME="mediarworkflowacr"
+          az acr login --name $ACR_NAME
+
+      - name: Build and Push Docker Image with Caching
+        env:
+          TIMESTAMP: ${{ github.run_number }}
+        run: |
+          cd rust-executor
+
+          ACR_NAME="mediarworkflowacr"
+          ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
+          IMAGE_NAME="workflow-executor"
+          ENVIRONMENT="dev"
+          IMAGE_TAG="${ENVIRONMENT}-${TIMESTAMP}"
+
+          echo "Building ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+          # Build with GitHub Actions cache
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${ENVIRONMENT}-latest" \
+            --push \
+            --file Dockerfile \
+            .
+
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "ACR_LOGIN_SERVER=${ACR_LOGIN_SERVER}" >> $GITHUB_ENV
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
 
       - name: Deploy to Azure Container Instances
         env:
@@ -53,12 +87,68 @@ jobs:
           SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
         run: |
           cd rust-executor
-          chmod +x scripts/*.sh
-          # Use optimized Dockerfile if it exists, otherwise use default
-          if [ -f "Dockerfile.optimized" ]; then
-            export DOCKERFILE="Dockerfile.optimized"
+
+          RESOURCE_GROUP="mediar-workflow-executor-rg"
+          CONTAINER_NAME="workflow-executor-dev"
+          ACR_NAME="mediarworkflowacr"
+          PORT=8080
+          CONTAINER_CPU=1
+          CONTAINER_MEMORY=2
+
+          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+
+          OTEL_FQDN=$(az container list --query "[?contains(name, 'otel')].ipAddress.fqdn" -o tsv | head -n 1)
+          if [ -n "$OTEL_FQDN" ]; then
+            OTEL_ENDPOINT="http://${OTEL_FQDN}:4318"
+          else
+            OTEL_ENDPOINT="http://otel-collector-mcp-vm2-rg.eastus.azurecontainer.io:4318"
           fi
-          ./scripts/deploy.sh dev
+
+          ENV_VARS=(
+            "PORT=$PORT"
+            "RUST_LOG=workflow_executor=debug,tower_http=debug,info"
+            "DATABASE_URL=$DATABASE_URL"
+            "MCP_ENDPOINT=http://localhost:3000"
+            "ENVIRONMENT=dev"
+            "OTEL_SDK_ENABLED=true"
+            "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_ENDPOINT"
+            "AZURE_CONTAINER_NAME=$CONTAINER_NAME"
+            "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
+          )
+
+          [ -n "$SUPABASE_URL" ] && ENV_VARS+=("SUPABASE_URL=$SUPABASE_URL")
+          [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] && ENV_VARS+=("SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY")
+          [ -n "$APP_URL" ] && ENV_VARS+=("APP_URL=$APP_URL")
+          [ -n "$MEDIAR_SERVICE_API_KEY" ] && ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")
+          [ -n "$SECRETS_ENCRYPTION_KEY" ] && ENV_VARS+=("SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY")
+
+          if az container show --name "$CONTAINER_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null 2>&1; then
+            echo "Deleting existing container..."
+            az container delete \
+              --name "$CONTAINER_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --output none
+          fi
+
+          echo "Deploying new container with pre-built image..."
+          az container create \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CONTAINER_NAME" \
+            --image "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --os-type Linux \
+            --cpu "$CONTAINER_CPU" \
+            --memory "$CONTAINER_MEMORY" \
+            --registry-login-server "$ACR_LOGIN_SERVER" \
+            --registry-username "$ACR_USERNAME" \
+            --registry-password "$ACR_PASSWORD" \
+            --dns-name-label "${CONTAINER_NAME}" \
+            --ports "$PORT" \
+            --environment-variables "${ENV_VARS[@]}" \
+            --output none
+
+          echo "Container deployed successfully"
 
       - name: Test Health Endpoint
         run: |
