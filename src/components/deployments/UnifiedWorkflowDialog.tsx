@@ -1185,6 +1185,17 @@ export function UnifiedWorkflowDialog({
                   <div className="space-y-6">
                     <CronScheduleEditor
 
+                      cronExpression={cronConfig.expression}
+                      cronTimezone={cronConfig.timezone}
+                      cronEnabled={cronConfig.enabled}
+                      cronMaxConcurrent={cronConfig.maxConcurrent}
+                      cronRetryOnFailure={cronConfig.retryOnFailure}
+                      cronRetryCount={cronConfig.retryCount}
+                      onChange={setCronConfig}
+                      showAdvanced={true}
+                    />
+
+
                     {/* Executor Type Selection (Superadmin only) */}
                     {isMediarTeam && (
                       <div className="p-4 border-2 border-black rounded-lg bg-yellow-50">
@@ -1207,16 +1218,6 @@ export function UnifiedWorkflowDialog({
                         </p>
                       </div>
                     )}
-                      cronExpression={cronConfig.expression}
-                      cronTimezone={cronConfig.timezone}
-                      cronEnabled={cronConfig.enabled}
-                      cronMaxConcurrent={cronConfig.maxConcurrent}
-                      cronRetryOnFailure={cronConfig.retryOnFailure}
-                      cronRetryCount={cronConfig.retryCount}
-                      onChange={setCronConfig}
-                      showAdvanced={true}
-                    />
-
                     {/* Machine Assignment Indicator */}
                     <div className="p-4 border-2 border-black rounded-lg bg-gray-50">
                       <div className="flex items-center justify-between mb-2">
