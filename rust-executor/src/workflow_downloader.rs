@@ -48,7 +48,7 @@ pub async fn ensure_workflow_downloaded(
     // Step 2: Download workflow zip via curl with service token
     // Pass both Authorization header (service token) and X-Organization-ID header (org)
     let download_command = format!(
-        r#"curl -L -o "{}" -H "Authorization: Bearer {}" -H "X-Organization-ID: {}" "{}""#,
+        r#"curl --max-time 300 -L -o "{}" -H "Authorization: Bearer {}" -H "X-Organization-ID: {}" "{}""#,
         zip_path,
         service_token,
         org_id,
