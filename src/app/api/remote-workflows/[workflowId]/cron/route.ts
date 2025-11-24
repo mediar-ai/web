@@ -233,6 +233,7 @@ export async function PUT(
       cron_expression,
       cron_timezone,
       cron_enabled,
+        cron_executor_type,
       cron_max_concurrent,
       cron_retry_on_failure,
       cron_retry_count,
@@ -340,6 +341,9 @@ export async function PUT(
     }
     if (cron_retry_count !== undefined) {
       updateData.cron_retry_count = cron_retry_count;
+    if (cron_executor_type !== undefined) {
+      updateData.cron_executor_type = cron_executor_type;
+    }
     }
 
     // STEP 4: Clear auto-pause flags when re-enabling (matching PATCH behavior)
@@ -360,7 +364,7 @@ export async function PUT(
       .from('deployed_workflows')
       .update(updateData)
       .eq('id', workflowIdNum)
-      .select('id, name, cron_expression, cron_enabled, cron_timezone, cron_max_concurrent, cron_retry_on_failure, cron_retry_count')
+      .select('id, name, cron_expression, cron_enabled, cron_executor_type, cron_timezone, cron_max_concurrent, cron_retry_on_failure, cron_retry_count')
       .single();
 
     if (error) {
@@ -452,6 +456,7 @@ export async function GET(
         cron_expression,
         cron_timezone,
         cron_enabled,
+        cron_executor_type,
         last_scheduled_execution,
         next_scheduled_execution,
         cron_max_concurrent,

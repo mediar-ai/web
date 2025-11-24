@@ -1296,6 +1296,7 @@ function DashboardContent() {
             }
           }}
           onSettingsUpdated={() => fetchWorkflows(false)}
+          isMediarTeam={isGlobalAdmin}
         />
 
         <ExecutionDetailsDialog
