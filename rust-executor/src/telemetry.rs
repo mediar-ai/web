@@ -117,9 +117,12 @@ where
         .build()?;
 
     // Create tracer provider with batch exporter
+    // Use AlwaysOn sampler to ensure all spans are recorded
+    use opentelemetry_sdk::trace::Sampler;
     let trace_provider = SdkTracerProvider::builder()
         .with_batch_exporter(trace_exporter, runtime::Tokio)
         .with_resource(resource.clone())
+        .with_sampler(Sampler::AlwaysOn)
         .build();
 
     // Set global tracer provider
@@ -147,9 +150,9 @@ where
     eprintln!("  Traces will be sent to: {}/v1/traces", otlp_endpoint);
 
     // Create the tracing-opentelemetry layer for traces
-    // IMPORTANT: Get the tracer from the global provider explicitly
-    let tracer = opentelemetry::global::tracer("mediar-workflow-executor-rust");
-    let traces_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    // IMPORTANT: This must be called AFTER set_tracer_provider above
+    // The layer will automatically use the global tracer provider
+    let traces_layer = tracing_opentelemetry::layer();
 
     // Create the OpenTelemetryTracingBridge layer for logs
     // This bridges tracing events (info!, error!, etc.) to OpenTelemetry logs
