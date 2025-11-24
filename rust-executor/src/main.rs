@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::{extract::DefaultBodyLimit, Router};
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
@@ -15,6 +15,7 @@ mod services;
 mod storage;
 mod telemetry;
 mod utils;
+mod workflow_downloader;
 
 use crate::db::{create_pool, DatabasePool};
 use crate::models::ExecutionRequest;
@@ -238,35 +239,78 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         info!("Detected TypeScript workflow - executing via execute_sequence MCP tool");
         eprintln!("📦 TypeScript workflow detected");
 
-        // Get the github_folder which maps to the local path on the VM
-        let github_folder = workflow
-            .github_folder
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing github_folder"))?;
+        // Create MCP client for both download and execution
+        let mcp_client = mcp::McpClient::from_url(mcp_endpoint.clone());
 
-        // The Windows VMs have S3 bucket mounted to S: drive via rclone
-        // Structure: S:\org-{clerk_org_id}\workflows\{workflow_id}\
-        // Note: S3 uses numeric workflow IDs, not github_folder names
-        // MCP execute_sequence requires file:// URL format (matching terminator CLI)
-        let vm_workflow_path = if let Some(org_id) = &workflow.organization_id {
-            let windows_path = format!("S:\\org-{org_id}\\workflows\\{workflow_id_int}");
-            // Convert Windows path to file:// URL (terminator format: file:// with forward slashes)
-            // S:\org-xxx\workflows\123 -> file://S:/org-xxx/workflows/123
-            let normalized_path = windows_path.replace("\\", "/");
-            format!("file://{normalized_path}")
+        // Determine execution path: UUID-based (new) or github_folder (legacy)
+        let has_release = workflow.github_release_url.is_some();
+        let vm_workflow_path = if has_release {
+            // NEW ARCHITECTURE: UUID-based download from Next.js route
+            info!("Using new UUID-based architecture with GitHub releases");
+            eprintln!("🆕 UUID-based workflow (GitHub releases)");
+
+            let workflow_uuid = workflow
+                .uuid
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing uuid"))?;
+
+            let org_id = workflow
+                .organization_id
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing organization_id"))?;
+
+            // Get service token from environment
+            let service_token = std::env::var("MCP_SERVICE_TOKEN")
+                .context("MCP_SERVICE_TOKEN environment variable not set")?;
+
+            // Build download URL
+            let download_url = format!(
+                "https://app.mediar.ai/api/workflows/{}/download",
+                workflow_uuid
+            );
+
+            info!("Downloading workflow {} from {}", workflow_uuid, download_url);
+            eprintln!("📥 Downloading workflow from releases...");
+
+            // Download and extract workflow to S:\{uuid}\
+            let downloaded_path = crate::workflow_downloader::ensure_workflow_downloaded(
+                &mcp_client,
+                workflow_uuid,
+                org_id,
+                &service_token,
+                &download_url,
+            )
+            .await?;
+
+            // Convert to file:// URL format
+            let normalized_path = downloaded_path.replace("\\", "/");
+            format!("file://{}", normalized_path)
         } else {
-            // Fallback: if no org_id, just pass the folder name
-            eprintln!("⚠️  Warning: No organization_id found, passing folder name only");
-            github_folder.to_string()
+            // LEGACY ARCHITECTURE: S3 mount with github_folder
+            info!("Using legacy S3 mount architecture");
+            eprintln!("📁 Legacy workflow (S3 mount)");
+
+            let github_folder = workflow
+                .github_folder
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing both github_release_url and github_folder"))?;
+
+            // The Windows VMs have S3 bucket mounted to S: drive via rclone
+            // Structure: S:\org-{clerk_org_id}\workflows\{workflow_id}\
+            let vm_workflow_path = if let Some(org_id) = &workflow.organization_id {
+                let windows_path = format!(r"S:\org-{org_id}\workflows\{workflow_id_int}");
+                let normalized_path = windows_path.replace("\\", "/");
+                format!("file://{normalized_path}")
+            } else {
+                eprintln!("⚠️  Warning: No organization_id found, passing folder name only");
+                github_folder.to_string()
+            };
+
+            vm_workflow_path
         };
 
         info!("TypeScript workflow path on VM: {}", vm_workflow_path);
         eprintln!("📁 VM workflow path: {vm_workflow_path}");
-
-        // Create MCP client
-        let mcp_client = mcp::McpClient::from_url(mcp_endpoint.clone());
-
-        // Build execute_sequence arguments with the VM's local file path
         let mut args = serde_json::Map::new();
         args.insert(
             "url".to_string(),

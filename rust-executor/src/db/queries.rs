@@ -29,6 +29,11 @@ impl WorkflowQueries {
                 dw.created_at,
                 dw.updated_at
             FROM deployed_workflows dw
+                dw.uuid,
+                dw.github_repo_url,
+                dw.github_release_url,
+                dw.github_release_checksum,
+                dw.package_json_version,
             JOIN deployed_workflow_versions dwv ON dw.id = dwv.workflow_id
             WHERE dw.id = $1 AND dwv.is_active = true
             "#,
@@ -54,6 +59,11 @@ impl WorkflowQueries {
             organization_id: row.get("organization_id"),
             preferred_format: row.get("preferred_format"),
             automation_sequence: row.get("automation_sequence"),
+            uuid: row.get("uuid"),
+            github_repo_url: row.get("github_repo_url"),
+            github_release_url: row.get("github_release_url"),
+            github_release_checksum: row.get("github_release_checksum"),
+            package_json_version: row.get("package_json_version"),
             automation_sequence_yaml: row.get("automation_sequence_yaml"),
             skip_next_cancellation_check: row.get("skip_next_cancellation_check"),
             created_at: row.get("created_at"),
