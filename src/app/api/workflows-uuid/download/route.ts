@@ -21,14 +21,20 @@ export const dynamic = 'force-dynamic';
  * Example: 
  *   curl -H "Authorization: Bearer {service_token}" \
  *        -H "X-Organization-ID: org_abc123" \
- *        https://app.mediar.ai/api/workflows/{uuid}/download
+ *        https://app.mediar.ai/api/workflows-uuid/download?uuid={uuid}
  */
-export async function GET(
-  req: NextRequest,
-  props: { params: Promise<{ uuid: string }> }
-) {
+export async function GET(req: NextRequest) {
   try {
-    const params = await props.params;
+    // Get UUID from query parameter
+    const { searchParams } = new URL(req.url);
+    const workflowUuid = searchParams.get('uuid');
+    
+    if (!workflowUuid) {
+      return NextResponse.json(
+        { error: 'Missing uuid query parameter' },
+        { status: 400 }
+      );
+    }
     const authHeader = req.headers.get('authorization');
     let authenticatedOrgId: string | null = null;
     let authMethod: 'clerk' | 'service_token' = 'clerk';
@@ -80,7 +86,6 @@ export async function GET(
       );
     }
 
-    const workflowUuid = params.uuid;
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
