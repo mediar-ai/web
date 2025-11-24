@@ -96,9 +96,24 @@ impl QueueProcessor {
 
         if let Some(execution) = execution {
             // Get workflow details
-            let workflow = WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id)
-                .await?
-                .context("Workflow not found")?;
+            // Get workflow details - if this fails, mark execution as failed
+            let workflow = match WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id).await {
+                Ok(Some(w)) => w,
+                Ok(None) => {
+                    WorkflowQueries::update_execution_status(
+                        &self.db_pool, execution.id, ExecutionStatus::Failed,
+                        Some("Workflow not found".to_string()), None, None
+                    ).await?;
+                    return Ok(true);
+                }
+                Err(e) => {
+                    WorkflowQueries::update_execution_status(
+                        &self.db_pool, execution.id, ExecutionStatus::Failed,
+                        Some(format!("Failed to load workflow: {}", e)), None, None
+                    ).await?;
+                    return Ok(true);
+                }
+            };
 
             // Create a span with execution context for all logs
             let execution_span = info_span!(
