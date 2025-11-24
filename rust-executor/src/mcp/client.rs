@@ -285,6 +285,8 @@ impl McpClient {
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .timeout(Duration::from_secs(300))  // 5-minute timeout for all requests
+            .connect_timeout(Duration::from_secs(30))  // 30s to establish connection
             .build()
             .context("Failed to build reqwest client with custom headers")?;
 
