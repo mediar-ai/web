@@ -88,6 +88,7 @@ interface UnifiedWorkflowDialogProps {
   onOpenChange: (open: boolean) => void;
   onSettingsUpdated?: () => void;
   onUseAsTemplate?: (yaml: string, name: string) => void;
+  isMediarTeam?: boolean; // Show executor selection for superadmins
 }
 
 export function UnifiedWorkflowDialog({
@@ -96,6 +97,7 @@ export function UnifiedWorkflowDialog({
   onOpenChange,
   onSettingsUpdated,
   onUseAsTemplate,
+  isMediarTeam = false,
 }: UnifiedWorkflowDialogProps) {
   // Version management state
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
@@ -338,6 +340,7 @@ export function UnifiedWorkflowDialog({
             retryOnFailure: data.cron_config.cron_retry_on_failure !== false,
             retryCount: data.cron_config.cron_retry_count || 3,
           });
+            executorType: data.cron_config.cron_executor_type || 'python',
           console.log('✅ Loaded cron config from database');
         } else {
           // No cron config exists yet, use defaults
@@ -348,6 +351,7 @@ export function UnifiedWorkflowDialog({
             maxConcurrent: 1,
             retryOnFailure: true,
             retryCount: 3,
+            executorType: 'python',
           });
         }
       } else {
@@ -404,6 +408,7 @@ export function UnifiedWorkflowDialog({
             cron_enabled: cronConfig.enabled,
             cron_max_concurrent: cronConfig.maxConcurrent,
             cron_retry_on_failure: cronConfig.retryOnFailure,
+            cron_executor_type: cronConfig.executorType || 'python',
             cron_retry_count: cronConfig.retryCount,
           }),
         }
@@ -1179,6 +1184,29 @@ export function UnifiedWorkflowDialog({
                 ) : (
                   <div className="space-y-6">
                     <CronScheduleEditor
+
+                    {/* Executor Type Selection (Superadmin only) */}
+                    {isMediarTeam && (
+                      <div className="p-4 border-2 border-black rounded-lg bg-yellow-50">
+                        <label className="block font-mono text-xs uppercase text-gray-600 mb-2">
+                          Executor Type (Superadmin)
+                        </label>
+                        <select
+                          value={cronConfig.executorType || 'python'}
+                          onChange={(e) => setCronConfig({
+                            ...cronConfig,
+                            executorType: e.target.value as 'python' | 'rust'
+                          })}
+                          className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
+                        >
+                          <option value="python">Python (Legacy Modal)</option>
+                          <option value="rust">Rust (Azure ACI)</option>
+                        </select>
+                        <p className="text-xs text-gray-600 mt-2 font-mono">
+                          Select which executor runs this scheduled workflow
+                        </p>
+                      </div>
+                    )}
                       cronExpression={cronConfig.expression}
                       cronTimezone={cronConfig.timezone}
                       cronEnabled={cronConfig.enabled}

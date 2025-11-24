@@ -64,6 +64,7 @@ export interface CronConfig {
   maxConcurrent?: number;
   retryOnFailure?: boolean;
   retryCount?: number;
+  executorType?: 'python' | 'rust';
 }
 
 interface CronScheduleEditorProps {
