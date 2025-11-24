@@ -48,7 +48,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Execution, LiveExecutionStatus, WorkflowWithSettings } from '@/lib/workflow-types';
+import {
+  Execution,
+  LiveExecutionStatus,
+  WorkflowWithSettings,
+} from '@/lib/workflow-types';
 import { cn } from '@/lib/utils';
 import { cleanupDropdownClose } from '@/lib/ui-fixes';
 
@@ -98,7 +102,10 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
   }
 
   // Priority 2: Standard message field (if not the default)
-  if (formattedResult?.message && formattedResult.message !== "No message from parser") {
+  if (
+    formattedResult?.message &&
+    formattedResult.message !== 'No message from parser'
+  ) {
     const message = formattedResult.message;
     return typeof message === 'string' ? message : JSON.stringify(message);
   }
@@ -157,19 +164,32 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
 }
 
 // Helper function to determine execution status from parser output
-function getExecutionStatus(execution: Execution, formattedResult: any, isLive: boolean): { badge: string; badgeColor: string } {
+function getExecutionStatus(
+  execution: Execution,
+  formattedResult: any,
+  isLive: boolean
+): { badge: string; badgeColor: string } {
   // Check if currently running
   if (execution.status === 'running' || isLive) {
-    return { badge: 'RUNNING', badgeColor: 'bg-black text-white animate-pulse' };
+    return {
+      badge: 'RUNNING',
+      badgeColor: 'bg-black text-white animate-pulse',
+    };
   }
 
   // Check for exception status (highest priority after running)
   if (formattedResult?.exception === true) {
-    return { badge: 'EXCEPTION', badgeColor: 'bg-black text-white font-bold border-2 border-black' };
+    return {
+      badge: 'EXCEPTION',
+      badgeColor: 'bg-black text-white font-bold border-2 border-black',
+    };
   }
 
   // Check parser-determined status
-  if (formattedResult?.meta_type === 'failed' || formattedResult?.status === 'failed') {
+  if (
+    formattedResult?.meta_type === 'failed' ||
+    formattedResult?.status === 'failed'
+  ) {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }
 
@@ -180,7 +200,10 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
 
   // Check skipped status
   if (formattedResult?.skipped || execution.status === 'skipped') {
-    return { badge: 'SKIPPED', badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
+    return {
+      badge: 'SKIPPED',
+      badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black',
+    };
   }
 
   // Check success/failure from parser
@@ -195,15 +218,27 @@ function getExecutionStatus(execution: Execution, formattedResult: any, isLive: 
   switch (execution.status) {
     case 'error':
     case 'timeout':
-      return { badge: execution.status.toUpperCase(), badgeColor: 'bg-black text-white font-bold' };
+      return {
+        badge: execution.status.toUpperCase(),
+        badgeColor: 'bg-black text-white font-bold',
+      };
     case 'completed':
-      return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
+      return {
+        badge: 'COMPLETED',
+        badgeColor: 'bg-white border-2 border-black',
+      };
     case 'failed':
       return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
     case 'cancelled':
-      return { badge: 'CANCELLED', badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black' };
+      return {
+        badge: 'CANCELLED',
+        badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black',
+      };
     default:
-      return { badge: execution.status.toUpperCase(), badgeColor: 'bg-gray-200 text-gray-800' };
+      return {
+        badge: execution.status.toUpperCase(),
+        badgeColor: 'bg-gray-200 text-gray-800',
+      };
   }
 }
 
@@ -245,44 +280,53 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       desc: true,
     },
   ]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(() => {
-    // Load saved column visibility from localStorage or use defaults
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('executions-table-columns');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          // Always force organization column to be hidden
-          parsed.organization = false;
-          return parsed;
-        } catch (e) {
-          console.error('Failed to parse saved column visibility:', e);
+  const [columnVisibility, setColumnVisibility] =
+    React.useState<VisibilityState>(() => {
+      // Load saved column visibility from localStorage or use defaults
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('executions-table-columns');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            // Always force organization column to be hidden
+            parsed.organization = false;
+            return parsed;
+          } catch (e) {
+            console.error('Failed to parse saved column visibility:', e);
+          }
         }
       }
-    }
-    // Default column visibility
-    return {
-      execution_id: true,  // Show execution ID by default
-      workflow_id: false,  // Hide workflow ID by default
-      workflow_name: true, // Show workflow name by default
-      error_message: false,
-      machine: true,  // Show machine by default (updated from false)
-      organization: false, // ALWAYS hide organization by default
-      user: false,
-      version: false,
-    };
-  });
+      // Default column visibility
+      return {
+        execution_id: true, // Show execution ID by default
+        workflow_id: false, // Hide workflow ID by default
+        workflow_name: true, // Show workflow name by default
+        error_message: false,
+        machine: true, // Show machine by default (updated from false)
+        organization: false, // ALWAYS hide organization by default
+        user: false,
+        version: false,
+      };
+    });
   const [rowSelection, setRowSelection] = React.useState({});
 
   // Track which executions are being stopped/deleted
-  const [stoppingExecutions, setStoppingExecutions] = React.useState<Set<number>>(new Set());
-  const [deletingExecutions, setDeletingExecutions] = React.useState<Set<number>>(new Set());
+  const [stoppingExecutions, setStoppingExecutions] = React.useState<
+    Set<number>
+  >(new Set());
+  const [deletingExecutions, setDeletingExecutions] = React.useState<
+    Set<number>
+  >(new Set());
 
   // Track which dropdown is open to preserve state during re-renders
-  const [openDropdownId, setOpenDropdownId] = React.useState<number | null>(null);
+  const [openDropdownId, setOpenDropdownId] = React.useState<number | null>(
+    null
+  );
 
   // Local search input state (controlled input, only triggers API on Enter/Button)
-  const [localSearchValue, setLocalSearchValue] = React.useState(activeSearchFilter || '');
+  const [localSearchValue, setLocalSearchValue] = React.useState(
+    activeSearchFilter || ''
+  );
 
   // Sync local search value when active filter changes (e.g., cleared from parent)
   React.useEffect(() => {
@@ -307,7 +351,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   // Save column visibility to localStorage whenever it changes
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('executions-table-columns', JSON.stringify(columnVisibility));
+      localStorage.setItem(
+        'executions-table-columns',
+        JSON.stringify(columnVisibility)
+      );
     }
   }, [columnVisibility]);
 
@@ -319,10 +366,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           <input
             type="checkbox"
             checked={table.getIsAllPageRowsSelected()}
-            ref={(el) => {
-              if (el) el.indeterminate = table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected();
+            ref={el => {
+              if (el)
+                el.indeterminate =
+                  table.getIsSomePageRowsSelected() &&
+                  !table.getIsAllPageRowsSelected();
             }}
-            onChange={(e) => table.toggleAllPageRowsSelected(!!e.target.checked)}
+            onChange={e => table.toggleAllPageRowsSelected(!!e.target.checked)}
             className="h-3 w-3 border border-black focus:ring-1 focus:ring-black"
             aria-label="Select all"
           />
@@ -331,7 +381,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           <input
             type="checkbox"
             checked={row.getIsSelected()}
-            onChange={(e) => row.toggleSelected(!!e.target.checked)}
+            onChange={e => row.toggleSelected(!!e.target.checked)}
             className="h-3 w-3 border border-black focus:ring-1 focus:ring-black"
             aria-label="Select row"
           />
@@ -343,7 +393,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         accessorKey: 'execution_id',
         header: 'ID',
         cell: ({ row }) => (
-          <span className="font-mono text-[10px]">{row.getValue('execution_id')}</span>
+          <span className="font-mono text-[10px]">
+            {row.getValue('execution_id')}
+          </span>
         ),
       },
       {
@@ -352,7 +404,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           return (
             <Button
               variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
               className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Workflow ID
@@ -374,7 +428,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           return (
             <Button
               variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
               className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Workflow Name
@@ -382,22 +438,29 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             </Button>
           );
         },
-        accessorFn: (row) => {
-          const workflow = workflows.find((w) => w.id === row.workflow_id);
+        accessorFn: row => {
+          const workflow = workflows.find(w => w.id === row.workflow_id);
           return workflow?.name || `Workflow ${row.workflow_id}`;
         },
         cell: ({ row }) => {
-          const workflow = workflows.find((w) => w.id === row.original.workflow_id);
+          const workflow = workflows.find(
+            w => w.id === row.original.workflow_id
+          );
           return (
-            <span className="font-mono text-xs">
-              {workflow?.name || `Workflow ${row.original.workflow_id}`}
-            </span>
+            <div className="max-w-[100px] truncate">
+              <span className="font-mono text-xs">
+                {workflow?.name || `Workflow ${row.original.workflow_id}`}
+              </span>
+            </div>
           );
         },
         filterFn: (row, columnId, filterValue) => {
           if (!filterValue) return true; // Show all if no filter
-          const workflow = workflows.find((w) => w.id === row.original.workflow_id);
-          const workflowName = workflow?.name || `Workflow ${row.original.workflow_id}`;
+          const workflow = workflows.find(
+            w => w.id === row.original.workflow_id
+          );
+          const workflowName =
+            workflow?.name || `Workflow ${row.original.workflow_id}`;
           return workflowName === filterValue;
         },
       },
@@ -407,7 +470,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           return (
             <Button
               variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
               className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Status
@@ -417,7 +482,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         },
         cell: ({ row }) => {
           const execution = row.original;
-          const isLive = liveExecutions.some((le) => le.id === execution.execution_id);
+          const isLive = liveExecutions.some(
+            le => le.id === execution.execution_id
+          );
 
           // Parse formatted_output if it exists
           let formattedResult = null;
@@ -433,10 +500,19 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           }
 
           // Use the helper function to get status
-          const { badge, badgeColor } = getExecutionStatus(execution, formattedResult, isLive);
+          const { badge, badgeColor } = getExecutionStatus(
+            execution,
+            formattedResult,
+            isLive
+          );
 
           return (
-            <span className={cn('font-mono text-[10px] px-1 py-0.5 inline-block', badgeColor)}>
+            <span
+              className={cn(
+                'font-mono text-[10px] px-1 py-0.5 inline-block',
+                badgeColor
+              )}
+            >
               {badge}
             </span>
           );
@@ -461,11 +537,15 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           // Use the helper function to get the message
           const message = getParserMessage(formattedResult, execution);
-          const truncatedMessage = message.length > 80 ? message.substring(0, 80) + '...' : message;
+          const truncatedMessage =
+            message.length > 80 ? message.substring(0, 80) + '...' : message;
 
           return (
-            <div className="max-w-[250px] truncate">
-              <span className="font-mono text-[10px] text-gray-700" title={message}>
+            <div className="max-w-[200px] truncate">
+              <span
+                className="font-mono text-[10px] text-gray-700"
+                title={message}
+              >
                 {truncatedMessage}
               </span>
             </div>
@@ -478,9 +558,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         cell: ({ row }) => {
           const message = row.getValue('error_message') as string;
           if (!message) return <span className="text-[10px]">-</span>;
-          const truncated = message.length > 50 ? message.substring(0, 50) + '...' : message;
+          const truncated =
+            message.length > 50 ? message.substring(0, 50) + '...' : message;
           return (
-            <span className="font-mono text-[10px] text-red-600" title={message}>
+            <span
+              className="font-mono text-[10px] text-red-600"
+              title={message}
+            >
               {truncated}
             </span>
           );
@@ -492,7 +576,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           return (
             <Button
               variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
               className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Started
@@ -503,7 +589,11 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         cell: ({ row }) => {
           const execution = row.original;
           const date = new Date(execution.started_at || execution.created_at);
-          return <span className="font-mono text-[10px]">{date.toLocaleString()}</span>;
+          return (
+            <span className="font-mono text-[10px]">
+              {date.toLocaleString()}
+            </span>
+          );
         },
       },
       {
@@ -512,7 +602,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           return (
             <Button
               variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
               className="h-auto p-0 font-mono text-white hover:text-black"
             >
               Duration
@@ -520,17 +612,21 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             </Button>
           );
         },
-        accessorFn: (row) => {
+        accessorFn: row => {
           if (row.completed_at && row.started_at) {
             return (
-              new Date(row.completed_at).getTime() - new Date(row.started_at).getTime()
-            ) / 1000;
+              (new Date(row.completed_at).getTime() -
+                new Date(row.started_at).getTime()) /
+              1000
+            );
           }
           return 0;
         },
         cell: ({ row }) => {
           const execution = row.original;
-          const isLive = liveExecutions.some((le) => le.id === execution.execution_id);
+          const isLive = liveExecutions.some(
+            le => le.id === execution.execution_id
+          );
 
           if (execution.completed_at && execution.started_at) {
             const duration = Math.round(
@@ -539,7 +635,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                 1000
             );
             return <span className="font-mono text-[10px]">{duration}s</span>;
-          } else if ((isLive || execution.status === 'running') && execution.started_at) {
+          } else if (
+            (isLive || execution.status === 'running') &&
+            execution.started_at
+          ) {
             // Calculate elapsed time for running executions
             const elapsed = Math.round(
               (Date.now() - new Date(execution.started_at).getTime()) / 1000
@@ -567,21 +666,27 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               formattedDuration = `${elapsed}s`;
             }
 
-            return <span className="font-mono text-[10px] animate-pulse">{formattedDuration}</span>;
+            return (
+              <span className="font-mono text-[10px] animate-pulse">
+                {formattedDuration}
+              </span>
+            );
           }
           return <span className="font-mono text-[10px]">-</span>;
         },
       },
       {
         id: 'machine',
-        accessorFn: (row) => row.assigned_machine_name || '',
+        accessorFn: row => row.assigned_machine_name || '',
         header: 'Machine',
         cell: ({ row }) => {
           const machineName = row.original.assigned_machine_name;
           return (
-            <span className="font-mono text-[10px] text-gray-600">
-              {machineName || '-'}
-            </span>
+            <div className="max-w-[100px] truncate">
+              <span className="font-mono text-[10px] text-gray-600">
+                {machineName || '-'}
+              </span>
+            </div>
           );
         },
         filterFn: (row, columnId, filterValue) => {
@@ -592,7 +697,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       },
       {
         id: 'organization',
-        accessorFn: (row) => row.workflow_organization_name || '',
+        accessorFn: row => row.workflow_organization_name || '',
         header: 'Organization',
         cell: ({ row }) => {
           const orgName = row.original.workflow_organization_name;
@@ -621,9 +726,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         header: 'Version',
         cell: ({ row }) => {
           const execution = row.original;
-          const workflow = workflows.find((w) => w.id === execution.workflow_id);
+          const workflow = workflows.find(w => w.id === execution.workflow_id);
           // Show the version that was actually used for this execution
-          const version = execution.version_number || workflow?.version || '1.0';
+          const version =
+            execution.version_number || workflow?.version || '1.0';
           return (
             <span className="font-mono text-[10px] text-gray-600">
               v{version}
@@ -636,7 +742,8 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         header: 'Actions',
         cell: ({ row }) => {
           const execution = row.original;
-          const isRunning = execution.status === 'running' || execution.status === 'queued';
+          const isRunning =
+            execution.status === 'running' || execution.status === 'queued';
           const isStopping = stoppingExecutions.has(execution.execution_id);
           const isDeleting = deletingExecutions.has(execution.execution_id);
 
@@ -644,7 +751,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             <DropdownMenu
               modal={false}
               open={openDropdownId === execution.execution_id}
-              onOpenChange={(open) => {
+              onOpenChange={open => {
                 setOpenDropdownId(open ? execution.execution_id : null);
                 if (!open) {
                   cleanupDropdownClose();
@@ -660,8 +767,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   <MoreHorizontal className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="border-2 border-black">
-                <DropdownMenuLabel className="font-mono uppercase">Actions</DropdownMenuLabel>
+              <DropdownMenuContent
+                align="end"
+                className="border-2 border-black"
+              >
+                <DropdownMenuLabel className="font-mono uppercase">
+                  Actions
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
@@ -686,11 +798,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                           } this execution?`
                         )
                       ) {
-                        setStoppingExecutions((prev) => new Set(prev).add(execution.execution_id));
+                        setStoppingExecutions(prev =>
+                          new Set(prev).add(execution.execution_id)
+                        );
                         try {
                           await onCancelExecution(execution.execution_id);
                         } finally {
-                          setStoppingExecutions((prev) => {
+                          setStoppingExecutions(prev => {
                             const newSet = new Set(prev);
                             newSet.delete(execution.execution_id);
                             return newSet;
@@ -715,11 +829,13 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                           `Are you sure you want to DELETE this execution? This cannot be undone.`
                         )
                       ) {
-                        setDeletingExecutions((prev) => new Set(prev).add(execution.execution_id));
+                        setDeletingExecutions(prev =>
+                          new Set(prev).add(execution.execution_id)
+                        );
                         try {
                           await onDeleteExecution(execution.execution_id);
                         } finally {
-                          setDeletingExecutions((prev) => {
+                          setDeletingExecutions(prev => {
                             const newSet = new Set(prev);
                             newSet.delete(execution.execution_id);
                             return newSet;
@@ -769,7 +885,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     manualFiltering: true, // Server-side filtering
     manualSorting: true, // Server-side sorting (already sorted by API)
     pageCount: totalPages,
-    getRowId: (row) => `execution-${row.execution_id}`, // Use stable execution ID
+    getRowId: row => `execution-${row.execution_id}`, // Use stable execution ID
     state: {
       sorting,
       columnVisibility,
@@ -781,13 +897,12 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
     },
   });
 
-
   // Get unique workflow names for filter (use prop if provided, else compute from executions)
   const uniqueWorkflowNames = React.useMemo(() => {
     if (filterWorkflowNames) return filterWorkflowNames;
     const names = new Set<string>();
-    executions.forEach((execution) => {
-      const workflow = workflows.find((w) => w.id === execution.workflow_id);
+    executions.forEach(execution => {
+      const workflow = workflows.find(w => w.id === execution.workflow_id);
       if (workflow?.name) {
         names.add(workflow.name);
       }
@@ -799,7 +914,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   const uniqueStatuses = React.useMemo(() => {
     if (filterStatuses) return filterStatuses;
     const statuses = new Set<string>();
-    executions.forEach((execution) => {
+    executions.forEach(execution => {
       statuses.add(execution.status);
     });
     return Array.from(statuses).sort();
@@ -809,7 +924,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
   const uniqueMachines = React.useMemo(() => {
     if (filterMachines) return filterMachines;
     const machines = new Set<string>();
-    executions.forEach((execution) => {
+    executions.forEach(execution => {
       if (execution.assigned_machine_name) {
         machines.add(execution.assigned_machine_name);
       }
@@ -819,7 +934,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
   return (
     <div className="w-full">
-      <style dangerouslySetInnerHTML={{__html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .executions-table-wrapper::-webkit-scrollbar {
           height: 14px;
         }
@@ -836,7 +953,9 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           scrollbar-width: thin;
           scrollbar-color: black #f1f1f1;
         }
-      `}} />
+      `,
+        }}
+      />
       {/* Table Controls */}
       <div className="flex flex-col gap-2 py-2">
         <div className="flex items-center justify-between gap-2">
@@ -844,7 +963,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             {/* Search Field Dropdown */}
             <select
               value={activeSearchField || 'all'}
-              onChange={(e) => {
+              onChange={e => {
                 if (onSearchFieldChange) {
                   onSearchFieldChange(e.target.value);
                 }
@@ -861,7 +980,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             {/* Search Mode Dropdown */}
             <select
               value={activeSearchMode || 'contains'}
-              onChange={(e) => {
+              onChange={e => {
                 if (onSearchModeChange) {
                   onSearchModeChange(e.target.value);
                 }
@@ -876,10 +995,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               <Input
                 placeholder="Search executions... (press Enter)"
                 value={localSearchValue}
-                onChange={(event) => {
+                onChange={event => {
                   setLocalSearchValue(event.target.value);
                 }}
-                onKeyDown={(event) => {
+                onKeyDown={event => {
                   if (event.key === 'Enter') {
                     handleSearch();
                   }
@@ -939,7 +1058,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             )}
             <DropdownMenu
               modal={false}
-              onOpenChange={(open) => {
+              onOpenChange={open => {
                 if (!open) {
                   cleanupDropdownClose();
                 }
@@ -956,21 +1075,24 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   <ChevronDown className="ml-1 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="border-2 border-black">
+              <DropdownMenuContent
+                align="end"
+                className="border-2 border-black"
+              >
                 <DropdownMenuLabel className="font-mono uppercase text-xs">
                   Toggle Columns
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {table
                   .getAllColumns()
-                  .filter((column) => column.getCanHide())
-                  .map((column) => {
+                  .filter(column => column.getCanHide())
+                  .map(column => {
                     return (
                       <DropdownMenuCheckboxItem
                         key={column.id}
                         className="font-mono text-sm capitalize hover:bg-gray-100"
                         checked={column.getIsVisible()}
-                        onCheckedChange={(value) => {
+                        onCheckedChange={value => {
                           posthog?.capture('dashboard_table_toggle_column', {
                             column: column.id,
                             visible: !!value,
@@ -992,13 +1114,15 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1">
             <Filter className="h-3 w-3 text-gray-600" />
-            <span className="text-xs font-mono text-gray-600 uppercase">Filters:</span>
+            <span className="text-xs font-mono text-gray-600 uppercase">
+              Filters:
+            </span>
           </div>
 
           {/* Workflow Name Filter */}
           <select
             value={activeWorkflowFilter ?? ''}
-            onChange={(e) => {
+            onChange={e => {
               const value = e.target.value || undefined;
               if (onWorkflowFilterChange) {
                 onWorkflowFilterChange(value);
@@ -1007,7 +1131,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Workflows</option>
-            {uniqueWorkflowNames.map((name) => (
+            {uniqueWorkflowNames.map(name => (
               <option key={name} value={name}>
                 {name}
               </option>
@@ -1017,7 +1141,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           {/* Status Filter */}
           <select
             value={activeStatusFilter ?? ''}
-            onChange={(e) => {
+            onChange={e => {
               const value = e.target.value || undefined;
               if (onStatusFilterChange) {
                 onStatusFilterChange(value);
@@ -1026,7 +1150,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Statuses</option>
-            {uniqueStatuses.map((status) => (
+            {uniqueStatuses.map(status => (
               <option key={status} value={status}>
                 {status.toUpperCase()}
               </option>
@@ -1036,7 +1160,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           {/* Machine Filter */}
           <select
             value={activeMachineFilter ?? ''}
-            onChange={(e) => {
+            onChange={e => {
               const value = e.target.value || undefined;
               if (onMachineFilterChange) {
                 onMachineFilterChange(value);
@@ -1045,7 +1169,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
             <option value="">All Machines</option>
-            {uniqueMachines.map((machine) => (
+            {uniqueMachines.map(machine => (
               <option key={machine} value={machine}>
                 {machine}
               </option>
@@ -1053,7 +1177,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           </select>
 
           {/* Clear Filters Button */}
-          {(activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
+          {(activeWorkflowFilter ||
+            activeStatusFilter ||
+            activeMachineFilter ||
+            activeSearchFilter) && (
             <Button
               variant="outline"
               size="sm"
@@ -1083,11 +1210,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
       {/* Table */}
       <div className="border-2 border-black executions-table-wrapper">
-          <Table>
+        <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="bg-black hover:bg-black">
-                {headerGroup.headers.map((header) => {
+            {table.getHeaderGroups().map(headerGroup => (
+              <TableRow
+                key={headerGroup.id}
+                className="bg-black hover:bg-black"
+              >
+                {headerGroup.headers.map(header => {
                   return (
                     <TableHead
                       key={header.id}
@@ -1095,7 +1225,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                     >
                       {header.isPlaceholder
                         ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
                     </TableHead>
                   );
                 })}
@@ -1107,40 +1240,54 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
               Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={`skeleton-${index}`} className="h-8">
                   {columns.map((column, colIndex) => (
-                    <TableCell key={`${column.id || colIndex}`} className="py-1 px-2">
+                    <TableCell
+                      key={`${column.id || colIndex}`}
+                      className="py-1 px-2"
+                    >
                       <Skeleton className="h-3 w-full" />
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
+              table.getRowModel().rows.map(row => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
                   className="hover:bg-gray-50 h-8 cursor-pointer"
                   onClick={() => onViewDetails(row.original.execution_id)}
                 >
-                  {row.getVisibleCells().map((cell) => (
+                  {row.getVisibleCells().map(cell => (
                     <TableCell
                       key={cell.id}
                       className="font-mono py-1 px-2"
-                      onClick={(e) => {
+                      onClick={e => {
                         // Prevent row click when clicking on interactive elements (checkboxes, action buttons)
-                        if (cell.column.id === 'select' || cell.column.id === 'actions') {
+                        if (
+                          cell.column.id === 'select' ||
+                          cell.column.id === 'actions'
+                        ) {
                           e.stopPropagation();
                         }
                       }}
                     >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-12 text-center">
-                  <p className="text-gray-600 font-mono text-xs">No executions found.</p>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-12 text-center"
+                >
+                  <p className="text-gray-600 font-mono text-xs">
+                    No executions found.
+                  </p>
                 </TableCell>
               </TableRow>
             )}
@@ -1151,8 +1298,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
       {/* Pagination */}
       <div className="flex items-center justify-between py-2">
         <div className="text-xs text-gray-600 font-mono">
-          Showing {executions.length > 0 ? (currentPage - 1) * serverPageSize + 1 : 0} to{' '}
-          {Math.min(currentPage * serverPageSize, totalRecords)} of {totalRecords} executions
+          Showing{' '}
+          {executions.length > 0 ? (currentPage - 1) * serverPageSize + 1 : 0}{' '}
+          to {Math.min(currentPage * serverPageSize, totalRecords)} of{' '}
+          {totalRecords} executions
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
@@ -1205,14 +1354,14 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
 
           <select
             value={serverPageSize}
-            onChange={(e) => {
+            onChange={e => {
               if (onPageSizeChange) {
                 onPageSizeChange(Number(e.target.value));
               }
             }}
             className="ml-2 h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
           >
-            {[25, 50, 100, 200].map((size) => (
+            {[25, 50, 100, 200].map(size => (
               <option key={size} value={size}>
                 Show {size}
               </option>
