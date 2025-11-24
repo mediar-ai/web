@@ -447,7 +447,7 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
             w => w.id === row.original.workflow_id
           );
           return (
-            <div className="max-w-[100px] truncate">
+            <div className="max-w-[150px] truncate">
               <span
                 className="font-mono text-xs"
                 title={workflow?.name || `Workflow ${row.original.workflow_id}`}
