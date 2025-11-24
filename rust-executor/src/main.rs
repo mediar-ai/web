@@ -265,7 +265,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
 
             // Build download URL
             let download_url = format!(
-                "https://app.mediar.ai/api/workflows/{}/download",
+                "https://app.mediar.ai/api/workflows-uuid/download?uuid={}",
                 workflow_uuid
             );
 
