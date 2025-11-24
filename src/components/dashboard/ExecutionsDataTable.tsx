@@ -448,7 +448,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           );
           return (
             <div className="max-w-[100px] truncate">
-              <span className="font-mono text-xs">
+              <span
+                className="font-mono text-xs"
+                title={workflow?.name || `Workflow ${row.original.workflow_id}`}
+              >
                 {workflow?.name || `Workflow ${row.original.workflow_id}`}
               </span>
             </div>
@@ -683,7 +686,10 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
           const machineName = row.original.assigned_machine_name;
           return (
             <div className="max-w-[100px] truncate">
-              <span className="font-mono text-[10px] text-gray-600">
+              <span
+                className="font-mono text-[10px] text-gray-600"
+                title={machineName || ''}
+              >
                 {machineName || '-'}
               </span>
             </div>
