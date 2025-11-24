@@ -30,8 +30,16 @@ export interface LogEntry {
 }
 
 /**
- * Query logs from ClickHouse for a specific execution
- * Note: This relies on the rust-executor logs being ingested into the otel_logs table
+ * Query logs from ClickHouse for a specific execution (FALLBACK METHOD - SLOW)
+ * ⚠️ WARNING: This function performs a full table scan using ILIKE on the Body column.
+ * It's kept for backward compatibility with old executions that don't have trace_id stored.
+ *
+ * For new executions, use getLogsByTraceId() instead, which is much faster.
+ *
+ * Performance characteristics:
+ * - Body ILIKE '%123%': Full table scan, gets slower as otel_logs grows
+ * - LogAttributes['execution_id']: May not be indexed efficiently
+ * - Typical query time: 100-500ms+ depending on table size
  */
 export async function getExecutionLogs(
   executionId: string | number,
@@ -47,8 +55,8 @@ export async function getExecutionLogs(
 
   try {
     // We search for logs that contain the execution ID in the body
-    // OR are within the time range of the execution (if we had start/end time)
-    // For now, text search is the most reliable link until we add structured attributes
+    // OR have execution_id in LogAttributes
+    // This is a fallback for old executions without stored trace_id
     const query = `
       SELECT
         Timestamp as timestamp,
@@ -172,7 +180,9 @@ export async function getTraceIdForExecution(
 }
 
 /**
- * Get logs by trace ID (more reliable if we have the trace ID from the execution)
+ * Get logs by trace ID (FAST and RELIABLE - uses TraceId index)
+ * This is the preferred method for fetching logs when trace_id is stored in the database.
+ * Much faster than searching by execution_id in log body.
  */
 export async function getLogsByTraceId(
   traceId: string,
@@ -181,6 +191,7 @@ export async function getLogsByTraceId(
   if (!clickhouse) return [];
 
   try {
+    // TraceId is indexed, so this query is very fast (no table scan)
     const query = `
       SELECT
         Timestamp as timestamp,

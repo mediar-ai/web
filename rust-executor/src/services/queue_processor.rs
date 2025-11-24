@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -116,6 +116,7 @@ impl QueueProcessor {
             };
 
             // Create a span with execution context for all logs
+            // IMPORTANT: Set execution_id as a span attribute so it propagates to all child logs
             let execution_span = info_span!(
                 "queue_process_execution",
                 execution_id = %execution.id,
@@ -125,6 +126,36 @@ impl QueueProcessor {
                 machine_id = %self.machine_id,
                 otel.kind = "consumer"
             );
+
+            // Enter the span so we can capture the trace_id
+            let _enter = execution_span.enter();
+
+            // Capture the trace_id immediately after entering the span
+            // This enables reliable log correlation with ClickHouse
+            if let Some(trace_id) = crate::telemetry::current_trace_id() {
+                info!(
+                    execution_id = %execution.id,
+                    trace_id = %trace_id,
+                    "Captured OpenTelemetry trace_id for execution"
+                );
+
+                // Store trace_id in database immediately for reliable log lookup
+                if let Err(e) = WorkflowQueries::set_trace_id(&self.db_pool, execution.id, &trace_id).await {
+                    warn!(
+                        execution_id = %execution.id,
+                        error = %e,
+                        "Failed to store trace_id in database (logs may be harder to find)"
+                    );
+                }
+            } else {
+                warn!(
+                    execution_id = %execution.id,
+                    "No trace_id available (OpenTelemetry may be disabled)"
+                );
+            }
+
+            // Exit the span guard so we don't hold it during the entire execution
+            drop(_enter);
 
             info!(
                 execution_id = %execution.id,
@@ -685,19 +716,97 @@ impl QueueProcessor {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Workflow has no organization_id"))?;
 
-        // Build S:\ path on Windows VM where MCP server runs
-        // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
-        let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
+        // Determine workflow path: UUID-based download (new) or S3 mount (legacy)
+        let file_url = if workflow.github_release_url.is_some() {
+            // NEW ARCHITECTURE: UUID-based download from Next.js API
+            info!(
+                execution_id = %execution.id,
+                workflow_id = %workflow.id,
+                "Using UUID-based architecture with GitHub releases"
+            );
+            
+            log_buffer.log_step(
+                "INFO",
+                "UUID-based workflow (GitHub releases)".to_string(),
+                None,
+                None,
+            );
 
-        // Pass workflow root directory - MCP will auto-detect terminator.ts or src/terminator.ts
-        // This ensures the entire workflow directory (including package.json, all subdirectories)
-        // gets copied when MCP uses local-copy mode, not just the src/ folder
-        let file_url = format!("file://{workflow_base_path}");
+            let workflow_uuid = workflow
+                .uuid
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Workflow missing uuid field"))?;
+
+            // Get service token from environment
+            let service_token = std::env::var("MCP_SERVICE_TOKEN")
+                .context("MCP_SERVICE_TOKEN environment variable not set")?;
+
+            // Build download URL
+            let download_url = format!(
+                "https://app.mediar.ai/api/workflows-uuid/download?uuid={}",
+                workflow_uuid
+            );
+
+            log_buffer.log_step(
+                "INFO",
+                format!("Downloading workflow {} from releases", workflow_uuid),
+                None,
+                None,
+            );
+
+            // Download and extract workflow to S:\{uuid}\ with timeout (will fail fast if VM stopped)
+            let downloaded_path = crate::workflow_downloader::ensure_workflow_downloaded(
+                mcp_client,
+                workflow_uuid,
+                clerk_org_id,
+                &service_token,
+                &download_url,
+            )
+            .await
+            .map_err(|e| {
+                log_buffer.log_step(
+                    "ERROR",
+                    format!("Failed to download workflow: {}", e),
+                    None,
+                    None,
+                );
+                e
+            })?;
+
+            log_buffer.log_step(
+                "INFO",
+                format!("Workflow downloaded to {}", downloaded_path),
+                None,
+                None,
+            );
+
+            // Convert to file:// URL format
+            let normalized_path = downloaded_path.replace("\\", "/");
+            format!("file://{}", normalized_path)
+        } else {
+            // LEGACY ARCHITECTURE: S3 mount with org-based folders
+            info!(
+                execution_id = %execution.id,
+                workflow_id = %workflow.id,
+                "Using legacy S3 mount architecture"
+            );
+            
+            log_buffer.log_step(
+                "INFO",
+                "Legacy workflow (S3 mount)".to_string(),
+                None,
+                None,
+            );
+
+            // Build S:\ path on Windows VM where MCP server runs
+            // Format: S:\org-{clerk_org_id}\workflows\{workflow_id}\
+            let workflow_base_path = format!("S:/org-{}/workflows/{}", clerk_org_id, workflow.id);
+            format!("file://{}", workflow_base_path)
+        };
 
         info!(
             execution_id = %execution.id,
             workflow_id = %workflow.id,
-            organization_id = %clerk_org_id,
             file_url = %file_url,
             "TypeScript workflow path resolved"
         );

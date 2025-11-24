@@ -8,3 +8,4 @@ pub mod services;
 pub mod storage;
 pub mod telemetry;
 pub mod utils;
+pub mod workflow_downloader;

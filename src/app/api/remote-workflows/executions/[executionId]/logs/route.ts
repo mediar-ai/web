@@ -95,6 +95,7 @@ export async function GET(
         execution_logs,
         workflow_id,
         executor_type,
+        trace_id,
         deployed_workflows!inner(
           id,
           name,
@@ -167,17 +168,42 @@ export async function GET(
     // The Rust executor streams logs to OpenTelemetry -> ClickHouse
     // This provides real-time logs without waiting for DB updates
     const executorType = (execution as any).executor_type;
+    const storedTraceId = (execution as any).trace_id;
 
     if (executorType === 'rust') {
       try {
-        // Try to fetch logs from ClickHouse
-        let chLogs = await getExecutionLogs(executionIdNum);
+        let chLogs: any[] = [];
 
-        // If no logs found by execution ID, try finding trace ID
+        // PRIORITY 1: Use stored trace_id if available (most reliable)
+        if (storedTraceId) {
+          chLogs = await getLogsByTraceId(storedTraceId);
+          if (chLogs.length > 0) {
+            console.log(
+              `[LOGS] Found ${chLogs.length} logs in ClickHouse using stored trace_id for execution ${executionIdNum}`
+            );
+          }
+        }
+
+        // PRIORITY 2: Search by execution_id in log body/attributes (fallback for old executions)
+        if (chLogs.length === 0) {
+          chLogs = await getExecutionLogs(executionIdNum);
+          if (chLogs.length > 0) {
+            console.log(
+              `[LOGS] Found ${chLogs.length} logs in ClickHouse using execution_id search for execution ${executionIdNum}`
+            );
+          }
+        }
+
+        // PRIORITY 3: Try finding trace_id from ClickHouse (last resort)
         if (chLogs.length === 0) {
           const traceId = await getTraceIdForExecution(executionIdNum);
           if (traceId) {
             chLogs = await getLogsByTraceId(traceId);
+            if (chLogs.length > 0) {
+              console.log(
+                `[LOGS] Found ${chLogs.length} logs in ClickHouse using discovered trace_id for execution ${executionIdNum}`
+              );
+            }
           }
         }
 

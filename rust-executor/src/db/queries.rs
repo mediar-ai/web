@@ -103,6 +103,29 @@ impl WorkflowQueries {
         Ok(result.get("id"))
     }
 
+    /// Set the OpenTelemetry trace_id for an execution
+    /// This enables reliable log correlation with ClickHouse
+    pub async fn set_trace_id(
+        pool: &Pool<Postgres>,
+        execution_id: i64,
+        trace_id: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE workflow_executions
+            SET
+                trace_id = $1,
+                updated_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(trace_id)
+        .bind(execution_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn claim_execution(
         pool: &Pool<Postgres>,
         _machine_id: &str,
