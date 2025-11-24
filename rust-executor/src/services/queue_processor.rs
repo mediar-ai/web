@@ -248,78 +248,95 @@ impl QueueProcessor {
 
             let start_time = Utc::now();
 
-            let result = async {
-                let mcp_client =
-                    McpClient::from_url_with_log_buffer(mcp_endpoint, log_buffer.clone());
+            // Workflow execution with 1-hour timeout
+            let execution_timeout = Duration::from_secs(3600);
+            let result = match tokio::time::timeout(
+                execution_timeout,
+                async {
+                    let mcp_client =
+                        McpClient::from_url_with_log_buffer(mcp_endpoint, log_buffer.clone());
 
-                // Check if this is a TypeScript workflow
-                if workflow.preferred_format.as_deref() == Some("typescript") {
-                    info!(
-                        execution_id = %execution.id,
-                        workflow_id = %workflow.id,
-                        format = "typescript",
-                        "Executing TypeScript workflow via MCP"
-                    );
+                    // Check if this is a TypeScript workflow
+                    if workflow.preferred_format.as_deref() == Some("typescript") {
+                        info!(
+                            execution_id = %execution.id,
+                            workflow_id = %workflow.id,
+                            format = "typescript",
+                            "Executing TypeScript workflow via MCP"
+                        );
 
-                    // TypeScript workflows have only 1 step (the execute_sequence call)
-                    WorkflowQueries::update_execution_progress(
-                        &self.db_pool,
-                        execution.id,
-                        0,
-                        1,
-                        Some("Executing TypeScript workflow".to_string()),
-                    )
-                    .await?;
+                        // TypeScript workflows have only 1 step (the execute_sequence call)
+                        WorkflowQueries::update_execution_progress(
+                            &self.db_pool,
+                            execution.id,
+                            0,
+                            1,
+                            Some("Executing TypeScript workflow".to_string()),
+                        )
+                        .await?;
 
-                    // Execute TypeScript workflow directly via MCP
-                    self.execute_typescript_workflow(
-                        &mcp_client,
-                        &workflow,
-                        &execution,
-                        &log_buffer,
-                    )
-                    .await
-                } else {
-                    // Regular YAML workflow execution
-                    info!(
-                        execution_id = %execution.id,
-                        workflow_id = %workflow.id,
-                        format = "yaml",
-                        "Executing YAML workflow"
-                    );
+                        // Execute TypeScript workflow directly via MCP
+                        self.execute_typescript_workflow(
+                            &mcp_client,
+                            &workflow,
+                            &execution,
+                            &log_buffer,
+                        )
+                        .await
+                    } else {
+                        // Regular YAML workflow execution
+                        info!(
+                            execution_id = %execution.id,
+                            workflow_id = %workflow.id,
+                            format = "yaml",
+                            "Executing YAML workflow"
+                        );
 
-                    // Load workflow sequence
-                    let sequence = self.load_workflow_sequence(&workflow).await?;
+                        // Load workflow sequence
+                        let sequence = self.load_workflow_sequence(&workflow).await?;
 
-                    // Update total steps
-                    let total_steps = sequence.count_steps() as u32;
-                    WorkflowQueries::update_execution_progress(
-                        &self.db_pool,
-                        execution.id,
-                        0,
-                        total_steps,
-                        None,
-                    )
-                    .await?;
+                        // Update total steps
+                        let total_steps = sequence.count_steps() as u32;
+                        WorkflowQueries::update_execution_progress(
+                            &self.db_pool,
+                            execution.id,
+                            0,
+                            total_steps,
+                            None,
+                        )
+                        .await?;
 
-                    // Get organization_id from workflow
-                    let org_id = workflow
-                        .organization_id
-                        .as_ref()
-                        .map(|s| s.parse::<i64>().unwrap_or(0));
+                        // Get organization_id from workflow
+                        let org_id = workflow
+                            .organization_id
+                            .as_ref()
+                            .map(|s| s.parse::<i64>().unwrap_or(0));
 
-                    let executor = WorkflowExecutor::with_log_buffer(
-                        mcp_client,
-                        sequence,
-                        execution.id,
-                        org_id,
-                        log_buffer.clone(),
-                    );
-                    executor.execute().await
+                        let executor = WorkflowExecutor::with_log_buffer(
+                            mcp_client,
+                            sequence,
+                            execution.id,
+                            org_id,
+                            log_buffer.clone(),
+                        );
+                        executor.execute().await
+                    }
                 }
-            }
-            .instrument(execution_span.clone())
-            .await;
+                .instrument(execution_span.clone())
+            ).await {
+                Ok(result) => result,
+                Err(_) => {
+                    error!(
+                        execution_id = %execution.id,
+                        timeout_secs = execution_timeout.as_secs(),
+                        "Workflow execution timed out"
+                    );
+                    Err(anyhow::anyhow!(
+                        "Workflow execution timed out after {} seconds. The VM may be unresponsive or the workflow is taking too long.",
+                        execution_timeout.as_secs()
+                    ))
+                }
+            };
 
             // Update execution status based on result
             let end_time = Utc::now();
