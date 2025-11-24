@@ -639,7 +639,7 @@ export function ExecutionDetailsDialog({
         >
           <div className="px-6">
             <TabsList
-              className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-4' : 'grid-cols-3'}`}
+              className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-3' : 'grid-cols-3'}`}
             >
               <TabsTrigger value="summary" className="flex items-center gap-1">
                 <Info className="w-3 h-3" />
@@ -686,15 +686,15 @@ export function ExecutionDetailsDialog({
                               {execution.workflow_id}
                             </dd>
                           </div>
-                          <div className="flex justify-between">
+                          {/*<div className="flex justify-between">
                             <dt className="text-muted-foreground">
                               Client ID:
                             </dt>
                             <dd className="font-mono text-xs">
                               {execution.client_id || '—'}
                             </dd>
-                          </div>
-                          <div className="flex justify-between">
+                          </div>*/}
+                          {/*<div className="flex justify-between">
                             <dt className="text-muted-foreground">
                               Modal Call ID:
                             </dt>
@@ -704,7 +704,7 @@ export function ExecutionDetailsDialog({
                             >
                               {execution.modal_call_id}
                             </dd>
-                          </div>
+                          </div>*/}
                           <div className="flex justify-between">
                             <dt className="text-muted-foreground">
                               Workflow Version:
