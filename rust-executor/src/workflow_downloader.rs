@@ -5,12 +5,14 @@
 
 use anyhow::{Context, Result};
 use serde_json::Value;
-use tracing::{info, warn};
+use std::time::Duration;
+use tokio::time::timeout;
+use tracing::{error, info, warn};
 
 use crate::mcp::McpClient;
 
 /// Download and extract workflow to C:\Workflows\{uuid}\ via MCP run_command
-/// 
+///
 /// # Arguments
 /// * `mcp_client` - MCP client for executing commands on VM
 /// * `workflow_uuid` - Workflow UUID (folder name)
@@ -18,6 +20,35 @@ use crate::mcp::McpClient;
 /// * `service_token` - Machine service token (from MCP_SERVICE_TOKEN env var)
 /// * `download_url` - Full download URL (https://app.mediar.ai/api/workflows/{uuid}/download)
 pub async fn ensure_workflow_downloaded(
+    mcp_client: &McpClient,
+    workflow_uuid: &str,
+    org_id: &str,
+    service_token: &str,
+    download_url: &str,
+) -> Result<String> {
+    // Wrap entire download process with 2-minute timeout to prevent hanging on stopped VMs
+    let download_timeout = Duration::from_secs(120);
+    
+    match timeout(download_timeout, ensure_workflow_downloaded_inner(
+        mcp_client,
+        workflow_uuid,
+        org_id,
+        service_token,
+        download_url,
+    )).await {
+        Ok(result) => result,
+        Err(_) => {
+            error!("Workflow download timed out after {} seconds - VM may be stopped or unreachable", download_timeout.as_secs());
+            Err(anyhow::anyhow!(
+                "Workflow download timed out after {} seconds. The VM may be stopped, unreachable, or experiencing network issues.",
+                download_timeout.as_secs()
+            ))
+        }
+    }
+}
+
+/// Inner download function without timeout wrapper
+async fn ensure_workflow_downloaded_inner(
     mcp_client: &McpClient,
     workflow_uuid: &str,
     org_id: &str,
@@ -35,7 +66,8 @@ pub async fn ensure_workflow_downloaded(
         workflow_path
     );
 
-    let check_result = run_command_via_mcp(mcp_client, &check_command).await?;
+    let check_result = run_command_via_mcp_with_timeout(mcp_client, &check_command, 30).await
+        .context("Failed to check if workflow exists - VM may be stopped or unreachable")?;
     let exists = check_result.trim().to_lowercase().contains("exists");
 
     if exists {
@@ -48,7 +80,7 @@ pub async fn ensure_workflow_downloaded(
     // Step 2: Download workflow zip via PowerShell with service token
     // Pass both Authorization header (service token) and X-Organization-ID header (org)
     let download_command = format!(
-        r#"powershell -Command "$headers = @{{ 'Authorization' = 'Bearer {}'; 'X-Organization-ID' = '{}' }}; Invoke-WebRequest -Uri '{}' -Headers $headers -OutFile '{}' -TimeoutSec 300""#,
+        r#"powershell -Command "$headers = @{{ 'Authorization' = 'Bearer {}'; 'X-Organization-ID' = '{}' }}; Invoke-WebRequest -Uri '{}' -Headers $headers -OutFile '{}' -TimeoutSec 60""#,
         service_token,
         org_id,
         download_url,
@@ -56,21 +88,21 @@ pub async fn ensure_workflow_downloaded(
     );
 
     info!("Downloading workflow {} for org {}...", workflow_uuid, org_id);
-    run_command_via_mcp(mcp_client, &download_command)
+    run_command_via_mcp_with_timeout(mcp_client, &download_command, 90)
         .await
-        .context("Failed to download workflow zip")?;
+        .context("Failed to download workflow zip - download may have timed out or failed")?;
 
     // Step 3: Verify zip was downloaded
     let verify_command = format!(
         r#"powershell -Command "if (Test-Path '{}') {{ (Get-Item '{}').Length }} else {{ 'missing' }}""#,
         zip_path, zip_path
     );
-    
-    let verify_result = run_command_via_mcp(mcp_client, &verify_command).await?;
+
+    let verify_result = run_command_via_mcp_with_timeout(mcp_client, &verify_command, 15).await?;
     if verify_result.trim().to_lowercase().contains("missing") {
-        return Err(anyhow::anyhow!("Download failed - zip file not found after curl"));
+        return Err(anyhow::anyhow!("Download failed - zip file not found after download"));
     }
-    
+
     let zip_size_bytes = verify_result.trim().parse::<u64>().unwrap_or(0);
     info!("Downloaded zip: {} bytes", zip_size_bytes);
 
@@ -81,7 +113,7 @@ pub async fn ensure_workflow_downloaded(
     );
 
     info!("Extracting workflow to {}...", workflow_path);
-    run_command_via_mcp(mcp_client, &extract_command)
+    run_command_via_mcp_with_timeout(mcp_client, &extract_command, 30)
         .await
         .context("Failed to extract workflow zip")?;
 
@@ -90,8 +122,8 @@ pub async fn ensure_workflow_downloaded(
         r#"powershell -Command "if (Test-Path '{}') {{ 'success' }} else {{ 'failed' }}""#,
         workflow_path
     );
-    
-    let extract_result = run_command_via_mcp(mcp_client, &verify_extract_command).await?;
+
+    let extract_result = run_command_via_mcp_with_timeout(mcp_client, &verify_extract_command, 15).await?;
     if !extract_result.trim().to_lowercase().contains("success") {
         return Err(anyhow::anyhow!("Extraction failed - workflow directory not found"));
     }
@@ -102,7 +134,7 @@ pub async fn ensure_workflow_downloaded(
         zip_path
     );
 
-    match run_command_via_mcp(mcp_client, &cleanup_command).await {
+    match run_command_via_mcp_with_timeout(mcp_client, &cleanup_command, 15).await {
         Ok(_) => info!("Cleaned up zip file"),
         Err(e) => warn!("Failed to cleanup zip file (non-fatal): {}", e),
     }
@@ -110,6 +142,27 @@ pub async fn ensure_workflow_downloaded(
     info!("✅ Workflow {} downloaded and extracted to {}", workflow_uuid, workflow_path);
 
     Ok(workflow_path)
+}
+
+/// Execute a command on the VM via MCP run_command tool with per-command timeout
+async fn run_command_via_mcp_with_timeout(
+    mcp_client: &McpClient,
+    command: &str,
+    timeout_secs: u64,
+) -> Result<String> {
+    let cmd_timeout = Duration::from_secs(timeout_secs);
+    
+    match timeout(cmd_timeout, run_command_via_mcp(mcp_client, command)).await {
+        Ok(result) => result,
+        Err(_) => {
+            error!("MCP command timed out after {} seconds: {}", timeout_secs, 
+                   &command[..std::cmp::min(100, command.len())]);
+            Err(anyhow::anyhow!(
+                "Command timed out after {} seconds - VM may be stopped or unresponsive",
+                timeout_secs
+            ))
+        }
+    }
 }
 
 /// Execute a command on the VM via MCP run_command tool
@@ -138,7 +191,7 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
                 .get("stderr")
                 .and_then(|v| v.as_str())
                 .unwrap_or(&output);
-            
+
             return Err(anyhow::anyhow!(
                 "Command failed with exit code {}: {}",
                 exit_code,
