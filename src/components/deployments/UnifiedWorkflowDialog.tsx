@@ -1191,7 +1191,7 @@ export function UnifiedWorkflowDialog({
                       cronMaxConcurrent={cronConfig.maxConcurrent}
                       cronRetryOnFailure={cronConfig.retryOnFailure}
                       cronRetryCount={cronConfig.retryCount}
-                      onChange={setCronConfig}
+                      onChange={(newConfig) => setCronConfig({ ...newConfig, executorType: cronConfig.executorType })}
                       showAdvanced={true}
                     />
 
