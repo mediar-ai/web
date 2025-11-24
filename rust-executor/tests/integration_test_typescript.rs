@@ -28,6 +28,11 @@ mod test_helpers {
         pub automation_sequence: Option<Value>,
         pub automation_sequence_yaml: Option<String>,
         pub created_at: chrono::DateTime<chrono::Utc>,
+        pub uuid: Option<String>,
+        pub github_release_url: Option<String>,
+        pub github_release_checksum: Option<String>,
+        pub github_repo_url: Option<String>,
+        pub package_json_version: Option<String>,
         pub updated_at: chrono::DateTime<chrono::Utc>,
     }
 
