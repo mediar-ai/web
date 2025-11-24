@@ -339,8 +339,8 @@ export function UnifiedWorkflowDialog({
             maxConcurrent: data.cron_config.cron_max_concurrent || 1,
             retryOnFailure: data.cron_config.cron_retry_on_failure !== false,
             retryCount: data.cron_config.cron_retry_count || 3,
-          });
             executorType: data.cron_config.cron_executor_type || 'python',
+          });
           console.log('✅ Loaded cron config from database');
         } else {
           // No cron config exists yet, use defaults
