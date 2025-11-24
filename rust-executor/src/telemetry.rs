@@ -147,7 +147,9 @@ where
     eprintln!("  Traces will be sent to: {}/v1/traces", otlp_endpoint);
 
     // Create the tracing-opentelemetry layer for traces
-    let traces_layer = tracing_opentelemetry::layer();
+    // IMPORTANT: Get the tracer from the global provider explicitly
+    let tracer = opentelemetry::global::tracer("mediar-workflow-executor-rust");
+    let traces_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     // Create the OpenTelemetryTracingBridge layer for logs
     // This bridges tracing events (info!, error!, etc.) to OpenTelemetry logs
