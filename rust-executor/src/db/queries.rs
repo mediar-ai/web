@@ -27,13 +27,13 @@ impl WorkflowQueries {
                 dwv.automation_sequence_yaml,
                 dw.skip_next_cancellation_check,
                 dw.created_at,
-                dw.updated_at
-            FROM deployed_workflows dw
+                dw.updated_at,
                 dw.uuid,
                 dw.github_repo_url,
                 dw.github_release_url,
                 dw.github_release_checksum,
-                dw.package_json_version,
+                dw.package_json_version
+            FROM deployed_workflows dw
             JOIN deployed_workflow_versions dwv ON dw.id = dwv.workflow_id
             WHERE dw.id = $1 AND dwv.is_active = true
             "#,
