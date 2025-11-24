@@ -245,6 +245,44 @@ impl McpClient {
             reqwest::header::HeaderValue::from_static("Bearer ***REMOVED***"),
         );
 
+        // Add W3C Trace Context header (traceparent) for distributed tracing
+        // This propagates the current OpenTelemetry trace to the MCP server
+        // Format: 00-{trace_id}-{span_id}-{flags}
+        // The MCP server (terminator) will extract this and continue the trace
+        if let Some(trace_id) = crate::telemetry::current_trace_id() {
+            use tracing::Span;
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+            let span = Span::current();
+            let context = span.context();
+
+            // Extract span_id from current span context
+            use opentelemetry::trace::TraceContextExt;
+            let span_ref = context.span();
+            let span_context = span_ref.span_context();
+
+            if span_context.is_valid() {
+                let span_id = span_context.span_id();
+                let trace_flags = span_context.trace_flags();
+
+                // Format: 00-{trace_id}-{span_id}-{flags}
+                let traceparent = format!(
+                    "00-{}-{}-{:02x}",
+                    trace_id,
+                    span_id,
+                    trace_flags.to_u8()
+                );
+
+                if let Ok(value) = reqwest::header::HeaderValue::from_str(&traceparent) {
+                    headers.insert(
+                        reqwest::header::HeaderName::from_static("traceparent"),
+                        value,
+                    );
+                    info!("Added traceparent header for distributed tracing: {}", traceparent);
+                }
+            }
+        }
+
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
