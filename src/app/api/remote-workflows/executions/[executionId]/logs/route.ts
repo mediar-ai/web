@@ -87,7 +87,12 @@ export async function GET(
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // STEP 2: Get execution WITH workflow info for authorization check
-    const { data: execution, error } = await supabase
+    // Try with trace_id first, but if that fails (migration not run), try without it
+    let execution: any = null;
+    let error: any = null;
+
+    // First attempt: with trace_id (for new schema after migration)
+    const result = await supabase
       .from('workflow_executions')
       .select(
         `
@@ -106,6 +111,42 @@ export async function GET(
       )
       .eq('id', executionIdNum)
       .single();
+
+    execution = result.data;
+    error = result.error;
+
+    // If query failed with column error, retry without trace_id (backward compatible)
+    if (
+      error &&
+      (error.message?.includes('trace_id') ||
+        error.message?.includes('column') ||
+        error.code === '42703')
+    ) {
+      console.log(
+        '[LOGS] trace_id column not found, falling back to query without it'
+      );
+      const fallbackResult = await supabase
+        .from('workflow_executions')
+        .select(
+          `
+        id,
+        execution_logs,
+        workflow_id,
+        executor_type,
+        deployed_workflows!inner(
+          id,
+          name,
+          created_by,
+          organization_id
+        )
+      `
+        )
+        .eq('id', executionIdNum)
+        .single();
+
+      execution = fallbackResult.data;
+      error = fallbackResult.error;
+    }
 
     if (error || !execution) {
       return NextResponse.json(
@@ -168,7 +209,8 @@ export async function GET(
     // The Rust executor streams logs to OpenTelemetry -> ClickHouse
     // This provides real-time logs without waiting for DB updates
     const executorType = (execution as any).executor_type;
-    const storedTraceId = (execution as any).trace_id;
+    // trace_id might not exist if migration hasn't been run yet
+    const storedTraceId = (execution as any).trace_id || null;
 
     if (executorType === 'rust') {
       try {
