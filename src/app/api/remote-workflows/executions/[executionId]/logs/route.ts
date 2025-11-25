@@ -281,9 +281,9 @@ export async function GET(
           }
         }
 
-        // Also fetch MCP agent logs if we have mcp_endpoint and time window
+        // Also fetch MCP agent logs if we have a time window
         let mcpLogs: any[] = [];
-        if (mcpEndpoint && startedAt) {
+        if (startedAt) {
           try {
             // Expand time window slightly to capture logs before/after execution bounds
             const expandedStart = new Date(startedAt.getTime() - 5000); // 5 seconds before
@@ -291,14 +291,17 @@ export async function GET(
               ? new Date(completedAt.getTime() + 5000) // 5 seconds after
               : new Date(); // Now if still running
 
+            // Note: We don't filter by hostname since mcp_endpoint stores IP (e.g. 40.76.118.115)
+            // but ClickHouse has hostname (e.g. mcp-vm2). Time window is narrow enough to avoid
+            // cross-contamination from other executions.
             mcpLogs = await getMcpAgentLogs(
-              mcpEndpoint,
               expandedStart,
-              expandedEnd
+              expandedEnd,
+              undefined // No hostname filter - query all MCP logs in time window
             );
             if (mcpLogs.length > 0) {
               console.log(
-                `[LOGS] Found ${mcpLogs.length} MCP agent logs for execution ${executionIdNum} from ${mcpEndpoint}`
+                `[LOGS] Found ${mcpLogs.length} MCP agent logs for execution ${executionIdNum}`
               );
             }
           } catch (mcpError) {

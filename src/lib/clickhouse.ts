@@ -238,38 +238,28 @@ export async function getLogsByTraceId(
 }
 
 /**
- * Get MCP agent logs by time window and host
+ * Get MCP agent logs by time window and optional hostname
  * Used to correlate MCP agent logs with executor logs for a specific execution.
  *
- * @param mcpEndpoint - The MCP endpoint URL (e.g., http://mcp-vm2:3000)
  * @param startTime - Start of execution window
  * @param endTime - End of execution window (optional, defaults to now)
+ * @param hostname - Optional hostname to filter by (e.g., "mcp-vm2")
  * @param limit - Max logs to return
  */
 export async function getMcpAgentLogs(
-  mcpEndpoint: string,
   startTime: Date,
   endTime?: Date,
+  hostname?: string,
   limit = 500
 ): Promise<LogEntry[]> {
   if (!clickhouse) return [];
 
-  // Extract hostname from MCP endpoint (e.g., "http://mcp-vm2:3000" -> "mcp-vm2")
-  let hostname: string;
   try {
-    const url = new URL(mcpEndpoint);
-    hostname = url.hostname;
-  } catch {
-    // If URL parsing fails, try to extract hostname directly
-    hostname = mcpEndpoint.replace(/^https?:\/\//, '').split(':')[0];
-  }
+    // If hostname provided, filter by it; otherwise get all MCP agent logs in the time window
+    const hostnameFilter = hostname
+      ? `AND ResourceAttributes['host.name'] = {hostname: String}`
+      : '';
 
-  if (!hostname) {
-    console.warn('[ClickHouse] Could not extract hostname from MCP endpoint:', mcpEndpoint);
-    return [];
-  }
-
-  try {
     const query = `
       SELECT
         Timestamp as timestamp,
@@ -278,25 +268,30 @@ export async function getMcpAgentLogs(
         ServiceName as service,
         SpanId as span_id,
         TraceId as trace_id,
-        LogAttributes as attributes
+        LogAttributes as attributes,
+        ResourceAttributes['host.name'] as host_name
       FROM otel_logs_filtered
       WHERE
         ServiceName = 'terminator-mcp-agent'
-        AND ResourceAttributes['host.name'] = {hostname: String}
         AND Timestamp >= {startTime: DateTime64(9)}
         AND Timestamp <= {endTime: DateTime64(9)}
+        ${hostnameFilter}
       ORDER BY Timestamp ASC
       LIMIT {limit: UInt32}
     `;
 
+    const queryParams: Record<string, any> = {
+      startTime: startTime.toISOString().replace('T', ' ').replace('Z', ''),
+      endTime: (endTime || new Date()).toISOString().replace('T', ' ').replace('Z', ''),
+      limit,
+    };
+    if (hostname) {
+      queryParams.hostname = hostname;
+    }
+
     const resultSet = await clickhouse.query({
       query,
-      query_params: {
-        hostname,
-        startTime: startTime.toISOString().replace('T', ' ').replace('Z', ''),
-        endTime: (endTime || new Date()).toISOString().replace('T', ' ').replace('Z', ''),
-        limit,
-      },
+      query_params: queryParams,
       format: 'JSONEachRow',
     });
 
@@ -309,6 +304,7 @@ export async function getMcpAgentLogs(
       span_id: row.span_id || row.SpanId,
       trace_id: row.trace_id || row.TraceId,
       attributes: row.attributes || row.LogAttributes,
+      host_name: row.host_name,
     }));
   } catch (error) {
     console.error('[ClickHouse] Failed to query MCP agent logs:', error);
