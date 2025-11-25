@@ -1,5 +1,4 @@
 use serde_json::json;
-use uuid::Uuid;
 use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use workflow_executor::models::{ErrorStrategy, WorkflowSequence, WorkflowStep};
 

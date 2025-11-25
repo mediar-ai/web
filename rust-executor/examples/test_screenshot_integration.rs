@@ -1,5 +1,4 @@
 use serde_json::json;
-use uuid::Uuid;
 use workflow_executor::mcp::{McpClient, WorkflowExecutor};
 use workflow_executor::models::{ErrorStrategy, StepStatus, WorkflowSequence, WorkflowStep};
 
@@ -56,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test MCP connection by listing tools
     println!("\n2. Testing MCP connection...");
-    let tools = match mcp_client.list_tools().await {
+    let _tools = match mcp_client.list_tools().await {
         Ok(tools) => {
             println!("   ✓ Connected! Available tools: {}", tools.len());
 
@@ -206,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Try to find screenshot data in result
             if let Some(data) = &screenshot_result.result {
-                if let Some(screenshot_data) = data.get("screenshot") {
+                if let Some(_screenshot_data) = data.get("screenshot") {
                     println!("   Screenshot data found in result");
 
                     // Check for Supabase URL if uploaded
