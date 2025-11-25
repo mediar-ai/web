@@ -61,8 +61,9 @@ async fn ensure_workflow_downloaded_inner(
     info!("Checking if workflow {} exists at {}", workflow_uuid, workflow_path);
 
     // Step 1: Check if workflow already exists on VM
+    // Note: Commands are pure PowerShell (shell: powershell is set in run_command_via_mcp)
     let check_command = format!(
-        r#"powershell -Command "if (Test-Path '{}') {{ 'exists' }} else {{ 'missing' }}""#,
+        r#"if (Test-Path '{}') {{ 'exists' }} else {{ 'missing' }}"#,
         workflow_path
     );
 
@@ -80,7 +81,7 @@ async fn ensure_workflow_downloaded_inner(
     // Step 2: Download workflow zip via PowerShell with service token
     // Pass both Authorization header (service token) and X-Organization-ID header (org)
     let download_command = format!(
-        r#"powershell -Command "$headers = @{{ 'Authorization' = 'Bearer {}'; 'X-Organization-ID' = '{}' }}; Invoke-WebRequest -Uri '{}' -Headers $headers -OutFile '{}' -TimeoutSec 60""#,
+        r#"$headers = @{{ 'Authorization' = 'Bearer {}'; 'X-Organization-ID' = '{}' }}; Invoke-WebRequest -Uri '{}' -Headers $headers -OutFile '{}' -TimeoutSec 60"#,
         service_token,
         org_id,
         download_url,
@@ -94,7 +95,7 @@ async fn ensure_workflow_downloaded_inner(
 
     // Step 3: Verify zip was downloaded
     let verify_command = format!(
-        r#"powershell -Command "if (Test-Path '{}') {{ (Get-Item '{}').Length }} else {{ 'missing' }}""#,
+        r#"if (Test-Path '{}') {{ (Get-Item '{}').Length }} else {{ 'missing' }}"#,
         zip_path, zip_path
     );
 
@@ -108,7 +109,7 @@ async fn ensure_workflow_downloaded_inner(
 
     // Step 4: Extract zip to workflow path
     let extract_command = format!(
-        r#"powershell -Command "Expand-Archive -Path '{}' -DestinationPath '{}' -Force""#,
+        r#"Expand-Archive -Path '{}' -DestinationPath '{}' -Force"#,
         zip_path, workflow_path
     );
 
@@ -119,7 +120,7 @@ async fn ensure_workflow_downloaded_inner(
 
     // Step 5: Verify extraction succeeded
     let verify_extract_command = format!(
-        r#"powershell -Command "if (Test-Path '{}') {{ 'success' }} else {{ 'failed' }}""#,
+        r#"if (Test-Path '{}') {{ 'success' }} else {{ 'failed' }}"#,
         workflow_path
     );
 
@@ -130,7 +131,7 @@ async fn ensure_workflow_downloaded_inner(
 
     // Step 6: Cleanup zip file
     let cleanup_command = format!(
-        r#"powershell -Command "Remove-Item '{}' -Force""#,
+        r#"Remove-Item '{}' -Force"#,
         zip_path
     );
 
@@ -168,7 +169,10 @@ async fn run_command_via_mcp_with_timeout(
 /// Execute a command on the VM via MCP run_command tool
 async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<String> {
     let mut args = serde_json::Map::new();
-    args.insert("command".to_string(), Value::String(command.to_string()));
+    // MCP server expects "run" parameter (not "command")
+    args.insert("run".to_string(), Value::String(command.to_string()));
+    // Specify PowerShell since the commands are PowerShell syntax
+    args.insert("shell".to_string(), Value::String("powershell".to_string()));
 
     let result = mcp_client
         .execute_tool_with_retry("run_command".to_string(), Some(args), 2)
