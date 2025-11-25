@@ -383,6 +383,26 @@ impl McpClient {
             self.execute_tool(tool_name, arguments).await
         }
     }
+    /// Execute tool with built-in timeout
+    pub async fn execute_tool_with_builtin_timeout(
+        &self,
+        tool_name: String,
+        arguments: Option<Map<String, Value>>,
+    ) -> Result<Value> {
+        let timeout_duration = Duration::from_secs(60); // 60s timeout
+        match tokio::time::timeout(
+            timeout_duration,
+            self.execute_tool(tool_name.clone(), arguments)
+        ).await {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!(
+                "Tool execution timed out after {} seconds: {}",
+                timeout_duration.as_secs(),
+                tool_name
+            ))
+        }
+    }
+
 
     /// Execute a tool without retry
     pub async fn execute_tool(
