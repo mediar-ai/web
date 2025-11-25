@@ -493,26 +493,26 @@ impl WorkflowQueries {
         Ok(result.len() as i32)
     }
 
-    /// Periodic cleanup of stuck executions (both Rust and orphaned)
+    /// Periodic cleanup of stuck Rust executor executions
     /// Call this periodically from the queue processor
     pub async fn cleanup_stale_executions(
         pool: &Pool<Postgres>,
         stale_threshold_minutes: i32,
     ) -> Result<i32> {
-        // Clean up any execution stuck in running for too long
-        // This catches both Rust executions and any orphaned ones
+        // Clean up Rust executor executions stuck in running for too long
         let result = sqlx::query(
             r#"
             UPDATE workflow_executions
             SET
                 status = 'failed',
                 completed_at = NOW(),
-                error_message = 'Auto-cleanup: Execution stuck in running state for ' ||
+                error_message = 'Auto-cleanup: Rust executor execution stuck in running state for ' ||
                     EXTRACT(EPOCH FROM (NOW() - started_at))::integer / 60 || '+ minutes (executor timeout or crash)',
                 execution_duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::integer,
                 updated_at = NOW()
             WHERE
                 status = 'running'
+                AND executor_type = 'rust'
                 AND started_at < NOW() - INTERVAL '1 minute' * $1
             RETURNING id
             "#,
