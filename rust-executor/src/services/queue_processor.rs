@@ -6,6 +6,7 @@ use tokio::sync::Semaphore;
 use tokio::time::interval;
 
 use tracing::{error, info, info_span, warn, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -143,13 +144,31 @@ impl QueueProcessor {
                     }
                 };
 
-            // Generate a trace_id for this execution BEFORE creating the span
-            // We always generate our own trace_id to ensure reliability across async boundaries
-            use opentelemetry::trace::TraceId;
-            let trace_id = TraceId::from_bytes(rand::random()).to_string();
+            // Generate a trace_id for this execution
+            // We create a proper OpenTelemetry context so ALL logs within this span
+            // automatically get the TraceId in ClickHouse
+            use opentelemetry::trace::{SpanContext, SpanId, TraceContextExt, TraceFlags, TraceId, TraceState};
+            use opentelemetry::Context;
 
-            // Create a span with execution context for all logs
-            // Include trace_id as a span attribute so it appears in all logs
+            let trace_id_bytes: [u8; 16] = rand::random();
+            let span_id_bytes: [u8; 8] = rand::random();
+            let otel_trace_id = TraceId::from_bytes(trace_id_bytes);
+            let otel_span_id = SpanId::from_bytes(span_id_bytes);
+            let trace_id = otel_trace_id.to_string();
+
+            // Create an OpenTelemetry SpanContext with our custom TraceId
+            let span_context = SpanContext::new(
+                otel_trace_id,
+                otel_span_id,
+                TraceFlags::SAMPLED,
+                true, // is_remote
+                TraceState::default(),
+            );
+
+            // Create the OpenTelemetry context with our span context
+            let otel_context = Context::current().with_remote_span_context(span_context);
+
+            // Create a tracing span with execution context
             let execution_span = info_span!(
                 "queue_process_execution",
                 execution_id = %execution.id,
@@ -161,13 +180,16 @@ impl QueueProcessor {
                 otel.kind = "consumer"
             );
 
+            // Link the tracing span to our OpenTelemetry context
+            // This makes ALL logs within this span automatically have the correct TraceId
+            execution_span.set_parent(otel_context);
+
             // Enter the span for synchronous logging (logs within this function)
             let _span_guard = execution_span.enter();
 
             info!(
                 execution_id = %execution.id,
-                trace_id = %trace_id,
-                "Using trace_id for execution"
+                "Execution started with OpenTelemetry trace context"
             );
 
             // Store trace_id in database immediately for reliable log lookup
