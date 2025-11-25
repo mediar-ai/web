@@ -4,6 +4,7 @@ use std::time::Instant;
 use tracing::{error, info, warn};
 
 use crate::mcp::McpClient;
+use crate::telemetry::current_trace_id;
 use crate::models::{
     ErrorStrategy, StepResult, StepStatus, WorkflowResult, WorkflowSequence, WorkflowState,
     WorkflowStep,
