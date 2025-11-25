@@ -151,8 +151,9 @@ where
 
     // Create the tracing-opentelemetry layer for traces
     // IMPORTANT: This must be called AFTER set_tracer_provider above
-    // The layer will automatically use the global tracer provider
-    let traces_layer = tracing_opentelemetry::layer();
+    // Get a tracer from the global provider
+    let tracer = opentelemetry::global::tracer("mediar-workflow-executor-rust");
+    let traces_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     // Create the OpenTelemetryTracingBridge layer for logs
     // This bridges tracing events (info!, error!, etc.) to OpenTelemetry logs
