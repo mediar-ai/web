@@ -301,7 +301,17 @@ function AdminPageContent() {
       if (response.ok) {
         const data = await response.json();
         const fetchedMachines = data.machines || [];
-        setMachines(fetchedMachines);
+
+        // Sort machines by health status: healthy -> unhealthy -> unknown/null
+        const sortedMachines = fetchedMachines.sort((a: any, b: any) => {
+          const healthOrder = { healthy: 0, unhealthy: 1, unknown: 2 };
+          const aHealth = a.health_status || 'unknown';
+          const bHealth = b.health_status || 'unknown';
+          return (healthOrder[aHealth as keyof typeof healthOrder] ?? 2) -
+                 (healthOrder[bHealth as keyof typeof healthOrder] ?? 2);
+        });
+
+        setMachines(sortedMachines);
 
         // Fetch organization assignments for each machine
         const orgAssignments: { [key: number]: string[] } = {};
