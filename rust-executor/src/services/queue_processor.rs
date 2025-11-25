@@ -148,19 +148,16 @@ impl QueueProcessor {
                 otel.kind = "consumer"
             );
 
+            // Enter the span immediately so all subsequent logs are associated with it
+            let _span_guard = execution_span.enter();
+
             // Generate a trace_id for this execution
             // We'll use this for log correlation even if OpenTelemetry tracing isn't working perfectly
             #[allow(unused_imports)]
             use opentelemetry::trace::TraceId;
 
-            // Try to get trace_id from OpenTelemetry context first
-            let trace_id = {
-                let _enter = execution_span.enter();
-                crate::telemetry::current_trace_id()
-            };
-
-            // If no trace_id from OTEL (layer might not be working), generate one manually
-            let trace_id = trace_id.unwrap_or_else(|| {
+            // Try to get trace_id from OpenTelemetry context (now that we're inside the span)
+            let trace_id = crate::telemetry::current_trace_id().unwrap_or_else(|| {
                 // Generate a new random trace ID as fallback
                 let trace_id = TraceId::from_bytes(rand::random());
                 let trace_id_str = trace_id.to_string();
