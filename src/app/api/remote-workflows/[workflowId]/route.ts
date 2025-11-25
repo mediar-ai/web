@@ -603,7 +603,7 @@ export async function DELETE(
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
       .select(
-        'id, name, status, created_by, created_at, github_folder, organization_id, is_public'
+        'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
       )
       .eq('id', workflowIdNum)
       .single();
@@ -721,15 +721,17 @@ export async function DELETE(
       `🗑️ User ${authenticatedUserId} (${userEmail || 'unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`
     );
 
-    // Step 1: Delete from GitHub if workflow has github_folder (fire-and-forget for faster response)
-    if (workflow.github_folder) {
+    // Step 1: Delete from GitHub if workflow has github_path (fire-and-forget for faster response)
+    // Use github_path (full path like org-{orgId}/335_test13/workflow.yaml) instead of github_folder
+    // to ensure we have the correct path including org prefix
+    const githubFolderPath = workflow.github_path?.replace(/\/workflow\.yaml$/, '');
+    if (githubFolderPath) {
       const githubToken = process.env.GITHUB_TOKEN;
 
       if (!githubToken) {
         console.warn('⚠️ GITHUB_TOKEN not set - skipping GitHub deletion');
       } else {
-        const githubFolder = workflow.github_folder;
-        console.log(`🗑️ Queuing GitHub folder deletion (async): ${githubFolder}`);
+        console.log(`🗑️ Queuing GitHub folder deletion (async): ${githubFolderPath}`);
 
         // Fire-and-forget: don't await GitHub deletion
         (async () => {
@@ -742,11 +744,11 @@ export async function DELETE(
             const { data: contents } = await octokit.repos.getContent({
               owner,
               repo,
-              path: githubFolder,
+              path: githubFolderPath,
             });
 
             if (Array.isArray(contents)) {
-              console.log(`[GitHub Async] Found ${contents.length} files to delete in ${githubFolder}`);
+              console.log(`[GitHub Async] Found ${contents.length} files to delete in ${githubFolderPath}`);
 
               // Build commit message with user email
               const commitUserInfo = userEmail ? `By: ${userEmail}` : '';
@@ -771,15 +773,19 @@ export async function DELETE(
                 }
               }
 
-              console.log(`[GitHub Async] ✅ Completed deletion of ${contents.length} files from: ${githubFolder}`);
+              console.log(`[GitHub Async] ✅ Completed deletion of ${contents.length} files from: ${githubFolderPath}`);
             }
-          } catch (githubError) {
-            console.error(`[GitHub Async] ❌ GitHub deletion failed for ${githubFolder}:`, githubError);
+          } catch (githubError: any) {
+            if (githubError?.status === 404) {
+              console.log(`[GitHub Async] ℹ️ Folder not found in GitHub (already deleted or never synced): ${githubFolderPath}`);
+            } else {
+              console.error(`[GitHub Async] ❌ GitHub deletion failed for ${githubFolderPath}:`, githubError);
+            }
           }
         })();
       }
     } else {
-      console.log('ℹ️ No github_folder - skipping GitHub deletion');
+      console.log('ℹ️ No github_path - skipping GitHub deletion');
     }
 
     // Step 2: Delete storage files BEFORE archiving workflow
