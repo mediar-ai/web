@@ -109,7 +109,6 @@ async fn cancel_execution(
         ExecutionStatus::Cancelled,
         Some("Cancelled by user".to_string()),
         None,
-        None,
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

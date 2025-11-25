@@ -8,11 +8,9 @@ use tracing::{error, info};
 mod api;
 mod config;
 mod db;
-mod logging;
 mod mcp;
 mod models;
 mod services;
-mod storage;
 mod telemetry;
 mod utils;
 mod workflow_downloader;
@@ -137,13 +135,19 @@ async fn start_server(port: u16) -> Result<()> {
     info!("Checking for stuck executions from previous runs...");
     match db::queries::WorkflowQueries::cleanup_stuck_rust_executions(&db_pool, 1).await {
         Ok(count) if count > 0 => {
-            info!("✓ Cleaned up {} stuck Rust executions from previous run", count);
+            info!(
+                "✓ Cleaned up {} stuck Rust executions from previous run",
+                count
+            );
         }
         Ok(_) => {
             info!("✓ No stuck executions found");
         }
         Err(e) => {
-            error!("Failed to cleanup stuck executions: {} (continuing anyway)", e);
+            error!(
+                "Failed to cleanup stuck executions: {} (continuing anyway)",
+                e
+            );
         }
     }
 
@@ -284,7 +288,10 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
                 workflow_uuid
             );
 
-            info!("Downloading workflow {} from {}", workflow_uuid, download_url);
+            info!(
+                "Downloading workflow {} from {}",
+                workflow_uuid, download_url
+            );
             eprintln!("📥 Downloading workflow from releases...");
 
             // Download and extract workflow to S:\{uuid}\
@@ -305,10 +312,11 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
             info!("Using legacy S3 mount architecture");
             eprintln!("📁 Legacy workflow (S3 mount)");
 
-            let github_folder = workflow
-                .github_folder
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("TypeScript workflow missing both github_release_url and github_folder"))?;
+            let github_folder = workflow.github_folder.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "TypeScript workflow missing both github_release_url and github_folder"
+                )
+            })?;
 
             // The Windows VMs have S3 bucket mounted to S: drive via rclone
             // Structure: S:\org-{clerk_org_id}\workflows\{workflow_id}\
