@@ -28,7 +28,7 @@ impl WorkflowQueries {
                 dw.skip_next_cancellation_check,
                 dw.created_at,
                 dw.updated_at,
-                dw.uuid,
+                dw.uuid::text as uuid,
                 dw.github_repo_url,
                 dw.github_release_url,
                 dw.github_release_checksum,
@@ -225,7 +225,7 @@ impl WorkflowQueries {
                 error_message = $2,
                 results = $3,
                 completed_at = $4,
-                updated_at = $5,
+                updated_at = $5
             WHERE id = $6
             "#,
         )
