@@ -760,11 +760,6 @@ export default function DeploymentsTabContent() {
           // Refresh data if needed
           console.log('Settings updated');
         }}
-        onUseAsTemplate={(yaml, name) => {
-          setTemplateYaml(yaml);
-          setTemplateName(name);
-          setCreateDialogOpen(true);
-        }}
       />
 
       {/* Create Workflow Dialog with Template */}

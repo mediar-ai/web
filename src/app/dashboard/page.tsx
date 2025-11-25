@@ -12,7 +12,6 @@ import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsD
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
-import { Button } from '@/components/ui/button';
 import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
 import { Activity, Workflow, TrendingUp, Zap, Search, Eye, EyeOff, Wand2, Download } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
@@ -762,20 +761,6 @@ function DashboardContent() {
     setOrgAssignmentOpen(true);
   }, [workflows, posthog]);
 
-  const handleUploadVersion = useCallback((workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    posthog?.capture('dashboard_upload_version', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
-
-    setSelectedWorkflowForVersion(workflow);
-    setUploadVersionOpen(true);
-  }, [workflows, posthog]);
-
   const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
     const workflow = workflows.find(w => w.id === workflowId);
     if (!workflow) return;
@@ -1129,10 +1114,8 @@ function DashboardContent() {
                       onSelect={() => setSelectedIndex(index)}
                       onExecute={() => handleQuickExecute(workflow.id)}
                       onView={() => fetchWorkflowOverview(workflow.id)}
-                      onDuplicate={() => handleQuickDuplicate(workflow.id)}
                       onToggleCron={() => handleToggleCron(workflow.id)}
                       onManageOrganizations={() => handleManageOrganizations(workflow.id)}
-                      onUploadVersion={() => handleUploadVersion(workflow.id)}
                       onDelete={handleDeleteWorkflow}
                       isMediarAdmin={!!isGlobalAdmin}
                     />

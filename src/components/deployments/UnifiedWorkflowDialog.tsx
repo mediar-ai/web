@@ -33,9 +33,6 @@ import {
   Check,
   AlertCircle,
   FileCode,
-  FilePlus,
-  Upload,
-  Edit,
   Save,
   X,
   Clock,
@@ -87,7 +84,6 @@ interface UnifiedWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSettingsUpdated?: () => void;
-  onUseAsTemplate?: (yaml: string, name: string) => void;
   isMediarTeam?: boolean; // Show executor selection for superadmins
 }
 
@@ -96,7 +92,6 @@ export function UnifiedWorkflowDialog({
   open,
   onOpenChange,
   onSettingsUpdated,
-  onUseAsTemplate,
   isMediarTeam = false,
 }: UnifiedWorkflowDialogProps) {
   // Version management state
@@ -107,13 +102,6 @@ export function UnifiedWorkflowDialog({
   );
   const [currentYaml, setCurrentYaml] = useState<string>('');
   const [loadingYaml, setLoadingYaml] = useState(false);
-  const [editedYaml, setEditedYaml] = useState<string>('');
-  const [isEditingYaml, setIsEditingYaml] = useState(false);
-  const [uploadingVersion, setUploadingVersion] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
   const [selectedVersionNumber, setSelectedVersionNumber] =
     useState<string>(''); // Track selected version for viewing
 
@@ -176,7 +164,6 @@ export function UnifiedWorkflowDialog({
         const data = await response.json();
         if (data.success && data.yaml) {
           setCurrentYaml(data.yaml);
-          setEditedYaml(data.yaml);
 
           // Show source info
           if (data.source === 'github') {
@@ -259,7 +246,6 @@ export function UnifiedWorkflowDialog({
           data.source
         );
         setCurrentYaml(data.yaml);
-        setEditedYaml(data.yaml);
       } else {
         console.warn('No YAML content found for workflow');
         setCurrentYaml('');
@@ -935,10 +921,8 @@ export function UnifiedWorkflowDialog({
                   onValueChange={value => {
                     setSelectedVersionNumber(value);
                     loadVersionYaml(value);
-                    setIsEditingYaml(false);
-                    setUploadResult(null);
                   }}
-                  disabled={loadingVersions || isEditingYaml}
+                  disabled={loadingVersions}
                 >
                   <SelectTrigger className="w-[200px] border-2 border-black font-mono">
                     <SelectValue placeholder="Select version" />
@@ -986,156 +970,22 @@ export function UnifiedWorkflowDialog({
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold flex items-center gap-2">
                 <FileCode className="w-4 h-4" />
-                {isEditingYaml ? 'Edit Workflow YAML' : 'Current Workflow YAML'}
+                Current Workflow YAML
               </h4>
               <div className="flex gap-2">
-                {!isEditingYaml ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setIsEditingYaml(true);
-                        setEditedYaml(currentYaml);
-                        setUploadResult(null);
-                      }}
-                      disabled={!currentYaml}
-                      className="flex items-center gap-1"
-                    >
-                      <Edit className="w-3 h-3" />
-                      Edit YAML
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (currentYaml && onUseAsTemplate) {
-                          onUseAsTemplate(currentYaml, workflow.name);
-                          onOpenChange(false);
-                        }
-                      }}
-                      disabled={!currentYaml || !onUseAsTemplate}
-                      className="flex items-center gap-1"
-                    >
-                      <FilePlus className="w-3 h-3" />
-                      Use as Template
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard.writeText(currentYaml);
-                        setSuccessMessage('YAML copied to clipboard');
-                      }}
-                      disabled={!currentYaml}
-                    >
-                      Copy YAML
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setIsEditingYaml(false);
-                        setEditedYaml(currentYaml);
-                        setUploadResult(null);
-                      }}
-                      className="flex items-center gap-1"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        setUploadingVersion(true);
-                        setUploadResult(null);
-                        try {
-                          // Upload new version
-                          const response = await fetch(
-                            `/api/remote-workflows/${workflow.id}/versions`,
-                            {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({
-                                automation_sequence: editedYaml,
-                                set_as_active: false,
-                                change_notes: 'Updated via workflow editor',
-                              }),
-                            }
-                          );
-
-                          if (!response.ok) {
-                            const errorData = await response.json();
-                            throw new Error(
-                              errorData.error ||
-                                `HTTP ${response.status}: ${response.statusText}`
-                            );
-                          }
-
-                          const result = await response.json();
-                          setUploadResult({
-                            success: true,
-                            message: `Successfully uploaded version ${result.version.version_number}`,
-                          });
-
-                          // Reload versions and reset state after successful upload
-                          await loadVersions();
-                          setTimeout(() => {
-                            setIsEditingYaml(false);
-                            setCurrentYaml(editedYaml);
-                            setUploadResult(null);
-                          }, 2000);
-                        } catch (error) {
-                          console.error('Version upload failed:', error);
-                          setUploadResult({
-                            success: false,
-                            message:
-                              error instanceof Error
-                                ? error.message
-                                : 'Upload failed',
-                          });
-                        } finally {
-                          setUploadingVersion(false);
-                        }
-                      }}
-                      disabled={uploadingVersion || editedYaml === currentYaml}
-                      className="flex items-center gap-1"
-                    >
-                      {uploadingVersion ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-3 h-3" />
-                          Upload as New Version
-                        </>
-                      )}
-                    </Button>
-                  </>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(currentYaml);
+                    setSuccessMessage('YAML copied to clipboard');
+                  }}
+                  disabled={!currentYaml}
+                >
+                  Copy YAML
+                </Button>
               </div>
             </div>
-
-            {uploadResult && (
-              <Alert
-                className={
-                  uploadResult.success ? 'border-green-500' : 'border-red-500'
-                }
-              >
-                {uploadResult.success ? (
-                  <Check className="w-4 h-4 text-green-500" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                )}
-                <AlertDescription>{uploadResult.message}</AlertDescription>
-              </Alert>
-            )}
 
             {loadingYaml ? (
               <div className="flex items-center gap-2 py-8 justify-center">
@@ -1145,9 +995,9 @@ export function UnifiedWorkflowDialog({
             ) : currentYaml ? (
               <div className="w-full">
                 <YamlEditorWithHighlight
-                  value={isEditingYaml ? editedYaml : currentYaml}
-                  onChange={value => setEditedYaml(value)}
-                  readOnly={!isEditingYaml}
+                  value={currentYaml}
+                  onChange={() => {}}
+                  readOnly={true}
                   minHeight="500px"
                   className="w-full"
                 />
