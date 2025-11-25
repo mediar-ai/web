@@ -1098,20 +1098,20 @@ function DashboardContent() {
                   <span className="font-mono text-xs uppercase">Turnkey Automation</span>
                 </a>
 
-                <Button
+                <a
+                  href="https://github.com/mediar-ai/mediar-app/releases/latest"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => {
-                    posthog?.capture('dashboard_create_workflow', {
+                    posthog?.capture('dashboard_download_app', {
                       timestamp: new Date().toISOString(),
                     });
-                    setCreateWorkflowOpen(true);
                   }}
-                  className="bg-black text-white hover:bg-gray-800 relative"
-                  title="Create new workflow (N)"
+                  className="px-4 py-2 bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-2 text-sm min-h-[42px]"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  NEW WORKFLOW
-                  <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black rounded font-mono">N</kbd>
-                </Button>
+                  <Download className="w-4 h-4" />
+                  <span className="font-mono text-xs uppercase">Download App</span>
+                </a>
               </div>
             </div>
 
@@ -1140,14 +1140,21 @@ function DashboardContent() {
                 </div>
               ) : (
                 <div className="text-center py-12 border-2 border-dashed border-black">
-                  <p className="font-mono text-gray-600 mb-4">No workflows created yet</p>
-                  <Button
-                    onClick={() => setCreateWorkflowOpen(true)}
-                    className="bg-black text-white hover:bg-gray-800"
+                  <p className="font-mono text-gray-600 mb-4">No workflows yet. Download the app to get started.</p>
+                  <a
+                    href="https://github.com/mediar-ai/mediar-app/releases/latest"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      posthog?.capture('dashboard_download_app_empty_state', {
+                        timestamp: new Date().toISOString(),
+                      });
+                    }}
+                    className="inline-flex items-center px-4 py-2 bg-black text-white hover:bg-gray-800 transition-all gap-2 text-sm"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    CREATE YOUR FIRST WORKFLOW
-                  </Button>
+                    <Download className="w-4 h-4" />
+                    <span className="font-mono text-xs uppercase">Download App</span>
+                  </a>
                 </div>
               )}
             </div>
