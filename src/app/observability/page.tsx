@@ -785,13 +785,17 @@ export default function ObservabilityPage() {
                                         Trace ID:
                                       </span>
                                       <button
-                                        onClick={() =>
-                                          setTraceIdFilter(log.trace_id || '')
-                                        }
-                                        className="mt-1 p-2 bg-white border border-gray-300 break-all w-full text-left hover:bg-gray-100 hover:border-black"
-                                        title="Click to filter by this trace ID"
+                                        onClick={() => {
+                                          setTraceIdFilter(log.trace_id || '');
+                                          setSelectedLog(null);
+                                        }}
+                                        className="mt-1 p-2 bg-black text-white border-2 border-black break-all w-full text-left hover:bg-gray-800 flex items-center gap-2"
+                                        title="Filter logs by this trace ID"
                                       >
-                                        {log.trace_id}
+                                        <Filter className="w-3 h-3 flex-shrink-0" />
+                                        <span className="truncate">
+                                          {log.trace_id}
+                                        </span>
                                       </button>
                                     </div>
                                   )}
@@ -801,15 +805,17 @@ export default function ObservabilityPage() {
                                         Execution ID:
                                       </span>
                                       <button
-                                        onClick={() =>
+                                        onClick={() => {
                                           setExecutionIdFilter(
                                             log.execution_id || ''
-                                          )
-                                        }
-                                        className="mt-1 p-2 bg-white border border-gray-300 break-all w-full text-left hover:bg-gray-100 hover:border-black"
-                                        title="Click to filter by this execution ID"
+                                          );
+                                          setSelectedLog(null);
+                                        }}
+                                        className="mt-1 p-2 bg-black text-white border-2 border-black break-all w-full text-left hover:bg-gray-800 flex items-center gap-2"
+                                        title="Filter logs by this execution ID"
                                       >
-                                        {log.execution_id}
+                                        <Filter className="w-3 h-3 flex-shrink-0" />
+                                        <span>{log.execution_id}</span>
                                       </button>
                                     </div>
                                   )}
@@ -926,6 +932,30 @@ export default function ObservabilityPage() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Show all LogAttributes */}
+                            {log.LogAttributes &&
+                              Object.keys(log.LogAttributes).length > 0 && (
+                                <div className="border-t-2 border-gray-300 pt-3 mt-3">
+                                  <span className="font-bold uppercase text-gray-600 mb-2 block">
+                                    All Attributes:
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {Object.entries(log.LogAttributes).map(
+                                      ([key, value]) => (
+                                        <div key={key} className="text-xs">
+                                          <span className="font-bold text-gray-500">
+                                            {key}:
+                                          </span>
+                                          <span className="ml-1 text-gray-700 break-all">
+                                            {String(value)}
+                                          </span>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                           </div>
                         )}
                       </div>
