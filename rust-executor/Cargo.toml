@@ -81,6 +81,9 @@ deadpool = "0.12"
 # System info
 hostname = "0.4"
 
+# Random number generation
+rand = "0.8"
+
 # Sentry for error tracking and performance monitoring
 sentry = { version = "0.45", features = ["tracing", "tower", "tower-http", "tower-axum-matched-path", "reqwest", "rustls"] }
 sentry-tracing = "0.45"
@@ -93,6 +96,10 @@ tempfile = "3.14"
 rstest = "0.23"
 test-log = { version = "0.2", features = ["trace"] }
 wiremock = "0.6"
+
+[[bin]]
+name = "test_otel"
+path = "test_otel.rs"
 
 [profile.release]
 lto = true

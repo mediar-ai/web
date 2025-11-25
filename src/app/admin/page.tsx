@@ -302,13 +302,21 @@ function AdminPageContent() {
         const data = await response.json();
         const fetchedMachines = data.machines || [];
 
-        // Sort machines by health status: healthy -> unhealthy -> unknown/null
+        // Sort machines by health status: healthy active -> unhealthy active -> inactive/maintenance
         const sortedMachines = fetchedMachines.sort((a: any, b: any) => {
-          const healthOrder = { healthy: 0, unhealthy: 1, unknown: 2 };
-          const aHealth = a.health_status || 'unknown';
-          const bHealth = b.health_status || 'unknown';
-          return (healthOrder[aHealth as keyof typeof healthOrder] ?? 2) -
-                 (healthOrder[bHealth as keyof typeof healthOrder] ?? 2);
+          // Helper function to get effective health score
+          const getHealthScore = (machine: any) => {
+            // Inactive/maintenance machines go to the bottom
+            if (machine.status !== 'active') {
+              return 100; // Low priority
+            }
+            // Active machines sorted by health_status
+            if (machine.health_status === 'healthy') return 0;
+            if (machine.health_status === 'unhealthy') return 1;
+            return 2; // unknown or null
+          };
+
+          return getHealthScore(a) - getHealthScore(b);
         });
 
         setMachines(sortedMachines);
