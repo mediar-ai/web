@@ -13,7 +13,6 @@ use tracing::{error, info, warn};
 use crate::mcp::McpClient;
 
 /// Response from MCP run_command tool (shell mode)
-/// Matches terminator-mcp-agent/src/server.rs line 3516-3525
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RunCommandResponse {
     pub exit_status: i32,
@@ -22,34 +21,6 @@ pub struct RunCommandResponse {
     pub command: String,
     pub shell: String,
     pub working_directory: Option<String>,
-}
-
-/// Response from MCP execute_sequence tool (TypeScript workflow execution)
-/// Matches terminator-mcp-agent/src/server_sequence.rs line 2604-2611
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ExecuteSequenceResponse {
-    pub status: String,
-    pub message: String,
-    pub data: Option<Value>,
-    pub metadata: Option<Value>,
-    pub state: Option<Value>,
-    pub last_step_id: Option<String>,
-    pub last_step_index: Option<usize>,
-    pub parsed_output: Option<Value>,
-}
-
-/// Inner workflow execution result
-/// Matches terminator-mcp-agent/src/workflow_typescript.rs line 703-712
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct WorkflowExecutionResult {
-    pub status: String,
-    pub message: Option<String>,
-    pub data: Option<Value>,
-    pub last_step_id: Option<String>,
-    pub last_step_index: Option<usize>,
-    pub error: Option<String>,
 }
 
 /// Download and extract workflow to C:\Workflows\{uuid}\ via MCP run_command
