@@ -432,6 +432,7 @@ impl QueueProcessor {
                         workflow_id = %workflow.id,
                         error = %error_message,
                         error_category = ?error_category,
+                        trace_id = %trace_id,
                         "Execution failed"
                     );
 
@@ -455,6 +456,7 @@ impl QueueProcessor {
                             next_retry_at = %next_retry_at,
                             delay_secs = %delay.as_secs(),
                             error_category = ?error_category,
+                            trace_id = %trace_id,
                             "Scheduling execution retry"
                         );
 
@@ -501,6 +503,7 @@ impl QueueProcessor {
                             workflow_id = %workflow.id,
                             error_category = ?error_category,
                             retry_count = %execution.retry_count,
+                            trace_id = %trace_id,
                             "Marking execution as permanently failed"
                         );
 

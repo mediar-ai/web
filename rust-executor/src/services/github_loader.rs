@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use octocrab::Octocrab;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct GitHubLoader {
     client: Option<Octocrab>,
@@ -12,7 +12,10 @@ impl GitHubLoader {
             match Octocrab::builder().personal_token(token).build() {
                 Ok(client) => Some(client),
                 Err(e) => {
-                    tracing::warn!("Failed to create GitHub client: {}", e);
+                    warn!(
+                        error = %e,
+                        "Failed to create GitHub client"
+                    );
                     None
                 }
             }
@@ -30,17 +33,28 @@ impl GitHubLoader {
             .as_ref()
             .context("GitHub client not initialized")?;
 
-        info!("Loading workflow from GitHub: {}/{}", folder, git_ref);
-
         // Parse repository info
         let (owner, repo) = Self::parse_repo_info()?;
 
         // Fetch workflow.yaml from the specified folder
         let file_path = format!("{folder}/workflow.yaml");
 
+        info!(
+            github_folder = %folder,
+            github_ref = %git_ref,
+            owner = %owner,
+            repo = %repo,
+            file_path = %file_path,
+            "Loading workflow from GitHub"
+        );
+
         debug!(
-            "Fetching file: {} from {}/{} ref: {}",
-            file_path, owner, repo, git_ref
+            github_folder = %folder,
+            github_ref = %git_ref,
+            owner = %owner,
+            repo = %repo,
+            file_path = %file_path,
+            "Fetching file from GitHub"
         );
 
         let content = client
@@ -65,6 +79,13 @@ impl GitHubLoader {
 
                     let yaml_content =
                         String::from_utf8(decoded).context("Invalid UTF-8 in workflow content")?;
+
+                    info!(
+                        github_folder = %folder,
+                        github_ref = %git_ref,
+                        content_length = %yaml_content.len(),
+                        "Successfully loaded workflow from GitHub"
+                    );
 
                     return Ok(yaml_content);
                 }
