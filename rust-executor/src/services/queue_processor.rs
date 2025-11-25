@@ -127,35 +127,46 @@ impl QueueProcessor {
                 otel.kind = "consumer"
             );
 
-            // Enter the span so we can capture the trace_id
-            let _enter = execution_span.enter();
+            // Generate a trace_id for this execution
+            // We'll use this for log correlation even if OpenTelemetry tracing isn't working perfectly
+            use opentelemetry::trace::{TraceId, TraceContextExt};
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-            // Capture the trace_id immediately after entering the span
-            // This enables reliable log correlation with ClickHouse
-            if let Some(trace_id) = crate::telemetry::current_trace_id() {
+            // Try to get trace_id from OpenTelemetry context first
+            let trace_id = {
+                let _enter = execution_span.enter();
+                crate::telemetry::current_trace_id()
+            };
+
+            // If no trace_id from OTEL (layer might not be working), generate one manually
+            let trace_id = trace_id.unwrap_or_else(|| {
+                // Generate a new random trace ID
+                let trace_id = TraceId::from_bytes(rand::random());
+                let trace_id_str = trace_id.to_string();
+
                 info!(
                     execution_id = %execution.id,
-                    trace_id = %trace_id,
-                    "Captured OpenTelemetry trace_id for execution"
+                    trace_id = %trace_id_str,
+                    "Generated manual trace_id (OTEL layer not providing context)"
                 );
 
-                // Store trace_id in database immediately for reliable log lookup
-                if let Err(e) = WorkflowQueries::set_trace_id(&self.db_pool, execution.id, &trace_id).await {
-                    warn!(
-                        execution_id = %execution.id,
-                        error = %e,
-                        "Failed to store trace_id in database (logs may be harder to find)"
-                    );
-                }
-            } else {
+                trace_id_str
+            });
+
+            info!(
+                execution_id = %execution.id,
+                trace_id = %trace_id,
+                "Using trace_id for execution"
+            );
+
+            // Store trace_id in database immediately for reliable log lookup
+            if let Err(e) = WorkflowQueries::set_trace_id(&self.db_pool, execution.id, &trace_id).await {
                 warn!(
                     execution_id = %execution.id,
-                    "No trace_id available (OpenTelemetry may be disabled)"
+                    error = %e,
+                    "Failed to store trace_id in database (logs may be harder to find)"
                 );
             }
-
-            // Exit the span guard so we don't hold it during the entire execution
-            drop(_enter);
 
             info!(
                 execution_id = %execution.id,
@@ -249,7 +260,7 @@ impl QueueProcessor {
             let start_time = Utc::now();
 
             // Workflow execution with 1-hour timeout
-            let execution_timeout = Duration::from_secs(3600);
+            let execution_timeout = Duration::from_secs(600);  // 10-minute timeout
             let result = match tokio::time::timeout(
                 execution_timeout,
                 async {
@@ -332,7 +343,7 @@ impl QueueProcessor {
                         "Workflow execution timed out"
                     );
                     Err(anyhow::anyhow!(
-                        "Workflow execution timed out after {} seconds. The VM may be unresponsive or the workflow is taking too long.",
+                        "Workflow execution timed out after {} seconds (10 minutes). The VM may be unresponsive or the workflow is taking too long.",
                         execution_timeout.as_secs()
                     ))
                 }
