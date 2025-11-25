@@ -8,11 +8,14 @@ pub struct GitHubLoader {
 
 impl GitHubLoader {
     pub fn new(token: Option<String>) -> Self {
+        let trace_id = crate::telemetry::current_trace_id().unwrap_or_default();
+
         let client = if let Some(token) = token {
             match Octocrab::builder().personal_token(token).build() {
                 Ok(client) => Some(client),
                 Err(e) => {
                     warn!(
+                        trace_id = %trace_id,
                         error = %e,
                         "Failed to create GitHub client"
                     );
@@ -28,6 +31,8 @@ impl GitHubLoader {
 
     /// Load workflow YAML from GitHub
     pub async fn load_workflow(&self, folder: &str, git_ref: &str) -> Result<String> {
+        let trace_id = crate::telemetry::current_trace_id().unwrap_or_default();
+
         let client = self
             .client
             .as_ref()
@@ -40,6 +45,7 @@ impl GitHubLoader {
         let file_path = format!("{folder}/workflow.yaml");
 
         info!(
+            trace_id = %trace_id,
             github_folder = %folder,
             github_ref = %git_ref,
             owner = %owner,
@@ -49,6 +55,7 @@ impl GitHubLoader {
         );
 
         debug!(
+            trace_id = %trace_id,
             github_folder = %folder,
             github_ref = %git_ref,
             owner = %owner,
@@ -81,6 +88,7 @@ impl GitHubLoader {
                         String::from_utf8(decoded).context("Invalid UTF-8 in workflow content")?;
 
                     info!(
+                        trace_id = %trace_id,
                         github_folder = %folder,
                         github_ref = %git_ref,
                         content_length = %yaml_content.len(),
@@ -92,6 +100,12 @@ impl GitHubLoader {
             }
         }
 
+        warn!(
+            trace_id = %trace_id,
+            github_folder = %folder,
+            github_ref = %git_ref,
+            "No content found in GitHub response"
+        );
         anyhow::bail!("No content found in GitHub response")
     }
 
