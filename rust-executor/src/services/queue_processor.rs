@@ -136,8 +136,13 @@ impl QueueProcessor {
                 }
             };
 
+            // Generate a trace_id for this execution BEFORE creating the span
+            // We always generate our own trace_id to ensure reliability across async boundaries
+            use opentelemetry::trace::TraceId;
+            let trace_id = TraceId::from_bytes(rand::random()).to_string();
+
             // Create a span with execution context for all logs
-            // IMPORTANT: Set execution_id as a span attribute so it propagates to all child logs
+            // Include trace_id as a span attribute so it appears in all logs
             let execution_span = info_span!(
                 "queue_process_execution",
                 execution_id = %execution.id,
@@ -145,31 +150,12 @@ impl QueueProcessor {
                 workflow_name = %workflow.name,
                 organization_id = %workflow.organization_id.as_ref().unwrap_or(&"".to_string()),
                 machine_id = %self.machine_id,
+                trace_id = %trace_id,
                 otel.kind = "consumer"
             );
 
-            // Enter the span immediately so all subsequent logs are associated with it
+            // Enter the span for synchronous logging (logs within this function)
             let _span_guard = execution_span.enter();
-
-            // Generate a trace_id for this execution
-            // We'll use this for log correlation even if OpenTelemetry tracing isn't working perfectly
-            #[allow(unused_imports)]
-            use opentelemetry::trace::TraceId;
-
-            // Try to get trace_id from OpenTelemetry context (now that we're inside the span)
-            let trace_id = crate::telemetry::current_trace_id().unwrap_or_else(|| {
-                // Generate a new random trace ID as fallback
-                let trace_id = TraceId::from_bytes(rand::random());
-                let trace_id_str = trace_id.to_string();
-
-                info!(
-                    execution_id = %execution.id,
-                    trace_id = %trace_id_str,
-                    "Generated manual trace_id (OTEL layer not providing context)"
-                );
-
-                trace_id_str
-            });
 
             info!(
                 execution_id = %execution.id,
