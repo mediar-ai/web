@@ -27,6 +27,7 @@ interface ScheduledWorkflow {
   cron_max_concurrent: number;
   cron_retry_on_failure: boolean;
   cron_retry_count: number;
+  cron_executor_type?: 'python' | 'rust';
 }
 
 interface ExecutionResult {
@@ -67,7 +68,8 @@ export async function POST(_request: NextRequest) {
         next_scheduled_execution,
         cron_max_concurrent,
         cron_retry_on_failure,
-        cron_retry_count
+        cron_retry_count,
+        cron_executor_type
       `
       )
       .eq('cron_enabled', true)
@@ -125,8 +127,14 @@ export async function POST(_request: NextRequest) {
         }
 
         // Check if workflow should execute at current time
-        const shouldExecute = shouldExecuteAt(cronExpression, currentTime, timezone);
-        console.log(`🔍 Checking ${workflow.name} (org: ${workflow.organization_id || 'none'}): expression=${cronExpression}, currentTime=${currentTime.toISOString()}, shouldExecute=${shouldExecute}`);
+        const shouldExecute = shouldExecuteAt(
+          cronExpression,
+          currentTime,
+          timezone
+        );
+        console.log(
+          `🔍 Checking ${workflow.name} (org: ${workflow.organization_id || 'none'}): expression=${cronExpression}, currentTime=${currentTime.toISOString()}, shouldExecute=${shouldExecute}`
+        );
         if (shouldExecute) {
           // Check if we haven't already executed this minute
           const lastExecution = workflow.last_scheduled_execution
@@ -172,7 +180,11 @@ export async function POST(_request: NextRequest) {
         }
 
         // Calculate next execution time using proper cron parser for each workflow's specific schedule
-        const nextExecution = getNextExecutionTime(cronExpression, timezone, currentTime);
+        const nextExecution = getNextExecutionTime(
+          cronExpression,
+          timezone,
+          currentTime
+        );
         if (nextExecution) {
           workflowUpdates.push({
             id: workflow.id,
@@ -202,11 +214,13 @@ export async function POST(_request: NextRequest) {
         try {
           const { data: exclusiveAssignment } = await supabase
             .from('workflow_machine_assignments')
-            .select(`
+            .select(
+              `
               machine_id,
               assignment_type,
               remote_machines!inner(id, name, status, health_status)
-            `)
+            `
+            )
             .eq('workflow_id', workflow.id)
             .eq('is_active', true)
             .eq('assignment_type', 'exclusive')
@@ -234,28 +248,37 @@ export async function POST(_request: NextRequest) {
                 .eq('id', exclusiveAssignment.machine_id)
                 .single();
 
-              const maxConcurrent = machineDetails?.max_concurrent_executions || 10;
+              const maxConcurrent =
+                machineDetails?.max_concurrent_executions || 10;
               const currentLoad = runningExecutions || 0;
 
               if (currentLoad >= maxConcurrent) {
                 // Exclusive machine at capacity - MUST skip execution
                 shouldSkipExecution = true;
                 skipReason = `Exclusive machine ${machine.name} (ID: ${exclusiveAssignment.machine_id}) at capacity (${currentLoad}/${maxConcurrent})`;
-                console.log(`   ⏸️  ${skipReason} - execution will be queued until capacity available`);
+                console.log(
+                  `   ⏸️  ${skipReason} - execution will be queued until capacity available`
+                );
               } else {
                 assignedMachineId = exclusiveAssignment.machine_id;
-                console.log(`   ✅ Using EXCLUSIVE machine ${machine.name} (ID: ${assignedMachineId}, capacity: ${currentLoad}/${maxConcurrent})`);
+                console.log(
+                  `   ✅ Using EXCLUSIVE machine ${machine.name} (ID: ${assignedMachineId}, capacity: ${currentLoad}/${maxConcurrent})`
+                );
               }
             } else {
               // Exclusive machine inactive - MUST skip execution
               shouldSkipExecution = true;
               skipReason = `Exclusive machine ${machine?.name} (ID: ${exclusiveAssignment.machine_id}) is inactive`;
-              console.log(`   ⏸️  ${skipReason} - execution cannot proceed without exclusive machine`);
+              console.log(
+                `   ⏸️  ${skipReason} - execution cannot proceed without exclusive machine`
+              );
             }
           }
         } catch (_machineErr) {
           // No exclusive assignment - continue with auto-assignment
-          console.log(`   ℹ️  No exclusive assignment found for workflow ${workflow.id}, using auto-assignment`);
+          console.log(
+            `   ℹ️  No exclusive assignment found for workflow ${workflow.id}, using auto-assignment`
+          );
         }
 
         // Skip execution if exclusive machine is unavailable
@@ -276,13 +299,14 @@ export async function POST(_request: NextRequest) {
         const vercelBypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
         // In production, always use the production URL, not localhost
-        const isProduction = process.env.NODE_ENV === 'production' ||
-                           process.env.VERCEL_ENV === 'production' ||
-                           process.env.VERCEL;
+        const isProduction =
+          process.env.NODE_ENV === 'production' ||
+          process.env.VERCEL_ENV === 'production' ||
+          process.env.VERCEL;
 
         const publicUrl = isProduction
           ? 'https://app.mediar.ai'
-          : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+          : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
         let executionUrl = `${publicUrl}/api/remote-workflows/${workflow.id}/execute`;
 
@@ -312,6 +336,7 @@ export async function POST(_request: NextRequest) {
             parameters: {}, // Changed from execution_params to parameters
             client_id: 'cron-scheduler',
             ...(assignedMachineId && { machine_id: assignedMachineId }), // Include assigned machine if found
+            executor_type: workflow.cron_executor_type || 'python', // Pass the executor type from cron config
           }),
         });
 
@@ -390,7 +415,9 @@ export async function POST(_request: NextRequest) {
       .or(`cron_enabled.eq.false,cron_auto_paused.eq.true`);
 
     if (pausedWorkflows && pausedWorkflows.length > 0) {
-      console.log(`📅 Updating next_scheduled_execution for ${pausedWorkflows.length} paused workflows`);
+      console.log(
+        `📅 Updating next_scheduled_execution for ${pausedWorkflows.length} paused workflows`
+      );
       for (const workflow of pausedWorkflows) {
         try {
           const nextExecution = getNextExecutionTime(
@@ -405,7 +432,10 @@ export async function POST(_request: NextRequest) {
               .eq('id', workflow.id);
           }
         } catch (error) {
-          console.error(`Error updating next execution for paused workflow ${workflow.id}:`, error);
+          console.error(
+            `Error updating next execution for paused workflow ${workflow.id}:`,
+            error
+          );
         }
       }
     }
