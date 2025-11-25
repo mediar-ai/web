@@ -266,27 +266,26 @@ impl McpClient {
                 let trace_flags = span_context.trace_flags();
 
                 // Format: 00-{trace_id}-{span_id}-{flags}
-                let traceparent = format!(
-                    "00-{}-{}-{:02x}",
-                    trace_id,
-                    span_id,
-                    trace_flags.to_u8()
-                );
+                let traceparent =
+                    format!("00-{}-{}-{:02x}", trace_id, span_id, trace_flags.to_u8());
 
                 if let Ok(value) = reqwest::header::HeaderValue::from_str(&traceparent) {
                     headers.insert(
                         reqwest::header::HeaderName::from_static("traceparent"),
                         value,
                     );
-                    info!("Added traceparent header for distributed tracing: {}", traceparent);
+                    info!(
+                        "Added traceparent header for distributed tracing: {}",
+                        traceparent
+                    );
                 }
             }
         }
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
-            .timeout(Duration::from_secs(300))  // 5-minute timeout for all requests
-            .connect_timeout(Duration::from_secs(30))  // 30s to establish connection
+            .timeout(Duration::from_secs(300)) // 5-minute timeout for all requests
+            .connect_timeout(Duration::from_secs(30)) // 30s to establish connection
             .build()
             .context("Failed to build reqwest client with custom headers")?;
 
@@ -384,6 +383,7 @@ impl McpClient {
         }
     }
     /// Execute tool with built-in timeout
+    #[allow(dead_code)]
     pub async fn execute_tool_with_builtin_timeout(
         &self,
         tool_name: String,
@@ -392,17 +392,18 @@ impl McpClient {
         let timeout_duration = Duration::from_secs(60); // 60s timeout
         match tokio::time::timeout(
             timeout_duration,
-            self.execute_tool(tool_name.clone(), arguments)
-        ).await {
+            self.execute_tool(tool_name.clone(), arguments),
+        )
+        .await
+        {
             Ok(result) => result,
             Err(_) => Err(anyhow::anyhow!(
                 "Tool execution timed out after {} seconds: {}",
                 timeout_duration.as_secs(),
                 tool_name
-            ))
+            )),
         }
     }
-
 
     /// Execute a tool without retry
     pub async fn execute_tool(
