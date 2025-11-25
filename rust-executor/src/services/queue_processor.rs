@@ -140,8 +140,8 @@ impl QueueProcessor {
 
             // If no trace_id from OTEL (layer might not be working), generate one manually
             let trace_id = trace_id.unwrap_or_else(|| {
-                // Generate a new random trace ID
-                let trace_id = TraceId::from_bytes([0u8; 16]);  // Fallback trace ID
+                // Generate a new random trace ID as fallback
+                let trace_id = TraceId::from_bytes(rand::random());
                 let trace_id_str = trace_id.to_string();
 
                 info!(

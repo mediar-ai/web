@@ -97,10 +97,6 @@ rstest = "0.23"
 test-log = { version = "0.2", features = ["trace"] }
 wiremock = "0.6"
 
-[[bin]]
-name = "test_otel"
-path = "test_otel.rs"
-
 [profile.release]
 lto = true
 opt-level = 3
