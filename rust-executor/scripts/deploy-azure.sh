@@ -226,6 +226,12 @@ if [ -n "$SECRETS_ENCRYPTION_KEY" ]; then
     echo "   ✅ Including SECRETS_ENCRYPTION_KEY in deployment"
 fi
 
+# Add MCP service token for workflow downloads
+if [ -n "$MCP_SERVICE_TOKEN" ]; then
+    ENV_VARS+=("MCP_SERVICE_TOKEN=$MCP_SERVICE_TOKEN")
+    echo "   ✅ Including MCP_SERVICE_TOKEN in deployment"
+fi
+
 az container create \
     --resource-group "$RESOURCE_GROUP" \
     --name "$CONTAINER_NAME" \
