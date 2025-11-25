@@ -180,9 +180,11 @@ export async function getTraceIdForExecution(
 }
 
 /**
- * Get logs by trace ID (FAST and RELIABLE - uses TraceId index)
+ * Get logs by trace ID (FAST and RELIABLE - uses TraceId index or LogAttributes)
  * This is the preferred method for fetching logs when trace_id is stored in the database.
- * Much faster than searching by execution_id in log body.
+ *
+ * Note: The Rust executor's OpenTelemetryTracingBridge doesn't automatically set the root TraceId
+ * on logs, so we also check LogAttributes['trace_id'] which is set by our tracing spans.
  */
 export async function getLogsByTraceId(
   traceId: string,
@@ -191,7 +193,8 @@ export async function getLogsByTraceId(
   if (!clickhouse) return [];
 
   try {
-    // TraceId is indexed, so this query is very fast (no table scan)
+    // Check both TraceId column (standard OTLP) and LogAttributes['trace_id'] (our spans)
+    // The Rust executor sets trace_id as a span attribute, which appears in LogAttributes
     const query = `
       SELECT
         Timestamp as timestamp,
@@ -204,6 +207,7 @@ export async function getLogsByTraceId(
       FROM otel_logs
       WHERE
         TraceId = {traceId: String}
+        OR LogAttributes['trace_id'] = {traceId: String}
       ORDER BY Timestamp ASC
       LIMIT {limit: UInt32}
     `;
