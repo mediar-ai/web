@@ -35,12 +35,16 @@ export async function POST(request: NextRequest) {
     // Get the full untruncated message using the same logic as email body
     const detailedMessage = getParserMessage(formattedResult, alert);
 
+    // Sanitize message for subject line - remove newlines and extra whitespace
+    // Resend doesn't allow \n in subject field
+    const sanitizedMessage = detailedMessage.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
     // Limit message length for subject line (email clients typically limit to ~78 chars for subject preview)
     // Format: [STATUS] workflow - exec_id - message
     const maxMessageLength = 120;
-    const truncatedMessage = detailedMessage.length > maxMessageLength
-      ? detailedMessage.substring(0, maxMessageLength) + '...'
-      : detailedMessage;
+    const truncatedMessage = sanitizedMessage.length > maxMessageLength
+      ? sanitizedMessage.substring(0, maxMessageLength) + '...'
+      : sanitizedMessage;
 
     const enhancedSubject = `[${status.toUpperCase()}] ${workflowName} - ${executionId} - ${truncatedMessage}`;
 
