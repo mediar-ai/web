@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
     // Get authenticated user's organization
     const { userId: _authenticatedUserId, orgId } = await auth();
 
-    console.log(`📋 Fetching machines with status: ${status}, include_load: ${include_load}, org: ${orgId}`);
+    console.log(
+      `📋 Fetching machines with status: ${status}, include_load: ${include_load}, org: ${orgId}`
+    );
 
     // Try to use view first for include_load, fallback to table if view fails
     let machines = null;
@@ -91,7 +93,7 @@ export async function GET(request: NextRequest) {
         // Check if organization has access to this machine
         const { data: hasAccess } = await supabase.rpc('check_machine_access', {
           p_machine_id: machine.id,
-          p_organization_id: orgId
+          p_organization_id: orgId,
         });
 
         if (hasAccess) {
@@ -100,7 +102,9 @@ export async function GET(request: NextRequest) {
       }
 
       accessibleMachines = filteredMachines;
-      console.log(`📋 Filtered to ${accessibleMachines.length} accessible machines for org ${orgId}`);
+      console.log(
+        `📋 Filtered to ${accessibleMachines.length} accessible machines for org ${orgId}`
+      );
     }
 
     // Get machine assignments summary if requested
@@ -130,7 +134,7 @@ export async function GET(request: NextRequest) {
       endpoints: {
         mcp: machine.mcp_endpoint,
         management: machine.management_endpoint,
-        health: machine.health_endpoint
+        health: machine.health_endpoint,
       },
 
       // Capabilities and limits
@@ -143,16 +147,19 @@ export async function GET(request: NextRequest) {
         load_info: {
           current_executions: machine.current_executions || 0,
           queued_executions: machine.queued_executions || 0,
-          available_capacity: machine.available_capacity !== undefined ? machine.available_capacity : machine.max_concurrent_executions,
-          load_percentage: machine.load_percentage || 0
-        }
+          available_capacity:
+            machine.available_capacity !== undefined
+              ? machine.available_capacity
+              : machine.max_concurrent_executions,
+          load_percentage: machine.load_percentage || 0,
+        },
       }),
 
       // Performance metrics
       performance: {
         avg_execution_time_seconds: machine.avg_execution_time_seconds || 0,
         success_rate_percent: machine.success_rate_percent || 0,
-        total_executions: machine.total_executions || 0
+        total_executions: machine.total_executions || 0,
       },
 
       // Health details
@@ -167,7 +174,8 @@ export async function GET(request: NextRequest) {
 
       // Metadata
       created_at: machine.created_at,
-      updated_at: machine.updated_at
+      updated_at: machine.updated_at,
+      mcp_version: machine.mcp_version,
     }));
 
     const responseData = {
@@ -175,37 +183,51 @@ export async function GET(request: NextRequest) {
       machines: formattedMachines,
       summary: {
         total_machines: formattedMachines.length,
-        by_status: formattedMachines.reduce((acc: Record<string, number>, machine) => {
-          acc[machine.status] = (acc[machine.status] || 0) + 1;
-          return acc;
-        }, {}),
-        by_health: formattedMachines.reduce((acc: Record<string, number>, machine) => {
-          acc[machine.health_status] = (acc[machine.health_status] || 0) + 1;
-          return acc;
-        }, {}),
-        total_capacity: formattedMachines.reduce((sum, machine) => sum + machine.max_concurrent_executions, 0),
+        by_status: formattedMachines.reduce(
+          (acc: Record<string, number>, machine) => {
+            acc[machine.status] = (acc[machine.status] || 0) + 1;
+            return acc;
+          },
+          {}
+        ),
+        by_health: formattedMachines.reduce(
+          (acc: Record<string, number>, machine) => {
+            acc[machine.health_status] = (acc[machine.health_status] || 0) + 1;
+            return acc;
+          },
+          {}
+        ),
+        total_capacity: formattedMachines.reduce(
+          (sum, machine) => sum + machine.max_concurrent_executions,
+          0
+        ),
         ...(include_load && {
-          current_load: formattedMachines.reduce((sum, machine) => 
-            sum + (machine.load_info?.current_executions || 0), 0),
-          available_capacity: formattedMachines.reduce((sum, machine) => 
-            sum + (machine.load_info?.available_capacity || 0), 0)
-        })
+          current_load: formattedMachines.reduce(
+            (sum, machine) =>
+              sum + (machine.load_info?.current_executions || 0),
+            0
+          ),
+          available_capacity: formattedMachines.reduce(
+            (sum, machine) =>
+              sum + (machine.load_info?.available_capacity || 0),
+            0
+          ),
+        }),
       },
       ...(assignmentsSummary && {
-        workflow_assignments: assignmentsSummary
+        workflow_assignments: assignmentsSummary,
       }),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     return NextResponse.json(responseData);
-
   } catch (error) {
     console.error('[ERROR] Error fetching machines:', error);
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to fetch machines',
-        details: error instanceof Error ? error.message : String(error)
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
@@ -216,7 +238,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
+
     console.log('[FIX] Registering new machine:', body.name);
 
     // Validate required fields
@@ -227,7 +249,7 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             error: `Missing required field: ${field}`,
-            required_fields: requiredFields
+            required_fields: requiredFields,
           },
           { status: 400 }
         );
@@ -236,7 +258,7 @@ export async function POST(request: NextRequest) {
 
     // Validate machine endpoints
     const healthCheckResult = await validateMachineEndpoints(
-      body.mcp_endpoint, 
+      body.mcp_endpoint,
       body.management_endpoint,
       body.health_endpoint
     );
@@ -247,7 +269,8 @@ export async function POST(request: NextRequest) {
       description: body.description || null,
       mcp_endpoint: body.mcp_endpoint,
       management_endpoint: body.management_endpoint,
-      health_endpoint: body.health_endpoint || `${body.management_endpoint}/health`,
+      health_endpoint:
+        body.health_endpoint || `${body.management_endpoint}/health`,
       machine_type: body.machine_type || 'windows_vm',
       capabilities: body.capabilities || {},
       max_concurrent_executions: body.max_concurrent_executions || 1,
@@ -256,7 +279,7 @@ export async function POST(request: NextRequest) {
       tags: body.tags || [],
       azure_resource_id: body.azure_resource_id || null,
       health_status: healthCheckResult.status,
-      health_details: healthCheckResult.details
+      health_details: healthCheckResult.details,
     };
 
     // Insert machine into database
@@ -267,12 +290,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      if (error.code === '23505') { // Unique constraint violation
+      if (error.code === '23505') {
+        // Unique constraint violation
         return NextResponse.json(
           {
             success: false,
             error: 'Machine with this name already exists',
-            details: error.message
+            details: error.message,
           },
           { status: 409 }
         );
@@ -280,48 +304,53 @@ export async function POST(request: NextRequest) {
       throw new Error(`Database insertion failed: ${error.message}`);
     }
 
-    console.log(`[SUCCESS] Machine ${machine.name} registered successfully with ID ${machine.id}`);
+    console.log(
+      `[SUCCESS] Machine ${machine.name} registered successfully with ID ${machine.id}`
+    );
 
     // Add default configurations if provided
-    if (body.default_configurations && Array.isArray(body.default_configurations)) {
+    if (
+      body.default_configurations &&
+      Array.isArray(body.default_configurations)
+    ) {
       for (const config of body.default_configurations) {
-        await supabase
-          .from('machine_configurations')
-          .insert({
-            machine_id: machine.id,
-            config_type: config.type,
-            config_name: config.name,
-            config_data: config.data,
-            is_sensitive: config.is_sensitive || false
-          });
+        await supabase.from('machine_configurations').insert({
+          machine_id: machine.id,
+          config_type: config.type,
+          config_name: config.name,
+          config_data: config.data,
+          is_sensitive: config.is_sensitive || false,
+        });
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      machine: {
-        id: machine.id,
-        name: machine.name,
-        status: machine.status,
-        health_status: machine.health_status,
-        endpoints: {
-          mcp: machine.mcp_endpoint,
-          management: machine.management_endpoint,
-          health: machine.health_endpoint
+    return NextResponse.json(
+      {
+        success: true,
+        machine: {
+          id: machine.id,
+          name: machine.name,
+          status: machine.status,
+          health_status: machine.health_status,
+          endpoints: {
+            mcp: machine.mcp_endpoint,
+            management: machine.management_endpoint,
+            health: machine.health_endpoint,
+          },
+          health_check: healthCheckResult,
+          created_at: machine.created_at,
         },
-        health_check: healthCheckResult,
-        created_at: machine.created_at
+        message: `Machine ${machine.name} registered successfully`,
       },
-      message: `Machine ${machine.name} registered successfully`
-    }, { status: 201 });
-
+      { status: 201 }
+    );
   } catch (error) {
     console.error('[ERROR] Error registering machine:', error);
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to register machine',
-        details: error instanceof Error ? error.message : String(error)
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
@@ -330,14 +359,22 @@ export async function POST(request: NextRequest) {
 
 // Helper function to validate machine endpoints
 async function validateMachineEndpoints(
-  mcpEndpoint: string, 
+  mcpEndpoint: string,
   managementEndpoint: string,
   healthEndpoint?: string
-): Promise<{ status: string, details: Record<string, unknown>, response_time_ms?: number }> {
+): Promise<{
+  status: string;
+  details: Record<string, unknown>;
+  response_time_ms?: number;
+}> {
   const results = {
     mcp: { status: 'unknown', error: null as string | null },
     management: { status: 'unknown', error: null as string | null },
-    health: { status: 'unknown', error: null as string | null, data: null as unknown }
+    health: {
+      status: 'unknown',
+      error: null as string | null,
+      data: null as unknown,
+    },
   };
 
   const startTime = Date.now();
@@ -345,12 +382,12 @@ async function validateMachineEndpoints(
   try {
     // Test management endpoint health
     const healthUrl = healthEndpoint || `${managementEndpoint}/health`;
-    
+
     try {
       const response = await fetch(healthUrl, {
         method: 'GET',
         headers: { 'ngrok-skip-browser-warning': 'true' },
-        signal: AbortSignal.timeout(10000) // 10 second timeout
+        signal: AbortSignal.timeout(10000), // 10 second timeout
       });
 
       if (response.ok) {
@@ -363,7 +400,8 @@ async function validateMachineEndpoints(
       }
     } catch (error) {
       results.management.status = 'unreachable';
-      results.management.error = error instanceof Error ? error.message : String(error);
+      results.management.error =
+        error instanceof Error ? error.message : String(error);
     }
 
     // Test MCP endpoint availability (basic connectivity test)
@@ -373,9 +411,9 @@ async function validateMachineEndpoints(
         method: 'GET',
         headers: {
           'ngrok-skip-browser-warning': 'true',
-          'Authorization': 'Bearer ***REMOVED***'
+          Authorization: 'Bearer ***REMOVED***',
         },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(10000),
       });
 
       if (mcpResponse.ok) {
@@ -386,33 +424,36 @@ async function validateMachineEndpoints(
       }
     } catch (error) {
       results.mcp.status = 'unreachable';
-      results.mcp.error = error instanceof Error ? error.message : String(error);
+      results.mcp.error =
+        error instanceof Error ? error.message : String(error);
     }
 
     const responseTime = Date.now() - startTime;
 
     // Determine overall status
-    const overallStatus = 
-      results.management.status === 'healthy' && results.mcp.status === 'healthy' 
+    const overallStatus =
+      results.management.status === 'healthy' &&
+      results.mcp.status === 'healthy'
         ? 'healthy'
-        : results.management.status === 'unreachable' || results.mcp.status === 'unreachable'
-        ? 'unreachable' 
-        : 'unhealthy';
+        : results.management.status === 'unreachable' ||
+            results.mcp.status === 'unreachable'
+          ? 'unreachable'
+          : 'unhealthy';
 
     return {
       status: overallStatus,
       details: results,
-      response_time_ms: responseTime
+      response_time_ms: responseTime,
     };
-
   } catch (error) {
     return {
       status: 'unreachable',
       details: {
         ...results,
-        validation_error: error instanceof Error ? error.message : String(error)
+        validation_error:
+          error instanceof Error ? error.message : String(error),
       },
-      response_time_ms: Date.now() - startTime
+      response_time_ms: Date.now() - startTime,
     };
   }
-} 
+}
