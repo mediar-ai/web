@@ -19,10 +19,7 @@ import {
   Pause,
   Building2,
   Share2,
-  Copy,
-  Upload,
   AlertCircle,
-  Settings,
   Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -51,10 +48,8 @@ interface WorkflowCardEnhancedProps {
   onSelect?: () => void;
   onExecute?: () => void;
   onView?: () => void;
-  onDuplicate?: () => void;
   onToggleCron?: () => void;
   onManageOrganizations?: () => void;
-  onUploadVersion?: () => void;
   onDelete?: (workflowId: number) => Promise<void>;
   isMediarAdmin?: boolean;
   className?: string;
@@ -68,10 +63,8 @@ export function WorkflowCardEnhanced({
   onSelect,
   onExecute,
   onView,
-  onDuplicate,
   onToggleCron,
   onManageOrganizations,
-  onUploadVersion,
   onDelete,
   isMediarAdmin = false,
   className,
@@ -438,18 +431,6 @@ export function WorkflowCardEnhanced({
                 <Play className="w-3 h-3 mr-0.5" />
                 Run
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onView?.();
-                }}
-                className="h-6 px-1.5 text-[10px] border-black hover:bg-black hover:text-white whitespace-nowrap"
-              >
-                <Settings className="w-3 h-3 mr-0.5" />
-                Settings
-              </Button>
 
               {/* Action Menu */}
               <DropdownMenu
@@ -502,22 +483,6 @@ export function WorkflowCardEnhanced({
                       )}
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation();
-                    cleanupDropdownClose();
-                    onDuplicate?.();
-                  }}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation();
-                    cleanupDropdownClose();
-                    onUploadVersion?.();
-                  }}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Version
-                  </DropdownMenuItem>
                   {isMediarAdmin && (
                     <>
                       <DropdownMenuItem onClick={(e) => {
