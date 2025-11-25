@@ -94,8 +94,9 @@ async fn ensure_workflow_downloaded_inner(
     // Step 1: Check if workflow already exists on VM and find the actual workflow folder
     // The workflow may be at workflow_path directly or nested one level deep
     // Returns the path containing package.json, or 'missing' if not found
+    // Also cleans up invalid cached directories that don't have package.json
     let check_command = format!(
-        r#"$base = '{}'; if (Test-Path (Join-Path $base 'package.json')) {{ $base }} elseif (Test-Path $base) {{ $subdirs = Get-ChildItem -Path $base -Directory | Select-Object -First 1; if ($subdirs -and (Test-Path (Join-Path $subdirs.FullName 'package.json'))) {{ $subdirs.FullName }} else {{ 'missing' }} }} else {{ 'missing' }}"#,
+        r#"$base = '{}'; if (Test-Path (Join-Path $base 'package.json')) {{ $base }} elseif (Test-Path $base) {{ $subdirs = Get-ChildItem -Path $base -Directory -ErrorAction SilentlyContinue | Select-Object -First 1; if ($subdirs -and (Test-Path (Join-Path $subdirs.FullName 'package.json'))) {{ $subdirs.FullName }} else {{ Remove-Item -Path $base -Recurse -Force -ErrorAction SilentlyContinue; 'missing' }} }} else {{ 'missing' }}"#,
         workflow_path
     );
 
@@ -104,8 +105,10 @@ async fn ensure_workflow_downloaded_inner(
         .context("Failed to check if workflow exists - VM may be stopped or unreachable")?;
     let check_result_trimmed = check_result.trim();
 
-    // If we got a path (not 'missing'), workflow already exists
-    if !check_result_trimmed.to_lowercase().contains("missing") && !check_result_trimmed.is_empty()
+    // If we got a valid path (not 'missing' and not empty), workflow already exists
+    if !check_result_trimmed.to_lowercase().contains("missing")
+        && !check_result_trimmed.is_empty()
+        && check_result_trimmed.contains("\\")
     {
         info!(
             workflow_uuid = %workflow_uuid,
