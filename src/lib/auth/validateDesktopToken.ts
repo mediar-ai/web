@@ -5,6 +5,7 @@ interface TokenValidationResult {
   userId?: string;
   email?: string;
   orgId?: string;
+  orgName?: string;
   error?: string;
 }
 
@@ -74,5 +75,6 @@ export async function validateDesktopToken(
     userId: session.clerk_user_id,
     email: session.email,
     orgId: session.org_id,
+    orgName: session.org_name,
   };
 }

@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { createClient } from '@supabase/supabase-js';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
-import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 
 // Content sanitization check function
 function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
@@ -90,7 +90,8 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     // STEP 1: Authenticate
-    const { userId: authenticatedUserId, has, orgId } = await auth();
+    const { userId: authenticatedUserId, has, orgId, sessionClaims } = await auth();
+    const userEmail = sessionClaims?.email as string || null;
 
     if (!authenticatedUserId) {
       console.warn('[SECURITY] Unauthenticated request to /api/workflows/upload-zip');
@@ -486,46 +487,37 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Push new workflow to GitHub
-      try {
-        const isDevelopment = newWorkflow.status === 'draft' ||
-                             newWorkflow.workflow_type === 'settings';
+      // Push new workflow to GitHub (fire-and-forget)
+      const isDevelopment = newWorkflow.status === 'draft' ||
+                           newWorkflow.workflow_type === 'settings';
 
-        // Fetch user context for enhanced commit message
-        const userContext = await getUserContext(authenticatedUserId, orgId);
-
-        const githubResult = await githubWorkflowManager.saveWorkflow(
-          newWorkflow.name,
-          workflowContent,
-          isDevelopment,
-          `Create workflow from ZIP upload: ${newWorkflow.name}`,
-          false, // Don't create PR - push directly
-          newWorkflow.id, // Use newWorkflow.id directly instead of workflowId
-          orgId || undefined,
-          userContext
-        );
-
-        if (githubResult.success) {
-          console.log(`✅ Pushed workflow to GitHub: ${githubResult.path}`);
-
-          // Log sync operation
+      githubWorkflowManager.saveWorkflow(
+        newWorkflow.name,
+        workflowContent,
+        isDevelopment,
+        `Create workflow from ZIP upload: ${newWorkflow.name}`,
+        false,
+        newWorkflow.id,
+        orgId || undefined,
+        { email: userEmail || undefined }
+      ).then(async (result) => {
+        if (result.success) {
+          console.log(`✅ Pushed workflow to GitHub: ${result.path}`);
           await supabase
             .from('github_workflow_sync_log')
             .insert({
               workflow_id: workflowId,
               operation: 'zip_upload_create',
-              github_path: githubResult.path,
-              github_sha: githubResult.sha,
+              github_path: result.path,
+              github_sha: result.sha,
               status: 'success'
             });
         } else {
-          console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
-          // Continue anyway - GitHub is optional enhancement
+          console.warn(`⚠️ GitHub push failed: ${result.error}`);
         }
-      } catch (githubError) {
-        console.error('GitHub sync error during ZIP upload:', githubError);
-        // Don't fail the whole operation - GitHub is supplementary
-      }
+      }).catch((error) => {
+        console.error('GitHub sync error during ZIP upload:', error);
+      });
     } else if (formData.get('workflowId')) {
       // VERSION UPLOAD - when workflowId is provided but action !== 'create'
       workflowId = parseInt(formData.get('workflowId') as string);
@@ -598,54 +590,51 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', workflowId);
 
-      // Push new version to GitHub
-      try {
-        // Get workflow details for GitHub push
-        const { data: workflowDetails } = await supabase
-          .from('deployed_workflows')
-          .select('name, status, workflow_type')
-          .eq('id', workflowId)
-          .single();
+      // Push new version to GitHub (fire-and-forget)
+      if (workflowId) {
+        const wfId = workflowId; // Capture for closure
+        (async () => {
+          try {
+            const { data: workflowDetails } = await supabase
+              .from('deployed_workflows')
+              .select('name, status, workflow_type')
+              .eq('id', wfId)
+              .single();
 
-        if (workflowDetails) {
-          const isDevelopment = workflowDetails.status === 'draft' ||
-                               workflowDetails.workflow_type === 'settings';
+            if (workflowDetails) {
+              const isDevelopment = workflowDetails.status === 'draft' ||
+                                   workflowDetails.workflow_type === 'settings';
 
-          // Fetch user context for enhanced commit message
-          const userContext = await getUserContext(authenticatedUserId, orgId);
+              const result = await githubWorkflowManager.saveWorkflow(
+                workflowDetails.name,
+                workflowContent,
+                isDevelopment,
+                `Upload new version ${nextVersionNumber} via ZIP`,
+                false,
+                wfId,
+                orgId || undefined,
+                { email: userEmail || undefined }
+              );
 
-          const githubResult = await githubWorkflowManager.saveWorkflow(
-            workflowDetails.name,
-            workflowContent,
-            isDevelopment,
-            `Upload new version ${nextVersionNumber} via ZIP`,
-            false, // Don't create PR - push directly
-            workflowId,
-            orgId || undefined,
-            userContext
-          );
-
-          if (githubResult.success) {
-            console.log(`✅ Pushed version ${nextVersionNumber} to GitHub: ${githubResult.path}`);
-
-            // Log sync operation
-            await supabase
-              .from('github_workflow_sync_log')
-              .insert({
-                workflow_id: workflowId,
-                operation: 'zip_upload_version',
-                github_path: githubResult.path,
-                github_sha: githubResult.sha,
-                status: 'success'
-              });
-          } else {
-            console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
-            // Continue anyway - GitHub is optional enhancement
+              if (result.success) {
+                console.log(`✅ Pushed version ${nextVersionNumber} to GitHub: ${result.path}`);
+                await supabase
+                  .from('github_workflow_sync_log')
+                  .insert({
+                    workflow_id: wfId,
+                    operation: 'zip_upload_version',
+                    github_path: result.path,
+                    github_sha: result.sha,
+                    status: 'success'
+                  });
+              } else {
+                console.warn(`⚠️ GitHub push failed: ${result.error}`);
+              }
+            }
+          } catch (error) {
+            console.error('GitHub sync error during version upload:', error);
           }
-        }
-      } catch (githubError) {
-        console.error('GitHub sync error during version upload:', githubError);
-        // Don't fail the whole operation - GitHub is supplementary
+        })();
       }
 
       console.log(`✅ Created version ${nextVersionNumber} for workflow ${workflowId}`);

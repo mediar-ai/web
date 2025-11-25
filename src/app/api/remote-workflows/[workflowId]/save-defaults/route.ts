@@ -19,7 +19,8 @@ export async function POST(
 ) {
   try {
     // STEP 1: Authenticate
-    const { userId: authenticatedUserId, has, orgId } = await auth();
+    const { userId: authenticatedUserId, has, orgId, sessionClaims } = await auth();
+    const userEmail = sessionClaims?.email as string || null;
 
     if (!authenticatedUserId) {
       console.warn('[SECURITY] Unauthenticated request to save workflow defaults');
@@ -324,47 +325,40 @@ export async function POST(
       throw new Error(`Failed to activate version: ${activateError.message}`);
     }
 
-    // STEP 9: Push to GitHub
-    let githubSyncResult = null;
-    try {
-      const { githubWorkflowManager, getUserContext } = await import('@/lib/github-workflow-manager');
+    // STEP 9: Push to GitHub (fire-and-forget for faster response)
+    import('@/lib/github-workflow-manager').then(({ githubWorkflowManager }) => {
+      console.log(`📤 Pushing version ${newVersionNumber} to GitHub (async)...`);
 
-      console.log(`📤 Pushing version ${newVersionNumber} to GitHub...`);
-
-      // Fetch user context for enhanced commit message
-      const userContext = await getUserContext(authenticatedUserId, orgId);
-
-      githubSyncResult = await githubWorkflowManager.saveWorkflow(
+      githubWorkflowManager.saveWorkflow(
         workflow.name,
         updatedYaml,
-        false, // Not development
+        false,
         `Update default values: ${workflow.name} (v${newVersionNumber})`,
-        false, // Don't create PR - push directly
+        false,
         workflowIdNum,
         orgId || undefined,
-        userContext
-      );
-
-      if (githubSyncResult.success) {
-        console.log(`✅ Pushed to GitHub: ${githubSyncResult.path}`);
-
-        // Log sync operation
-        await supabase
-          .from('github_workflow_sync_log')
-          .insert({
-            workflow_id: workflowIdNum,
-            operation: 'push',
-            github_path: githubSyncResult.path,
-            github_sha: githubSyncResult.sha,
-            status: 'success'
-          });
-      } else {
-        console.warn(`⚠️ GitHub push failed: ${githubSyncResult.error}`);
-      }
-    } catch (githubError) {
-      console.error('GitHub sync error:', githubError);
-      // Don't fail the operation if GitHub sync fails
-    }
+        { email: userEmail || undefined }
+      ).then(async (result) => {
+        if (result.success) {
+          console.log(`✅ Pushed to GitHub: ${result.path}`);
+          await supabase
+            .from('github_workflow_sync_log')
+            .insert({
+              workflow_id: workflowIdNum,
+              operation: 'push',
+              github_path: result.path,
+              github_sha: result.sha,
+              status: 'success'
+            });
+        } else {
+          console.warn(`⚠️ GitHub push failed: ${result.error}`);
+        }
+      }).catch((error) => {
+        console.error('GitHub sync error:', error);
+      });
+    }).catch((error) => {
+      console.error('Failed to import github-workflow-manager:', error);
+    });
 
     return NextResponse.json({
       success: true,
@@ -380,11 +374,7 @@ export async function POST(
       updates: {
         variables_updated: updatedCount
       },
-      github_sync: githubSyncResult ? {
-        success: githubSyncResult.success,
-        path: githubSyncResult.path,
-        error: githubSyncResult.error
-      } : null
+      github_sync: 'async' // GitHub sync is fire-and-forget for faster response
     });
 
   } catch (error) {

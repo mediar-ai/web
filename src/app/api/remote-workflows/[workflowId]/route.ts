@@ -288,6 +288,7 @@ export async function PATCH(
     // STEP 1: Authenticate (support both desktop Bearer tokens and Clerk sessions)
     let authenticatedUserId: string | null = null;
     let orgId: string | null | undefined = null;
+    let userEmail: string | null = null;
     let has: any = null;
 
     // Try desktop token first
@@ -302,6 +303,7 @@ export async function PATCH(
       if (validation.valid) {
         authenticatedUserId = validation.userId!;
         orgId = validation.orgId;
+        userEmail = validation.email || null;
         has = () => false; // Desktop auth doesn't support Clerk role checks
         console.log(
           `[Desktop Auth] Workflow update authenticated for user: ${validation.email}`
@@ -315,6 +317,7 @@ export async function PATCH(
       authenticatedUserId = clerkAuth.userId;
       orgId = clerkAuth.orgId;
       has = clerkAuth.has;
+      userEmail = clerkAuth.sessionClaims?.email as string || null;
     }
 
     if (!authenticatedUserId) {
@@ -457,53 +460,47 @@ export async function PATCH(
       `[SUCCESS] Updated workflow ${workflowIdNum} (${workflow.name})`
     );
 
-    // Sync name change to GitHub if workflow has GitHub path
+    // Sync name change to GitHub if workflow has GitHub path (fire-and-forget)
     if (body.name && workflow.github_path) {
-      try {
-        console.log(
-          `📤 Syncing name change to GitHub for workflow ${workflowIdNum}...`
-        );
+      console.log(`📤 Syncing name change to GitHub (async) for workflow ${workflowIdNum}...`);
 
-        // Fetch latest YAML version
-        const { data: latestVersion } = await supabase
-          .from('deployed_workflow_versions')
-          .select('automation_sequence_yaml')
-          .eq('workflow_id', workflowIdNum)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+      // Fire-and-forget: fetch YAML and push to GitHub without blocking
+      (async () => {
+        try {
+          const { data: latestVersion } = await supabase
+            .from('deployed_workflow_versions')
+            .select('automation_sequence_yaml')
+            .eq('workflow_id', workflowIdNum)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
 
-        if (latestVersion?.automation_sequence_yaml) {
-          const { githubWorkflowManager, getUserContext } = await import(
-            '@/lib/github-workflow-manager'
-          );
-          const userContext = await getUserContext(authenticatedUserId, orgId);
+          if (latestVersion?.automation_sequence_yaml) {
+            const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
 
-          // Push to GitHub (saveWorkflow updates metadata comment automatically)
-          const githubResult = await githubWorkflowManager.saveWorkflow(
-            body.name, // New name - updates metadata comment
-            latestVersion.automation_sequence_yaml,
-            false, // Not development
-            `Rename workflow: ${workflow.name} → ${body.name}`,
-            false, // Don't create PR
-            workflowIdNum,
-            workflow.organization_id || undefined,
-            userContext
-          );
+            const result = await githubWorkflowManager.saveWorkflow(
+              body.name,
+              latestVersion.automation_sequence_yaml,
+              false,
+              `Rename workflow: ${workflow.name} → ${body.name}`,
+              false,
+              workflowIdNum,
+              workflow.organization_id || undefined,
+              { email: userEmail || undefined }
+            );
 
-          if (githubResult.success) {
-            console.log(`✅ GitHub metadata updated: ${githubResult.path}`);
+            if (result.success) {
+              console.log(`✅ GitHub metadata updated: ${result.path}`);
+            } else {
+              console.warn(`⚠️ GitHub sync failed: ${result.error}`);
+            }
           } else {
-            console.warn(`⚠️ GitHub sync failed: ${githubResult.error}`);
-            // Continue anyway - GitHub sync is optional
+            console.log(`ℹ️ No YAML version found - skipping GitHub sync`);
           }
-        } else {
-          console.log(`ℹ️ No YAML version found - skipping GitHub sync`);
+        } catch (error) {
+          console.error('GitHub rename sync error:', error);
         }
-      } catch (githubError) {
-        console.error('GitHub rename sync error:', githubError);
-        // Don't fail the rename - GitHub sync is supplementary
-      }
+      })();
     }
 
     return NextResponse.json({
@@ -535,6 +532,7 @@ export async function DELETE(
     // STEP 1: Authenticate (support both desktop Bearer tokens and Clerk sessions)
     let authenticatedUserId: string | null = null;
     let orgId: string | null | undefined = null;
+    let userEmail: string | null = null;
     let has: any = null;
 
     // Try desktop token first
@@ -549,6 +547,7 @@ export async function DELETE(
       if (validation.valid) {
         authenticatedUserId = validation.userId!;
         orgId = validation.orgId;
+        userEmail = validation.email || null;
         has = () => false; // Desktop auth doesn't support Clerk role checks
         console.log(
           `[Desktop Auth] Workflow deletion authenticated for user: ${validation.email}`
@@ -562,6 +561,7 @@ export async function DELETE(
       authenticatedUserId = clerkAuth.userId;
       orgId = clerkAuth.orgId;
       has = clerkAuth.has;
+      userEmail = clerkAuth.sessionClaims?.email as string || null;
     }
 
     if (!authenticatedUserId) {
@@ -685,10 +685,6 @@ export async function DELETE(
       `🔐 Authorization check passed - User ${authenticatedUserId} can delete workflow ${workflowIdNum}`
     );
 
-    // Get user context for commit messages (name + org, not email)
-    const { getUserContext } = await import('@/lib/github-workflow-manager');
-    const userContext = await getUserContext(authenticatedUserId, orgId);
-
     // Check for any running or queued executions
     const { data: activeExecutions, error: executionsError } = await supabase
       .from('workflow_executions')
@@ -721,18 +717,8 @@ export async function DELETE(
       .select('*', { count: 'exact', head: true })
       .eq('workflow_id', workflowIdNum);
 
-    // Build user info string for logging
-    const userInfoStr = [
-      userContext.name || 'Unknown user',
-      userContext.organizationName
-        ? `Org: ${userContext.organizationName}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(' | ');
-
     console.log(
-      `🗑️ User ${authenticatedUserId} (${userInfoStr}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`
+      `🗑️ User ${authenticatedUserId} (${userEmail || 'unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`
     );
 
     // Step 1: Delete from GitHub if workflow has github_folder
@@ -759,17 +745,10 @@ export async function DELETE(
           if (Array.isArray(contents)) {
             console.log(`   Found ${contents.length} files to delete`);
 
-            // Build commit message with user context (matching create workflow style)
-            const commitUserInfo = [
-              userContext.name ? `User: ${userContext.name}` : null,
-              userContext.organizationName
-                ? `Org: ${userContext.organizationName}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' | ');
+            // Build commit message with user email
+            const commitUserInfo = userEmail ? `By: ${userEmail}` : '';
 
-            const commitMessage = `Delete workflow.yaml (workflow deletion via UI)\n\n${commitUserInfo}`;
+            const commitMessage = `Delete workflow.yaml (workflow deletion via UI)${commitUserInfo ? `\n\n${commitUserInfo}` : ''}`;
 
             // Delete each file individually
             for (const file of contents) {
@@ -852,10 +831,7 @@ export async function DELETE(
     // Build archived_by string with user context (no email)
     const archivedByStr = [
       `user:${authenticatedUserId}`,
-      userContext.name,
-      userContext.organizationName
-        ? `org:${userContext.organizationName}`
-        : null,
+      userEmail,
     ]
       .filter(Boolean)
       .join(':');
