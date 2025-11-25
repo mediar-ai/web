@@ -52,9 +52,27 @@ impl QueueProcessor {
 
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent_executions));
         let mut ticker = interval(Duration::from_secs(5));
+        let mut cleanup_ticker = interval(Duration::from_secs(60)); // Run cleanup every minute
 
         loop {
-            ticker.tick().await;
+            tokio::select! {
+                _ = ticker.tick() => {
+                    // Normal job processing
+                }
+                _ = cleanup_ticker.tick() => {
+                    // Periodic cleanup of stuck executions (15 minute threshold)
+                    match WorkflowQueries::cleanup_stale_executions(&self.db_pool, 15).await {
+                        Ok(count) if count > 0 => {
+                            warn!("Periodic cleanup: marked {} stuck executions as failed", count);
+                        }
+                        Ok(_) => {} // No stuck executions
+                        Err(e) => {
+                            error!("Periodic cleanup failed: {}", e);
+                        }
+                    }
+                    continue; // Skip job processing this tick
+                }
+            }
 
             // Try to claim a new execution if we have capacity
             if semaphore.available_permits() > 0 {
