@@ -41,14 +41,19 @@ pub async fn ensure_workflow_downloaded(
 ) -> Result<String> {
     // Wrap entire download process with 2-minute timeout to prevent hanging on stopped VMs
     let download_timeout = Duration::from_secs(120);
-    
-    match timeout(download_timeout, ensure_workflow_downloaded_inner(
-        mcp_client,
-        workflow_uuid,
-        org_id,
-        service_token,
-        download_url,
-    )).await {
+
+    match timeout(
+        download_timeout,
+        ensure_workflow_downloaded_inner(
+            mcp_client,
+            workflow_uuid,
+            org_id,
+            service_token,
+            download_url,
+        ),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => {
             let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
@@ -74,7 +79,8 @@ async fn ensure_workflow_downloaded_inner(
     service_token: &str,
     download_url: &str,
 ) -> Result<String> {
-    let workflow_path = format!(r"S:\{}", workflow_uuid);
+    // Extract to C:\Workflows\{uuid} (not S:\ which is the legacy S3 mount)
+    let workflow_path = format!(r"C:\Workflows\{}", workflow_uuid);
     let zip_path = format!(r"C:\Workflows\{}.zip", workflow_uuid);
     let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
 
@@ -92,7 +98,8 @@ async fn ensure_workflow_downloaded_inner(
         workflow_path
     );
 
-    let check_result = run_command_via_mcp_with_timeout(mcp_client, &check_command, 30).await
+    let check_result = run_command_via_mcp_with_timeout(mcp_client, &check_command, 30)
+        .await
         .context("Failed to check if workflow exists - VM may be stopped or unreachable")?;
     let exists = check_result.trim().to_lowercase().contains("exists");
 
@@ -116,10 +123,7 @@ async fn ensure_workflow_downloaded_inner(
     // Pass both Authorization header (service token) and X-Organization-ID header (org)
     let download_command = format!(
         r#"$headers = @{{ 'Authorization' = 'Bearer {}'; 'X-Organization-ID' = '{}' }}; Invoke-WebRequest -Uri '{}' -Headers $headers -OutFile '{}' -TimeoutSec 60"#,
-        service_token,
-        org_id,
-        download_url,
-        zip_path
+        service_token, org_id, download_url, zip_path
     );
 
     info!(
@@ -140,7 +144,9 @@ async fn ensure_workflow_downloaded_inner(
 
     let verify_result = run_command_via_mcp_with_timeout(mcp_client, &verify_command, 15).await?;
     if verify_result.trim().to_lowercase().contains("missing") {
-        return Err(anyhow::anyhow!("Download failed - zip file not found after download"));
+        return Err(anyhow::anyhow!(
+            "Download failed - zip file not found after download"
+        ));
     }
 
     let zip_size_bytes = verify_result.trim().parse::<u64>().unwrap_or(0);
@@ -171,16 +177,16 @@ async fn ensure_workflow_downloaded_inner(
         workflow_path
     );
 
-    let extract_result = run_command_via_mcp_with_timeout(mcp_client, &verify_extract_command, 15).await?;
+    let extract_result =
+        run_command_via_mcp_with_timeout(mcp_client, &verify_extract_command, 15).await?;
     if !extract_result.trim().to_lowercase().contains("success") {
-        return Err(anyhow::anyhow!("Extraction failed - workflow directory not found"));
+        return Err(anyhow::anyhow!(
+            "Extraction failed - workflow directory not found"
+        ));
     }
 
     // Step 6: Cleanup zip file
-    let cleanup_command = format!(
-        r#"Remove-Item '{}' -Force"#,
-        zip_path
-    );
+    let cleanup_command = format!(r#"Remove-Item '{}' -Force"#, zip_path);
 
     match run_command_via_mcp_with_timeout(mcp_client, &cleanup_command, 15).await {
         Ok(_) => info!(trace_id = %trace_id, "Cleaned up zip file"),
@@ -204,7 +210,7 @@ async fn run_command_via_mcp_with_timeout(
     timeout_secs: u64,
 ) -> Result<String> {
     let cmd_timeout = Duration::from_secs(timeout_secs);
-    
+
     match timeout(cmd_timeout, run_command_via_mcp(mcp_client, command)).await {
         Ok(result) => result,
         Err(_) => {
@@ -299,7 +305,11 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
             }
 
             // Check for isError flag (MCP error response format)
-            if result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if result
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 let error_msg = result
                     .get("content")
                     .and_then(|c| c.as_array())
