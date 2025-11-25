@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { createClient } from '@supabase/supabase-js';
+import { addToLoops } from '@/lib/loops';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
 const MEDIAR_ORG_IDS = ['org_REDACTED', 'org_REDACTED'];
@@ -57,6 +58,24 @@ export async function POST(req: Request) {
     const primaryEmail = email_addresses?.[0]?.email_address || 'unknown';
 
     console.log(`[Clerk Webhook] User created: ${primaryEmail} (${userId})`);
+
+    // Add user to Loops and send welcome email
+    if (primaryEmail && primaryEmail !== 'unknown') {
+      try {
+        const loopsResult = await addToLoops(primaryEmail, 'app_signup', {
+          sendWelcomeEmail: true,
+          firstName: first_name || undefined,
+        });
+
+        if (loopsResult.success) {
+          console.log(`[Clerk Webhook] Successfully added ${primaryEmail} to Loops`);
+        } else {
+          console.error(`[Clerk Webhook] Failed to add ${primaryEmail} to Loops: ${loopsResult.error}`);
+        }
+      } catch (err) {
+        console.error(`[Clerk Webhook] Error adding user to Loops:`, err);
+      }
+    }
 
     // Import Clerk client for org operations
     const { clerkClient } = await import('@clerk/nextjs/server');
