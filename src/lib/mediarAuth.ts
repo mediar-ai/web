@@ -2,6 +2,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { MEDIAR_ORG_IDS } from './constants';
 import { validateDesktopToken } from './auth/validateDesktopToken';
 import { headers } from 'next/headers';
+import { mapClerkIdToDbId } from './orgIdMapping';
 
 /**
  * Check if the current user is a Mediar admin (has @mediar.ai email)
@@ -75,7 +76,10 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
         const isDesktopMediarAdmin = validation.email?.toLowerCase().endsWith('@mediar.ai') || false;
 
         // If desktop user is a Mediar admin and provided an override, use it
-        const effectiveOrgId = (isDesktopMediarAdmin && overrideOrgId) ? overrideOrgId : validation.orgId;
+        const rawEffectiveOrgId = (isDesktopMediarAdmin && overrideOrgId) ? overrideOrgId : validation.orgId;
+
+        // Apply dev→prod org ID mapping (only active in development)
+        const effectiveOrgId = rawEffectiveOrgId ? mapClerkIdToDbId(rawEffectiveOrgId) : null;
 
         // Check if the effective org is a Mediar org
         const isMediarOrg = effectiveOrgId ? MEDIAR_ORG_IDS.includes(effectiveOrgId) : false;
@@ -84,7 +88,7 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
           orgId: effectiveOrgId || null,
           isMediarOrg: isMediarOrg,
           isMediarAdmin: isDesktopMediarAdmin,
-          actualOrgId: validation.orgId || null, // The actual org from desktop token
+          actualOrgId: validation.orgId || null, // The actual org from desktop token (unmapped)
           userId: validation.userId || null, // The Clerk user ID from desktop token
           email: validation.email || null, // The user email from desktop token
         };
@@ -101,7 +105,10 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
   const mediarAdmin = await isMediarAdmin();
 
   // If user is a Mediar admin and provided an override, use it
-  const effectiveOrgId = (mediarAdmin && overrideOrgId) ? overrideOrgId : clerkOrgId;
+  const rawEffectiveOrgId = (mediarAdmin && overrideOrgId) ? overrideOrgId : clerkOrgId;
+
+  // Apply dev→prod org ID mapping (only active in development)
+  const effectiveOrgId = rawEffectiveOrgId ? mapClerkIdToDbId(rawEffectiveOrgId) : null;
 
   // Check if the effective org is a Mediar org
   const isMediarOrg = effectiveOrgId ? MEDIAR_ORG_IDS.includes(effectiveOrgId) : false;
@@ -110,7 +117,7 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
     orgId: effectiveOrgId || null,
     isMediarOrg: isMediarOrg, // Only true if the effective org ID is actually a Mediar org
     isMediarAdmin: mediarAdmin,
-    actualOrgId: clerkOrgId || null, // The actual Clerk org context
+    actualOrgId: clerkOrgId || null, // The actual Clerk org context (unmapped)
     userId: clerkUserId || null, // The Clerk user ID
     email: user?.emailAddresses?.[0]?.emailAddress || null, // The user email
   };
