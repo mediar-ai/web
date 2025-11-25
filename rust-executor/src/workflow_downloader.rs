@@ -91,25 +91,29 @@ async fn ensure_workflow_downloaded_inner(
         "Checking if workflow exists"
     );
 
-    // Step 1: Check if workflow already exists on VM
-    // Note: Commands are pure PowerShell (shell: powershell is set in run_command_via_mcp)
+    // Step 1: Check if workflow already exists on VM and find the actual workflow folder
+    // The workflow may be at workflow_path directly or nested one level deep
+    // Returns the path containing package.json, or 'missing' if not found
     let check_command = format!(
-        r#"if (Test-Path '{}') {{ 'exists' }} else {{ 'missing' }}"#,
+        r#"$base = '{}'; if (Test-Path (Join-Path $base 'package.json')) {{ $base }} elseif (Test-Path $base) {{ $subdirs = Get-ChildItem -Path $base -Directory | Select-Object -First 1; if ($subdirs -and (Test-Path (Join-Path $subdirs.FullName 'package.json'))) {{ $subdirs.FullName }} else {{ 'missing' }} }} else {{ 'missing' }}"#,
         workflow_path
     );
 
     let check_result = run_command_via_mcp_with_timeout(mcp_client, &check_command, 30)
         .await
         .context("Failed to check if workflow exists - VM may be stopped or unreachable")?;
-    let exists = check_result.trim().to_lowercase().contains("exists");
+    let check_result_trimmed = check_result.trim();
 
-    if exists {
+    // If we got a path (not 'missing'), workflow already exists
+    if !check_result_trimmed.to_lowercase().contains("missing") && !check_result_trimmed.is_empty()
+    {
         info!(
             workflow_uuid = %workflow_uuid,
+            cached_path = %check_result_trimmed,
             trace_id = %trace_id,
             "Workflow already exists on VM, skipping download"
         );
-        return Ok(workflow_path);
+        return Ok(check_result_trimmed.to_string());
     }
 
     info!(
@@ -185,7 +189,28 @@ async fn ensure_workflow_downloaded_inner(
         ));
     }
 
-    // Step 6: Cleanup zip file
+    // Step 6: Find the actual workflow folder (may be nested one level deep)
+    // GitHub release zips often have structure: uuid.zip -> folder_name/ -> package.json, index.ts
+    // We need to return the path to the folder containing package.json
+    let find_workflow_command = format!(
+        r#"$base = '{}'; if (Test-Path (Join-Path $base 'package.json')) {{ $base }} else {{ $subdirs = Get-ChildItem -Path $base -Directory | Select-Object -First 1; if ($subdirs -and (Test-Path (Join-Path $subdirs.FullName 'package.json'))) {{ $subdirs.FullName }} else {{ $base }} }}"#,
+        workflow_path
+    );
+
+    let actual_workflow_path =
+        run_command_via_mcp_with_timeout(mcp_client, &find_workflow_command, 15)
+            .await
+            .map(|p| p.trim().to_string())
+            .unwrap_or_else(|_| workflow_path.clone());
+
+    info!(
+        extracted_path = %workflow_path,
+        actual_workflow_path = %actual_workflow_path,
+        trace_id = %trace_id,
+        "Resolved actual workflow path"
+    );
+
+    // Step 7: Cleanup zip file
     let cleanup_command = format!(r#"Remove-Item '{}' -Force"#, zip_path);
 
     match run_command_via_mcp_with_timeout(mcp_client, &cleanup_command, 15).await {
@@ -195,12 +220,12 @@ async fn ensure_workflow_downloaded_inner(
 
     info!(
         workflow_uuid = %workflow_uuid,
-        workflow_path = %workflow_path,
+        workflow_path = %actual_workflow_path,
         trace_id = %trace_id,
         "Workflow downloaded and extracted"
     );
 
-    Ok(workflow_path)
+    Ok(actual_workflow_path)
 }
 
 /// Execute a command on the VM via MCP run_command tool with per-command timeout
