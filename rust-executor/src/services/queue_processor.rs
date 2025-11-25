@@ -90,19 +90,22 @@ impl QueueProcessor {
                     max_concurrent_executions: self.max_concurrent_executions,
                 };
 
-                tokio::spawn(async move {
-                    match processor.process_next_job().await {
-                        Ok(processed) => {
-                            if processed {
-                                info!("Successfully processed execution");
+                tokio::spawn(
+                    async move {
+                        match processor.process_next_job().await {
+                            Ok(processed) => {
+                                if processed {
+                                    info!("Successfully processed execution");
+                                }
+                            }
+                            Err(e) => {
+                                error!("Error processing execution: {}", e);
                             }
                         }
-                        Err(e) => {
-                            error!("Error processing execution: {}", e);
-                        }
+                        drop(permit);
                     }
-                    drop(permit);
-                });
+                    .instrument(info_span!("queue_worker"))
+                );
             }
         }
     }
