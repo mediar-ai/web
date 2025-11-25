@@ -177,6 +177,7 @@ export async function POST(
     // STEP 1: Authenticate (support both desktop Bearer tokens and Clerk sessions)
     let authenticatedUserId: string | null = null;
     let orgId: string | null | undefined = null;
+    let userEmail: string | null = null;
     let has: any = null;
 
     // Try desktop token first
@@ -185,10 +186,11 @@ export async function POST(
       const token = authHeader.substring(7);
       const { validateDesktopToken } = await import('@/lib/auth/validateDesktopToken');
       const validation = await validateDesktopToken(token);
-      
+
       if (validation.valid) {
         authenticatedUserId = validation.userId!;
         orgId = validation.orgId;
+        userEmail = validation.email || null;
         has = () => false; // Desktop auth doesn't support Clerk role checks
         console.log(`[Desktop Auth] Workflow version creation authenticated for user: ${validation.email}`);
       }
@@ -200,6 +202,8 @@ export async function POST(
       authenticatedUserId = clerkAuth.userId;
       orgId = clerkAuth.orgId;
       has = clerkAuth.has;
+      // Get email from session claims if available
+      userEmail = clerkAuth.sessionClaims?.email as string || null;
     }
 
     if (!authenticatedUserId) {
@@ -525,48 +529,39 @@ export async function POST(
       }
     }
 
-    // Push to GitHub if YAML format (will create github_folder if doesn't exist)
-    let githubSyncResult = null;
+    // Push to GitHub if YAML format (fire-and-forget for faster response)
     if (yamlContent) {
-      try {
-        const { githubWorkflowManager, getUserContext } = await import('@/lib/github-workflow-manager');
+      const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
+      console.log(`📤 Pushing version ${newVersionNumber} to GitHub (async)...`);
 
-        console.log(`📤 Pushing version ${newVersionNumber} to GitHub...`);
-
-        // Fetch user context for enhanced commit message
-        const userContext = await getUserContext(authenticatedUserId, orgId);
-
-        githubSyncResult = await githubWorkflowManager.saveWorkflow(
-          workflow.name,
-          yamlContent,
-          false, // Not development
-          `Update workflow: ${workflow.name} (v${newVersionNumber})`,
-          false, // Don't create PR - push directly
-          workflowIdNum,
-          orgId || undefined,
-          userContext
-        );
-
-        if (githubSyncResult.success) {
-          console.log(`✅ Pushed to GitHub: ${githubSyncResult.path}`);
-
-          // Log sync operation
+      // Fire-and-forget: don't await GitHub sync
+      githubWorkflowManager.saveWorkflow(
+        workflow.name,
+        yamlContent,
+        false, // Not development
+        `Update workflow: ${workflow.name} (v${newVersionNumber})`,
+        false, // Don't create PR - push directly
+        workflowIdNum,
+        orgId || undefined,
+        { email: userEmail || undefined }
+      ).then(async (result) => {
+        if (result.success) {
+          console.log(`✅ Pushed to GitHub: ${result.path}`);
           await supabase
             .from('github_workflow_sync_log')
             .insert({
               workflow_id: workflowIdNum,
               operation: 'push',
-              github_path: githubSyncResult.path,
-              github_sha: githubSyncResult.sha,
+              github_path: result.path,
+              github_sha: result.sha,
               status: 'success'
             });
         } else {
-          console.warn(`⚠️ GitHub push failed: ${githubSyncResult.error}`);
+          console.warn(`⚠️ GitHub push failed: ${result.error}`);
         }
-      } catch (githubError) {
-        console.error('GitHub sync error:', githubError);
-        // Don't fail version creation if GitHub sync fails
-      }
+      }).catch((error) => {
+        console.error('GitHub sync error:', error);
+      });
     }
 
     const response = {
@@ -586,11 +581,7 @@ export async function POST(
         total_versions: workflow.total_versions + 1,
         current_version: set_as_active ? newVersionNumber : workflow.version
       },
-      github_sync: githubSyncResult ? {
-        success: githubSyncResult.success,
-        path: githubSyncResult.path,
-        error: githubSyncResult.error
-      } : null
+      github_sync: 'async' // GitHub sync is fire-and-forget for faster response
     };
 
     return NextResponse.json(response, { status: 201 });

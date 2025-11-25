@@ -22,6 +22,7 @@ export interface GitHubWorkflowResult {
 export interface UserContext {
   name?: string;
   organizationName?: string;
+  email?: string;
 }
 
 export class GitHubWorkflowManager {
@@ -161,19 +162,10 @@ export class GitHubWorkflowManager {
 `;
       const fullContent = metadataComment + yamlContent;
 
-      // Build commit message with user context
+      // Build commit message with user context (email only - no Clerk API calls)
       let commitMessage = message || `Add/Update workflow: ${workflowName}`;
-      if (userContext) {
-        const userInfo: string[] = [];
-        if (userContext.name) {
-          userInfo.push(`User: ${userContext.name}`);
-        }
-        if (userContext.organizationName) {
-          userInfo.push(`Org: ${userContext.organizationName}`);
-        }
-        if (userInfo.length > 0) {
-          commitMessage = `${commitMessage}\n\n${userInfo.join(' | ')}`;
-        }
+      if (userContext?.email) {
+        commitMessage = `${commitMessage}\n\nBy: ${userContext.email}`;
       }
 
       // Create or update file

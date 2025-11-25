@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
 
 const supabase = createClient(
@@ -24,9 +24,10 @@ export async function POST(
     const isMediarOrg = authResult.isMediarOrg;
     const isMediarAdmin = authResult.isMediarAdmin;
 
-    // Still need Clerk's has() function for role checks
+    // Still need Clerk's has() function for role checks and get email
     const { auth } = await import('@clerk/nextjs/server');
-    const { has } = await auth();
+    const { has, sessionClaims } = await auth();
+    const userEmail = sessionClaims?.email as string || null;
 
     if (!userId) {
       return NextResponse.json(
@@ -267,49 +268,39 @@ export async function POST(
 
     console.log(`✅ Created duplicate version: ${newVersion.version_number}`);
 
-    // Push duplicated workflow to GitHub
-    try {
-      const yamlContent = newVersion.automation_sequence_yaml ||
-                         yaml.dump(newVersion.automation_sequence);
+    // Push duplicated workflow to GitHub (fire-and-forget)
+    const yamlContent = newVersion.automation_sequence_yaml ||
+                       yaml.dump(newVersion.automation_sequence);
+    const isDevelopment = newWorkflow.status === 'draft' ||
+                         newWorkflow.workflow_type === 'settings';
 
-      const isDevelopment = newWorkflow.status === 'draft' ||
-                           newWorkflow.workflow_type === 'settings';
-
-      // Fetch user context for enhanced commit message
-      const userContext = await getUserContext(userId, orgId);
-
-      const githubResult = await githubWorkflowManager.saveWorkflow(
-        duplicateName,
-        yamlContent,
-        isDevelopment,
-        `Duplicate workflow from "${originalWorkflow.name}" (ID: ${workflowId})`,
-        false, // Don't create PR - push directly
-        newWorkflow.id,
-        orgId || undefined,
-        userContext
-      );
-
-      if (githubResult.success) {
-        console.log(`✅ Pushed duplicated workflow to GitHub: ${githubResult.path}`);
-
-        // Log sync operation
+    githubWorkflowManager.saveWorkflow(
+      duplicateName,
+      yamlContent,
+      isDevelopment,
+      `Duplicate workflow from "${originalWorkflow.name}" (ID: ${workflowId})`,
+      false,
+      newWorkflow.id,
+      orgId || undefined,
+      { email: userEmail || undefined }
+    ).then(async (result) => {
+      if (result.success) {
+        console.log(`✅ Pushed duplicated workflow to GitHub: ${result.path}`);
         await supabase
           .from('github_workflow_sync_log')
           .insert({
             workflow_id: newWorkflow.id,
             operation: 'duplicate',
-            github_path: githubResult.path,
-            github_sha: githubResult.sha,
+            github_path: result.path,
+            github_sha: result.sha,
             status: 'success'
           });
       } else {
-        console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
-        // Continue anyway - GitHub is optional enhancement
+        console.warn(`⚠️ GitHub push failed: ${result.error}`);
       }
-    } catch (githubError) {
-      console.error('GitHub sync error during duplication:', githubError);
-      // Don't fail the whole operation - GitHub is supplementary
-    }
+    }).catch((error) => {
+      console.error('GitHub sync error during duplication:', error);
+    });
 
     // If the original workflow has settings workflows, we can optionally duplicate those too
     // For now, we'll skip this to keep it simple

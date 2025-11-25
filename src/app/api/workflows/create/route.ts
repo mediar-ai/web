@@ -1,6 +1,6 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
-import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
@@ -281,50 +281,40 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Created version: ${newVersion.version_number}`);
 
-    // Also save to GitHub for version control
-    try {
-      const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
+    // Also save to GitHub for version control (fire-and-forget)
+    const isDevelopment = body.workflow_type === 'settings' || body.category === 'development';
+    const yamlToSync = yamlContent || yaml.dump(parsedSequence);
 
-      // Fetch user context for enhanced commit message (userId now comes from getEffectiveOrgId)
-      const userContext = await getUserContext(userId, actualOrgId);
-
-      const githubResult = await githubWorkflowManager.saveWorkflow(
-        body.name,
-        yamlContent || yaml.dump(parsedSequence),
-        isDevelopment,
-        `Create workflow: ${body.name}`,
-        false,  // Don't create PR - push directly to main
-        newWorkflow.id,  // Pass workflow ID for folder naming
-        effectiveOrgId,
-        userContext
-      );
-
-      if (githubResult.success) {
-        console.log(`✅ Saved to GitHub: ${githubResult.path}`);
-
-        if (githubResult.prUrl) {
-          console.log(`📝 Created PR: ${githubResult.prUrl}`);
+    githubWorkflowManager.saveWorkflow(
+      body.name,
+      yamlToSync,
+      isDevelopment,
+      `Create workflow: ${body.name}`,
+      false,
+      newWorkflow.id,
+      effectiveOrgId,
+      { email: email || undefined }
+    ).then(async (result) => {
+      if (result.success) {
+        console.log(`✅ Saved to GitHub: ${result.path}`);
+        if (result.prUrl) {
+          console.log(`📝 Created PR: ${result.prUrl}`);
         }
-
-        // Update workflow with GitHub reference (already done in saveWorkflow, but ensure it's set)
-        // Log sync operation
         await supabase
           .from('github_workflow_sync_log')
           .insert({
             workflow_id: newWorkflow.id,
             operation: 'push',
-            github_path: githubResult.path,
-            github_sha: githubResult.sha,
+            github_path: result.path,
+            github_sha: result.sha,
             status: 'success'
           });
       } else {
-        console.warn(`⚠️ GitHub save failed: ${githubResult.error}`);
-        // Continue anyway - GitHub is optional enhancement
+        console.warn(`⚠️ GitHub save failed: ${result.error}`);
       }
-    } catch (githubError) {
-      console.error('GitHub sync error:', githubError);
-      // Don't fail the whole operation - GitHub is supplementary
-    }
+    }).catch((error) => {
+      console.error('GitHub sync error:', error);
+    });
 
     // Return the complete workflow data
     const response = {

@@ -14,6 +14,7 @@ export interface CreateVersionParams {
   setAsActive?: boolean;
   userId: string;
   orgId?: string | null;
+  userEmail?: string | null;
   cronConfig?: {
     expression: string;
     timezone?: string;
@@ -79,6 +80,7 @@ export class WorkflowVersionService {
       setAsActive = false,
       userId,
       orgId,
+      userEmail,
       cronConfig
     } = params;
 
@@ -211,7 +213,8 @@ export class WorkflowVersionService {
           yamlContent,
           versionNumber: newVersionNumber,
           userId,
-          orgId
+          orgId,
+          userEmail
         });
       }
 
@@ -316,6 +319,7 @@ export class WorkflowVersionService {
     versionNumber: string;
     userId: string;
     orgId?: string | null;
+    userEmail?: string | null;
   }): Promise<{
     success: boolean;
     path?: string;
@@ -323,12 +327,9 @@ export class WorkflowVersionService {
     error?: string;
   }> {
     try {
-      const { githubWorkflowManager, getUserContext } = await import('@/lib/github-workflow-manager');
+      const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
 
       console.log(`📤 Pushing version ${params.versionNumber} to GitHub...`);
-
-      // Fetch user context for enhanced commit message
-      const userContext = await getUserContext(params.userId, params.orgId || null);
 
       const githubSyncResult = await githubWorkflowManager.saveWorkflow(
         params.workflowName,
@@ -338,7 +339,7 @@ export class WorkflowVersionService {
         false, // Don't create PR - push directly
         params.workflowId,
         params.orgId || undefined,
-        userContext
+        { email: params.userEmail || undefined }
       );
 
       if (githubSyncResult.success) {

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { githubWorkflowManager, getUserContext } from '@/lib/github-workflow-manager';
+import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
 
 const supabase = createClient(
@@ -18,7 +18,8 @@ export async function PATCH(
   try {
     // STEP 1: Authenticate
     const { auth } = await import('@clerk/nextjs/server');
-    const { userId, orgId, has } = await auth();
+    const { userId, orgId, has, sessionClaims } = await auth();
+    const userEmail = sessionClaims?.email as string || null;
 
     if (!userId) {
       return NextResponse.json(
@@ -144,59 +145,53 @@ export async function PATCH(
       );
     }
 
-    // Push updated workflow to GitHub
-    try {
-      // Get the active version to get YAML content
-      const { data: activeVersion } = await supabase
-        .from('deployed_workflow_versions')
-        .select('automation_sequence_yaml, automation_sequence')
-        .eq('workflow_id', workflowId)
-        .eq('is_active', true)
-        .single();
+    // Push updated workflow to GitHub (fire-and-forget)
+    (async () => {
+      try {
+        const { data: activeVersion } = await supabase
+          .from('deployed_workflow_versions')
+          .select('automation_sequence_yaml, automation_sequence')
+          .eq('workflow_id', workflowId)
+          .eq('is_active', true)
+          .single();
 
-      if (activeVersion) {
-        const yamlContent = activeVersion.automation_sequence_yaml ||
-                           yaml.dump(activeVersion.automation_sequence);
+        if (activeVersion) {
+          const yamlContent = activeVersion.automation_sequence_yaml ||
+                             yaml.dump(activeVersion.automation_sequence);
 
-        const isDevelopment = updatedWorkflow.status === 'draft' ||
-                             updatedWorkflow.workflow_type === 'settings';
+          const isDevelopment = updatedWorkflow.status === 'draft' ||
+                               updatedWorkflow.workflow_type === 'settings';
 
-        // Fetch user context for enhanced commit message
-        const userContext = await getUserContext(userId, orgId);
+          const result = await githubWorkflowManager.saveWorkflow(
+            name.trim(),
+            yamlContent,
+            isDevelopment,
+            `Rename workflow: ${updatedWorkflow.name} → ${name.trim()}`,
+            false,
+            workflowId,
+            orgId || undefined,
+            { email: userEmail || undefined }
+          );
 
-        const githubResult = await githubWorkflowManager.saveWorkflow(
-          name.trim(),
-          yamlContent,
-          isDevelopment,
-          `Rename workflow: ${updatedWorkflow.name} → ${name.trim()}`,
-          false, // Don't create PR - push directly
-          workflowId,
-          orgId || undefined,
-          userContext
-        );
-
-        if (githubResult.success) {
-          console.log(`✅ Pushed renamed workflow to GitHub: ${githubResult.path}`);
-
-          // Log sync operation
-          await supabase
-            .from('github_workflow_sync_log')
-            .insert({
-              workflow_id: workflowId,
-              operation: 'rename',
-              github_path: githubResult.path,
-              github_sha: githubResult.sha,
-              status: 'success'
-            });
-        } else {
-          console.warn(`⚠️ GitHub push failed: ${githubResult.error}`);
-          // Continue anyway - GitHub is optional enhancement
+          if (result.success) {
+            console.log(`✅ Pushed renamed workflow to GitHub: ${result.path}`);
+            await supabase
+              .from('github_workflow_sync_log')
+              .insert({
+                workflow_id: workflowId,
+                operation: 'rename',
+                github_path: result.path,
+                github_sha: result.sha,
+                status: 'success'
+              });
+          } else {
+            console.warn(`⚠️ GitHub push failed: ${result.error}`);
+          }
         }
+      } catch (error) {
+        console.error('GitHub sync error during rename:', error);
       }
-    } catch (githubError) {
-      console.error('GitHub sync error during rename:', githubError);
-      // Don't fail the whole operation - GitHub is supplementary
-    }
+    })();
 
     return NextResponse.json({
       success: true,
