@@ -22,11 +22,11 @@ jobs:
         with:
           toolchain: stable
           cache: true
+          cache-workspaces: rust-executor
 
       - name: Run Tests
-        run: |
-          cd rust-executor
-          cargo test --lib --tests --verbose
+        working-directory: rust-executor
+        run: cargo test --lib --tests --verbose
 
   # Build and deploy
   deploy:
