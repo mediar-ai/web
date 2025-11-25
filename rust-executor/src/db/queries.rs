@@ -212,7 +212,6 @@ impl WorkflowQueries {
         execution_id: i64,
         status: ExecutionStatus,
         error_message: Option<String>,
-        logs: Option<Value>,
         result: Option<Value>,
     ) -> Result<()> {
         let now = Utc::now();
@@ -224,16 +223,14 @@ impl WorkflowQueries {
             SET
                 status = $1,
                 error_message = $2,
-                results = $4,
-                completed_at = $5,
-                updated_at = $6,
-                execution_logs = $3
-            WHERE id = $7
+                results = $3,
+                completed_at = $4,
+                updated_at = $5,
+            WHERE id = $6
             "#,
         )
         .bind(status_str)
         .bind(error_message)
-        .bind(logs)
         .bind(result)
         .bind(
             if matches!(
@@ -252,86 +249,6 @@ impl WorkflowQueries {
         .bind(execution_id)
         .execute(pool)
         .await?;
-        Ok(())
-    }
-
-    /// Update execution with screenshot URLs
-    #[allow(dead_code)]
-    /// Update execution status with both raw_logs and execution_logs
-    pub async fn update_execution_status_with_logs(
-        pool: &Pool<Postgres>,
-        execution_id: i64,
-        status: ExecutionStatus,
-        error_message: Option<String>,
-        results: Option<Value>,
-        data: Option<Value>,
-        raw_logs: Option<String>,
-        execution_logs: Option<Value>,
-    ) -> Result<()> {
-        let now = Utc::now();
-        let status_str = Self::execution_status_to_string(&status);
-
-        sqlx::query(
-            r#"
-            UPDATE workflow_executions
-            SET
-                status = $1,
-                error_message = $2,
-                results = $3,
-                formatted_output = $4,
-                raw_logs = $5,
-                execution_logs = $6,
-                completed_at = $7,
-                updated_at = $8
-            WHERE id = $9
-            "#,
-        )
-        .bind(status_str)
-        .bind(error_message)
-        .bind(results)
-        .bind(data)
-        .bind(raw_logs)
-        .bind(execution_logs)
-        .bind(
-            if matches!(
-                status,
-                ExecutionStatus::Completed
-                    | ExecutionStatus::Failed
-                    | ExecutionStatus::Cancelled
-                    | ExecutionStatus::Exception
-            ) {
-                Some(now)
-            } else {
-                None
-            },
-        )
-        .bind(now)
-        .bind(execution_id)
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn update_execution_screenshots(
-        pool: &Pool<Postgres>,
-        execution_id: i64,
-        screenshot_urls: Vec<String>,
-    ) -> Result<()> {
-        sqlx::query(
-            r#"
-            UPDATE workflow_executions
-            SET
-                screenshot_urls = $1,
-                updated_at = NOW()
-            WHERE id = $2
-            "#,
-        )
-        .bind(screenshot_urls)
-        .bind(execution_id)
-        .execute(pool)
-        .await?;
-
         Ok(())
     }
 

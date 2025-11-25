@@ -14,8 +14,6 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
-use crate::logging::LogBuffer;
-
 #[derive(Clone)]
 pub enum McpTransport {
     Http(String),
@@ -28,7 +26,6 @@ pub struct McpClient {
     transport: McpTransport,
     // Keep HTTP service alive for session persistence
     http_service: Arc<Mutex<Option<HttpService>>>,
-    pub log_buffer: Option<LogBuffer>,
 }
 
 impl McpClient {
@@ -36,15 +33,6 @@ impl McpClient {
         Self {
             transport,
             http_service: Arc::new(Mutex::new(None)),
-            log_buffer: None,
-        }
-    }
-
-    pub fn with_log_buffer(transport: McpTransport, log_buffer: LogBuffer) -> Self {
-        Self {
-            transport,
-            http_service: Arc::new(Mutex::new(None)),
-            log_buffer: Some(log_buffer),
         }
     }
 
@@ -61,12 +49,6 @@ impl McpClient {
         let normalized_url = Self::normalize_endpoint(&url);
         info!("Normalized MCP endpoint: {} -> {}", url, normalized_url);
         Self::new(McpTransport::Http(normalized_url))
-    }
-
-    pub fn from_url_with_log_buffer(url: String, log_buffer: LogBuffer) -> Self {
-        let normalized_url = Self::normalize_endpoint(&url);
-        info!("Normalized MCP endpoint: {} -> {}", url, normalized_url);
-        Self::with_log_buffer(McpTransport::Http(normalized_url), log_buffer)
     }
 
     #[allow(dead_code)]
@@ -182,19 +164,6 @@ impl McpClient {
                         warn!("Connection refused - MCP server is not listening on this port");
                     } else if error_str.contains("401") || error_str.contains("Unauthorized") {
                         warn!("Authentication failed - check Bearer token");
-                    }
-
-                    // Log to buffer if available
-                    if let Some(ref log_buffer) = self.log_buffer {
-                        log_buffer.log_step(
-                            "error",
-                            format!("{} - workflow_executor - ERROR - Failed to connect to MCP at {}: {}",
-                                chrono::Local::now().format("%Y-%m-%d %H:%M:%S,%3f"),
-                                url,
-                                error_str),
-                            None,
-                            None,
-                        );
                     }
 
                     if error_str.contains("503") && attempt < max_retries {
@@ -413,20 +382,6 @@ impl McpClient {
     ) -> Result<Value> {
         info!("Executing tool: {} with args: {:?}", tool_name, arguments);
 
-        // Log the MCP request if we have a log buffer
-        if let Some(ref log_buffer) = self.log_buffer {
-            log_buffer.log_step(
-                "INFO",
-                format!(
-                    "MCP Request: {} -> {}",
-                    tool_name,
-                    serde_json::to_string(&arguments).unwrap_or_else(|_| "null".to_string())
-                ),
-                None,
-                Some(tool_name.clone()),
-            );
-        }
-
         let result = match &self.transport {
             McpTransport::Http(url) => {
                 info!(
@@ -507,32 +462,6 @@ impl McpClient {
 
         // Use shared response parser
         let parsed_result = Self::parse_tool_result(result);
-
-        // Log the MCP response if we have a log buffer
-        if let Some(ref log_buffer) = self.log_buffer {
-            match &parsed_result {
-                Ok(value) => {
-                    log_buffer.log_step(
-                        "INFO",
-                        format!(
-                            "MCP Response: {} <- {}",
-                            tool_name,
-                            serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
-                        ),
-                        None,
-                        Some(tool_name.clone()),
-                    );
-                }
-                Err(e) => {
-                    log_buffer.log_step(
-                        "ERROR",
-                        format!("MCP Error: {tool_name} <- {e}"),
-                        None,
-                        Some(tool_name),
-                    );
-                }
-            }
-        }
 
         parsed_result
     }

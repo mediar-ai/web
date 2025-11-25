@@ -105,7 +105,10 @@ impl WorkflowService {
                 mcp_client,
                 sequence,
                 execution_id,
-                workflow.organization_id.as_ref().map(|s| s.parse::<i64>().unwrap_or(0)),
+                workflow
+                    .organization_id
+                    .as_ref()
+                    .map(|s| s.parse::<i64>().unwrap_or(0)),
             );
             let result = executor.execute().await;
 
@@ -134,8 +137,11 @@ impl WorkflowService {
                         execution_id,
                         status.clone(),
                         workflow_result.error.clone(),
-                        Some(serde_json::to_value(&workflow_result.step_results).ok().unwrap_or(serde_json::json!([]))),
-                        workflow_result.data.clone(),
+                        Some(
+                            serde_json::to_value(&workflow_result.step_results)
+                                .ok()
+                                .unwrap_or(serde_json::json!([])),
+                        ),
                     )
                     .await?;
 
@@ -167,7 +173,6 @@ impl WorkflowService {
                         execution_id,
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
-                        None,
                         None,
                     )
                     .await?;
@@ -257,7 +262,6 @@ impl WorkflowService {
 
         anyhow::bail!("No automation sequence found for workflow")
     }
-
 
     /// Get execution status
     pub async fn get_execution(&self, execution_id: i64) -> Result<Option<WorkflowExecution>> {

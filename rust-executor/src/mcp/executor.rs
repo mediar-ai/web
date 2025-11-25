@@ -1,23 +1,20 @@
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 use std::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
-use crate::logging::LogBuffer;
 use crate::mcp::McpClient;
 use crate::models::{
     ErrorStrategy, StepResult, StepStatus, WorkflowResult, WorkflowSequence, WorkflowState,
     WorkflowStep,
 };
-use crate::storage::SupabaseStorage;
 
 pub struct WorkflowExecutor {
     client: McpClient,
     sequence: WorkflowSequence,
     execution_id: i64,
+    #[allow(dead_code)]
     organization_id: Option<i64>,
-    storage: Option<SupabaseStorage>,
-    pub log_buffer: LogBuffer,
 }
 
 impl WorkflowExecutor {
@@ -27,46 +24,11 @@ impl WorkflowExecutor {
         execution_id: i64,
         organization_id: Option<i64>,
     ) -> Self {
-        Self::with_log_buffer(client, sequence, execution_id, organization_id, LogBuffer::new())
-    }
-
-    pub fn with_log_buffer(
-        client: McpClient,
-        sequence: WorkflowSequence,
-        execution_id: i64,
-        organization_id: Option<i64>,
-        log_buffer: LogBuffer,
-    ) -> Self {
-        // Initialize storage if environment variables are available
-        let storage = match (
-            std::env::var("SUPABASE_URL"),
-            std::env::var("SUPABASE_SERVICE_ROLE_KEY"),
-        ) {
-            (Ok(url), Ok(key)) => match SupabaseStorage::new(url, key) {
-                Ok(s) => {
-                    debug!("Supabase Storage initialized successfully");
-                    Some(s)
-                }
-                Err(e) => {
-                    warn!("Failed to initialize Supabase Storage: {}", e);
-                    None
-                }
-            },
-            _ => {
-                warn!(
-                    "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set, screenshot upload disabled"
-                );
-                None
-            }
-        };
-
         Self {
             client,
             sequence,
             execution_id,
             organization_id,
-            storage,
-            log_buffer,
         }
     }
 
@@ -77,20 +39,11 @@ impl WorkflowExecutor {
         let mut step_results = Vec::new();
         let mut completed_steps = 0u32;
         let mut workflow_data = None;
-        let mut all_screenshot_urls: Vec<String> = Vec::new();
+        let all_screenshot_urls: Vec<String> = Vec::new();
 
         info!(
             "Starting workflow execution {} with {} steps",
             self.execution_id, total_steps
-        );
-
-        // Log the start of execution
-        self.log_buffer.log(
-            "INFO",
-            format!(
-                "Starting workflow execution ID: {} with {} steps",
-                self.execution_id, total_steps
-            ),
         );
 
         // Process variables
@@ -130,13 +83,14 @@ impl WorkflowExecutor {
             .take(end_index.saturating_sub(start_index) + 1)
         {
             let step_id = step.id.clone().unwrap_or_else(|| format!("step_{index}"));
-        
-        // DEBUG: Log the entire step structure
-        error!("DEBUG - Full step structure: {:?}", step);
-        error!("DEBUG - Step tool_name: {:?}", step.tool_name);
-        error!("DEBUG - Step group_name: {:?}", step.group_name);
 
-            let step_name = step.tool_name
+            // DEBUG: Log the entire step structure
+            error!("DEBUG - Full step structure: {:?}", step);
+            error!("DEBUG - Step tool_name: {:?}", step.tool_name);
+            error!("DEBUG - Step group_name: {:?}", step.group_name);
+
+            let step_name = step
+                .tool_name
                 .as_ref()
                 .or(step.group_name.as_ref())
                 .cloned()
@@ -150,14 +104,6 @@ impl WorkflowExecutor {
                 step_id
             );
 
-            // Log step execution
-            self.log_buffer.log_step(
-                "INFO",
-                format!("Executing step {}/{}: {}", index + 1, total_steps, step_name),
-                Some(step_id.clone()),
-                Some(step_name.clone()),
-            );
-
             let step_result = self.execute_step(step, &variables).await;
 
             match &step_result {
@@ -167,37 +113,12 @@ impl WorkflowExecutor {
 
                     if result.status == StepStatus::Success {
                         workflow_data = result.result.clone();
-
-                        // Extract and upload screenshots if present
-                        if let Some(ref result_data) = result.result {
-                            if let Some(screenshot_urls) =
-                                self.process_screenshots(result_data).await
-                            {
-                                all_screenshot_urls.extend(screenshot_urls);
-                            }
-                        }
                     }
 
                     info!("Step {} completed successfully", step_id);
-
-                    // Log step completion
-                    self.log_buffer.log_step(
-                        "INFO",
-                        format!("Step {step_id} completed successfully"),
-                        Some(step_id.clone()),
-                        Some(result.tool_name.clone()),
-                    );
                 }
                 Err(e) => {
                     error!("Step {} failed: {}", step_id, e);
-
-                    // Log step failure
-                    self.log_buffer.log_step(
-                        "ERROR",
-                        format!("Step {step_id} failed: {e}"),
-                        Some(step_id.clone()),
-                        Some(step_name.clone()),
-                    );
 
                     let failed_result = StepResult {
                         step_id: step_id.clone(),
@@ -345,7 +266,7 @@ impl WorkflowExecutor {
     ) -> Result<StepResult> {
         let start_time = Instant::now();
         let step_id = step.id.clone().unwrap_or_else(|| "unnamed".to_string());
-        
+
         // DEBUG: Log the entire step structure
         error!("DEBUG - Full step structure: {:?}", step);
         error!("DEBUG - Step tool_name: {:?}", step.tool_name);
@@ -552,62 +473,6 @@ impl WorkflowExecutor {
                 Ok(Value::Array(processed))
             }
             _ => Ok(value.clone()),
-        }
-    }
-
-    /// Extract screenshots from step result and upload to storage
-    async fn process_screenshots(&self, result_data: &Value) -> Option<Vec<String>> {
-        // Extract screenshots array from result
-        let screenshots = if let Some(screenshots_array) = result_data.get("screenshots") {
-            screenshots_array.as_array()?
-        } else {
-            return None;
-        };
-
-        if screenshots.is_empty() {
-            return None;
-        }
-
-        info!("Found {} screenshots in step result", screenshots.len());
-
-        // Extract base64 data from screenshot objects
-        let mut base64_screenshots = Vec::new();
-        for screenshot in screenshots {
-            if let Some(data) = screenshot.get("data").and_then(|v| v.as_str()) {
-                base64_screenshots.push(data.to_string());
-            }
-        }
-
-        if base64_screenshots.is_empty() {
-            warn!("No valid screenshot data found");
-            return None;
-        }
-
-        // Get organization_id, use a default if not set
-        let org_id = self.organization_id.unwrap_or_else(|| {
-            warn!("No organization_id set, using default system organization");
-            // Use 0 as default for system/admin workflows
-            0
-        });
-
-        // Upload to storage if available
-        if let Some(ref storage) = self.storage {
-            match storage
-                .upload_screenshots(self.execution_id, org_id, base64_screenshots)
-                .await
-            {
-                Ok(urls) => {
-                    info!("Successfully uploaded {} screenshots", urls.len());
-                    Some(urls)
-                }
-                Err(e) => {
-                    error!("Failed to upload screenshots: {}", e);
-                    None
-                }
-            }
-        } else {
-            warn!("Storage not configured, cannot upload screenshots");
-            None
         }
     }
 }
