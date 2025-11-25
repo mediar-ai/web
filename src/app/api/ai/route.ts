@@ -722,6 +722,7 @@ export async function POST(request: NextRequest) {
       | { temperature?: number; maxOutputTokens?: number }
       | undefined;
     const thinkingLevel = body.thinkingLevel as 'low' | 'high' | undefined;
+    const mode = (body.mode as 'ask' | 'act') || 'act'; // Ask mode: AI can discuss tools but not execute
     const tools = body.tools as
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
       | undefined;
@@ -851,7 +852,7 @@ export async function POST(request: NextRequest) {
         input,
         history, // Don't add tool results here - they'll be added after the call (truncated)
         system: sessionSystem,
-        tools: allTools, // Pass merged tools to Anthropic
+        tools: allTools, // Pass all tools so AI has context
         toolResults, // Pass FULL results for current turn (handleAnthropicChat will add them)
         generationConfig,
         sessionId: actualSessionId,
@@ -866,6 +867,13 @@ export async function POST(request: NextRequest) {
         finishReason: result.finishReason,
         elapsedMs: result.metrics.elapsedMs,
       });
+
+      // In ask mode, strip any tool calls - AI can discuss tools but not execute them
+      if (mode === 'ask' && result.toolCalls.length > 0) {
+        console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response`);
+        result.toolCalls = [];
+        result.finishReason = 'stop';
+      }
 
       let workflowData = null; // Track workflow modifications across all tool executions
 
@@ -1285,6 +1293,7 @@ export async function POST(request: NextRequest) {
     console.log('🤖 Vertex request', {
       model: sessionModel,
       sessionId: actualSessionId,
+      mode,
       systemLen,
       inputLen,
       toolsCount,
@@ -1298,7 +1307,7 @@ export async function POST(request: NextRequest) {
       model: sessionModel as VertexModel,
       system: sessionSystem,
       history,
-      functionDeclarations,
+      functionDeclarations, // Pass all tools so AI has context
       input,
       toolResults,
       generationConfig,
@@ -1318,6 +1327,13 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('📊 Response stats', responseStats);
+
+    // In ask mode, strip any tool calls - AI can discuss tools but not execute them
+    if (mode === 'ask' && result.toolCalls.length > 0) {
+      console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response`);
+      result.toolCalls = [];
+      result.finishReason = 'stop';
+    }
 
     let workflowData = null; // Track workflow modifications across all tool executions
 
