@@ -721,65 +721,62 @@ export async function DELETE(
       `🗑️ User ${authenticatedUserId} (${userEmail || 'unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`
     );
 
-    // Step 1: Delete from GitHub if workflow has github_folder
+    // Step 1: Delete from GitHub if workflow has github_folder (fire-and-forget for faster response)
     if (workflow.github_folder) {
       const githubToken = process.env.GITHUB_TOKEN;
 
       if (!githubToken) {
         console.warn('⚠️ GITHUB_TOKEN not set - skipping GitHub deletion');
       } else {
-        try {
-          const octokit = new Octokit({ auth: githubToken });
-          const owner = 'mediar-ai';
-          const repo = 'workflows';
+        const githubFolder = workflow.github_folder;
+        console.log(`🗑️ Queuing GitHub folder deletion (async): ${githubFolder}`);
 
-          console.log(`🗑️ Deleting GitHub folder: ${workflow.github_folder}`);
+        // Fire-and-forget: don't await GitHub deletion
+        (async () => {
+          try {
+            const octokit = new Octokit({ auth: githubToken });
+            const owner = 'mediar-ai';
+            const repo = 'workflows';
 
-          // Get all files in the workflow folder
-          const { data: contents } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: workflow.github_folder,
-          });
+            // Get all files in the workflow folder
+            const { data: contents } = await octokit.repos.getContent({
+              owner,
+              repo,
+              path: githubFolder,
+            });
 
-          if (Array.isArray(contents)) {
-            console.log(`   Found ${contents.length} files to delete`);
+            if (Array.isArray(contents)) {
+              console.log(`[GitHub Async] Found ${contents.length} files to delete in ${githubFolder}`);
 
-            // Build commit message with user email
-            const commitUserInfo = userEmail ? `By: ${userEmail}` : '';
+              // Build commit message with user email
+              const commitUserInfo = userEmail ? `By: ${userEmail}` : '';
+              const commitMessage = `Delete workflow.yaml (workflow deletion via UI)${commitUserInfo ? `\n\n${commitUserInfo}` : ''}`;
 
-            const commitMessage = `Delete workflow.yaml (workflow deletion via UI)${commitUserInfo ? `\n\n${commitUserInfo}` : ''}`;
-
-            // Delete each file individually
-            for (const file of contents) {
-              try {
-                await octokit.repos.deleteFile({
-                  owner,
-                  repo,
-                  path: file.path,
-                  message:
-                    file.name === 'workflow.yaml'
-                      ? commitMessage
-                      : `Delete ${file.name} (workflow deletion via UI)\n\n${commitUserInfo}`,
-                  sha: file.sha,
-                });
-                console.log(`   ✅ Deleted: ${file.path}`);
-              } catch (fileError) {
-                console.error(
-                  `   ❌ Failed to delete ${file.path}:`,
-                  fileError
-                );
+              // Delete each file individually
+              for (const file of contents) {
+                try {
+                  await octokit.repos.deleteFile({
+                    owner,
+                    repo,
+                    path: file.path,
+                    message:
+                      file.name === 'workflow.yaml'
+                        ? commitMessage
+                        : `Delete ${file.name} (workflow deletion via UI)\n\n${commitUserInfo}`,
+                    sha: file.sha,
+                  });
+                  console.log(`[GitHub Async] ✅ Deleted: ${file.path}`);
+                } catch (fileError) {
+                  console.error(`[GitHub Async] ❌ Failed to delete ${file.path}:`, fileError);
+                }
               }
-            }
 
-            console.log(
-              `✅ Deleted ${contents.length} files from GitHub folder: ${workflow.github_folder}`
-            );
+              console.log(`[GitHub Async] ✅ Completed deletion of ${contents.length} files from: ${githubFolder}`);
+            }
+          } catch (githubError) {
+            console.error(`[GitHub Async] ❌ GitHub deletion failed for ${githubFolder}:`, githubError);
           }
-        } catch (githubError) {
-          console.error('❌ GitHub deletion failed:', githubError);
-          // Continue with deletion even if GitHub fails
-        }
+        })();
       }
     } else {
       console.log('ℹ️ No github_folder - skipping GitHub deletion');
