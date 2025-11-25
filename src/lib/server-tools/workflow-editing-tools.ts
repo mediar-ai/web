@@ -294,8 +294,20 @@ export const serverSideWorkflowTools = {
           throw new Error(`Step '${params.step_identifier}' not found`);
         }
 
-        // Update the step
-        steps[stepIndex] = { ...steps[stepIndex], ...params.updates };
+        // Update the step with deep merge for arguments
+        const existingStep = steps[stepIndex];
+        const mergedStep = { ...existingStep };
+
+        for (const [key, value] of Object.entries(params.updates)) {
+          if (key === 'arguments' && existingStep.arguments && typeof value === 'object' && value !== null) {
+            // Deep merge arguments: preserve existing keys, override only specified ones
+            mergedStep.arguments = { ...existingStep.arguments, ...value };
+          } else {
+            (mergedStep as any)[key] = value;
+          }
+        }
+
+        steps[stepIndex] = mergedStep;
         setSteps(parsed, steps);
 
         // Convert back to YAML (always use YAML for GitHub sync)
