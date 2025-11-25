@@ -129,8 +129,7 @@ impl QueueProcessor {
 
             // Generate a trace_id for this execution
             // We'll use this for log correlation even if OpenTelemetry tracing isn't working perfectly
-            use opentelemetry::trace::{TraceId, TraceContextExt};
-            use tracing_opentelemetry::OpenTelemetrySpanExt;
+            use opentelemetry::trace::TraceId;
 
             // Try to get trace_id from OpenTelemetry context first
             let trace_id = {
