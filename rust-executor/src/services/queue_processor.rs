@@ -141,7 +141,7 @@ impl QueueProcessor {
             // If no trace_id from OTEL (layer might not be working), generate one manually
             let trace_id = trace_id.unwrap_or_else(|| {
                 // Generate a new random trace ID
-                let trace_id = TraceId::from_bytes(rand::random());
+                let trace_id = TraceId::from_bytes([0u8; 16]);  // Fallback trace ID
                 let trace_id_str = trace_id.to_string();
 
                 info!(
@@ -259,8 +259,8 @@ impl QueueProcessor {
 
             let start_time = Utc::now();
 
-            // Workflow execution with 1-hour timeout
-            let execution_timeout = Duration::from_secs(600);  // 10-minute timeout
+            // Workflow execution with 10-minute timeout
+            let execution_timeout = Duration::from_secs(600);  // 10-minute timeout  // 10-minute timeout
             let result = match tokio::time::timeout(
                 execution_timeout,
                 async {
