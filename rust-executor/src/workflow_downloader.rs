@@ -26,6 +26,7 @@ pub struct RunCommandResponse {
 
 /// Response from MCP execute_sequence tool (TypeScript workflow execution)
 /// Matches terminator-mcp-agent/src/server_sequence.rs line 2604-2611
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ExecuteSequenceResponse {
     pub status: String,
@@ -40,6 +41,7 @@ pub struct ExecuteSequenceResponse {
 
 /// Inner workflow execution result
 /// Matches terminator-mcp-agent/src/workflow_typescript.rs line 703-712
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WorkflowExecutionResult {
     pub status: String,
