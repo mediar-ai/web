@@ -132,6 +132,9 @@ impl WorkflowQueries {
     ) -> Result<Option<WorkflowExecution>> {
         // Don't update assigned_machine_id - it's already set by the API
         // and must reference a valid remote_machines.id (foreign key constraint)
+        //
+        // IMPORTANT: Only claim executions where the assigned machine doesn't have
+        // another execution currently running. This ensures one workflow per machine.
 
         let result = sqlx::query(
             r#"
@@ -141,16 +144,23 @@ impl WorkflowQueries {
                 started_at = NOW(),
                 updated_at = NOW()
             WHERE id = (
-                SELECT id FROM workflow_executions
+                SELECT we.id FROM workflow_executions we
                 WHERE (
-                    (status = 'queued' AND executor_type = 'rust')
+                    (we.status = 'queued' AND we.executor_type = 'rust')
                     OR
-                    (status = 'failed' AND is_retryable = TRUE AND next_retry_at <= NOW() AND executor_type = 'rust')
+                    (we.status = 'failed' AND we.is_retryable = TRUE AND we.next_retry_at <= NOW() AND we.executor_type = 'rust')
+                )
+                -- Only claim if the assigned machine doesn't have a running execution
+                AND NOT EXISTS (
+                    SELECT 1 FROM workflow_executions running
+                    WHERE running.assigned_machine_id = we.assigned_machine_id
+                    AND running.status = 'running'
+                    AND running.id != we.id
                 )
                 ORDER BY
-                    priority DESC NULLS LAST,
-                    retry_count ASC,
-                    created_at ASC
+                    we.priority DESC NULLS LAST,
+                    we.retry_count ASC,
+                    we.created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
