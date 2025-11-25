@@ -4,12 +4,51 @@
 //! Uses machine service token for authentication.
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
 use crate::mcp::McpClient;
+
+/// Response from MCP run_command tool (shell mode)
+/// Matches terminator-mcp-agent/src/server.rs line 3516-3525
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RunCommandResponse {
+    pub exit_status: i32,
+    pub stdout: String,
+    pub stderr: String,
+    pub command: String,
+    pub shell: String,
+    pub working_directory: Option<String>,
+}
+
+/// Response from MCP execute_sequence tool (TypeScript workflow execution)
+/// Matches terminator-mcp-agent/src/server_sequence.rs line 2604-2611
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ExecuteSequenceResponse {
+    pub status: String,
+    pub message: String,
+    pub data: Option<Value>,
+    pub metadata: Option<Value>,
+    pub state: Option<Value>,
+    pub last_step_id: Option<String>,
+    pub last_step_index: Option<usize>,
+    pub parsed_output: Option<Value>,
+}
+
+/// Inner workflow execution result
+/// Matches terminator-mcp-agent/src/workflow_typescript.rs line 703-712
+#[derive(Debug, Deserialize, Serialize)]
+pub struct WorkflowExecutionResult {
+    pub status: String,
+    pub message: Option<String>,
+    pub data: Option<Value>,
+    pub last_step_id: Option<String>,
+    pub last_step_index: Option<usize>,
+    pub error: Option<String>,
+}
 
 /// Download and extract workflow to C:\Workflows\{uuid}\ via MCP run_command
 ///
@@ -182,59 +221,59 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
         .await
         .context("MCP run_command failed")?;
 
-    // Log raw response for debugging (truncated)
-    let result_str = serde_json::to_string(&result).unwrap_or_default();
-    info!("MCP run_command response: {}", &result_str[..std::cmp::min(500, result_str.len())]);
+    // Try to parse as typed RunCommandResponse first
+    match serde_json::from_value::<RunCommandResponse>(result.clone()) {
+        Ok(response) => {
+            info!("MCP run_command response: exit_status={}, stdout_len={}, stderr_len={}",
+                  response.exit_status, response.stdout.len(), response.stderr.len());
 
-    // Check for MCP-level errors first (e.g., "Either 'run' or 'script_file' must be provided")
-    if let Some(error) = result.get("error").and_then(|v| v.as_str()) {
-        error!("MCP run_command returned error: {}", error);
-        return Err(anyhow::anyhow!("MCP run_command error: {}", error));
-    }
+            if response.exit_status != 0 {
+                error!("Command failed with exit code {}: {}", response.exit_status, response.stderr);
+                return Err(anyhow::anyhow!(
+                    "Command failed with exit code {}: {}",
+                    response.exit_status,
+                    response.stderr
+                ));
+            }
 
-    // Check for isError flag (MCP error response format)
-    if result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error_msg = result
-            .get("content")
-            .and_then(|c| c.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|item| item.get("text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("Unknown MCP error");
-        error!("MCP run_command failed with isError=true: {}", error_msg);
-        return Err(anyhow::anyhow!("MCP run_command failed: {}", error_msg));
-    }
+            Ok(response.stdout)
+        }
+        Err(parse_err) => {
+            // Fallback: handle as untyped JSON (for error responses or unexpected formats)
+            warn!("Failed to parse as RunCommandResponse: {}", parse_err);
 
-    // Extract output from result
-    // MCP run_command returns: { "stdout": "...", "exit_status": 0 }
-    let output = result
-        .get("stdout")
-        .or_else(|| result.get("output"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+            // Log raw response for debugging
+            let result_str = serde_json::to_string(&result).unwrap_or_default();
+            info!("MCP run_command raw response: {}", &result_str[..std::cmp::min(500, result_str.len())]);
 
-    // Check for errors in result (exit_status or exit_code)
-    let exit_code = result
-        .get("exit_status")
-        .or_else(|| result.get("exit_code"))
-        .and_then(|v| v.as_i64());
+            // Check for MCP-level errors (e.g., "Either 'run' or 'script_file' must be provided")
+            if let Some(error) = result.get("error").and_then(|v| v.as_str()) {
+                error!("MCP run_command returned error: {}", error);
+                return Err(anyhow::anyhow!("MCP run_command error: {}", error));
+            }
 
-    if let Some(code) = exit_code {
-        if code != 0 {
-            let error_output = result
-                .get("stderr")
+            // Check for isError flag (MCP error response format)
+            if result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let error_msg = result
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|item| item.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("Unknown MCP error");
+                error!("MCP run_command failed with isError=true: {}", error_msg);
+                return Err(anyhow::anyhow!("MCP run_command failed: {}", error_msg));
+            }
+
+            // Try to extract output from untyped response
+            let output = result
+                .get("stdout")
+                .or_else(|| result.get("output"))
                 .and_then(|v| v.as_str())
-                .unwrap_or(&output);
+                .unwrap_or("")
+                .to_string();
 
-            error!("Command failed with exit code {}: {}", code, error_output);
-            return Err(anyhow::anyhow!(
-                "Command failed with exit code {}: {}",
-                code,
-                error_output
-            ));
+            Ok(output)
         }
     }
-
-    Ok(output)
 }
