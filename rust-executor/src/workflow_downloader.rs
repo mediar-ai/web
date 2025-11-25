@@ -11,6 +11,7 @@ use tokio::time::timeout;
 use tracing::{error, info, warn};
 
 use crate::mcp::McpClient;
+use crate::telemetry::current_trace_id;
 
 /// Response from MCP run_command tool (shell mode)
 #[derive(Debug, Deserialize, Serialize)]
@@ -50,7 +51,13 @@ pub async fn ensure_workflow_downloaded(
     )).await {
         Ok(result) => result,
         Err(_) => {
-            error!("Workflow download timed out after {} seconds - VM may be stopped or unreachable", download_timeout.as_secs());
+            let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+            error!(
+                workflow_uuid = %workflow_uuid,
+                timeout_secs = %download_timeout.as_secs(),
+                trace_id = %trace_id,
+                "Workflow download timed out - VM may be stopped or unreachable"
+            );
             Err(anyhow::anyhow!(
                 "Workflow download timed out after {} seconds. The VM may be stopped, unreachable, or experiencing network issues.",
                 download_timeout.as_secs()
@@ -69,8 +76,14 @@ async fn ensure_workflow_downloaded_inner(
 ) -> Result<String> {
     let workflow_path = format!(r"S:\{}", workflow_uuid);
     let zip_path = format!(r"C:\Workflows\{}.zip", workflow_uuid);
+    let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
 
-    info!("Checking if workflow {} exists at {}", workflow_uuid, workflow_path);
+    info!(
+        workflow_uuid = %workflow_uuid,
+        workflow_path = %workflow_path,
+        trace_id = %trace_id,
+        "Checking if workflow exists"
+    );
 
     // Step 1: Check if workflow already exists on VM
     // Note: Commands are pure PowerShell (shell: powershell is set in run_command_via_mcp)
@@ -84,11 +97,20 @@ async fn ensure_workflow_downloaded_inner(
     let exists = check_result.trim().to_lowercase().contains("exists");
 
     if exists {
-        info!("Workflow {} already exists on VM, skipping download", workflow_uuid);
+        info!(
+            workflow_uuid = %workflow_uuid,
+            trace_id = %trace_id,
+            "Workflow already exists on VM, skipping download"
+        );
         return Ok(workflow_path);
     }
 
-    info!("Workflow {} not found, downloading from {}", workflow_uuid, download_url);
+    info!(
+        workflow_uuid = %workflow_uuid,
+        download_url = %download_url,
+        trace_id = %trace_id,
+        "Workflow not found, downloading"
+    );
 
     // Step 2: Download workflow zip via PowerShell with service token
     // Pass both Authorization header (service token) and X-Organization-ID header (org)
@@ -100,7 +122,12 @@ async fn ensure_workflow_downloaded_inner(
         zip_path
     );
 
-    info!("Downloading workflow {} for org {}...", workflow_uuid, org_id);
+    info!(
+        workflow_uuid = %workflow_uuid,
+        org_id = %org_id,
+        trace_id = %trace_id,
+        "Downloading workflow"
+    );
     run_command_via_mcp_with_timeout(mcp_client, &download_command, 90)
         .await
         .context("Failed to download workflow zip - download may have timed out or failed")?;
@@ -117,7 +144,11 @@ async fn ensure_workflow_downloaded_inner(
     }
 
     let zip_size_bytes = verify_result.trim().parse::<u64>().unwrap_or(0);
-    info!("Downloaded zip: {} bytes", zip_size_bytes);
+    info!(
+        zip_size_bytes = %zip_size_bytes,
+        trace_id = %trace_id,
+        "Downloaded zip"
+    );
 
     // Step 4: Extract zip to workflow path
     let extract_command = format!(
@@ -125,7 +156,11 @@ async fn ensure_workflow_downloaded_inner(
         zip_path, workflow_path
     );
 
-    info!("Extracting workflow to {}...", workflow_path);
+    info!(
+        workflow_path = %workflow_path,
+        trace_id = %trace_id,
+        "Extracting workflow"
+    );
     run_command_via_mcp_with_timeout(mcp_client, &extract_command, 30)
         .await
         .context("Failed to extract workflow zip")?;
@@ -148,11 +183,16 @@ async fn ensure_workflow_downloaded_inner(
     );
 
     match run_command_via_mcp_with_timeout(mcp_client, &cleanup_command, 15).await {
-        Ok(_) => info!("Cleaned up zip file"),
-        Err(e) => warn!("Failed to cleanup zip file (non-fatal): {}", e),
+        Ok(_) => info!(trace_id = %trace_id, "Cleaned up zip file"),
+        Err(e) => warn!(error = %e, trace_id = %trace_id, "Failed to cleanup zip file (non-fatal)"),
     }
 
-    info!("✅ Workflow {} downloaded and extracted to {}", workflow_uuid, workflow_path);
+    info!(
+        workflow_uuid = %workflow_uuid,
+        workflow_path = %workflow_path,
+        trace_id = %trace_id,
+        "Workflow downloaded and extracted"
+    );
 
     Ok(workflow_path)
 }
@@ -168,8 +208,13 @@ async fn run_command_via_mcp_with_timeout(
     match timeout(cmd_timeout, run_command_via_mcp(mcp_client, command)).await {
         Ok(result) => result,
         Err(_) => {
-            error!("MCP command timed out after {} seconds: {}", timeout_secs, 
-                   &command[..std::cmp::min(100, command.len())]);
+            let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+            error!(
+                timeout_secs = %timeout_secs,
+                command_preview = %&command[..std::cmp::min(100, command.len())],
+                trace_id = %trace_id,
+                "MCP command timed out"
+            );
             Err(anyhow::anyhow!(
                 "Command timed out after {} seconds - VM may be stopped or unresponsive",
                 timeout_secs
@@ -186,8 +231,14 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
     // Specify PowerShell since the commands are PowerShell syntax
     args.insert("shell".to_string(), Value::String("powershell".to_string()));
 
+    let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+
     // Log the command being executed for debugging
-    info!("Executing MCP run_command: {}", &command[..std::cmp::min(100, command.len())]);
+    info!(
+        command_preview = %&command[..std::cmp::min(100, command.len())],
+        trace_id = %trace_id,
+        "Executing MCP run_command"
+    );
 
     let result = mcp_client
         .execute_tool_with_retry("run_command".to_string(), Some(args), 2)
@@ -197,11 +248,21 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
     // Try to parse as typed RunCommandResponse first
     match serde_json::from_value::<RunCommandResponse>(result.clone()) {
         Ok(response) => {
-            info!("MCP run_command response: exit_status={}, stdout_len={}, stderr_len={}",
-                  response.exit_status, response.stdout.len(), response.stderr.len());
+            info!(
+                exit_status = %response.exit_status,
+                stdout_len = %response.stdout.len(),
+                stderr_len = %response.stderr.len(),
+                trace_id = %trace_id,
+                "MCP run_command response"
+            );
 
             if response.exit_status != 0 {
-                error!("Command failed with exit code {}: {}", response.exit_status, response.stderr);
+                error!(
+                    exit_code = %response.exit_status,
+                    stderr = %response.stderr,
+                    trace_id = %trace_id,
+                    "Command failed"
+                );
                 return Err(anyhow::anyhow!(
                     "Command failed with exit code {}: {}",
                     response.exit_status,
@@ -213,15 +274,27 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
         }
         Err(parse_err) => {
             // Fallback: handle as untyped JSON (for error responses or unexpected formats)
-            warn!("Failed to parse as RunCommandResponse: {}", parse_err);
+            warn!(
+                error = %parse_err,
+                trace_id = %trace_id,
+                "Failed to parse as RunCommandResponse"
+            );
 
             // Log raw response for debugging
             let result_str = serde_json::to_string(&result).unwrap_or_default();
-            info!("MCP run_command raw response: {}", &result_str[..std::cmp::min(500, result_str.len())]);
+            info!(
+                response_preview = %&result_str[..std::cmp::min(500, result_str.len())],
+                trace_id = %trace_id,
+                "MCP run_command raw response"
+            );
 
             // Check for MCP-level errors (e.g., "Either 'run' or 'script_file' must be provided")
             if let Some(error) = result.get("error").and_then(|v| v.as_str()) {
-                error!("MCP run_command returned error: {}", error);
+                error!(
+                    error = %error,
+                    trace_id = %trace_id,
+                    "MCP run_command returned error"
+                );
                 return Err(anyhow::anyhow!("MCP run_command error: {}", error));
             }
 
@@ -234,7 +307,11 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
                     .and_then(|item| item.get("text"))
                     .and_then(|t| t.as_str())
                     .unwrap_or("Unknown MCP error");
-                error!("MCP run_command failed with isError=true: {}", error_msg);
+                error!(
+                    error = %error_msg,
+                    trace_id = %trace_id,
+                    "MCP run_command failed with isError=true"
+                );
                 return Err(anyhow::anyhow!("MCP run_command failed: {}", error_msg));
             }
 

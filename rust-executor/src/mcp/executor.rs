@@ -484,7 +484,12 @@ impl WorkflowExecutor {
                     if let Some(var_value) = variables.get(var_name) {
                         return Ok(var_value.clone());
                     } else {
-                        warn!("Variable '{}' not found in workflow variables", var_name);
+                        let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+                        warn!(
+                            variable = %var_name,
+                            trace_id = %trace_id,
+                            "Variable not found in workflow variables"
+                        );
                     }
                 }
                 Ok(Value::String(s.clone()))
