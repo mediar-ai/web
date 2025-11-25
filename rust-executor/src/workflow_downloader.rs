@@ -174,31 +174,63 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
     // Specify PowerShell since the commands are PowerShell syntax
     args.insert("shell".to_string(), Value::String("powershell".to_string()));
 
+    // Log the command being executed for debugging
+    info!("Executing MCP run_command: {}", &command[..std::cmp::min(100, command.len())]);
+
     let result = mcp_client
         .execute_tool_with_retry("run_command".to_string(), Some(args), 2)
         .await
         .context("MCP run_command failed")?;
 
+    // Log raw response for debugging (truncated)
+    let result_str = serde_json::to_string(&result).unwrap_or_default();
+    info!("MCP run_command response: {}", &result_str[..std::cmp::min(500, result_str.len())]);
+
+    // Check for MCP-level errors first (e.g., "Either 'run' or 'script_file' must be provided")
+    if let Some(error) = result.get("error").and_then(|v| v.as_str()) {
+        error!("MCP run_command returned error: {}", error);
+        return Err(anyhow::anyhow!("MCP run_command error: {}", error));
+    }
+
+    // Check for isError flag (MCP error response format)
+    if result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let error_msg = result
+            .get("content")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|item| item.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown MCP error");
+        error!("MCP run_command failed with isError=true: {}", error_msg);
+        return Err(anyhow::anyhow!("MCP run_command failed: {}", error_msg));
+    }
+
     // Extract output from result
-    // MCP run_command returns: { "output": "...", "exit_code": 0 }
+    // MCP run_command returns: { "stdout": "...", "exit_status": 0 }
     let output = result
-        .get("output")
-        .or_else(|| result.get("stdout"))
+        .get("stdout")
+        .or_else(|| result.get("output"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    // Check for errors in result
-    if let Some(exit_code) = result.get("exit_code").and_then(|v| v.as_i64()) {
-        if exit_code != 0 {
+    // Check for errors in result (exit_status or exit_code)
+    let exit_code = result
+        .get("exit_status")
+        .or_else(|| result.get("exit_code"))
+        .and_then(|v| v.as_i64());
+
+    if let Some(code) = exit_code {
+        if code != 0 {
             let error_output = result
                 .get("stderr")
                 .and_then(|v| v.as_str())
                 .unwrap_or(&output);
 
+            error!("Command failed with exit code {}: {}", code, error_output);
             return Err(anyhow::anyhow!(
                 "Command failed with exit code {}: {}",
-                exit_code,
+                code,
                 error_output
             ));
         }
