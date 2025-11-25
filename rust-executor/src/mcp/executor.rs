@@ -42,9 +42,13 @@ impl WorkflowExecutor {
         let mut workflow_data = None;
         let all_screenshot_urls: Vec<String> = Vec::new();
 
+        let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+
         info!(
-            "Starting workflow execution {} with {} steps",
-            self.execution_id, total_steps
+            execution_id = %self.execution_id,
+            total_steps = %total_steps,
+            trace_id = %trace_id,
+            "Starting workflow execution"
         );
 
         // Process variables
@@ -98,11 +102,12 @@ impl WorkflowExecutor {
                 .unwrap_or_else(|| "unknown".to_string());
 
             info!(
-                "Executing step {}/{}: {} ({})",
-                index + 1,
-                total_steps,
-                step_name,
-                step_id
+                step_num = %(index + 1),
+                total_steps = %total_steps,
+                step_name = %step_name,
+                step_id = %step_id,
+                trace_id = %trace_id,
+                "Executing step"
             );
 
             let step_result = self.execute_step(step, &variables).await;
@@ -116,10 +121,19 @@ impl WorkflowExecutor {
                         workflow_data = result.result.clone();
                     }
 
-                    info!("Step {} completed successfully", step_id);
+                    info!(
+                        step_id = %step_id,
+                        trace_id = %trace_id,
+                        "Step completed successfully"
+                    );
                 }
                 Err(e) => {
-                    error!("Step {} failed: {}", step_id, e);
+                    error!(
+                        step_id = %step_id,
+                        error = %e,
+                        trace_id = %trace_id,
+                        "Step failed"
+                    );
 
                     let failed_result = StepResult {
                         step_id: step_id.clone(),
@@ -161,22 +175,29 @@ impl WorkflowExecutor {
                             });
                         }
                         ErrorStrategy::Continue => {
-                            warn!("Step {} failed but continuing execution", step_id);
+                            warn!(
+                                step_id = %step_id,
+                                trace_id = %trace_id,
+                                "Step failed but continuing execution"
+                            );
                             continue;
                         }
                         ErrorStrategy::Retry => {
                             // Already handled by retry_count loop inside execute_step
                             warn!(
-                                "Retry attempted for step {} (using retry_count), continuing",
-                                step_id
+                                step_id = %step_id,
+                                trace_id = %trace_id,
+                                "Retry attempted for step (using retry_count), continuing"
                             );
                             continue;
                         }
                         ErrorStrategy::Fallback => {
                             if let Some(fallback_id) = &step.fallback_id {
                                 warn!(
-                                    "Executing fallback step {} for failed step {}",
-                                    fallback_id, step_id
+                                    fallback_id = %fallback_id,
+                                    step_id = %step_id,
+                                    trace_id = %trace_id,
+                                    "Executing fallback step for failed step"
                                 );
                                 if let Some(fb_step) = self
                                     .sequence
@@ -228,7 +249,11 @@ impl WorkflowExecutor {
                                         }
                                     }
                                 } else {
-                                    warn!("Fallback step '{}' not found; continuing", fallback_id);
+                                    warn!(
+                                        fallback_id = %fallback_id,
+                                        trace_id = %trace_id,
+                                        "Fallback step not found; continuing"
+                                    );
                                 }
                             }
                             continue;
@@ -241,8 +266,10 @@ impl WorkflowExecutor {
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
 
         info!(
-            "Workflow execution completed with {} screenshot URLs",
-            all_screenshot_urls.len()
+            execution_id = %self.execution_id,
+            screenshot_count = %all_screenshot_urls.len(),
+            trace_id = %trace_id,
+            "Workflow execution completed"
         );
 
         Ok(WorkflowResult {
@@ -300,13 +327,16 @@ impl WorkflowExecutor {
         let retry_count = step.retry_count.unwrap_or(0);
         let mut last_error = None;
 
+        let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+
         for attempt in 0..=retry_count {
             if attempt > 0 {
                 warn!(
-                    "Retrying step {} (attempt {}/{})",
-                    step_id,
-                    attempt + 1,
-                    retry_count + 1
+                    step_id = %step_id,
+                    attempt = %(attempt + 1),
+                    max_attempts = %(retry_count + 1),
+                    trace_id = %trace_id,
+                    "Retrying step"
                 );
             }
 
