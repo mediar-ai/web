@@ -1184,7 +1184,6 @@ export function UnifiedWorkflowDialog({
                 ) : (
                   <div className="space-y-6">
                     <CronScheduleEditor
-
                       cronExpression={cronConfig.expression}
                       cronTimezone={cronConfig.timezone}
                       cronEnabled={cronConfig.enabled}
@@ -1194,7 +1193,6 @@ export function UnifiedWorkflowDialog({
                       onChange={(newConfig) => setCronConfig({ ...newConfig, executorType: cronConfig.executorType || 'python' })}
                       showAdvanced={true}
                     />
-
 
                     {/* Executor Type Selection (Superadmin only) */}
                     {isMediarTeam && (

@@ -36,6 +36,23 @@ async fn main() {
 
     let _enter = test_span.enter();
 
+    // Debug: Check span context details
+    use opentelemetry::trace::TraceContextExt;
+    use tracing::Span;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let span = Span::current();
+    let context = span.context();
+    let span_ref = context.span();
+    let span_context = span_ref.span_context();
+
+    println!("\n=== OTEL Span Context Debug ===");
+    println!("span_context.is_valid(): {}", span_context.is_valid());
+    println!("span_context.trace_id(): {}", span_context.trace_id());
+    println!("span_context.span_id(): {}", span_context.span_id());
+    println!("span_context.is_remote(): {}", span_context.is_remote());
+    println!("================================\n");
+
     // Try to get trace_id from OpenTelemetry
     if let Some(trace_id) = workflow_executor::telemetry::current_trace_id() {
         info!(trace_id = %trace_id, "✓ Got trace_id from OpenTelemetry");
