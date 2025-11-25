@@ -1084,7 +1084,7 @@ function DashboardContent() {
                 </a>
 
                 <a
-                  href="https://github.com/mediar-ai/mediar-app/releases/latest"
+                  href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
@@ -1125,7 +1125,7 @@ function DashboardContent() {
                 <div className="text-center py-12 border-2 border-dashed border-black">
                   <p className="font-mono text-gray-600 mb-4">No workflows yet. Download the app to get started.</p>
                   <a
-                    href="https://github.com/mediar-ai/mediar-app/releases/latest"
+                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {

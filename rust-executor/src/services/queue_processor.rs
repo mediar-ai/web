@@ -185,6 +185,7 @@ impl QueueProcessor {
                 execution_id = %execution.id,
                 workflow_id = %workflow.id,
                 workflow_name = %workflow.name,
+                trace_id = %trace_id,
                 "Claimed execution from queue"
             );
 
@@ -198,6 +199,7 @@ impl QueueProcessor {
                 warn!(
                     execution_id = %execution.id,
                     workflow_id = %workflow.id,
+                    trace_id = %trace_id,
                     "Workflow has consecutive failures, cancelling execution"
                 );
 
@@ -233,6 +235,7 @@ impl QueueProcessor {
                 info!(
                     execution_id = %execution.id,
                     workflow_id = %workflow.id,
+                    trace_id = %trace_id,
                     "Bypassing failure pattern check (skip_next_cancellation_check=true)"
                 );
             }
@@ -241,6 +244,7 @@ impl QueueProcessor {
             info!(
                 execution_id = %execution.id,
                 mcp_endpoint_from_record = ?execution.mcp_endpoint,
+                trace_id = %trace_id,
                 "Getting MCP endpoint for execution"
             );
 
@@ -263,6 +267,7 @@ impl QueueProcessor {
             info!(
                 execution_id = %execution.id,
                 mcp_endpoint = %mcp_endpoint,
+                trace_id = %trace_id,
                 "Using MCP endpoint for workflow execution"
             );
 
@@ -281,6 +286,7 @@ impl QueueProcessor {
                             execution_id = %execution.id,
                             workflow_id = %workflow.id,
                             format = "typescript",
+                            trace_id = %trace_id,
                             "Executing TypeScript workflow via MCP"
                         );
 
@@ -303,6 +309,7 @@ impl QueueProcessor {
                             execution_id = %execution.id,
                             workflow_id = %workflow.id,
                             format = "yaml",
+                            trace_id = %trace_id,
                             "Executing YAML workflow"
                         );
 
@@ -340,6 +347,7 @@ impl QueueProcessor {
                     error!(
                         execution_id = %execution.id,
                         timeout_secs = execution_timeout.as_secs(),
+                        trace_id = %trace_id,
                         "Workflow execution timed out"
                     );
                     Err(anyhow::anyhow!(
@@ -382,6 +390,7 @@ impl QueueProcessor {
                         steps_completed = %workflow_result.steps_completed,
                         total_steps = %workflow_result.total_steps,
                         execution_time_ms = %workflow_result.execution_time_ms,
+                        trace_id = %trace_id,
                         "Execution completed"
                     );
 
