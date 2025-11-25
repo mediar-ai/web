@@ -56,6 +56,23 @@ export async function GET(request: Request) {
   }
 
   try {
+    // First, mark all inactive/maintenance/failed machines as having unknown health
+    // This prevents misleading "healthy" status on machines that aren't being checked
+    const { error: updateInactiveError } = await supabase
+      .from('remote_machines')
+      .update({
+        health_status: 'unknown',
+        updated_at: new Date().toISOString()
+      })
+      .in('status', ['inactive', 'maintenance', 'failed'])
+      .neq('health_status', 'unknown');
+
+    if (updateInactiveError) {
+      console.error('Failed to update inactive machines:', updateInactiveError);
+    } else {
+      console.log('Marked inactive/maintenance/failed machines as unknown health');
+    }
+
     // Fetch only active/null status machines with MCP endpoints (skip inactive machines)
     const { data: machines, error: fetchError } = await supabase
       .from('remote_machines')
