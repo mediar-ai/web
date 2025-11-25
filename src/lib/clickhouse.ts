@@ -27,6 +27,8 @@ export interface LogEntry {
   span_id?: string;
   trace_id?: string;
   attributes?: Record<string, any>;
+  scope_name?: string; // Rust module name (e.g., "terminator_mcp_agent::server")
+  host_name?: string; // VM hostname (e.g., "mcp-vm2")
 }
 
 /**
@@ -203,7 +205,9 @@ export async function getLogsByTraceId(
         ServiceName as service,
         SpanId as span_id,
         TraceId as trace_id,
-        LogAttributes as attributes
+        LogAttributes as attributes,
+        ScopeName as scope_name,
+        ResourceAttributes['host.name'] as host_name
       FROM otel_logs
       WHERE
         TraceId = {traceId: String}
@@ -230,6 +234,8 @@ export async function getLogsByTraceId(
       span_id: row.span_id || row.SpanId,
       trace_id: row.trace_id || row.TraceId,
       attributes: row.attributes || row.LogAttributes,
+      scope_name: row.scope_name || row.ScopeName,
+      host_name: row.host_name,
     }));
   } catch (error) {
     console.error('[ClickHouse] Failed to query logs by trace ID:', error);
@@ -269,6 +275,7 @@ export async function getMcpAgentLogs(
         SpanId as span_id,
         TraceId as trace_id,
         LogAttributes as attributes,
+        ScopeName as scope_name,
         ResourceAttributes['host.name'] as host_name
       FROM otel_logs_filtered
       WHERE
@@ -304,6 +311,7 @@ export async function getMcpAgentLogs(
       span_id: row.span_id || row.SpanId,
       trace_id: row.trace_id || row.TraceId,
       attributes: row.attributes || row.LogAttributes,
+      scope_name: row.scope_name || row.ScopeName,
       host_name: row.host_name,
     }));
   } catch (error) {

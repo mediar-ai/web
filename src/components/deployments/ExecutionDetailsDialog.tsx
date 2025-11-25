@@ -1020,6 +1020,11 @@ export function ExecutionDetailsDialog({
                         Real-time server logs from the orchestrator during
                         workflow execution.
                       </p>
+                      {executionLogs && executionLogs.length > 0 && (
+                        <Badge variant="outline" className="text-xs font-mono">
+                          {executionLogs.length} logs
+                        </Badge>
+                      )}
                       {isStreaming && (
                         <Badge className="bg-black text-white animate-pulse flex items-center gap-1 text-xs">
                           <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
@@ -1181,7 +1186,7 @@ export function ExecutionDetailsDialog({
                                 {/* Expanded Details */}
                                 {isExpanded && (
                                   <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
-                                    <div className="grid grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                       <div>
                                         <span className="font-bold uppercase text-gray-600">Timestamp:</span>
                                         <div className="mt-1">{timestamp ? timestamp.toISOString() : 'N/A'}</div>
@@ -1196,7 +1201,29 @@ export function ExecutionDetailsDialog({
                                           <div className="mt-1">{isMcpAgent ? 'MCP Agent' : 'Executor'} <span className="text-gray-500 text-[10px]">({service})</span></div>
                                         </div>
                                       )}
+                                      {(log as any).host_name && (
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Host:</span>
+                                          <div className="mt-1">{(log as any).host_name}</div>
+                                        </div>
+                                      )}
                                     </div>
+
+                                    {/* Module/Scope name for Rust logs */}
+                                    {(log as any).scope_name && (
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Module:</span>
+                                          <div className="mt-1 text-gray-700">{(log as any).scope_name}</div>
+                                        </div>
+                                        {(log as any).span_id && (
+                                          <div>
+                                            <span className="font-bold uppercase text-gray-600">Span ID:</span>
+                                            <div className="mt-1 text-gray-500">{(log as any).span_id}</div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
 
                                     <div className="border-t-2 border-gray-300 pt-3">
                                       <span className="font-bold uppercase text-gray-600 mb-2 block">Message:</span>
