@@ -132,6 +132,21 @@ async fn start_server(port: u16) -> Result<()> {
         }
     };
 
+    // Clean up any stuck Rust executions from previous runs (crash recovery)
+    // Use 1 minute threshold - any execution started > 1 min ago that's still "running" is stuck
+    info!("Checking for stuck executions from previous runs...");
+    match db::queries::WorkflowQueries::cleanup_stuck_rust_executions(&db_pool, 1).await {
+        Ok(count) if count > 0 => {
+            info!("✓ Cleaned up {} stuck Rust executions from previous run", count);
+        }
+        Ok(_) => {
+            info!("✓ No stuck executions found");
+        }
+        Err(e) => {
+            error!("Failed to cleanup stuck executions: {} (continuing anyway)", e);
+        }
+    }
+
     // Start queue processor in background
     info!("Starting queue processor...");
     let queue_processor = QueueProcessor::new(db_pool.clone());
