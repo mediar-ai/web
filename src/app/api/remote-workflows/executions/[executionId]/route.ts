@@ -131,7 +131,7 @@ export async function GET(
     // Conditionally fetch heavy fields based on detail level requested
     const selectFields = full_detailed_response
       ? '*, raw_logs, execution_logs, results, formatted_output, screenshots'
-      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, screenshots, executor_type';
+      : 'id, workflow_id, status, started_at, completed_at, execution_duration_seconds, error_message, modal_call_id, execution_params, created_at, updated_at, progress_percentage, current_step_index, total_steps, formatted_output, version_number, workflow_version_id, client_id, assigned_machine_id, screenshots, executor_type, execution_logs, trace_id';
 
     const { data: execution, error } = await supabase
       .from('workflow_executions')
