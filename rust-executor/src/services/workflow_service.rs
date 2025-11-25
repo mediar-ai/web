@@ -132,6 +132,16 @@ impl WorkflowService {
                         "Workflow execution completed"
                     );
 
+                    // Build formatted_output like Python executor does
+                    let formatted_output = serde_json::json!({
+                        "success": workflow_result.success,
+                        "exception": workflow_result.error.is_some(),
+                        "skipped": false,
+                        "message": workflow_result.message.clone(),
+                        "data": workflow_result.data,
+                        "validation": {}
+                    });
+
                     WorkflowQueries::update_execution_status(
                         &self.db_pool,
                         execution_id,
@@ -142,6 +152,7 @@ impl WorkflowService {
                                 .ok()
                                 .unwrap_or(serde_json::json!([])),
                         ),
+                        Some(formatted_output.to_string()),
                     )
                     .await?;
 
@@ -174,6 +185,7 @@ impl WorkflowService {
                         ExecutionStatus::Failed,
                         Some(e.to_string()),
                         None,
+                        None, // formatted_output - none for execution failures
                     )
                     .await?;
 

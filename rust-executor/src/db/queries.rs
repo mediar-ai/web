@@ -213,6 +213,7 @@ impl WorkflowQueries {
         status: ExecutionStatus,
         error_message: Option<String>,
         result: Option<Value>,
+        formatted_output: Option<String>,
     ) -> Result<()> {
         let now = Utc::now();
         let status_str = Self::execution_status_to_string(&status);
@@ -225,8 +226,9 @@ impl WorkflowQueries {
                 error_message = $2,
                 results = $3,
                 completed_at = $4,
-                updated_at = $5
-            WHERE id = $6
+                updated_at = $5,
+                formatted_output = $6
+            WHERE id = $7
             "#,
         )
         .bind(status_str)
@@ -246,6 +248,7 @@ impl WorkflowQueries {
             },
         )
         .bind(now)
+        .bind(formatted_output)
         .bind(execution_id)
         .execute(pool)
         .await?;

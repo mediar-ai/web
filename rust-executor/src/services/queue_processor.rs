@@ -90,14 +90,21 @@ impl QueueProcessor {
 
                 tokio::spawn(
                     async move {
+                        // process_next_job handles its own tracing spans with execution context
+                        // We just log the high-level outcome here
                         match processor.process_next_job().await {
-                            Ok(processed) => {
-                                if processed {
-                                    info!("Successfully processed execution");
-                                }
+                            Ok(Some((execution_id, trace_id))) => {
+                                info!(
+                                    execution_id = %execution_id,
+                                    trace_id = %trace_id,
+                                    "Successfully processed execution"
+                                );
+                            }
+                            Ok(None) => {
+                                // No job was available, nothing to log
                             }
                             Err(e) => {
-                                error!("Error processing execution: {}", e);
+                                error!(error = %e, "Error processing execution");
                             }
                         }
                         drop(permit);
@@ -109,7 +116,9 @@ impl QueueProcessor {
     }
 
     /// Process the next available job
-    async fn process_next_job(&self) -> Result<bool> {
+    /// Returns Ok(Some((execution_id, trace_id))) if a job was processed
+    /// Returns Ok(None) if no job was available
+    async fn process_next_job(&self) -> Result<Option<(i64, String)>> {
         // Claim the next available execution
         let execution = WorkflowQueries::claim_execution(&self.db_pool, &self.machine_id).await?;
 
@@ -126,9 +135,10 @@ impl QueueProcessor {
                             ExecutionStatus::Failed,
                             Some("Workflow not found".to_string()),
                             None,
+                            None,
                         )
                         .await?;
-                        return Ok(true);
+                        return Ok(Some((execution.id, format!("early-fail-{}", execution.id))));
                     }
                     Err(e) => {
                         WorkflowQueries::update_execution_status(
@@ -137,9 +147,10 @@ impl QueueProcessor {
                             ExecutionStatus::Failed,
                             Some(format!("Failed to load workflow: {}", e)),
                             None,
+                            None,
                         )
                         .await?;
-                        return Ok(true);
+                        return Ok(Some((execution.id, format!("early-fail-{}", execution.id))));
                     }
                 };
 
@@ -215,6 +226,7 @@ impl QueueProcessor {
                     ExecutionStatus::Cancelled,
                     Some("Auto-cancelled due to consecutive failures".to_string()),
                     None,
+                    None,
                 )
                 .await?;
 
@@ -235,7 +247,7 @@ impl QueueProcessor {
                     );
                 }
 
-                return Ok(false);
+                return Ok(Some((execution.id, trace_id)));
             } else if should_skip_cancellation_check {
                 info!(
                     execution_id = %execution.id,
@@ -374,6 +386,20 @@ impl QueueProcessor {
                         ExecutionStatus::Failed
                     };
 
+                    // Build formatted_output like Python executor does
+                    // This contains the workflow result summary for display
+                    let formatted_output = serde_json::json!({
+                        "success": workflow_result.success,
+                        "exception": workflow_result.error.is_some(),
+                        "skipped": false,
+                        "message": workflow_result.message.clone(),
+                        "data": workflow_result.data,
+                        "validation": {}
+                    });
+
+                    // Convert to string for DB storage
+                    let formatted_output_str = Some(formatted_output.to_string());
+
                     WorkflowQueries::update_execution_status(
                         &self.db_pool,
                         execution.id,
@@ -384,6 +410,7 @@ impl QueueProcessor {
                                 .ok()
                                 .unwrap_or(serde_json::json!([])),
                         ),
+                        formatted_output_str,
                     )
                     .await?;
 
@@ -400,14 +427,6 @@ impl QueueProcessor {
                     );
 
                     // Notify monitor endpoint
-                    // Convert workflow_result.data to JSON Value for formatted_output
-                    let formatted_output = workflow_result.data.as_ref().map(|d| {
-                        serde_json::json!({
-                            "success": workflow_result.success,
-                            "message": workflow_result.message.clone(),
-                            "data": d
-                        })
-                    });
 
                     if let Err(e) = self
                         .monitor_client
@@ -417,7 +436,7 @@ impl QueueProcessor {
                             Some(workflow.name.clone()),
                             status,
                             workflow_result.error.clone(),
-                            formatted_output,
+                            Some(formatted_output), // Now always has a value
                             Some(start_time),
                             Some(end_time),
                             Some(execution_time),
@@ -526,6 +545,7 @@ impl QueueProcessor {
                             ExecutionStatus::Failed,
                             Some(error_message.clone()),
                             None,
+                            None,
                         )
                         .await?;
 
@@ -548,10 +568,10 @@ impl QueueProcessor {
                 }
             }
 
-            return Ok(true);
+            return Ok(Some((execution.id, trace_id)));
         }
 
-        Ok(false)
+        Ok(None)
     }
 
     /// Load workflow sequence from various sources
