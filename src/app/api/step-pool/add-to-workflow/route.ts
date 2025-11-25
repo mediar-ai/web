@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { workflow_id, step_ids, session_id, append_to_workflow = true } = body;
+    const { workflow_id, step_ids, session_id, append_to_workflow = true, insert_at_index } = body;
 
-    console.log('[ADD-TO-WORKFLOW] Request:', { workflow_id, step_ids, session_id, user_id: authenticatedUserId });
+    console.log('[ADD-TO-WORKFLOW] Request:', { workflow_id, step_ids, session_id, insert_at_index, user_id: authenticatedUserId });
 
     // Fetch the selected steps
     const { data: steps, error: fetchError } = await supabase
@@ -113,11 +113,22 @@ export async function POST(request: NextRequest) {
     }));
 
     let updatedJson;
+    const workflow = loadedWorkflow.automation_sequence || {};
 
-    if (append_to_workflow) {
+    if (insert_at_index !== undefined && insert_at_index !== null) {
+      // Insert at specific position (for drag-and-drop)
+      const existingSteps = [...(workflow.steps || [])];
+      // Clamp index to valid range
+      const insertIndex = Math.max(0, Math.min(insert_at_index, existingSteps.length));
+      existingSteps.splice(insertIndex, 0, ...newSteps);
+      updatedJson = {
+        ...workflow,
+        steps: existingSteps
+      };
+      console.log('[ADD-TO-WORKFLOW] Inserted steps at index:', insertIndex, 'total steps:', existingSteps.length);
+    } else if (append_to_workflow) {
       // Append new steps to existing steps from LATEST version
       // FIXED: Preserve all properties (variables, selectors, stop_on_error, etc.)
-      const workflow = loadedWorkflow.automation_sequence || {};
       updatedJson = {
         ...workflow,
         steps: [...(workflow.steps || []), ...newSteps]
@@ -125,7 +136,6 @@ export async function POST(request: NextRequest) {
     } else {
       // Replace with new steps only
       // FIXED: Preserve all properties except steps
-      const workflow = loadedWorkflow.automation_sequence || {};
       updatedJson = {
         ...workflow,
         steps: newSteps
@@ -240,6 +250,7 @@ export async function POST(request: NextRequest) {
         metadata: reloadedWorkflow.metadata
       },
       steps_added: steps.length,
+      inserted_at_index: insert_at_index !== undefined ? Math.max(0, Math.min(insert_at_index, (workflow.steps || []).length)) : null,
       remaining_pool_steps: remainingSteps
     }, { headers: corsHeaders });
   } catch (error) {
