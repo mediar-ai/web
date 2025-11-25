@@ -2,6 +2,7 @@
 // Sends traces and logs to centralized OTLP collector (ClickHouse backend)
 
 use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider; // Trait for .tracer() method
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
@@ -125,6 +126,9 @@ where
         .with_sampler(Sampler::AlwaysOn)
         .build();
 
+    // Get tracer BEFORE setting as global (so we have the concrete type)
+    let tracer = trace_provider.tracer("mediar-workflow-executor-rust");
+
     // Set global tracer provider
     opentelemetry::global::set_tracer_provider(trace_provider);
 
@@ -150,9 +154,7 @@ where
     eprintln!("  Traces will be sent to: {}/v1/traces", otlp_endpoint);
 
     // Create the tracing-opentelemetry layer for traces
-    // IMPORTANT: This must be called AFTER set_tracer_provider above
-    // Get a tracer from the global provider
-    let tracer = opentelemetry::global::tracer("mediar-workflow-executor-rust");
+    // The tracer was created above before setting the provider as global
     let traces_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     // Create the OpenTelemetryTracingBridge layer for logs

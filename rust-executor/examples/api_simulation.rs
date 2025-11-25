@@ -1,11 +1,7 @@
 use serde_json::json;
-use std::sync::Arc;
-use uuid::Uuid;
 /// API Simulation Test - Demonstrates the API functionality without running a server
 use workflow_executor::{
-    api,
     models::{ExecutionRequest, ExecutionResponse, ExecutionStatus, Workflow, WorkflowStatus},
-    services::WorkflowService,
 };
 
 #[tokio::main]
@@ -24,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Simulate workflow listing
     println!("2. List Workflows Endpoint (/api/v1/workflows):");
     let sample_workflow = Workflow {
+        uuid: Some("123e4567-e89b-12d3-a456-426614174000".to_string()),
         id: 1,
         name: "Browser Automation".to_string(),
         version: "1.0.0".to_string(),
@@ -32,6 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         category: Some("automation".to_string()),
         github_folder: Some("browser-automation".to_string()),
         github_ref: Some("main".to_string()),
+        github_repo_url: None,
+        github_release_url: None,
+        github_release_checksum: None,
+        package_json_version: None,
         organization_id: Some("org_test".to_string()),
         preferred_format: None,
         automation_sequence: Some(json!({
