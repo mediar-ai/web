@@ -97,6 +97,7 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           MEDIAR_SERVICE_API_KEY: ${{ secrets.MEDIAR_SERVICE_API_KEY }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          MCP_SERVICE_TOKEN: ${{ secrets.MCP_SERVICE_TOKEN }}
         run: |
           cd rust-executor
 
@@ -134,6 +135,7 @@ jobs:
           [ -n "$APP_URL" ] && ENV_VARS+=("APP_URL=$APP_URL")
           [ -n "$MEDIAR_SERVICE_API_KEY" ] && ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")
           [ -n "$SECRETS_ENCRYPTION_KEY" ] && ENV_VARS+=("SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY")
+          [ -n "$MCP_SERVICE_TOKEN" ] && ENV_VARS+=("MCP_SERVICE_TOKEN=$MCP_SERVICE_TOKEN")
 
           if az container show --name "$CONTAINER_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null 2>&1; then
             echo "Deleting existing container..."
