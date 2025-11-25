@@ -302,9 +302,8 @@ function AdminPageContent() {
         const data = await response.json();
         const fetchedMachines = data.machines || [];
 
-        // Filter to only show active machines, sorted by health (healthy first)
-        const activeMachines = fetchedMachines.filter((m: any) => m.status === 'active');
-        const sortedMachines = activeMachines.sort((a: any, b: any) => {
+        // Sort all machines by health (healthy first)
+        const sortedMachines = fetchedMachines.sort((a: any, b: any) => {
           // Sort by health_status: healthy -> unhealthy -> unknown
           const healthOrder: Record<string, number> = {
             healthy: 0,
