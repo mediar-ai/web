@@ -321,6 +321,10 @@ export async function GET(
               level: (log.level || 'INFO').toLowerCase(),
               message: log.message,
               service: log.service, // Include service to distinguish executor vs MCP agent
+              scope_name: log.scope_name, // Rust module name (e.g., "terminator_mcp_agent::server")
+              host_name: log.host_name, // VM hostname (e.g., "mcp-vm2")
+              span_id: log.span_id,
+              trace_id: log.trace_id,
             }))
             .sort(
               (a, b) =>
