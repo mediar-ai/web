@@ -236,3 +236,82 @@ export async function getLogsByTraceId(
     return [];
   }
 }
+
+/**
+ * Get MCP agent logs by time window and host
+ * Used to correlate MCP agent logs with executor logs for a specific execution.
+ *
+ * @param mcpEndpoint - The MCP endpoint URL (e.g., http://mcp-vm2:3000)
+ * @param startTime - Start of execution window
+ * @param endTime - End of execution window (optional, defaults to now)
+ * @param limit - Max logs to return
+ */
+export async function getMcpAgentLogs(
+  mcpEndpoint: string,
+  startTime: Date,
+  endTime?: Date,
+  limit = 500
+): Promise<LogEntry[]> {
+  if (!clickhouse) return [];
+
+  // Extract hostname from MCP endpoint (e.g., "http://mcp-vm2:3000" -> "mcp-vm2")
+  let hostname: string;
+  try {
+    const url = new URL(mcpEndpoint);
+    hostname = url.hostname;
+  } catch {
+    // If URL parsing fails, try to extract hostname directly
+    hostname = mcpEndpoint.replace(/^https?:\/\//, '').split(':')[0];
+  }
+
+  if (!hostname) {
+    console.warn('[ClickHouse] Could not extract hostname from MCP endpoint:', mcpEndpoint);
+    return [];
+  }
+
+  try {
+    const query = `
+      SELECT
+        Timestamp as timestamp,
+        SeverityText as level,
+        Body as message,
+        ServiceName as service,
+        SpanId as span_id,
+        TraceId as trace_id,
+        LogAttributes as attributes
+      FROM otel_logs_filtered
+      WHERE
+        ServiceName = 'terminator-mcp-agent'
+        AND ResourceAttributes['host.name'] = {hostname: String}
+        AND Timestamp >= {startTime: DateTime64(9)}
+        AND Timestamp <= {endTime: DateTime64(9)}
+      ORDER BY Timestamp ASC
+      LIMIT {limit: UInt32}
+    `;
+
+    const resultSet = await clickhouse.query({
+      query,
+      query_params: {
+        hostname,
+        startTime: startTime.toISOString().replace('T', ' ').replace('Z', ''),
+        endTime: (endTime || new Date()).toISOString().replace('T', ' ').replace('Z', ''),
+        limit,
+      },
+      format: 'JSONEachRow',
+    });
+
+    const results = (await resultSet.json()) as any[];
+    return results.map(row => ({
+      timestamp: row.timestamp || row.Timestamp,
+      level: row.level || row.SeverityText,
+      message: row.message || row.Body,
+      service: row.service || row.ServiceName,
+      span_id: row.span_id || row.SpanId,
+      trace_id: row.trace_id || row.TraceId,
+      attributes: row.attributes || row.LogAttributes,
+    }));
+  } catch (error) {
+    console.error('[ClickHouse] Failed to query MCP agent logs:', error);
+    return [];
+  }
+}

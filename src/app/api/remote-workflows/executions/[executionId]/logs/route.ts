@@ -5,6 +5,7 @@ import {
   getExecutionLogs,
   getLogsByTraceId,
   getTraceIdForExecution,
+  getMcpAgentLogs,
 } from '@/lib/clickhouse';
 
 // Transform execution_logs to the format expected by the UI
@@ -101,6 +102,9 @@ export async function GET(
         workflow_id,
         executor_type,
         trace_id,
+        mcp_endpoint,
+        started_at,
+        completed_at,
         deployed_workflows!inner(
           id,
           name,
@@ -133,6 +137,9 @@ export async function GET(
         execution_logs,
         workflow_id,
         executor_type,
+        mcp_endpoint,
+        started_at,
+        completed_at,
         deployed_workflows!inner(
           id,
           name,
@@ -211,74 +218,122 @@ export async function GET(
     const executorType = (execution as any).executor_type;
     // trace_id might not exist if migration hasn't been run yet
     const storedTraceId = (execution as any).trace_id || null;
+    const mcpEndpoint = (execution as any).mcp_endpoint || null;
+    const startedAt = (execution as any).started_at
+      ? new Date((execution as any).started_at)
+      : null;
+    const completedAt = (execution as any).completed_at
+      ? new Date((execution as any).completed_at)
+      : null;
+
+    // Helper function to normalize ClickHouse timestamps
+    const normalizeTimestamp = (timestamp: string): string => {
+      if (!timestamp || typeof timestamp !== 'string') return timestamp;
+      // Replace space with T for ISO format
+      let normalized = timestamp.replace(' ', 'T');
+      // Truncate nanoseconds to milliseconds (keep up to 3 decimal places)
+      normalized = normalized.replace(/(\.\d{3})\d+/, '$1');
+      // If no timezone, assume UTC (append Z)
+      if (
+        !normalized.endsWith('Z') &&
+        !normalized.includes('+') &&
+        !normalized.match(/-\d{2}:\d{2}$/)
+      ) {
+        normalized += 'Z';
+      }
+      return normalized;
+    };
 
     if (executorType === 'rust') {
       try {
-        let chLogs: any[] = [];
+        let executorLogs: any[] = [];
 
         // PRIORITY 1: Use stored trace_id if available (most reliable)
         if (storedTraceId) {
-          chLogs = await getLogsByTraceId(storedTraceId);
-          if (chLogs.length > 0) {
+          executorLogs = await getLogsByTraceId(storedTraceId);
+          if (executorLogs.length > 0) {
             console.log(
-              `[LOGS] Found ${chLogs.length} logs in ClickHouse using stored trace_id for execution ${executionIdNum}`
+              `[LOGS] Found ${executorLogs.length} executor logs in ClickHouse using stored trace_id for execution ${executionIdNum}`
             );
           }
         }
 
         // PRIORITY 2: Search by execution_id in log body/attributes (fallback for old executions)
-        if (chLogs.length === 0) {
-          chLogs = await getExecutionLogs(executionIdNum);
-          if (chLogs.length > 0) {
+        if (executorLogs.length === 0) {
+          executorLogs = await getExecutionLogs(executionIdNum);
+          if (executorLogs.length > 0) {
             console.log(
-              `[LOGS] Found ${chLogs.length} logs in ClickHouse using execution_id search for execution ${executionIdNum}`
+              `[LOGS] Found ${executorLogs.length} executor logs in ClickHouse using execution_id search for execution ${executionIdNum}`
             );
           }
         }
 
         // PRIORITY 3: Try finding trace_id from ClickHouse (last resort)
-        if (chLogs.length === 0) {
+        if (executorLogs.length === 0) {
           const traceId = await getTraceIdForExecution(executionIdNum);
           if (traceId) {
-            chLogs = await getLogsByTraceId(traceId);
-            if (chLogs.length > 0) {
+            executorLogs = await getLogsByTraceId(traceId);
+            if (executorLogs.length > 0) {
               console.log(
-                `[LOGS] Found ${chLogs.length} logs in ClickHouse using discovered trace_id for execution ${executionIdNum}`
+                `[LOGS] Found ${executorLogs.length} executor logs in ClickHouse using discovered trace_id for execution ${executionIdNum}`
               );
             }
           }
         }
 
-        if (chLogs.length > 0) {
+        // Also fetch MCP agent logs if we have mcp_endpoint and time window
+        let mcpLogs: any[] = [];
+        if (mcpEndpoint && startedAt) {
+          try {
+            // Expand time window slightly to capture logs before/after execution bounds
+            const expandedStart = new Date(startedAt.getTime() - 5000); // 5 seconds before
+            const expandedEnd = completedAt
+              ? new Date(completedAt.getTime() + 5000) // 5 seconds after
+              : new Date(); // Now if still running
+
+            mcpLogs = await getMcpAgentLogs(
+              mcpEndpoint,
+              expandedStart,
+              expandedEnd
+            );
+            if (mcpLogs.length > 0) {
+              console.log(
+                `[LOGS] Found ${mcpLogs.length} MCP agent logs for execution ${executionIdNum} from ${mcpEndpoint}`
+              );
+            }
+          } catch (mcpError) {
+            console.error('[LOGS] Failed to fetch MCP agent logs:', mcpError);
+            // Continue without MCP logs
+          }
+        }
+
+        // Combine and sort all logs by timestamp
+        const allLogs = [...executorLogs, ...mcpLogs];
+
+        if (allLogs.length > 0) {
+          // Transform and sort logs
+          const transformedLogs = allLogs
+            .map((log: any) => ({
+              timestamp: normalizeTimestamp(log.timestamp),
+              level: (log.level || 'INFO').toLowerCase(),
+              message: log.message,
+              service: log.service, // Include service to distinguish executor vs MCP agent
+            }))
+            .sort(
+              (a, b) =>
+                new Date(a.timestamp).getTime() -
+                new Date(b.timestamp).getTime()
+            );
+
           return NextResponse.json({
             success: true,
-            logs: chLogs.map((log: any) => {
-              // Normalize ClickHouse timestamp (replace space with T, truncate nanoseconds)
-              let timestamp = log.timestamp;
-              if (timestamp && typeof timestamp === 'string') {
-                // Replace space with T for ISO format
-                timestamp = timestamp.replace(' ', 'T');
-                // Truncate nanoseconds to milliseconds (keep up to 3 decimal places)
-                // Format: 2025-11-21T02:17:53.886367070 -> 2025-11-21T02:17:53.886
-                timestamp = timestamp.replace(/(\.\d{3})\d+/, '$1');
-                // If no timezone, assume UTC (append Z)
-                if (
-                  !timestamp.endsWith('Z') &&
-                  !timestamp.includes('+') &&
-                  !timestamp.includes('-')
-                ) {
-                  timestamp += 'Z';
-                }
-              }
-
-              return {
-                timestamp: timestamp,
-                level: (log.level || 'INFO').toLowerCase(),
-                message: log.message,
-              };
-            }),
-            count: chLogs.length,
+            logs: transformedLogs,
+            count: transformedLogs.length,
             source: 'clickhouse',
+            sources: {
+              executor: executorLogs.length,
+              mcp_agent: mcpLogs.length,
+            },
           });
         } else {
           // If ClickHouse logs are empty, fall back to DB logs
