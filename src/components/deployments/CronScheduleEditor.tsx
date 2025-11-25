@@ -122,6 +122,7 @@ export function CronScheduleEditor({
   }, [expression, validation, timezone]);
 
   // Update parent when any value changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     onChange({
       expression,
@@ -131,7 +132,9 @@ export function CronScheduleEditor({
       retryOnFailure,
       retryCount,
     });
-  }, [expression, timezone, enabled, maxConcurrent, retryOnFailure, retryCount, onChange]);
+    // NOTE: onChange is intentionally excluded from deps to prevent infinite loops
+    // The parent passes a stable callback or handles rerenders appropriately
+  }, [expression, timezone, enabled, maxConcurrent, retryOnFailure, retryCount]);
 
   const handlePresetChange = (value: string) => {
     console.log('📅 Preset changed:', value);
