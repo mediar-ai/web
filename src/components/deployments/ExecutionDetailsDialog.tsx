@@ -31,7 +31,7 @@ import {
   AlertCircle,
   AlertTriangle,
 } from 'lucide-react';
-import { useEffect, useState, Suspense, useCallback } from 'react';
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { formatDuration, getStatusBadge, getStatusIcon } from './utils';
 import { ExecutionAIChat } from './ExecutionAIChat';
@@ -116,6 +116,13 @@ export function ExecutionDetailsDialog({
   const [isDownloadingResults, setIsDownloadingResults] = useState(false);
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
+
+  // SSE streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [newLogIndices, setNewLogIndices] = useState<Set<number>>(new Set());
+  const [autoScroll, setAutoScroll] = useState(true);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Helper function to highlight search query in text
   const highlightText = (text: string, query: string) => {
@@ -545,44 +552,94 @@ export function ExecutionDetailsDialog({
     }
   }, [activeTab, executionLogs, fetchExecutionLogs]);
 
-  // Poll for logs when execution is running and logs tab is active
+  // SSE streaming for real-time logs
   useEffect(() => {
-    let intervalId: any;
-
     const isRunning =
       execution &&
       ['running', 'queued'].includes(execution.status.toLowerCase());
-
-    // Only poll for Rust executor logs (which stream to ClickHouse)
-    // Python/Modal logs are only available after execution completes
     const isRustExecutor = execution?.executor_type === 'rust';
 
-    if (open && activeTab === 'logs' && isRunning && isRustExecutor) {
-      // Poll every 1 second for real-time updates
-      intervalId = setInterval(async () => {
-        if (!execution) return;
+    // Connect to SSE stream when logs tab is active and execution is running
+    if (open && activeTab === 'logs' && isRunning && isRustExecutor && execution) {
+      // Close any existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      const eventSource = new EventSource(
+        `/api/remote-workflows/executions/${execution.execution_id}/logs/stream`
+      );
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        setIsStreaming(true);
+      };
+
+      eventSource.onmessage = (event) => {
         try {
-          const response = await fetch(
-            `/api/remote-workflows/executions/${execution.execution_id}/logs`
-          );
-          const data = await response.json();
-          if (data.success && data.logs) {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'logs' && data.logs) {
             setExecutionLogs(prev => {
-              // Only update if log count has changed to avoid unnecessary re-renders
-              if (prev && prev.length === data.logs.length) return prev;
-              return data.logs;
+              const currentLogs = prev || [];
+              const newLogs = [...currentLogs, ...data.logs];
+
+              // Track new log indices for highlighting
+              const startIndex = currentLogs.length;
+              const newIndices = new Set<number>();
+              for (let i = startIndex; i < newLogs.length; i++) {
+                newIndices.add(i);
+              }
+              setNewLogIndices(newIndices);
+
+              // Clear highlighting after 2 seconds
+              setTimeout(() => {
+                setNewLogIndices(new Set());
+              }, 2000);
+
+              return newLogs;
             });
+
+            // Auto-scroll to bottom if enabled
+            if (autoScroll && logsContainerRef.current) {
+              setTimeout(() => {
+                logsContainerRef.current?.scrollTo({
+                  top: logsContainerRef.current.scrollHeight,
+                  behavior: 'smooth',
+                });
+              }, 50);
+            }
+          } else if (data.type === 'completed') {
+            setIsStreaming(false);
+          } else if (data.type === 'error') {
+            console.error('[SSE] Error:', data.message);
           }
         } catch (error) {
-          console.error('Error polling logs:', error);
+          console.error('[SSE] Parse error:', error);
         }
-      }, 1000);
-    }
+      };
 
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [open, activeTab, execution]);
+      eventSource.onerror = () => {
+        setIsStreaming(false);
+        eventSource.close();
+        eventSourceRef.current = null;
+
+        // Fallback to regular fetch if SSE fails
+        fetchExecutionLogs();
+      };
+
+      return () => {
+        eventSource.close();
+        eventSourceRef.current = null;
+        setIsStreaming(false);
+      };
+    } else if (!isRunning && eventSourceRef.current) {
+      // Close connection when execution completes
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+      setIsStreaming(false);
+    }
+  }, [open, activeTab, execution, autoScroll, fetchExecutionLogs]);
 
   useEffect(() => {
     if (isTabLoading) {
@@ -958,26 +1015,46 @@ export function ExecutionDetailsDialog({
               ) : (
                 <div className="space-y-4 h-full flex flex-col">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      Real-time server logs from the orchestrator during
-                      workflow execution.
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        Real-time server logs from the orchestrator during
+                        workflow execution.
+                      </p>
+                      {isStreaming && (
+                        <Badge className="bg-black text-white animate-pulse flex items-center gap-1 text-xs">
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                          LIVE
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {execution?.executor_type === 'rust' && (
-                        <Button
-                          variant="black-outline"
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={forceRefreshLogs}
-                          disabled={loadingStates.logs}
-                        >
-                          <RefreshCw
-                            className={`w-3 h-3 mr-1 ${
-                              loadingStates.logs ? 'animate-spin' : ''
-                            }`}
-                          />
-                          Refresh
-                        </Button>
+                        <>
+                          <Button
+                            variant={autoScroll ? 'default' : 'black-outline'}
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => setAutoScroll(!autoScroll)}
+                            title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+                          >
+                            <ChevronDown className={`w-3 h-3 mr-1 ${autoScroll ? '' : 'opacity-50'}`} />
+                            Auto-scroll
+                          </Button>
+                          <Button
+                            variant="black-outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={forceRefreshLogs}
+                            disabled={loadingStates.logs || isStreaming}
+                          >
+                            <RefreshCw
+                              className={`w-3 h-3 mr-1 ${
+                                loadingStates.logs ? 'animate-spin' : ''
+                              }`}
+                            />
+                            Refresh
+                          </Button>
+                        </>
                       )}
                       {executionLogs && executionLogs.length > 0 && (
                         <>
@@ -1022,7 +1099,10 @@ export function ExecutionDetailsDialog({
                           className="w-full pl-10 pr-4 py-2 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
                         />
                       </div>
-                      <div className="flex-1 min-h-0 overflow-auto space-y-1">
+                      <div
+                        ref={logsContainerRef}
+                        className="flex-1 min-h-0 overflow-auto space-y-1"
+                      >
                         {executionLogs
                           .filter(log => {
                             if (!logSearchQuery) return true;
@@ -1039,23 +1119,42 @@ export function ExecutionDetailsDialog({
                                   .includes(searchLower))
                             );
                           })
-                          .map((log, idx) => {
+                          .map((log, idx, filteredArray) => {
+                            // Find original index for highlight tracking
+                            const originalIndex = executionLogs?.indexOf(log) ?? idx;
                             const isExpanded = expandedLogIndex === idx;
+                            const isNew = newLogIndices.has(originalIndex);
                             const level = log.level || 'info';
                             const timestamp = log.timestamp ? new Date(log.timestamp) : null;
+                            const service = (log as any).service || '';
+                            const isMcpAgent = service === 'terminator-mcp-agent';
 
                             return (
-                              <div key={idx}>
+                              <div
+                                key={idx}
+                                className={`transition-all duration-500 ${isNew ? 'bg-gray-100 border-l-2 border-l-black' : ''}`}
+                              >
                                 {/* Compact Log Line */}
                                 <button
                                   onClick={() => setExpandedLogIndex(isExpanded ? null : idx)}
-                                  className="w-full border border-gray-300 hover:border-black hover:bg-gray-50 p-2 text-left transition-colors"
+                                  className={`w-full border hover:border-black hover:bg-gray-50 p-2 text-left transition-colors ${
+                                    isNew ? 'border-black' : 'border-gray-300'
+                                  }`}
                                 >
-                                  <div className="flex items-center gap-3 font-mono text-xs">
+                                  <div className="flex items-center gap-2 font-mono text-xs">
                                     {/* Time */}
                                     <span className="text-gray-500 w-20 flex-shrink-0">
                                       {timestamp ? timestamp.toLocaleTimeString() : '-'}
                                     </span>
+
+                                    {/* Service Badge */}
+                                    {service && (
+                                      <span className={`px-1.5 py-0.5 border rounded-sm text-[10px] flex-shrink-0 ${
+                                        isMcpAgent ? 'border-gray-500 bg-gray-200 text-gray-700' : 'border-black bg-white text-black'
+                                      }`}>
+                                        {isMcpAgent ? 'MCP' : 'EXEC'}
+                                      </span>
+                                    )}
 
                                     {/* Level Badge */}
                                     <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 flex-shrink-0 ${
@@ -1082,7 +1181,7 @@ export function ExecutionDetailsDialog({
                                 {/* Expanded Details */}
                                 {isExpanded && (
                                   <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                       <div>
                                         <span className="font-bold uppercase text-gray-600">Timestamp:</span>
                                         <div className="mt-1">{timestamp ? timestamp.toISOString() : 'N/A'}</div>
@@ -1091,6 +1190,12 @@ export function ExecutionDetailsDialog({
                                         <span className="font-bold uppercase text-gray-600">Level:</span>
                                         <div className="mt-1">{level.toUpperCase()}</div>
                                       </div>
+                                      {service && (
+                                        <div>
+                                          <span className="font-bold uppercase text-gray-600">Service:</span>
+                                          <div className="mt-1">{isMcpAgent ? 'MCP Agent' : 'Executor'} <span className="text-gray-500 text-[10px]">({service})</span></div>
+                                        </div>
+                                      )}
                                     </div>
 
                                     <div className="border-t-2 border-gray-300 pt-3">
