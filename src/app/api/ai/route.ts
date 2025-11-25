@@ -870,7 +870,9 @@ export async function POST(request: NextRequest) {
 
       // In ask mode, strip any tool calls - AI can discuss tools but not execute them
       if (mode === 'ask' && result.toolCalls.length > 0) {
-        console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response`);
+        const toolNames = result.toolCalls.map(tc => tc.name).join(', ');
+        console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response: ${toolNames}`);
+        result.text = result.text || `I would use: **${toolNames}**\n\nTo execute, switch to **Act** mode using the toggle in the top-right corner.`;
         result.toolCalls = [];
         result.finishReason = 'stop';
       }
@@ -1330,7 +1332,9 @@ export async function POST(request: NextRequest) {
 
     // In ask mode, strip any tool calls - AI can discuss tools but not execute them
     if (mode === 'ask' && result.toolCalls.length > 0) {
-      console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response`);
+      const toolNames = result.toolCalls.map(tc => tc.name).join(', ');
+      console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response: ${toolNames}`);
+      result.text = result.text || `I would use: **${toolNames}**\n\nTo execute, switch to **Act** mode using the toggle in the top-right corner.`;
       result.toolCalls = [];
       result.finishReason = 'stop';
     }
