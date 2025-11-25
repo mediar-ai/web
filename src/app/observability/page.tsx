@@ -17,7 +17,23 @@ import {
   Info,
   AlertTriangle,
   ChevronDown,
+  ChevronsUpDown,
+  Check,
 } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 interface LogEntry {
   Timestamp: string;
@@ -72,6 +88,8 @@ export default function ObservabilityPage() {
     workflows: string[];
     organizations: string[];
     errorCategories: string[];
+    traceIds: string[];
+    executionIds: string[];
   }>({
     hosts: [],
     scopes: [],
@@ -79,7 +97,13 @@ export default function ObservabilityPage() {
     workflows: [],
     organizations: [],
     errorCategories: [],
+    traceIds: [],
+    executionIds: [],
   });
+
+  // Popover open states for comboboxes
+  const [traceIdOpen, setTraceIdOpen] = useState(false);
+  const [executionIdOpen, setExecutionIdOpen] = useState(false);
 
   // Ref for infinite scroll
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -447,23 +471,117 @@ export default function ObservabilityPage() {
                 ))}
               </select>
 
-              {/* Trace ID Input */}
-              <Input
-                type="text"
-                placeholder="Trace ID"
-                value={traceIdFilter}
-                onChange={e => setTraceIdFilter(e.target.value)}
-                className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black w-40"
-              />
+              {/* Trace ID Combobox */}
+              <Popover open={traceIdOpen} onOpenChange={setTraceIdOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={traceIdOpen}
+                    className="w-44 justify-between px-3 py-1.5 border-2 border-black font-mono text-xs h-auto"
+                  >
+                    {traceIdFilter
+                      ? traceIdFilter.slice(0, 12) + '...'
+                      : 'Trace ID'}
+                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search or paste trace ID..."
+                      value={traceIdFilter}
+                      onValueChange={setTraceIdFilter}
+                      className="font-mono text-xs"
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        {traceIdFilter
+                          ? 'Press Enter to use this ID'
+                          : 'No trace IDs found'}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {availableFilters.traceIds.slice(0, 20).map(id => (
+                          <CommandItem
+                            key={id}
+                            value={id}
+                            onSelect={() => {
+                              setTraceIdFilter(id);
+                              setTraceIdOpen(false);
+                            }}
+                            className="font-mono text-xs"
+                          >
+                            <Check
+                              className={cn(
+                                'mr-2 h-3 w-3',
+                                traceIdFilter === id
+                                  ? 'opacity-100'
+                                  : 'opacity-0'
+                              )}
+                            />
+                            {id.slice(0, 20)}...
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
-              {/* Execution ID Input */}
-              <Input
-                type="text"
-                placeholder="Execution ID"
-                value={executionIdFilter}
-                onChange={e => setExecutionIdFilter(e.target.value)}
-                className="px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black w-32"
-              />
+              {/* Execution ID Combobox */}
+              <Popover open={executionIdOpen} onOpenChange={setExecutionIdOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={executionIdOpen}
+                    className="w-36 justify-between px-3 py-1.5 border-2 border-black font-mono text-xs h-auto"
+                  >
+                    {executionIdFilter || 'Execution ID'}
+                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-0" align="start">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search execution ID..."
+                      value={executionIdFilter}
+                      onValueChange={setExecutionIdFilter}
+                      className="font-mono text-xs"
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        {executionIdFilter
+                          ? 'Press Enter to use this ID'
+                          : 'No execution IDs found'}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {availableFilters.executionIds.slice(0, 20).map(id => (
+                          <CommandItem
+                            key={id}
+                            value={id}
+                            onSelect={() => {
+                              setExecutionIdFilter(id);
+                              setExecutionIdOpen(false);
+                            }}
+                            className="font-mono text-xs"
+                          >
+                            <Check
+                              className={cn(
+                                'mr-2 h-3 w-3',
+                                executionIdFilter === id
+                                  ? 'opacity-100'
+                                  : 'opacity-0'
+                              )}
+                            />
+                            {id}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
               {/* Workflow Filter */}
               <select

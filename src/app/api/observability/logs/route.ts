@@ -60,7 +60,9 @@ export async function GET(request: NextRequest) {
           groupArray(DISTINCT SeverityText) as severities,
           groupArray(DISTINCT if(mapContains(LogAttributes, 'workflow_name') AND LogAttributes['workflow_name'] != '', LogAttributes['workflow_name'], '')) as workflows,
           groupArray(DISTINCT if(mapContains(LogAttributes, 'organization_id') AND LogAttributes['organization_id'] != '', LogAttributes['organization_id'], '')) as organizations,
-          groupArray(DISTINCT if(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] != '', LogAttributes['error_category'], '')) as errorCategories
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] != '', LogAttributes['error_category'], '')) as errorCategories,
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'trace_id') AND LogAttributes['trace_id'] != '', LogAttributes['trace_id'], '')) as traceIds,
+          groupArray(DISTINCT if(mapContains(LogAttributes, 'execution_id') AND LogAttributes['execution_id'] != '', LogAttributes['execution_id'], '')) as executionIds
         FROM otel_logs_filtered
         WHERE Timestamp > now() - INTERVAL ${hours} HOUR
       `;
@@ -103,6 +105,14 @@ export async function GET(request: NextRequest) {
           errorCategories: (filtersData.errorCategories || [])
             .filter((s: string) => s)
             .sort(),
+          traceIds: (filtersData.traceIds || [])
+            .filter((s: string) => s)
+            .sort()
+            .slice(0, 100), // Limit to 100 most recent
+          executionIds: (filtersData.executionIds || [])
+            .filter((s: string) => s)
+            .sort((a: string, b: string) => parseInt(b) - parseInt(a)) // Sort descending (newest first)
+            .slice(0, 100), // Limit to 100 most recent
         },
       });
     }
