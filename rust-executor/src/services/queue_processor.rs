@@ -6,7 +6,6 @@ use tokio::sync::Semaphore;
 use tokio::time::interval;
 
 use tracing::{error, info, info_span, warn, Instrument};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -144,31 +143,16 @@ impl QueueProcessor {
                     }
                 };
 
-            // Generate a trace_id for this execution
-            // We create a proper OpenTelemetry context so ALL logs within this span
-            // automatically get the TraceId in ClickHouse
-            use opentelemetry::trace::{SpanContext, SpanId, TraceContextExt, TraceFlags, TraceId, TraceState};
-            use opentelemetry::Context;
-
-            let trace_id_bytes: [u8; 16] = rand::random();
-            let span_id_bytes: [u8; 8] = rand::random();
-            let otel_trace_id = TraceId::from_bytes(trace_id_bytes);
-            let otel_span_id = SpanId::from_bytes(span_id_bytes);
-            let trace_id = otel_trace_id.to_string();
-
-            // Create an OpenTelemetry SpanContext with our custom TraceId
-            let span_context = SpanContext::new(
-                otel_trace_id,
-                otel_span_id,
-                TraceFlags::SAMPLED,
-                true, // is_remote
-                TraceState::default(),
-            );
-
-            // Create the OpenTelemetry context with our span context
-            let otel_context = Context::current().with_remote_span_context(span_context);
+            // Generate a trace_id for this execution using the tracing-opentelemetry layer.
+            // The tracing-opentelemetry layer automatically creates OTEL spans from tracing spans,
+            // and the OpenTelemetryTracingBridge will pick up the TraceId from those spans.
+            //
+            // IMPORTANT: We DON'T try to set a custom TraceId here. Instead, we let the
+            // tracing-opentelemetry layer generate the TraceId when the span is created.
+            // We then read it back using current_trace_id() and store it in the database.
 
             // Create a tracing span with execution context
+            // The tracing-opentelemetry layer will create an OTEL span for this
             let execution_span = info_span!(
                 "queue_process_execution",
                 execution_id = %execution.id,
@@ -176,16 +160,15 @@ impl QueueProcessor {
                 workflow_name = %workflow.name,
                 organization_id = %workflow.organization_id.as_ref().unwrap_or(&"".to_string()),
                 machine_id = %self.machine_id,
-                trace_id = %trace_id,
                 otel.kind = "consumer"
             );
 
-            // Link the tracing span to our OpenTelemetry context
-            // This makes ALL logs within this span automatically have the correct TraceId
-            execution_span.set_parent(otel_context);
-
-            // Enter the span for synchronous logging (logs within this function)
+            // Enter the span - this activates the OTEL span created by the tracing-opentelemetry layer
             let _span_guard = execution_span.enter();
+
+            // Now get the trace_id that was assigned by the tracing-opentelemetry layer
+            let trace_id = crate::telemetry::current_trace_id()
+                .unwrap_or_else(|| format!("exec-{}", execution.id));
 
             info!(
                 execution_id = %execution.id,
