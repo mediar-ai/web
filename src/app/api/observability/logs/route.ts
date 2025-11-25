@@ -79,7 +79,9 @@ export async function GET(request: NextRequest) {
         .filter((s: string) => s && s !== '')
         .filter((s: string) => !s.startsWith('SandboxHost-')); // Filter out Modal sandbox names
 
-      const services = (filtersData.services || []).filter((s: string) => s && s !== '');
+      const services = (filtersData.services || []).filter(
+        (s: string) => s && s !== ''
+      );
 
       // Combine services and meaningful hosts, prefer services
       const hostOptions = Array.from(new Set([...services, ...hosts]));
@@ -89,10 +91,18 @@ export async function GET(request: NextRequest) {
         filters: {
           hosts: hostOptions.sort(),
           scopes: (filtersData.scopes || []).filter((s: string) => s).sort(),
-          severities: (filtersData.severities || []).filter((s: string) => s).sort(),
-          workflows: (filtersData.workflows || []).filter((s: string) => s).sort(),
-          organizations: (filtersData.organizations || []).filter((s: string) => s).sort(),
-          errorCategories: (filtersData.errorCategories || []).filter((s: string) => s).sort(),
+          severities: (filtersData.severities || [])
+            .filter((s: string) => s)
+            .sort(),
+          workflows: (filtersData.workflows || [])
+            .filter((s: string) => s)
+            .sort(),
+          organizations: (filtersData.organizations || [])
+            .filter((s: string) => s)
+            .sort(),
+          errorCategories: (filtersData.errorCategories || [])
+            .filter((s: string) => s)
+            .sort(),
         },
       });
     }
@@ -113,12 +123,12 @@ export async function GET(request: NextRequest) {
       // Hierarchical severity filtering: show selected level AND all higher severities
       // Log level hierarchy: DEBUG (1) < INFO (2) < WARN (3) < ERROR (4) < FATAL (5)
       const severityLevels: Record<string, number> = {
-        'DEBUG': 1,
-        'INFO': 2,
-        'WARN': 3,
-        'WARNING': 3, // alias for WARN
-        'ERROR': 4,
-        'FATAL': 5,
+        DEBUG: 1,
+        INFO: 2,
+        WARN: 3,
+        WARNING: 3, // alias for WARN
+        ERROR: 4,
+        FATAL: 5,
       };
 
       const selectedLevel = severityLevels[severityFilter.toUpperCase()] || 0;
@@ -134,7 +144,10 @@ export async function GET(request: NextRequest) {
       }
     }
     if (traceIdFilter) {
-      conditions.push(`TraceId = '${traceIdFilter}'`);
+      // Search in both OTEL TraceId and custom trace_id attribute
+      conditions.push(
+        `(TraceId = '${traceIdFilter}' OR (mapContains(LogAttributes, 'trace_id') AND LogAttributes['trace_id'] = '${traceIdFilter}'))`
+      );
     }
     if (searchQuery) {
       conditions.push(
@@ -144,16 +157,24 @@ export async function GET(request: NextRequest) {
 
     // New LogAttributes filters
     if (executionIdFilter) {
-      conditions.push(`(mapContains(LogAttributes, 'execution_id') AND LogAttributes['execution_id'] = '${executionIdFilter}')`);
+      conditions.push(
+        `(mapContains(LogAttributes, 'execution_id') AND LogAttributes['execution_id'] = '${executionIdFilter}')`
+      );
     }
     if (workflowFilter) {
-      conditions.push(`(mapContains(LogAttributes, 'workflow_name') AND LogAttributes['workflow_name'] = '${workflowFilter}')`);
+      conditions.push(
+        `(mapContains(LogAttributes, 'workflow_name') AND LogAttributes['workflow_name'] = '${workflowFilter}')`
+      );
     }
     if (organizationFilter) {
-      conditions.push(`(mapContains(LogAttributes, 'organization_id') AND LogAttributes['organization_id'] = '${organizationFilter}')`);
+      conditions.push(
+        `(mapContains(LogAttributes, 'organization_id') AND LogAttributes['organization_id'] = '${organizationFilter}')`
+      );
     }
     if (errorCategoryFilter) {
-      conditions.push(`(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] = '${errorCategoryFilter}')`);
+      conditions.push(
+        `(mapContains(LogAttributes, 'error_category') AND LogAttributes['error_category'] = '${errorCategoryFilter}')`
+      );
     }
 
     const whereClause =
@@ -170,6 +191,7 @@ export async function GET(request: NextRequest) {
         TraceId,
         SpanId,
         if(mapContains(ResourceAttributes, 'host.name') AND ResourceAttributes['host.name'] != '', ResourceAttributes['host.name'], ServiceName) as HostName,
+        if(mapContains(LogAttributes, 'trace_id'), LogAttributes['trace_id'], '') as trace_id,
         if(mapContains(LogAttributes, 'execution_id'), LogAttributes['execution_id'], '') as execution_id,
         if(mapContains(LogAttributes, 'workflow_id'), LogAttributes['workflow_id'], '') as workflow_id,
         if(mapContains(LogAttributes, 'workflow_name'), LogAttributes['workflow_name'], '') as workflow_name,
