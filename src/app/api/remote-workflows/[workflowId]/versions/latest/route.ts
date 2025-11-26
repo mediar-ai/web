@@ -34,7 +34,9 @@ export async function DELETE(
 
       if (validation.valid && validation.userId) {
         authenticatedUserId = validation.userId;
-        console.log(`🔐 Desktop token validated for user ${authenticatedUserId}`);
+        orgId = validation.orgId ?? null;
+        has = () => false; // Desktop auth doesn't support Clerk role checks
+        console.log(`🔐 Desktop token validated for user ${authenticatedUserId} (orgId: ${orgId})`);
       }
     }
 
@@ -90,7 +92,7 @@ export async function DELETE(
 
     // Check workflow_organization_access table for admin access
     let hasOrgAccess = false;
-    if (orgId && isOrgAdmin) {
+    if (orgId) {
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('access_level')
@@ -116,11 +118,11 @@ export async function DELETE(
     // Allow deletion if:
     // - User is in Mediar org or is a Mediar admin (can delete any workflow version)
     // - User is the workflow owner
-    // - User is org admin in the same org (legacy organization_id field)
-    // - User is org admin AND organization has admin access via workflow_organization_access table
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    // - User is in the same org (organization_id field) - supports desktop users
+    // - User's organization has admin access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !isSameOrg && !hasOrgAccess) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized deletion of version from workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized deletion of version from workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         { error: 'Forbidden - You do not have permission to delete workflow versions' },

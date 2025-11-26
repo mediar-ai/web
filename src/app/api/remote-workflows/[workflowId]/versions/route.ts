@@ -83,11 +83,11 @@ export async function GET(
     // Allow access if:
     // - User is in Mediar org or is a Mediar admin (can see all workflows)
     // - User is the workflow owner
-    // - User is org admin in the same org (legacy organization_id field)
-    // - User's organization has access via workflow_organization_access table (org admins only)
-    if (!isMediarOrg && !isMediarAdmin && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    // - User is in the same org (organization_id field) - supports desktop users
+    // - User's organization has access via workflow_organization_access table
+    if (!isMediarOrg && !isMediarAdmin && !isOwner && !isSameOrg && !hasOrgAccess) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized access to workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized access to workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         { error: 'Forbidden - You do not have access to this workflow' },
@@ -407,11 +407,11 @@ export async function POST(
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify all workflows)
     // - User is the workflow owner
-    // - User is org admin in the same org (legacy organization_id field)
+    // - User is in the same org (organization_id field) - supports desktop users
     // - User's organization has write/admin access via workflow_organization_access table
-    if (!isMediarOrgPost && !isMediarAdminPost && !isOwner && !(isOrgAdmin && isSameOrg) && !hasOrgAccess) {
+    if (!isMediarOrgPost && !isMediarAdminPost && !isOwner && !isSameOrg && !hasOrgAccess) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isOrgAdmin: ${isOrgAdmin}) attempted unauthorized version creation for workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized version creation for workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         { error: 'Forbidden - You do not have permission to modify this workflow' },
