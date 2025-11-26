@@ -3,6 +3,7 @@ import {
   extractRequestParams,
   normalizeEndpointPath,
 } from '@/lib/responseCache';
+import { redactSensitiveData } from '@/lib/redactSecrets';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
@@ -394,7 +395,7 @@ export async function GET(
         // Execution details
         modal_call_id: typedExecution.modal_call_id,
         client_id: typedExecution.client_id,
-        execution_params: typedExecution.execution_params || {},
+        execution_params: redactSensitiveData(typedExecution.execution_params || {}),
 
         // Machine assignment info
         assigned_machine_id: typedExecution.assigned_machine_id || null,
@@ -406,8 +407,8 @@ export async function GET(
 
         // Request Parameters - Enhanced with both original and processed formats
         request_parameters: {
-          // The parameters as sent in the original request
-          original_request: typedExecution.execution_params || {},
+          // The parameters as sent in the original request (sensitive data redacted)
+          original_request: redactSensitiveData(typedExecution.execution_params || {}),
 
           // Parameter count for quick reference
           parameter_count: typedExecution.execution_params
@@ -432,7 +433,7 @@ export async function GET(
 
         // Results (only if completed and available)
         results:
-          isCompleted && typedExecution.results ? typedExecution.results : null,
+          isCompleted && typedExecution.results ? redactSensitiveData(typedExecution.results) : null,
 
         // Human-friendly formatted output (if available)
         formatted_output: typedExecution.formatted_output || null,

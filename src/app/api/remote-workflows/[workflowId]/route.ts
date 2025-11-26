@@ -460,45 +460,67 @@ export async function PATCH(
       `[SUCCESS] Updated workflow ${workflowIdNum} (${workflow.name})`
     );
 
-    // Sync name change to GitHub if workflow has GitHub path (fire-and-forget)
-    if (body.name && workflow.github_path) {
-      console.log(`📤 Syncing name change to GitHub (async) for workflow ${workflowIdNum}...`);
+    // Sync name/description change to GitHub package.json (fire-and-forget)
+    // This is the single source of truth for TypeScript workflows
+    if ((body.name || body.description !== undefined) && workflow.github_path) {
+      console.log(`📤 Syncing metadata to GitHub package.json (async) for workflow ${workflowIdNum}...`);
 
-      // Fire-and-forget: fetch YAML and push to GitHub without blocking
+      // Fire-and-forget: update package.json without blocking
       (async () => {
         try {
-          const { data: latestVersion } = await supabase
-            .from('deployed_workflow_versions')
-            .select('automation_sequence_yaml')
-            .eq('workflow_id', workflowIdNum)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+          const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
 
-          if (latestVersion?.automation_sequence_yaml) {
-            const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
+          // Update package.json (will gracefully skip if not found - legacy YAML workflow)
+          const packageResult = await githubWorkflowManager.updatePackageJson(
+            workflowIdNum,
+            {
+              name: body.name || undefined,
+              description: body.description,
+            },
+            { email: userEmail || undefined }
+          );
 
-            const result = await githubWorkflowManager.saveWorkflow(
-              body.name,
-              latestVersion.automation_sequence_yaml,
-              false,
-              `Rename workflow: ${workflow.name} → ${body.name}`,
-              false,
-              workflowIdNum,
-              workflow.organization_id || undefined,
-              { email: userEmail || undefined }
-            );
-
-            if (result.success) {
-              console.log(`✅ GitHub metadata updated: ${result.path}`);
-            } else {
-              console.warn(`⚠️ GitHub sync failed: ${result.error}`);
+          if (packageResult.success) {
+            if (packageResult.path) {
+              console.log(`✅ GitHub package.json updated: ${packageResult.path}`);
+            } else if (packageResult.error?.includes('legacy')) {
+              console.log(`ℹ️ Skipped package.json update (legacy YAML workflow)`);
             }
           } else {
-            console.log(`ℹ️ No YAML version found - skipping GitHub sync`);
+            console.warn(`⚠️ GitHub package.json sync failed: ${packageResult.error}`);
+          }
+
+          // Also update YAML metadata comment if name changed
+          if (body.name) {
+            const { data: latestVersion } = await supabase
+              .from('deployed_workflow_versions')
+              .select('automation_sequence_yaml')
+              .eq('workflow_id', workflowIdNum)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+
+            if (latestVersion?.automation_sequence_yaml) {
+              const result = await githubWorkflowManager.saveWorkflow(
+                body.name,
+                latestVersion.automation_sequence_yaml,
+                false,
+                `Rename workflow: ${workflow.name} → ${body.name}`,
+                false,
+                workflowIdNum,
+                workflow.organization_id || undefined,
+                { email: userEmail || undefined }
+              );
+
+              if (result.success) {
+                console.log(`✅ GitHub YAML metadata updated: ${result.path}`);
+              } else {
+                console.warn(`⚠️ GitHub YAML sync failed: ${result.error}`);
+              }
+            }
           }
         } catch (error) {
-          console.error('GitHub rename sync error:', error);
+          console.error('GitHub metadata sync error:', error);
         }
       })();
     }
