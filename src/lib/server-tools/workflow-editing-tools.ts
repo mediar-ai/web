@@ -360,6 +360,135 @@ export const serverSideWorkflowTools = {
   },
 
   /**
+   * Add a new step to the workflow
+   */
+  add_workflow_step: {
+    description: 'Add a new step to the currently focused workflow',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        step: {
+          type: SchemaType.OBJECT,
+          description: 'Step definition',
+          properties: {
+            name: { type: SchemaType.STRING, description: 'Step name' },
+            id: { type: SchemaType.STRING, description: 'Step ID (optional, auto-generated if not provided)' },
+            tool_name: { type: SchemaType.STRING, description: 'MCP tool to execute' },
+            arguments: {
+              type: SchemaType.OBJECT,
+              description: 'Tool arguments object',
+              additionalProperties: true
+            },
+            description: { type: SchemaType.STRING, description: 'Step description (optional)' },
+            delay_ms: { type: SchemaType.NUMBER, description: 'Delay in milliseconds (optional)' },
+            continue_on_error: { type: SchemaType.BOOLEAN, description: 'Continue if step fails (optional)' },
+            retries: { type: SchemaType.NUMBER, description: 'Number of retries (optional)' },
+            timeout_ms: { type: SchemaType.NUMBER, description: 'Timeout in milliseconds (optional)' },
+          },
+          required: ['tool_name']
+        },
+        position: {
+          type: SchemaType.NUMBER,
+          description: 'Position to insert step (0-based index, omit to append at end)'
+        }
+      },
+      required: ['step']  // workflow_id removed - injected by backend from request context
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        step: CommandStep;
+        position?: number | null;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Adding step:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Use content based on preferred format
+        let content: string;
+        let parsed: any;
+
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          // For jsonb format, use JSON content directly
+          parsed = currentVersion.jsonContent;
+          content = JSON.stringify(parsed);
+        } else {
+          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
+          content = currentVersion.yamlContent ||
+                   JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
+        const steps = getSteps(parsed);
+
+        // Add the new step
+        const position = params.position === null ? undefined : params.position;
+        const insertPosition = (position !== undefined && position >= 0 && position <= steps.length)
+          ? position
+          : steps.length;
+
+        if (position !== undefined && position >= 0 && position <= steps.length) {
+          steps.splice(position, 0, params.step);
+        } else {
+          steps.push(params.step);
+        }
+
+        setSteps(parsed, steps);
+
+        // Convert back to YAML (always use YAML for GitHub sync)
+        const newYamlContent = yaml.dump(parsed);
+
+        // Create new version using the service (direct call, no API overhead)
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes: `Added step: ${params.step.name || params.step.id || 'unnamed'}`,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
+
+        console.log('[SERVER-WORKFLOW-EDIT] Step added successfully, version:', result.version?.version_number);
+
+        const addedStep = params.step;
+
+        return {
+          success: true,
+          message: `Successfully added step "${addedStep.name || addedStep.id || 'unnamed'}" at position ${insertPosition + 1}. Workflow now has ${steps.length} step${steps.length !== 1 ? 's' : ''}.`,
+          action: 'added',
+          step_name: addedStep.name || addedStep.id || 'unnamed',
+          step_index: insertPosition,
+          added_step: addedStep,
+          total_step_count: steps.length,
+          version_id: result.version?.id,
+          version_number: result.version?.version_number,
+          workflow_updated: true,
+          workflow_data: {
+            id: params.workflow_id,
+            yaml_content: newYamlContent,
+            step_count: steps.length,
+            last_modified: new Date().toISOString()
+          }
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
    * Remove a step from the workflow
    */
   remove_workflow_step: {
