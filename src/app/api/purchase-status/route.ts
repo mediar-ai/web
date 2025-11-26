@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createServerClient } from '@/lib/supabase-server';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { userId } = await auth();
 
@@ -11,7 +11,32 @@ export async function GET() {
     }
 
     const supabase = createServerClient();
+    const { searchParams } = new URL(request.url);
+    const token = searchParams.get('token');
 
+    // If token provided, validate it belongs to this user
+    if (token) {
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('mediar_app_credits_purchase')
+        .select('id, price, paid_at')
+        .eq('purchase_token', token)
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+
+      if (tokenError && tokenError.code !== 'PGRST116') {
+        console.error('purchase-status: token validation error', tokenError);
+      }
+
+      if (tokenData) {
+        return NextResponse.json({
+          hasPurchased: true,
+          purchase: tokenData,
+        });
+      }
+    }
+
+    // Fall back to checking by user_id
     const { data, error } = await supabase
       .from('mediar_app_credits_purchase')
       .select('id, price, paid_at')
@@ -20,7 +45,6 @@ export async function GET() {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      // PGRST116 = no rows returned, which is fine
       console.error('purchase-status: error', error);
       return NextResponse.json(
         { error: 'failed to check purchase status' },

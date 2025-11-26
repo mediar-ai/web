@@ -69,8 +69,8 @@ function HomePageContent() {
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  // Check for purchase success from Stripe redirect
-  const purchaseSuccess = searchParams.get('purchase') === 'success';
+  // Get token from Stripe redirect for validation
+  const purchaseToken = searchParams.get('token');
 
   // Redirect unauthenticated users to sign-in
   useEffect(() => {
@@ -107,23 +107,23 @@ function HomePageContent() {
 
     const checkPurchaseStatus = async () => {
       try {
-        const response = await fetch('/api/purchase-status');
+        const url = purchaseToken
+          ? `/api/purchase-status?token=${encodeURIComponent(purchaseToken)}`
+          : '/api/purchase-status';
+        const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
-          setHasPurchased(data.hasPurchased || purchaseSuccess);
+          setHasPurchased(data.hasPurchased);
         }
       } catch (error) {
         console.error('Error checking purchase status:', error);
-        if (purchaseSuccess) {
-          setHasPurchased(true);
-        }
       } finally {
         setCheckingPurchase(false);
       }
     };
 
     checkPurchaseStatus();
-  }, [userId, purchaseSuccess]);
+  }, [userId, purchaseToken]);
 
   const handlePriceLoaded = useCallback((price: number) => {
     setCurrentPrice(price);
@@ -245,7 +245,13 @@ function HomePageContent() {
             </Card>
 
             {/* Desktop App */}
-            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+            <Card
+              className={`border-2 border-black hover:shadow-lg transition-shadow flex flex-col ${
+                purchaseToken && hasPurchased
+                  ? 'ring-4 ring-black ring-offset-2 shadow-lg'
+                  : ''
+              }`}
+            >
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
                   <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
@@ -275,7 +281,13 @@ function HomePageContent() {
                       download
                       onClick={handleDownloadClick}
                     >
-                      <Button className="w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2">
+                      <Button
+                        className={`w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2 ${
+                          purchaseToken
+                            ? 'animate-pulse ring-2 ring-black ring-offset-2'
+                            : ''
+                        }`}
+                      >
                         DOWNLOAD APP (Windows)
                       </Button>
                     </a>
