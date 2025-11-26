@@ -6,6 +6,7 @@ import {
   getLogsByTraceId,
   getTraceIdForExecution,
   getMcpAgentLogs,
+  getMcpAgentLogsByExecutionId,
 } from '@/lib/clickhouse';
 
 // Transform execution_logs to the format expected by the UI
@@ -291,14 +292,24 @@ export async function GET(
               ? new Date(completedAt.getTime() + 5000) // 5 seconds after
               : new Date(); // Now if still running
 
-            // Note: We don't filter by hostname since mcp_endpoint stores IP (e.g. 40.76.118.115)
-            // but ClickHouse has hostname (e.g. mcp-vm2). Time window is narrow enough to avoid
-            // cross-contamination from other executions.
-            mcpLogs = await getMcpAgentLogs(
+            // PRIORITY: Search by execution_id in log body (more accurate than time window)
+            // This requires the MCP agent to include execution_id in log messages
+            mcpLogs = await getMcpAgentLogsByExecutionId(
+              executionIdNum,
               expandedStart,
-              expandedEnd,
-              undefined // No hostname filter - query all MCP logs in time window
+              expandedEnd
             );
+
+            // FALLBACK: If no logs found with execution_id, fall back to time window
+            // This handles older MCP agent versions that don't include execution_id
+            if (mcpLogs.length === 0) {
+              mcpLogs = await getMcpAgentLogs(
+                expandedStart,
+                expandedEnd,
+                undefined // No hostname filter
+              );
+            }
+
             if (mcpLogs.length > 0) {
               console.log(
                 `[LOGS] Found ${mcpLogs.length} MCP agent logs for execution ${executionIdNum}`
