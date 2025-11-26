@@ -238,6 +238,36 @@ impl From<anyhow::Error> for ExecutorError {
     }
 }
 
+// Conversion from sqlx::Error for database operations
+impl From<sqlx::Error> for ExecutorError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Database {
+            message: err.to_string(),
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+// Conversion from std::io::Error
+impl From<std::io::Error> for ExecutorError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Internal {
+            message: format!("IO error: {}", err),
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+// Conversion from serde_json::Error
+impl From<serde_json::Error> for ExecutorError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Internal {
+            message: format!("JSON error: {}", err),
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
