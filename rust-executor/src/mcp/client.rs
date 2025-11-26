@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Clone)]
 pub enum McpTransport {
@@ -288,13 +288,30 @@ impl McpClient {
         max_retries: u32,
     ) -> Result<Value> {
         let mut retry_count = 0;
+        let start_time = std::time::Instant::now();
+
+        info!(
+            tool_name = %tool_name,
+            max_retries = %max_retries,
+            "Starting MCP tool execution with retry"
+        );
 
         loop {
             match self
                 .execute_tool(tool_name.clone(), arguments.clone())
                 .await
             {
-                Ok(result) => return Ok(result),
+                Ok(result) => {
+                    if retry_count > 0 {
+                        info!(
+                            tool_name = %tool_name,
+                            retry_count = %retry_count,
+                            total_elapsed_ms = %start_time.elapsed().as_millis(),
+                            "MCP tool succeeded after retries"
+                        );
+                    }
+                    return Ok(result);
+                }
                 Err(e) => {
                     let error_str = e.to_string();
                     let is_retryable = error_str.contains("401")
@@ -308,11 +325,13 @@ impl McpClient {
                         retry_count += 1;
                         let delay = Duration::from_secs(2u64.pow(retry_count));
                         warn!(
-                            "Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})",
-                            error_str,
-                            delay.as_secs(),
-                            retry_count,
-                            max_retries
+                            tool_name = %tool_name,
+                            error = %error_str,
+                            retry_count = %retry_count,
+                            max_retries = %max_retries,
+                            delay_secs = %delay.as_secs(),
+                            is_retryable = %is_retryable,
+                            "MCP tool execution failed, retrying"
                         );
 
                         // Clear cached service on retryable errors
@@ -324,6 +343,14 @@ impl McpClient {
 
                         sleep(delay).await;
                     } else {
+                        error!(
+                            tool_name = %tool_name,
+                            error = %error_str,
+                            retry_count = %retry_count,
+                            is_retryable = %is_retryable,
+                            total_elapsed_ms = %start_time.elapsed().as_millis(),
+                            "MCP tool execution failed permanently"
+                        );
                         return Err(e);
                     }
                 }
@@ -380,7 +407,21 @@ impl McpClient {
         tool_name: String,
         arguments: Option<Map<String, Value>>,
     ) -> Result<Value> {
-        info!("Executing tool: {} with args: {:?}", tool_name, arguments);
+        let start_time = std::time::Instant::now();
+        info!(
+            tool_name = %tool_name,
+            transport = %match &self.transport {
+                McpTransport::Http(url) => format!("http:{}", url),
+                McpTransport::Stdio(cmd) => format!("stdio:{}", cmd.first().unwrap_or(&"unknown".to_string())),
+            },
+            has_arguments = %arguments.is_some(),
+            "Executing MCP tool"
+        );
+        debug!(
+            tool_name = %tool_name,
+            arguments = %serde_json::to_string(&arguments).unwrap_or_default(),
+            "MCP tool call arguments"
+        );
 
         let result = match &self.transport {
             McpTransport::Http(url) => {
@@ -462,6 +503,31 @@ impl McpClient {
 
         // Use shared response parser
         let parsed_result = Self::parse_tool_result(result);
+        let elapsed_ms = start_time.elapsed().as_millis();
+
+        match &parsed_result {
+            Ok(value) => {
+                info!(
+                    tool_name = %tool_name,
+                    elapsed_ms = %elapsed_ms,
+                    response_size = %serde_json::to_string(value).map(|s| s.len()).unwrap_or(0),
+                    "MCP tool call succeeded"
+                );
+                debug!(
+                    tool_name = %tool_name,
+                    response = %serde_json::to_string(value).unwrap_or_default(),
+                    "MCP tool call response"
+                );
+            }
+            Err(e) => {
+                error!(
+                    tool_name = %tool_name,
+                    elapsed_ms = %elapsed_ms,
+                    error = %e,
+                    "MCP tool call failed"
+                );
+            }
+        }
 
         parsed_result
     }
