@@ -23,11 +23,12 @@ export async function POST(
     const orgId = authResult.orgId;
     const isMediarOrg = authResult.isMediarOrg;
     const isMediarAdmin = authResult.isMediarAdmin;
+    const authEmail = authResult.email; // Email from desktop token or Clerk
 
     // Still need Clerk's has() function for role checks and get email
     const { auth } = await import('@clerk/nextjs/server');
     const { has, sessionClaims } = await auth();
-    const userEmail = sessionClaims?.email as string || null;
+    const userEmail = authEmail || sessionClaims?.email as string || null;
 
     if (!userId) {
       return NextResponse.json(
@@ -189,7 +190,7 @@ export async function POST(
       // Organization ownership - duplicate belongs to current user's organization
       organization_id: orgId || null,
       // Metadata
-      created_by: null, // Clerk user IDs are not compatible with UUID format
+      created_by: userEmail || userId || null, // Store email or user ID for author tracking
       total_versions: 1,
     };
 

@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
       cron_retry_on_failure: cronConfig?.retryOnFailure !== false,
       cron_retry_count: cronConfig?.retryCount || 3,
       // Metadata
-      created_by: null, // Clerk user IDs are not compatible with UUID format
+      created_by: email || userId || null, // Store email or user ID for author tracking
       total_versions: 1,
     };
 

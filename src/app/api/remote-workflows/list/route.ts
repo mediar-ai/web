@@ -589,6 +589,7 @@ export async function GET(request: NextRequest) {
           `
           id,
           organization_id,
+          created_by,
           estimated_duration_seconds,
           cron_expression,
           cron_timezone,
@@ -617,6 +618,7 @@ export async function GET(request: NextRequest) {
           }
           cronData[cw.id] = {
             organization_id: cw.organization_id,
+            created_by: cw.created_by,
             estimated_duration_seconds: cw.estimated_duration_seconds,
             cron_expression: cw.cron_expression,
             cron_timezone: cw.cron_timezone,
@@ -675,30 +677,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch author names from mediar_users based on organization_id
-    const authorNames: Record<string, string> = {};
-    const orgIds = [...new Set(Object.values(cronData).map(cd => cd.organization_id).filter(Boolean))];
-
-    if (orgIds.length > 0) {
-      // Get first user per organization (by created_at) as the author
-      const { data: authors, error: authorsError } = await supabase
-        .from('mediar_users')
-        .select('organization_id, name, created_at')
-        .in('organization_id', orgIds)
-        .order('created_at', { ascending: true });
-
-      if (!authorsError && authors) {
-        // Keep only first user per org (earliest created_at)
-        authors.forEach(author => {
-          if (author.organization_id && !authorNames[author.organization_id]) {
-            authorNames[author.organization_id] = author.name;
-          }
-        });
-        console.log('[API] Fetched author names for', Object.keys(authorNames).length, 'organizations');
-      } else if (authorsError) {
-        console.error('[API] Error fetching author names:', authorsError);
-      }
-    }
+    // Author names are now stored directly in deployed_workflows.created_by field
+    // (stores email or user ID when workflow is created)
 
     // Fetch all settings workflows for the execution workflows we just fetched
 
@@ -906,9 +886,7 @@ export async function GET(request: NextRequest) {
             automationSequences[workflow.id]?.parent_workflow_id,
           display_order: automationSequences[workflow.id]?.display_order || 0,
           organization_id: automationSequences[workflow.id]?.organization_id,
-          author_name: automationSequences[workflow.id]?.organization_id
-            ? authorNames[automationSequences[workflow.id].organization_id] || null
-            : null,
+          author_name: automationSequences[workflow.id]?.created_by || null,
           // Add cron scheduling fields
           cron_expression: automationSequences[workflow.id]?.cron_expression,
           cron_timezone: automationSequences[workflow.id]?.cron_timezone,
