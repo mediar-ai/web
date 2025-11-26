@@ -177,7 +177,7 @@ impl<'a> TypeScriptExecutor<'a> {
 
         // Load and inject org secrets
         let params_with_secrets = if let Some(params) = &self.execution.execution_params {
-            match crate::services::secrets::load_org_secrets(self.db_pool, clerk_org_id).await {
+            match crate::services::secrets::load_org_secrets(self.db_pool, clerk_org_id, Some(self.execution.id)).await {
                 Ok(secrets) if !secrets.is_empty() => {
                     info!(
                         execution_id = %self.execution.id,
