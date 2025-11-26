@@ -12,7 +12,6 @@
 /// `OpenTelemetryTracingBridge` will pick up the TraceId from those active spans.
 ///
 /// We then use `current_trace_id()` to get the generated TraceId and store it in the database.
-
 use opentelemetry::trace::{SpanContext, SpanId, TraceContextExt, TraceFlags, TraceId, TraceState};
 use opentelemetry::Context;
 use std::sync::{Arc, Mutex};
@@ -26,6 +25,7 @@ struct TestLogCollector {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TestLogEntry {
     message: String,
     trace_id: Option<String>,
@@ -44,15 +44,12 @@ impl<S> tracing_subscriber::Layer<S> for TestLogCollector
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         // Get the current span context from OpenTelemetry
         let otel_trace_id = if let Some(span) = ctx.lookup_current() {
             // Get the OpenTelemetry context from the tracing span
-            let otel_ctx = span.extensions()
+            let otel_ctx = span
+                .extensions()
                 .get::<tracing_opentelemetry::OtelData>()
                 .map(|otel_data| otel_data.parent_cx.clone())
                 .unwrap_or_else(Context::current);
@@ -71,7 +68,9 @@ where
 
         // Collect field values
         let mut fields = std::collections::HashMap::new();
-        let mut visitor = FieldVisitor { fields: &mut fields };
+        let mut visitor = FieldVisitor {
+            fields: &mut fields,
+        };
         event.record(&mut visitor);
 
         let message = fields.get("message").cloned().unwrap_or_default();
@@ -93,11 +92,13 @@ struct FieldVisitor<'a> {
 
 impl<'a> tracing::field::Visit for FieldVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.fields.insert(field.name().to_string(), format!("{:?}", value));
+        self.fields
+            .insert(field.name().to_string(), format!("{:?}", value));
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.fields.insert(field.name().to_string(), value.to_string());
+        self.fields
+            .insert(field.name().to_string(), value.to_string());
     }
 }
 
@@ -128,8 +129,7 @@ fn test_set_parent_propagates_trace_id() {
 
     // Create a minimal tracing-opentelemetry setup
     // Note: In production, this would also have the OpenTelemetryTracingBridge layer
-    let subscriber = tracing_subscriber::registry()
-        .with(collector);
+    let subscriber = tracing_subscriber::registry().with(collector);
 
     // Run within the subscriber context
     tracing::subscriber::with_default(subscriber, || {
@@ -151,7 +151,10 @@ fn test_set_parent_propagates_trace_id() {
 
     // Check the captured logs
     let captured_logs = logs.lock().unwrap();
-    assert!(!captured_logs.is_empty(), "Should have captured at least one log");
+    assert!(
+        !captured_logs.is_empty(),
+        "Should have captured at least one log"
+    );
 
     let log = &captured_logs[0];
     println!("Captured log: {:?}", log);
@@ -171,8 +174,7 @@ fn test_set_parent_propagates_trace_id() {
 fn test_trace_id_field_is_captured() {
     let (collector, logs) = TestLogCollector::new();
 
-    let subscriber = tracing_subscriber::registry()
-        .with(collector);
+    let subscriber = tracing_subscriber::registry().with(collector);
 
     let test_trace_id = "abc123def456";
 
@@ -197,9 +199,6 @@ fn test_trace_id_field_is_captured() {
 /// Test demonstrating the fix: using Context::current_with_span to properly activate the span
 #[test]
 fn test_context_activation_for_trace_id() {
-    use opentelemetry::trace::{Tracer, TracerProvider};
-    use opentelemetry_sdk::trace::TracerProvider as SdkTracerProvider;
-
     // Create a custom TraceId we want to use
     let trace_id_bytes: [u8; 16] = [0xAB; 16];
     let span_id_bytes: [u8; 8] = [0xCD; 8];
@@ -228,8 +227,10 @@ fn test_context_activation_for_trace_id() {
 
     println!("Retrieved trace_id from context: {}", retrieved_trace_id);
 
-    assert_eq!(expected_trace_id, retrieved_trace_id,
-        "Should be able to retrieve the trace_id from the context");
+    assert_eq!(
+        expected_trace_id, retrieved_trace_id,
+        "Should be able to retrieve the trace_id from the context"
+    );
 }
 
 /// Test that the current approach doesn't set TraceId on logs (demonstrating the bug)
@@ -265,7 +266,10 @@ fn test_current_approach_bug_demonstration() {
     let current_span = current_ctx.span();
     let current_span_ctx = current_span.span_context();
 
-    println!("TraceId from Context::current(): {}", current_span_ctx.trace_id());
+    println!(
+        "TraceId from Context::current(): {}",
+        current_span_ctx.trace_id()
+    );
     println!("Is valid: {}", current_span_ctx.is_valid());
 
     // This will show "00000000000000000000000000000000" (invalid) because
@@ -303,7 +307,10 @@ fn test_context_attach_fix() {
     let current_span_ctx = current_span.span_context();
 
     println!("Expected TraceId: {}", expected_trace_id);
-    println!("TraceId from Context::current(): {}", current_span_ctx.trace_id());
+    println!(
+        "TraceId from Context::current(): {}",
+        current_span_ctx.trace_id()
+    );
     println!("Is valid: {}", current_span_ctx.is_valid());
 
     assert!(current_span_ctx.is_valid(), "SpanContext should be valid");
