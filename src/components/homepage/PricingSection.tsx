@@ -125,8 +125,10 @@ export default function PricingSection({ onPriceLoaded }: PricingSectionProps) {
 
       {/* Price history chart */}
       <Card className="border-2 border-black">
-        <CardHeader className="bg-black text-white">
-          <CardTitle className="font-mono">PRICE HISTORY</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="font-mono text-sm uppercase text-gray-600">
+            Price History
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
           <div style={{ width: '100%', height: '200px' }}>
