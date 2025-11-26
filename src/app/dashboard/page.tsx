@@ -13,7 +13,7 @@ import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
 import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
-import { Activity, Workflow, TrendingUp, Zap, Search, Eye, EyeOff, Wand2, Download } from 'lucide-react';
+import { Activity, Workflow, TrendingUp, Zap, Search, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
@@ -1083,20 +1083,6 @@ function DashboardContent() {
                   <span className="font-mono text-xs uppercase">Turnkey Automation</span>
                 </a>
 
-                <a
-                  href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    posthog?.capture('dashboard_download_app', {
-                      timestamp: new Date().toISOString(),
-                    });
-                  }}
-                  className="px-4 py-2 bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-2 text-sm min-h-[42px]"
-                >
-                  <Download className="w-4 h-4" />
-                  <span className="font-mono text-xs uppercase">Download App</span>
-                </a>
               </div>
             </div>
 
@@ -1123,21 +1109,7 @@ function DashboardContent() {
                 </div>
               ) : (
                 <div className="text-center py-12 border-2 border-dashed border-black">
-                  <p className="font-mono text-gray-600 mb-4">No workflows yet. Download the app to get started.</p>
-                  <a
-                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => {
-                      posthog?.capture('dashboard_download_app_empty_state', {
-                        timestamp: new Date().toISOString(),
-                      });
-                    }}
-                    className="inline-flex items-center px-4 py-2 bg-black text-white hover:bg-gray-800 transition-all gap-2 text-sm"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span className="font-mono text-xs uppercase">Download App</span>
-                  </a>
+                  <p className="font-mono text-gray-600">No workflows yet.</p>
                 </div>
               )}
             </div>
