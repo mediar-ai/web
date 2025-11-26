@@ -120,7 +120,6 @@ export function ExecutionDetailsDialog({
   // SSE streaming state
   const [isStreaming, setIsStreaming] = useState(false);
   const [newLogIndices, setNewLogIndices] = useState<Set<number>>(new Set());
-  const [autoScroll, setAutoScroll] = useState(true);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -600,15 +599,6 @@ export function ExecutionDetailsDialog({
               return newLogs;
             });
 
-            // Auto-scroll to bottom if enabled
-            if (autoScroll && logsContainerRef.current) {
-              setTimeout(() => {
-                logsContainerRef.current?.scrollTo({
-                  top: logsContainerRef.current.scrollHeight,
-                  behavior: 'smooth',
-                });
-              }, 50);
-            }
           } else if (data.type === 'completed') {
             setIsStreaming(false);
           } else if (data.type === 'error') {
@@ -639,7 +629,7 @@ export function ExecutionDetailsDialog({
       eventSourceRef.current = null;
       setIsStreaming(false);
     }
-  }, [open, activeTab, execution, autoScroll, fetchExecutionLogs]);
+  }, [open, activeTab, execution, fetchExecutionLogs]);
 
   useEffect(() => {
     if (isTabLoading) {
@@ -1013,20 +1003,16 @@ export function ExecutionDetailsDialog({
               (loadingStates.logs && !executionLogs) ? (
                 <LoadingSkeleton />
               ) : (
-                <div className="space-y-4 h-full flex flex-col">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-muted-foreground">
-                        Real-time server logs from the orchestrator during
-                        workflow execution.
-                      </p>
+                <div className="space-y-3 h-full flex flex-col">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
                       {executionLogs && executionLogs.length > 0 && (
-                        <Badge variant="outline" className="text-xs font-mono">
+                        <Badge variant="outline" className="text-xs font-mono px-2 py-1">
                           {executionLogs.length} logs
                         </Badge>
                       )}
                       {isStreaming && (
-                        <Badge className="bg-black text-white animate-pulse flex items-center gap-1 text-xs">
+                        <Badge className="bg-black text-white animate-pulse flex items-center gap-1.5 text-xs px-2 py-1">
                           <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
                           LIVE
                         </Badge>
@@ -1034,32 +1020,20 @@ export function ExecutionDetailsDialog({
                     </div>
                     <div className="flex items-center gap-2">
                       {execution?.executor_type === 'rust' && (
-                        <>
-                          <Button
-                            variant={autoScroll ? 'default' : 'black-outline'}
-                            size="sm"
-                            className="h-7 px-2"
-                            onClick={() => setAutoScroll(!autoScroll)}
-                            title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
-                          >
-                            <ChevronDown className={`w-3 h-3 mr-1 ${autoScroll ? '' : 'opacity-50'}`} />
-                            Auto-scroll
-                          </Button>
-                          <Button
-                            variant="black-outline"
-                            size="sm"
-                            className="h-7 px-2"
-                            onClick={forceRefreshLogs}
-                            disabled={loadingStates.logs || isStreaming}
-                          >
-                            <RefreshCw
-                              className={`w-3 h-3 mr-1 ${
-                                loadingStates.logs ? 'animate-spin' : ''
-                              }`}
-                            />
-                            Refresh
-                          </Button>
-                        </>
+                        <Button
+                          variant="black-outline"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={forceRefreshLogs}
+                          disabled={loadingStates.logs || isStreaming}
+                        >
+                          <RefreshCw
+                            className={`w-3 h-3 mr-1 ${
+                              loadingStates.logs ? 'animate-spin' : ''
+                            }`}
+                          />
+                          Refresh
+                        </Button>
                       )}
                       {executionLogs && executionLogs.length > 0 && (
                         <>
@@ -1108,7 +1082,8 @@ export function ExecutionDetailsDialog({
                         ref={logsContainerRef}
                         className="flex-1 min-h-0 overflow-auto space-y-1"
                       >
-                        {executionLogs
+                        {[...executionLogs]
+                          .reverse() // Show newest logs first
                           .filter(log => {
                             if (!logSearchQuery) return true;
                             const searchLower = logSearchQuery.toLowerCase();
@@ -1125,8 +1100,10 @@ export function ExecutionDetailsDialog({
                             );
                           })
                           .map((log, idx, filteredArray) => {
-                            // Find original index for highlight tracking
+                            // Find original index for highlight tracking (from original array)
                             const originalIndex = executionLogs?.indexOf(log) ?? idx;
+                            // Display number should be reversed (newest = highest number)
+                            const displayNumber = executionLogs ? executionLogs.length - (executionLogs.indexOf(log)) : idx + 1;
                             const isExpanded = expandedLogIndex === idx;
                             const isNew = newLogIndices.has(originalIndex);
                             const level = log.level || 'info';
@@ -1147,6 +1124,12 @@ export function ExecutionDetailsDialog({
                                   }`}
                                 >
                                   <div className="flex items-center gap-2 font-mono text-xs">
+                                    {/* Log Number */}
+                                    <span className="text-gray-400 w-8 flex-shrink-0 text-right">
+                                      {originalIndex + 1}
+                                    </span>
+                                    <span className="text-gray-300">|</span>
+
                                     {/* Time */}
                                     <span className="text-gray-500 w-20 flex-shrink-0">
                                       {timestamp ? timestamp.toLocaleTimeString() : '-'}
@@ -1154,10 +1137,11 @@ export function ExecutionDetailsDialog({
 
                                     {/* Service Badge */}
                                     {service && (
-                                      <span className={`px-1.5 py-0.5 border rounded-sm text-[10px] flex-shrink-0 ${
-                                        isMcpAgent ? 'border-gray-500 bg-gray-200 text-gray-700' : 'border-black bg-white text-black'
+                                      <span className={`px-1.5 py-0.5 border rounded-sm text-[10px] flex-shrink-0 flex items-center gap-1 ${
+                                        isMcpAgent ? 'border-gray-500 bg-gray-100 text-gray-600' : 'border-black bg-black text-white'
                                       }`}>
-                                        {isMcpAgent ? 'MCP' : 'EXEC'}
+                                        <Monitor className="w-2.5 h-2.5" />
+                                        {isMcpAgent ? 'SERVER' : 'CLIENT'}
                                       </span>
                                     )}
 
