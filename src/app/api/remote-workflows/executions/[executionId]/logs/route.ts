@@ -5,7 +5,6 @@ import {
   getExecutionLogs,
   getLogsByTraceId,
   getTraceIdForExecution,
-  getMcpAgentLogs,
   getMcpAgentLogsByExecutionId,
 } from '@/lib/clickhouse';
 
@@ -292,23 +291,15 @@ export async function GET(
               ? new Date(completedAt.getTime() + 5000) // 5 seconds after
               : new Date(); // Now if still running
 
-            // PRIORITY: Search by execution_id in log body (more accurate than time window)
-            // This requires the MCP agent to include execution_id in log messages
+            // Search by execution_id in log body (accurate per-execution filtering)
+            // Note: We do NOT fall back to time-window filtering because it would merge
+            // logs from multiple concurrent executions. MCP agent must include execution_id
+            // in log messages for proper correlation.
             mcpLogs = await getMcpAgentLogsByExecutionId(
               executionIdNum,
               expandedStart,
               expandedEnd
             );
-
-            // FALLBACK: If no logs found with execution_id, fall back to time window
-            // This handles older MCP agent versions that don't include execution_id
-            if (mcpLogs.length === 0) {
-              mcpLogs = await getMcpAgentLogs(
-                expandedStart,
-                expandedEnd,
-                undefined // No hostname filter
-              );
-            }
 
             if (mcpLogs.length > 0) {
               console.log(

@@ -631,6 +631,22 @@ export function ExecutionDetailsDialog({
     }
   }, [open, activeTab, execution, fetchExecutionLogs]);
 
+  // Polling fallback for running executions when SSE isn't active
+  useEffect(() => {
+    const isRunning =
+      execution &&
+      ['running', 'queued'].includes(execution.status.toLowerCase());
+
+    // Only poll if running, logs tab active, and NOT using SSE streaming
+    if (open && activeTab === 'logs' && isRunning && !isStreaming) {
+      const pollInterval = setInterval(() => {
+        fetchExecutionLogs();
+      }, 2000); // Poll every 2 seconds
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [open, activeTab, execution, isStreaming, fetchExecutionLogs]);
+
   useEffect(() => {
     if (isTabLoading) {
       // Short delay to allow the loading skeleton to render before the potentially blocking content
