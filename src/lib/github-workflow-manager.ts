@@ -56,6 +56,109 @@ export class GitHubWorkflowManager {
       .substring(0, 50);
   }
 
+
+  /**
+   * Update package.json for a workflow (name/description sync from UI)
+   * This is used when users edit workflow metadata in the dashboard
+   */
+  async updatePackageJson(
+    workflowId: number,
+    updates: { name?: string; description?: string },
+    userContext?: UserContext
+  ): Promise<GitHubWorkflowResult> {
+    try {
+      // Get workflow's github_path from Supabase
+      const { data: workflow, error: fetchError } = await supabase
+        .from('deployed_workflows')
+        .select('github_path, github_folder, name')
+        .eq('id', workflowId)
+        .single();
+
+      if (fetchError || !workflow?.github_path) {
+        return {
+          success: false,
+          error: `Workflow ${workflowId} not found or has no github_path (legacy workflow)`
+        };
+      }
+
+      // Derive package.json path from workflow.yaml path
+      const workflowDir = workflow.github_path.replace(/\/[^/]+$/, '');
+      const packageJsonPath = `${workflowDir}/package.json`;
+
+      // Fetch existing package.json from GitHub
+      let existingContent: any = {};
+      let existingSha: string | undefined;
+
+      try {
+        const { data: existingFile } = await this.octokit.repos.getContent({
+          owner: this.owner,
+          repo: this.repo,
+          path: packageJsonPath,
+          ref: this.baseBranch
+        });
+
+        if ('content' in existingFile && existingFile.type === 'file') {
+          existingContent = JSON.parse(
+            Buffer.from(existingFile.content, 'base64').toString('utf-8')
+          );
+          existingSha = existingFile.sha;
+        }
+      } catch (error: any) {
+        if (error.status === 404) {
+          return {
+            success: false,
+            error: `No package.json found for workflow ${workflowId} (legacy workflow without TypeScript)`
+          };
+        }
+        throw error;
+      }
+
+      // Update fields
+      if (updates.name !== undefined) {
+        existingContent.name = updates.name
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .substring(0, 214);
+      }
+      if (updates.description !== undefined) {
+        existingContent.description = updates.description;
+      }
+
+      // Build commit message
+      let commitMessage = `Update workflow metadata: ${workflow.name || workflowId}`;
+      if (userContext?.email) {
+        commitMessage = `${commitMessage}\n\nBy: ${userContext.email}`;
+      }
+
+      // Commit updated package.json directly to main
+      const { data } = await this.octokit.repos.createOrUpdateFileContents({
+        owner: this.owner,
+        repo: this.repo,
+        path: packageJsonPath,
+        message: commitMessage,
+        content: Buffer.from(JSON.stringify(existingContent, null, 2) + '\n').toString('base64'),
+        branch: this.baseBranch,
+        ...(existingSha && { sha: existingSha })
+      });
+
+      console.log(`Updated package.json for workflow ${workflowId}: ${packageJsonPath}`);
+
+      return {
+        success: true,
+        path: packageJsonPath,
+        sha: data.commit.sha,
+        workflowId
+      };
+    } catch (error) {
+      console.error('Error updating package.json:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update package.json'
+      };
+    }
+  }
+
   /**
    * Save workflow with human-readable folder name mapped to ID
    */
