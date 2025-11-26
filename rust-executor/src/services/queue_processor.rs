@@ -400,7 +400,8 @@ impl QueueProcessor {
                     // Convert to string for DB storage
                     let formatted_output_str = Some(formatted_output.to_string());
 
-                    WorkflowQueries::update_execution_status(
+                    // Update execution status - retry on failure to ensure status is persisted
+                    if let Err(e) = WorkflowQueries::update_execution_status(
                         &self.db_pool,
                         execution.id,
                         status.clone(),
@@ -410,9 +411,39 @@ impl QueueProcessor {
                                 .ok()
                                 .unwrap_or(serde_json::json!([])),
                         ),
-                        formatted_output_str,
+                        formatted_output_str.clone(),
                     )
-                    .await?;
+                    .await
+                    {
+                        error!(
+                            execution_id = %execution.id,
+                            error = %e,
+                            "Failed to update execution status, retrying..."
+                        );
+                        // Retry once after a short delay
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        if let Err(e2) = WorkflowQueries::update_execution_status(
+                            &self.db_pool,
+                            execution.id,
+                            status.clone(),
+                            workflow_result.error.clone(),
+                            Some(
+                                serde_json::to_value(&workflow_result.step_results)
+                                    .ok()
+                                    .unwrap_or(serde_json::json!([])),
+                            ),
+                            formatted_output_str,
+                        )
+                        .await
+                        {
+                            error!(
+                                execution_id = %execution.id,
+                                error = %e2,
+                                "Failed to update execution status after retry - execution may appear stuck"
+                            );
+                            // Don't return error - continue to notify monitor and log completion
+                        }
+                    }
 
                     info!(
                         execution_id = %execution.id,
