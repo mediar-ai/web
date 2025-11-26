@@ -723,6 +723,7 @@ export async function POST(request: NextRequest) {
       | undefined;
     const thinkingLevel = body.thinkingLevel as 'low' | 'high' | undefined;
     const mode = (body.mode as 'ask' | 'act') || 'act'; // Ask mode: AI can discuss tools but not execute
+    console.log(`[AI API] Mode received: '${mode}' (body.mode was: ${body.mode === undefined ? 'undefined' : `'${body.mode}'`})`);
     const tools = body.tools as
       | Array<{ name: string; description?: string; parameters?: JSONSchema }>
       | undefined;
@@ -1337,6 +1338,15 @@ export async function POST(request: NextRequest) {
       result.text = result.text || `I would use: **${toolNames}**\n\nTo execute, switch to **Act** mode using the toggle in the top-right corner.`;
       result.toolCalls = [];
       result.finishReason = 'stop';
+      // Also strip functionCall from rawParts to prevent saving them to session history
+      // This fixes the "function response parts ≠ function call parts" error when switching from ask to act mode
+      if (result.rawParts) {
+        result.rawParts = result.rawParts.filter((part: any) => !part.functionCall);
+        // Ensure we have at least the text part if rawParts is now empty
+        if (result.rawParts.length === 0 && result.text) {
+          result.rawParts = [{ text: result.text }];
+        }
+      }
     }
 
     let workflowData = null; // Track workflow modifications across all tool executions
