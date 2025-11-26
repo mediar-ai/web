@@ -22,6 +22,7 @@ pub enum McpTransport {
 
 type HttpService = RunningService<RoleClient, ClientInfo>;
 
+#[derive(Clone)]
 pub struct McpClient {
     transport: McpTransport,
     // Keep HTTP service alive for session persistence

@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
-use crate::mcp::{McpClient, WorkflowExecutor};
-use crate::models::{ExecutionStatus, WorkflowSequence};
-use crate::services::{GitHubLoader, MonitorClient, TypeScriptExecutor};
+use crate::mcp::McpClient;
+use crate::models::ExecutionStatus;
+use crate::services::{MonitorClient, TypeScriptExecutor, YamlExecutor};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
@@ -369,32 +369,12 @@ impl QueueProcessor {
                             workflow_id = %workflow.id,
                             format = "yaml",
                             trace_id = %trace_id,
-                            "Executing YAML workflow"
+                            "Executing YAML workflow via YamlExecutor"
                         );
 
-                        // Load workflow sequence
-                        let sequence = self.load_workflow_sequence(&workflow).await?;
-
-                        // Update total steps
-                        let total_steps = sequence.count_steps() as u32;
-                        WorkflowQueries::update_execution_progress(
-                            &self.db_pool,
-                            execution.id,
-                            0,
-                            total_steps,
-                            None,
-                        )
-                        .await?;
-
-                        // Get organization_id from workflow
-                        let org_id = workflow
-                            .organization_id
-                            .as_ref()
-                            .map(|s| s.parse::<i64>().unwrap_or(0));
-
-                        let executor =
-                            WorkflowExecutor::new(mcp_client, sequence, execution.id, org_id);
-                        executor.execute().await
+                        let yaml_executor =
+                            YamlExecutor::new(&self.db_pool, mcp_client, &workflow, &execution);
+                        yaml_executor.execute().await
                     }
                 }
                 .instrument(execution_span.clone()),
@@ -645,63 +625,6 @@ impl QueueProcessor {
         }
 
         Ok(None)
-    }
-
-    /// Load workflow sequence from various sources
-    async fn load_workflow_sequence(
-        &self,
-        workflow: &crate::models::Workflow,
-    ) -> Result<WorkflowSequence> {
-        let github_loader = GitHubLoader::new(std::env::var("GITHUB_TOKEN").ok());
-
-        // Priority 1: Load from GitHub if configured
-        if let Some(github_folder) = &workflow.github_folder {
-            let github_ref = workflow.github_ref.as_deref().unwrap_or("main");
-
-            match github_loader.load_workflow(github_folder, github_ref).await {
-                Ok(yaml_content) => {
-                    info!(
-                        workflow_id = %workflow.id,
-                        github_folder = %github_folder,
-                        github_ref = %github_ref,
-                        "Loaded workflow from GitHub"
-                    );
-                    return WorkflowSequence::from_yaml(&yaml_content);
-                }
-                Err(e) => {
-                    warn!(
-                        workflow_id = %workflow.id,
-                        github_folder = %github_folder,
-                        error = %e,
-                        "Failed to load from GitHub, falling back to database"
-                    );
-                }
-            }
-        }
-
-        // Priority 2: Use YAML from database
-        if let Some(yaml) = &workflow.automation_sequence_yaml {
-            if !yaml.is_empty() {
-                info!(
-                    workflow_id = %workflow.id,
-                    source = "database_yaml",
-                    "Loading workflow from database YAML"
-                );
-                return WorkflowSequence::from_yaml(yaml);
-            }
-        }
-
-        // Priority 3: Use JSON from database
-        if let Some(json) = &workflow.automation_sequence {
-            info!(
-                workflow_id = %workflow.id,
-                source = "database_json",
-                "Loading workflow from database JSON"
-            );
-            return WorkflowSequence::from_value(json.clone());
-        }
-
-        anyhow::bail!("No automation sequence found for workflow")
     }
 
     /// Generate a unique machine ID
