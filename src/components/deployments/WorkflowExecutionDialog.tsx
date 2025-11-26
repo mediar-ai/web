@@ -81,14 +81,28 @@ export function WorkflowExecutionDialog({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Reset initialization tracking when dialog closes
-  const lastInitializedWorkflowIdRef = useRef<number | null>(null);
+  // Track if we've loaded params from localStorage this session
+  const hasLoadedParamsRef = useRef(false);
+
+  // Reset flag and load params from localStorage immediately when dialog opens
   useEffect(() => {
-    if (!open) {
-      // Reset so next open will reload from localStorage
-      lastInitializedWorkflowIdRef.current = null;
+    if (open && workflow) {
+      hasLoadedParamsRef.current = false;
+
+      // Immediately load last-used values from localStorage
+      const storageKey = `workflow-params-${workflow.id}`;
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          const lastUsedParams = JSON.parse(stored);
+          setParameters(lastUsedParams);
+          hasLoadedParamsRef.current = true;
+        }
+      } catch (e) {
+        console.error('Error loading params from localStorage:', e);
+      }
     }
-  }, [open]);
+  }, [open, workflow?.id]);
 
   // Fetch secrets when dialog opens
   useEffect(() => {
@@ -204,21 +218,29 @@ export function WorkflowExecutionDialog({
     fetchTypeScriptMetadata();
   }, [workflow]);
 
+  // Merge any new inputParameter keys with existing params (don't overwrite existing values)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only depend on workflow?.id, not the whole object
   useEffect(() => {
     if (workflow && Object.keys(inputParameters).length > 0) {
-      // Only initialize parameters if workflow ID changed (not just inputParameters)
-      // This prevents wiping user-entered values when metadata finishes loading
-      if (lastInitializedWorkflowIdRef.current === workflow.id) {
-        // Same workflow - don't reset parameters, just update cron status
-        setCronEnabled(workflow.cron_enabled || false);
+      setCronEnabled(workflow.cron_enabled || false);
+
+      // If we already loaded from localStorage, just ensure all keys exist (don't overwrite)
+      if (hasLoadedParamsRef.current) {
+        setParameters(prev => {
+          const updated = { ...prev };
+          Object.entries(inputParameters).forEach(([key, config]: [string, any]) => {
+            // Only add missing keys, don't overwrite existing values
+            if (!(key in updated)) {
+              updated[key] = config.default ?? '';
+            }
+          });
+          return updated;
+        });
         return;
       }
 
-      // Initialize parameters from transformed input_parameters
+      // First time - initialize from localStorage or defaults
       const defaultParams: Record<string, any> = {};
-
-      // Load last-used values from localStorage (workflow-specific)
       const storageKey = `workflow-params-${workflow.id}`;
       let lastUsedParams: Record<string, any> = {};
       try {
@@ -232,13 +254,11 @@ export function WorkflowExecutionDialog({
 
       Object.entries(inputParameters).forEach(
         ([key, config]: [string, any]) => {
-          // Prefer last-used value, fallback to default
           defaultParams[key] = lastUsedParams[key] ?? config.default ?? '';
         }
       );
       setParameters(defaultParams);
-      setCronEnabled(workflow.cron_enabled || false);
-      lastInitializedWorkflowIdRef.current = workflow.id;
+      hasLoadedParamsRef.current = true;
     }
   }, [workflow?.id, inputParameters]);
 
