@@ -127,7 +127,7 @@ export default function PricingSection({ onPriceLoaded }: PricingSectionProps) {
       <Card className="border-2 border-black">
         <CardHeader className="pb-2">
           <CardTitle className="font-mono text-sm uppercase text-gray-600">
-            Price History
+            Minimum Credit Balance Top Up
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
