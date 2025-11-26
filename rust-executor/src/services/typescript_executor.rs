@@ -79,12 +79,29 @@ impl<'a> TypeScriptExecutor<'a> {
 
         // Execute via MCP
         info!(
-            "Calling MCP execute_sequence tool with args: {}",
-            serde_json::to_string_pretty(&args)?
+            execution_id = %self.execution.id,
+            workflow_id = %self.workflow.id,
+            workflow_name = %self.workflow.name,
+            url = %args.get("url").and_then(|v| v.as_str()).unwrap_or("unknown"),
+            has_inputs = %args.get("inputs").map(|v| !v.is_null()).unwrap_or(false),
+            trace_id = %trace_id,
+            "Calling MCP execute_sequence tool"
+        );
+        debug!(
+            execution_id = %self.execution.id,
+            args = %serde_json::to_string(&args).unwrap_or_default(),
+            "Full MCP execute_sequence arguments"
         );
 
         let result = self.call_mcp_execute_sequence(args).await;
         let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        info!(
+            execution_id = %self.execution.id,
+            execution_time_ms = %execution_time_ms,
+            success = %result.is_ok(),
+            "MCP execute_sequence call completed"
+        );
 
         // Parse result
         self.parse_execution_result(result, execution_time_ms)
@@ -219,7 +236,11 @@ impl<'a> TypeScriptExecutor<'a> {
     ) -> Result<WorkflowResult> {
         match result {
             Ok(tool_result) => {
-                debug!("MCP execute_sequence response: {:?}", tool_result);
+                debug!(
+                    execution_id = %self.execution.id,
+                    response = %serde_json::to_string(&tool_result).unwrap_or_default(),
+                    "MCP execute_sequence raw response"
+                );
 
                 let success = Self::determine_success(&tool_result);
                 let error = if !success {
@@ -238,8 +259,25 @@ impl<'a> TypeScriptExecutor<'a> {
                     .count() as u32;
                 let total_steps = step_results.len() as u32;
 
+                info!(
+                    execution_id = %self.execution.id,
+                    workflow_id = %self.workflow.id,
+                    success = %success,
+                    steps_completed = %steps_completed,
+                    total_steps = %total_steps,
+                    screenshot_count = %screenshot_urls.len(),
+                    error = ?error,
+                    "Parsed workflow execution result"
+                );
+
                 if !success {
-                    error!("Workflow execution failed");
+                    error!(
+                        execution_id = %self.execution.id,
+                        workflow_id = %self.workflow.id,
+                        error = ?error,
+                        message = %message,
+                        "Workflow execution failed"
+                    );
                 }
 
                 Ok(WorkflowResult {
@@ -260,11 +298,20 @@ impl<'a> TypeScriptExecutor<'a> {
                 })
             }
             Err(e) => {
-                error!("TypeScript workflow execution failed: {}", e);
-
                 let error_chain = Self::build_error_chain(&e);
                 let detailed_error = Self::extract_mcp_error(&error_chain);
-                let error_message = detailed_error.unwrap_or_else(|| error_chain.join(" → "));
+                let error_message = detailed_error
+                    .clone()
+                    .unwrap_or_else(|| error_chain.join(" → "));
+
+                error!(
+                    execution_id = %self.execution.id,
+                    workflow_id = %self.workflow.id,
+                    error = %e,
+                    error_chain = ?error_chain,
+                    extracted_error = ?detailed_error,
+                    "TypeScript workflow execution failed"
+                );
 
                 Ok(WorkflowResult {
                     success: false,

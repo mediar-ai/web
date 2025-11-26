@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::time::interval;
 
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
@@ -120,15 +120,46 @@ impl QueueProcessor {
     /// Returns Ok(None) if no job was available
     async fn process_next_job(&self) -> Result<Option<(i64, String)>> {
         // Claim the next available execution
+        debug!(machine_id = %self.machine_id, "Attempting to claim execution from queue");
         let execution = WorkflowQueries::claim_execution(&self.db_pool, &self.machine_id).await?;
 
         if let Some(execution) = execution {
-            // Get workflow details
+            info!(
+                execution_id = %execution.id,
+                workflow_id = %execution.workflow_id,
+                mcp_endpoint = ?execution.mcp_endpoint,
+                retry_count = %execution.retry_count,
+                has_params = %execution.execution_params.is_some(),
+                machine_id = %self.machine_id,
+                "Claimed execution from queue"
+            );
+            debug!(
+                execution_id = %execution.id,
+                execution_params = %serde_json::to_string(&execution.execution_params).unwrap_or_default(),
+                "Execution parameters"
+            );
+
             // Get workflow details - if this fails, mark execution as failed
             let workflow =
                 match WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id).await {
-                    Ok(Some(w)) => w,
+                    Ok(Some(w)) => {
+                        info!(
+                            execution_id = %execution.id,
+                            workflow_id = %w.id,
+                            workflow_name = %w.name,
+                            preferred_format = ?w.preferred_format,
+                            organization_id = ?w.organization_id,
+                            has_github_release = %w.github_release_url.is_some(),
+                            "Loaded workflow details"
+                        );
+                        w
+                    }
                     Ok(None) => {
+                        error!(
+                            execution_id = %execution.id,
+                            workflow_id = %execution.workflow_id,
+                            "Workflow not found in database"
+                        );
                         WorkflowQueries::update_execution_status(
                             &self.db_pool,
                             execution.id,
@@ -141,6 +172,12 @@ impl QueueProcessor {
                         return Ok(Some((execution.id, format!("early-fail-{}", execution.id))));
                     }
                     Err(e) => {
+                        error!(
+                            execution_id = %execution.id,
+                            workflow_id = %execution.workflow_id,
+                            error = %e,
+                            "Failed to load workflow from database"
+                        );
                         WorkflowQueries::update_execution_status(
                             &self.db_pool,
                             execution.id,
