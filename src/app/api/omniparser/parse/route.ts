@@ -67,7 +67,10 @@ function parseOmniparserOutput(elementsStr: string): OmniparserElement[] {
  * Returns detected UI elements (text and icons) with bounding boxes.
  *
  * Request body:
- *   { image: string } - base64 encoded PNG image
+ *   {
+ *     image: string,    - base64 encoded PNG image
+ *     imgsz?: number    - icon detection image size (640-1920, default 1920)
+ *   }
  *
  * Response:
  *   {
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { image } = body;
+    const { image, imgsz } = body;
 
     if (!image) {
       return NextResponse.json(
@@ -102,8 +105,11 @@ export async function POST(request: NextRequest) {
     // OmniParser v2 model version
     const VERSION = '49cf3d41b8d3aca1360514e83be4c97131ce8f0d99abfc365526d8384caa88df';
 
+    // Validate and clamp imgsz (640-1920, default 1920 for best detection)
+    const imgszValue = Math.min(1920, Math.max(640, imgsz || 1920));
+
     // Create prediction
-    console.log('[OmniParser] Creating prediction...');
+    console.log(`[OmniParser] Creating prediction with imgsz=${imgszValue}...`);
     const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {
@@ -114,6 +120,7 @@ export async function POST(request: NextRequest) {
         version: VERSION,
         input: {
           image: `data:image/png;base64,${image}`,
+          imgsz: imgszValue,
         },
       }),
     });
