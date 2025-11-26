@@ -81,6 +81,15 @@ export function WorkflowExecutionDialog({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Reset initialization tracking when dialog closes
+  const lastInitializedWorkflowIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open) {
+      // Reset so next open will reload from localStorage
+      lastInitializedWorkflowIdRef.current = null;
+    }
+  }, [open]);
+
   // Fetch secrets when dialog opens
   useEffect(() => {
     if (!open) return;
@@ -195,8 +204,17 @@ export function WorkflowExecutionDialog({
     fetchTypeScriptMetadata();
   }, [workflow]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only depend on workflow?.id, not the whole object
   useEffect(() => {
     if (workflow && Object.keys(inputParameters).length > 0) {
+      // Only initialize parameters if workflow ID changed (not just inputParameters)
+      // This prevents wiping user-entered values when metadata finishes loading
+      if (lastInitializedWorkflowIdRef.current === workflow.id) {
+        // Same workflow - don't reset parameters, just update cron status
+        setCronEnabled(workflow.cron_enabled || false);
+        return;
+      }
+
       // Initialize parameters from transformed input_parameters
       const defaultParams: Record<string, any> = {};
 
@@ -220,6 +238,7 @@ export function WorkflowExecutionDialog({
       );
       setParameters(defaultParams);
       setCronEnabled(workflow.cron_enabled || false);
+      lastInitializedWorkflowIdRef.current = workflow.id;
     }
   }, [workflow?.id, inputParameters]);
 
