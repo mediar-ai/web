@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const sessionId = searchParams.get('session_id');
+    const workflowId = searchParams.get('workflow_id');
     const status = searchParams.get('status') || 'active';
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (sessionId) {
-      query = query.eq('session_id', sessionId);
+    if (workflowId) {
+      query = query.eq('workflow_id', parseInt(workflowId));
     }
 
     const { data, error } = await query;
@@ -80,14 +80,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get session stats if session_id provided
+    // Get workflow stats if workflow_id provided
     let stats = null;
-    if (sessionId) {
+    if (workflowId) {
+      // Calculate stats inline since we're querying by workflow_id now
       const { data: statsData, error: statsError } = await supabase
-        .rpc('get_pool_session_stats', { p_session_id: sessionId });
+        .from('user_step_pool')
+        .select('succeeded, duration_ms, tool_name, app_name, is_selected')
+        .eq('user_id', authenticatedUserId)
+        .eq('workflow_id', parseInt(workflowId))
+        .eq('status', 'active');
 
-      if (!statsError && statsData && statsData.length > 0) {
-        stats = statsData[0];
+      if (!statsError && statsData) {
+        stats = {
+          total_steps: statsData.length,
+          selected_steps: statsData.filter(s => s.is_selected).length,
+          successful_steps: statsData.filter(s => s.succeeded).length,
+          failed_steps: statsData.filter(s => !s.succeeded).length,
+          total_duration_ms: statsData.reduce((sum, s) => sum + (s.duration_ms || 0), 0),
+          unique_tools: new Set(statsData.map(s => s.tool_name)).size,
+          unique_apps: new Set(statsData.filter(s => s.app_name).map(s => s.app_name)).size,
+        };
       }
     }
 
@@ -359,12 +372,12 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const stepId = searchParams.get('id');
-    const sessionId = searchParams.get('session_id');
+    const workflowId = searchParams.get('workflow_id');
     const clearAll = searchParams.get('clear_all') === 'true';
 
-    if (!stepId && !sessionId && !clearAll) {
+    if (!stepId && !workflowId && !clearAll) {
       return corsJsonResponse(
-        { success: false, error: 'Specify id, session_id, or clear_all' },
+        { success: false, error: 'Specify id, workflow_id, or clear_all' },
         { status: 400 },
         origin
       );
@@ -378,8 +391,8 @@ export async function DELETE(request: NextRequest) {
 
     if (stepId) {
       query = query.eq('id', stepId);
-    } else if (sessionId) {
-      query = query.eq('session_id', sessionId);
+    } else if (workflowId) {
+      query = query.eq('workflow_id', parseInt(workflowId));
     }
     // If clearAll is true, we already have the base query
 
