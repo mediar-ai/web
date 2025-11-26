@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
   try {
     // Dual authentication: Desktop token or Clerk session
     let authenticatedUserId: string | null = null;
+    let userEmail: string | null = null;
 
     // Try desktop token first
     const authHeader = request.headers.get('authorization');
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
 
       if (validation.valid) {
         authenticatedUserId = validation.userId!;
+        userEmail = validation.email || null;
       }
     }
 
@@ -95,6 +97,7 @@ export async function POST(request: NextRequest) {
     if (!authenticatedUserId) {
       const clerkAuth = await auth();
       authenticatedUserId = clerkAuth.userId;
+      userEmail = clerkAuth.sessionClaims?.email as string || null;
     }
 
     if (!authenticatedUserId) {
@@ -165,9 +168,7 @@ export async function POST(request: NextRequest) {
       description,
       automation_sequence: automationSequence,
       automation_sequence_yaml: workflowYaml,
-      // Note: created_by expects UUID from auth.users, but we have Clerk user ID (text)
-      // Setting to null for now - ownership tracked via organization_id
-      created_by: null,
+      created_by: userEmail || authenticatedUserId || null, // Store email or user ID for author tracking
       organization_id: organization_id || null,
       is_public,
       category,
