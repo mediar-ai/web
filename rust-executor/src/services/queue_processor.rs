@@ -8,11 +8,10 @@ use tokio::time::interval;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
-use crate::config::{classify_error, ErrorCategory, RetryConfig};
+use crate::config::RetryConfig;
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::McpClient;
-use crate::models::ExecutionStatus;
-use crate::services::{MonitorClient, TypeScriptExecutor, YamlExecutor};
+use crate::services::{ExecutionHandler, MonitorClient, TypeScriptExecutor, YamlExecutor};
 
 pub struct QueueProcessor {
     db_pool: DatabasePool,
@@ -139,6 +138,10 @@ impl QueueProcessor {
                 "Execution parameters"
             );
 
+            // Create execution handler for status updates
+            let handler =
+                ExecutionHandler::new(&self.db_pool, &self.monitor_client, &self.retry_config);
+
             // Get workflow details - if this fails, mark execution as failed
             let workflow =
                 match WorkflowQueries::get_workflow(&self.db_pool, execution.workflow_id).await {
@@ -155,38 +158,18 @@ impl QueueProcessor {
                         w
                     }
                     Ok(None) => {
-                        error!(
-                            execution_id = %execution.id,
-                            workflow_id = %execution.workflow_id,
-                            "Workflow not found in database"
-                        );
-                        WorkflowQueries::update_execution_status(
-                            &self.db_pool,
-                            execution.id,
-                            ExecutionStatus::Failed,
-                            Some("Workflow not found".to_string()),
-                            None,
-                            None,
-                        )
-                        .await?;
+                        handler
+                            .handle_early_failure(execution.id, "Workflow not found")
+                            .await?;
                         return Ok(Some((execution.id, format!("early-fail-{}", execution.id))));
                     }
                     Err(e) => {
-                        error!(
-                            execution_id = %execution.id,
-                            workflow_id = %execution.workflow_id,
-                            error = %e,
-                            "Failed to load workflow from database"
-                        );
-                        WorkflowQueries::update_execution_status(
-                            &self.db_pool,
-                            execution.id,
-                            ExecutionStatus::Failed,
-                            Some(format!("Failed to load workflow: {}", e)),
-                            None,
-                            None,
-                        )
-                        .await?;
+                        handler
+                            .handle_early_failure(
+                                execution.id,
+                                &format!("Failed to load workflow: {}", e),
+                            )
+                            .await?;
                         return Ok(Some((execution.id, format!("early-fail-{}", execution.id))));
                     }
                 };
@@ -249,41 +232,9 @@ impl QueueProcessor {
             if !should_skip_cancellation_check
                 && WorkflowQueries::check_failure_patterns(&self.db_pool, workflow.id).await?
             {
-                warn!(
-                    execution_id = %execution.id,
-                    workflow_id = %workflow.id,
-                    trace_id = %trace_id,
-                    "Workflow has consecutive failures, cancelling execution"
-                );
-
-                // Cancel the execution
-                WorkflowQueries::update_execution_status(
-                    &self.db_pool,
-                    execution.id,
-                    ExecutionStatus::Cancelled,
-                    Some("Auto-cancelled due to consecutive failures".to_string()),
-                    None,
-                    None,
-                )
-                .await?;
-
-                // Notify monitor endpoint about cancellation
-                if let Err(e) = self
-                    .monitor_client
-                    .notify_cancelled(
-                        execution.id,
-                        workflow.id,
-                        Some(workflow.name.clone()),
-                        "Auto-cancelled due to consecutive failures",
-                    )
-                    .await
-                {
-                    warn!(
-                        "Failed to send monitor notification for cancelled execution: {}",
-                        e
-                    );
-                }
-
+                handler
+                    .handle_auto_cancelled(&execution, &workflow, &trace_id)
+                    .await?;
                 return Ok(Some((execution.id, trace_id)));
             } else if should_skip_cancellation_check {
                 info!(
@@ -398,226 +349,24 @@ impl QueueProcessor {
 
             // Update execution status based on result
             let end_time = Utc::now();
-            let execution_time = (end_time - start_time).num_seconds();
 
             match result {
                 Ok(workflow_result) => {
-                    let status = if workflow_result.success {
-                        ExecutionStatus::Completed
-                    } else {
-                        ExecutionStatus::Failed
-                    };
-
-                    // Build formatted_output like Python executor does
-                    // This contains the workflow result summary for display
-                    let formatted_output = serde_json::json!({
-                        "success": workflow_result.success,
-                        "exception": workflow_result.error.is_some(),
-                        "skipped": false,
-                        "message": workflow_result.message.clone(),
-                        "data": workflow_result.data,
-                        "validation": {}
-                    });
-
-                    // Convert to string for DB storage
-                    let formatted_output_str = Some(formatted_output.to_string());
-
-                    // Update execution status - retry on failure to ensure status is persisted
-                    if let Err(e) = WorkflowQueries::update_execution_status(
-                        &self.db_pool,
-                        execution.id,
-                        status.clone(),
-                        workflow_result.error.clone(),
-                        Some(
-                            serde_json::to_value(&workflow_result.step_results)
-                                .ok()
-                                .unwrap_or(serde_json::json!([])),
-                        ),
-                        formatted_output_str.clone(),
-                    )
-                    .await
-                    {
-                        error!(
-                            execution_id = %execution.id,
-                            error = %e,
-                            "Failed to update execution status, retrying..."
-                        );
-                        // Retry once after a short delay
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        if let Err(e2) = WorkflowQueries::update_execution_status(
-                            &self.db_pool,
-                            execution.id,
-                            status.clone(),
-                            workflow_result.error.clone(),
-                            Some(
-                                serde_json::to_value(&workflow_result.step_results)
-                                    .ok()
-                                    .unwrap_or(serde_json::json!([])),
-                            ),
-                            formatted_output_str,
+                    handler
+                        .handle_completion(
+                            &execution,
+                            &workflow,
+                            &workflow_result,
+                            start_time,
+                            end_time,
+                            &trace_id,
                         )
-                        .await
-                        {
-                            error!(
-                                execution_id = %execution.id,
-                                error = %e2,
-                                "Failed to update execution status after retry - execution may appear stuck"
-                            );
-                            // Don't return error - continue to notify monitor and log completion
-                        }
-                    }
-
-                    info!(
-                        execution_id = %execution.id,
-                        workflow_id = %workflow.id,
-                        status = ?status,
-                        success = %workflow_result.success,
-                        steps_completed = %workflow_result.steps_completed,
-                        total_steps = %workflow_result.total_steps,
-                        execution_time_ms = %workflow_result.execution_time_ms,
-                        trace_id = %trace_id,
-                        "Execution completed"
-                    );
-
-                    // Notify monitor endpoint
-
-                    if let Err(e) = self
-                        .monitor_client
-                        .notify_execution_status(
-                            execution.id,
-                            workflow.id,
-                            Some(workflow.name.clone()),
-                            status,
-                            workflow_result.error.clone(),
-                            Some(formatted_output), // Now always has a value
-                            Some(start_time),
-                            Some(end_time),
-                            Some(execution_time),
-                            "rust_executor",
-                        )
-                        .await
-                    {
-                        warn!("Failed to send monitor notification: {}", e);
-                    }
+                        .await?;
                 }
                 Err(e) => {
-                    let error_message = e.to_string();
-                    let error_category = classify_error(&error_message);
-
-                    error!(
-                        execution_id = %execution.id,
-                        workflow_id = %workflow.id,
-                        error = %error_message,
-                        error_category = ?error_category,
-                        trace_id = %trace_id,
-                        "Execution failed"
-                    );
-
-                    // Determine if we should retry
-                    let should_retry = error_category == ErrorCategory::Infrastructure
-                        && self.retry_config.enabled
-                        && execution.retry_count
-                            < self.retry_config.max_infrastructure_retries as i32;
-
-                    if should_retry {
-                        // Schedule retry
-                        let retry_count = execution.retry_count + 1;
-                        let delay = self.retry_config.calculate_delay(retry_count as u32);
-                        let next_retry_at = Utc::now() + delay;
-
-                        info!(
-                            execution_id = %execution.id,
-                            workflow_id = %workflow.id,
-                            retry_count = %retry_count,
-                            max_retries = %self.retry_config.max_infrastructure_retries,
-                            next_retry_at = %next_retry_at,
-                            delay_secs = %delay.as_secs(),
-                            error_category = ?error_category,
-                            trace_id = %trace_id,
-                            "Scheduling execution retry"
-                        );
-
-                        WorkflowQueries::schedule_retry(
-                            &self.db_pool,
-                            execution.id,
-                            retry_count,
-                            next_retry_at,
-                            "infrastructure",
-                        )
+                    handler
+                        .handle_error(&execution, &workflow, &e, start_time, end_time, &trace_id)
                         .await?;
-
-                        // Notify monitor about scheduled retry
-                        let _ = self
-                            .monitor_client
-                            .notify_execution_status(
-                                execution.id,
-                                workflow.id,
-                                Some(workflow.name.clone()),
-                                ExecutionStatus::Queued,
-                                Some(format!(
-                                    "Infrastructure failure. Retry {}/{} scheduled for {}",
-                                    retry_count,
-                                    self.retry_config.max_infrastructure_retries,
-                                    next_retry_at
-                                )),
-                                None,
-                                Some(start_time),
-                                Some(end_time),
-                                Some(execution_time),
-                                "rust_executor_retry_scheduled",
-                            )
-                            .await;
-                    } else {
-                        // Mark as permanently failed
-                        let error_cat_str = match error_category {
-                            ErrorCategory::Infrastructure => "infrastructure",
-                            ErrorCategory::WorkflowLogic => "workflow_logic",
-                            ErrorCategory::Unknown => "unknown",
-                        };
-
-                        warn!(
-                            execution_id = %execution.id,
-                            workflow_id = %workflow.id,
-                            error_category = ?error_category,
-                            retry_count = %execution.retry_count,
-                            trace_id = %trace_id,
-                            "Marking execution as permanently failed"
-                        );
-
-                        WorkflowQueries::mark_failed_permanently(
-                            &self.db_pool,
-                            execution.id,
-                            &error_message,
-                            error_cat_str,
-                        )
-                        .await?;
-
-                        WorkflowQueries::update_execution_status(
-                            &self.db_pool,
-                            execution.id,
-                            ExecutionStatus::Failed,
-                            Some(error_message.clone()),
-                            None,
-                            None,
-                        )
-                        .await?;
-
-                        let _ = self
-                            .monitor_client
-                            .notify_execution_status(
-                                execution.id,
-                                workflow.id,
-                                Some(workflow.name.clone()),
-                                ExecutionStatus::Failed,
-                                Some(error_message),
-                                None,
-                                Some(start_time),
-                                Some(end_time),
-                                Some(execution_time),
-                                "rust_executor_failed_permanently",
-                            )
-                            .await;
-                    }
                 }
             }
 
