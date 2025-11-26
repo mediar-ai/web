@@ -31,7 +31,7 @@ def trigger_workflow_check():
         from modal import Function
 
         # Get the deployed workflow-executor function
-        workflow_fn = Function.lookup("workflow-executor", "check_and_process_queued_jobs")
+        workflow_fn = Function.from_name("workflow-executor", "check_and_process_queued_jobs")
 
         # Trigger it asynchronously
         result = workflow_fn.remote()

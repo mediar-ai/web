@@ -3928,7 +3928,7 @@ def check_and_process_queued_jobs():
         #  DISPATCH ALL CLAIMED JOBS TO MODAL IN PARALLEL
         # Prepare all dispatch calls
         from modal import Function
-        execute_fn = Function.lookup("workflow-executor", "execute_workflow")
+        execute_fn = Function.from_name("workflow-executor", "execute_workflow")
 
         dispatch_calls = []
         for job_to_process in claimed_jobs:
@@ -3989,21 +3989,59 @@ def check_and_process_queued_jobs():
                 call["assigned_machine_id"],
             )
 
-        # Handle failed dispatches
+        # Handle failed dispatches with retry limit to prevent infinite loops
+        MAX_DISPATCH_RETRIES = 3
         if failed_dispatches:
             for execution_id in failed_dispatches:
                 try:
+                    # Increment retry_count and check if we've exceeded max retries
                     cur.execute(
                         """
                         UPDATE workflow_executions
-                        SET status = 'queued', started_at = NULL, modal_call_id = NULL
+                        SET retry_count = COALESCE(retry_count, 0) + 1
                         WHERE id = %s
-                    """,
+                        RETURNING retry_count
+                        """,
                         (execution_id,),
                     )
-                    logger.info(" Reverted execution %s back to queued status", execution_id)
+                    result = cur.fetchone()
+                    current_retry_count = result[0] if result else 1
+
+                    if current_retry_count >= MAX_DISPATCH_RETRIES:
+                        # Too many retries - mark as permanently failed
+                        cur.execute(
+                            """
+                            UPDATE workflow_executions
+                            SET status = 'failed',
+                                error_message = COALESCE(error_message, '') || ' [Dispatch failed after ' || %s || ' retries]',
+                                completed_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (current_retry_count, execution_id),
+                        )
+                        logger.warning(
+                            " Execution %s permanently failed after %d dispatch retries",
+                            execution_id,
+                            current_retry_count,
+                        )
+                    else:
+                        # Revert to queued for retry
+                        cur.execute(
+                            """
+                            UPDATE workflow_executions
+                            SET status = 'queued', started_at = NULL, modal_call_id = NULL
+                            WHERE id = %s
+                            """,
+                            (execution_id,),
+                        )
+                        logger.info(
+                            " Reverted execution %s back to queued status (retry %d/%d)",
+                            execution_id,
+                            current_retry_count,
+                            MAX_DISPATCH_RETRIES,
+                        )
                 except Exception as revert_error:
-                    logger.error(" Failed to revert execution status: %s", revert_error)
+                    logger.error(" Failed to handle execution status: %s", revert_error)
 
             if failed_dispatches:
                 conn.commit()
