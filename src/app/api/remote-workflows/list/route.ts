@@ -396,6 +396,8 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
     const versionParam = searchParams.get('version'); // 'latest' for desktop app
+    const tagsParam = searchParams.get('tags'); // Comma-separated tags to filter by
+    const filterTags = tagsParam ? tagsParam.split(',').map(t => t.trim().toLowerCase()) : [];
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
@@ -624,7 +626,8 @@ export async function GET(request: NextRequest) {
           consecutive_failures,
           last_failure_message,
           preferred_format,
-          typescript_metadata
+          typescript_metadata,
+          tags
         `
         )
         .in('id', workflowIds);
@@ -663,6 +666,7 @@ export async function GET(request: NextRequest) {
             last_failure_message: cw.last_failure_message,
             preferred_format: cw.preferred_format,
             typescript_metadata: cw.typescript_metadata,
+            tags: cw.tags || [],
           };
         });
         console.log(
@@ -991,6 +995,8 @@ export async function GET(request: NextRequest) {
               automationSequences[workflow.id]?.latest_version_number ||
               workflow.current_version,
           },
+          // Add tags for filtering
+          tags: automationSequences[workflow.id]?.tags || [],
           // Add access info for Mediar admins
           ...((isMediarOrg || isMediarAdmin) && {
             shared_with_orgs: workflowAccessInfo[workflow.id] || [],
@@ -1003,9 +1009,17 @@ export async function GET(request: NextRequest) {
         };
       });
 
+    // Filter by tags if provided
+    const filteredWorkflows = filterTags.length > 0
+      ? formattedWorkflows.filter(w => {
+          const workflowTags = (w.tags || []).map((t: string) => t.toLowerCase());
+          return filterTags.some(tag => workflowTags.includes(tag));
+        })
+      : formattedWorkflows;
+
     const responseData = {
       success: true,
-      workflows: formattedWorkflows,
+      workflows: filteredWorkflows,
       pagination: {
         total: totalCount || 0,
         limit,
@@ -1015,9 +1029,11 @@ export async function GET(request: NextRequest) {
       filters: {
         category: category || 'all',
         status,
+        tags: filterTags,
         applied_filters: {
           ...(category && { category }),
           status,
+          ...(filterTags.length > 0 && { tags: filterTags }),
         },
       },
       organization: {

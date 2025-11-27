@@ -317,7 +317,7 @@ export async function PATCH(
       authenticatedUserId = clerkAuth.userId;
       orgId = clerkAuth.orgId;
       has = clerkAuth.has;
-      userEmail = clerkAuth.sessionClaims?.email as string || null;
+      userEmail = (clerkAuth.sessionClaims?.email as string) || null;
     }
 
     if (!authenticatedUserId) {
@@ -433,6 +433,7 @@ export async function PATCH(
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined)
       updateData.description = body.description;
+    if (body.tags !== undefined) updateData.tags = body.tags;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -463,12 +464,16 @@ export async function PATCH(
     // Sync name/description change to GitHub package.json (fire-and-forget)
     // This is the single source of truth for TypeScript workflows
     if ((body.name || body.description !== undefined) && workflow.github_path) {
-      console.log(`📤 Syncing metadata to GitHub package.json (async) for workflow ${workflowIdNum}...`);
+      console.log(
+        `📤 Syncing metadata to GitHub package.json (async) for workflow ${workflowIdNum}...`
+      );
 
       // Fire-and-forget: update package.json without blocking
       (async () => {
         try {
-          const { githubWorkflowManager } = await import('@/lib/github-workflow-manager');
+          const { githubWorkflowManager } = await import(
+            '@/lib/github-workflow-manager'
+          );
 
           // Update package.json (will gracefully skip if not found - legacy YAML workflow)
           const packageResult = await githubWorkflowManager.updatePackageJson(
@@ -482,12 +487,18 @@ export async function PATCH(
 
           if (packageResult.success) {
             if (packageResult.path) {
-              console.log(`✅ GitHub package.json updated: ${packageResult.path}`);
+              console.log(
+                `✅ GitHub package.json updated: ${packageResult.path}`
+              );
             } else if (packageResult.error?.includes('legacy')) {
-              console.log(`ℹ️ Skipped package.json update (legacy YAML workflow)`);
+              console.log(
+                `ℹ️ Skipped package.json update (legacy YAML workflow)`
+              );
             }
           } else {
-            console.warn(`⚠️ GitHub package.json sync failed: ${packageResult.error}`);
+            console.warn(
+              `⚠️ GitHub package.json sync failed: ${packageResult.error}`
+            );
           }
 
           // Also update YAML metadata comment if name changed
@@ -583,7 +594,7 @@ export async function DELETE(
       authenticatedUserId = clerkAuth.userId;
       orgId = clerkAuth.orgId;
       has = clerkAuth.has;
-      userEmail = clerkAuth.sessionClaims?.email as string || null;
+      userEmail = (clerkAuth.sessionClaims?.email as string) || null;
     }
 
     if (!authenticatedUserId) {
@@ -746,14 +757,19 @@ export async function DELETE(
     // Step 1: Delete from GitHub if workflow has github_path (fire-and-forget for faster response)
     // Use github_path (full path like org-{orgId}/335_test13/workflow.yaml) instead of github_folder
     // to ensure we have the correct path including org prefix
-    const githubFolderPath = workflow.github_path?.replace(/\/workflow\.yaml$/, '');
+    const githubFolderPath = workflow.github_path?.replace(
+      /\/workflow\.yaml$/,
+      ''
+    );
     if (githubFolderPath) {
       const githubToken = process.env.GITHUB_TOKEN;
 
       if (!githubToken) {
         console.warn('⚠️ GITHUB_TOKEN not set - skipping GitHub deletion');
       } else {
-        console.log(`🗑️ Queuing GitHub folder deletion (async): ${githubFolderPath}`);
+        console.log(
+          `🗑️ Queuing GitHub folder deletion (async): ${githubFolderPath}`
+        );
 
         // Fire-and-forget: don't await GitHub deletion
         (async () => {
@@ -770,7 +786,9 @@ export async function DELETE(
             });
 
             if (Array.isArray(contents)) {
-              console.log(`[GitHub Async] Found ${contents.length} files to delete in ${githubFolderPath}`);
+              console.log(
+                `[GitHub Async] Found ${contents.length} files to delete in ${githubFolderPath}`
+              );
 
               // Build commit message with user email
               const commitUserInfo = userEmail ? `By: ${userEmail}` : '';
@@ -791,17 +809,27 @@ export async function DELETE(
                   });
                   console.log(`[GitHub Async] ✅ Deleted: ${file.path}`);
                 } catch (fileError) {
-                  console.error(`[GitHub Async] ❌ Failed to delete ${file.path}:`, fileError);
+                  console.error(
+                    `[GitHub Async] ❌ Failed to delete ${file.path}:`,
+                    fileError
+                  );
                 }
               }
 
-              console.log(`[GitHub Async] ✅ Completed deletion of ${contents.length} files from: ${githubFolderPath}`);
+              console.log(
+                `[GitHub Async] ✅ Completed deletion of ${contents.length} files from: ${githubFolderPath}`
+              );
             }
           } catch (githubError: any) {
             if (githubError?.status === 404) {
-              console.log(`[GitHub Async] ℹ️ Folder not found in GitHub (already deleted or never synced): ${githubFolderPath}`);
+              console.log(
+                `[GitHub Async] ℹ️ Folder not found in GitHub (already deleted or never synced): ${githubFolderPath}`
+              );
             } else {
-              console.error(`[GitHub Async] ❌ GitHub deletion failed for ${githubFolderPath}:`, githubError);
+              console.error(
+                `[GitHub Async] ❌ GitHub deletion failed for ${githubFolderPath}:`,
+                githubError
+              );
             }
           }
         })();
@@ -854,10 +882,7 @@ export async function DELETE(
     );
 
     // Build archived_by string with user context (no email)
-    const archivedByStr = [
-      `user:${authenticatedUserId}`,
-      userEmail,
-    ]
+    const archivedByStr = [`user:${authenticatedUserId}`, userEmail]
       .filter(Boolean)
       .join(':');
 

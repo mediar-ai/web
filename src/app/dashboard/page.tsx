@@ -12,8 +12,22 @@ import { WorkflowActionsDialog } from '@/components/deployments/WorkflowActionsD
 import { BatchTestDialog } from '@/components/deployments/BatchTestDialog';
 import { OrganizationAssignmentDialog } from '@/components/deployments/OrganizationAssignmentDialog';
 import { ExecutionsDataTable } from '@/components/dashboard/ExecutionsDataTable';
-import { useOrganization, useOrganizationList, useUser, useAuth } from '@clerk/nextjs';
-import { Activity, Workflow, TrendingUp, Zap, Search, Eye, EyeOff, Wand2 } from 'lucide-react';
+import {
+  useOrganization,
+  useOrganizationList,
+  useUser,
+  useAuth,
+} from '@clerk/nextjs';
+import {
+  Activity,
+  Workflow,
+  TrendingUp,
+  Zap,
+  Search,
+  Eye,
+  EyeOff,
+  Wand2,
+} from 'lucide-react';
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
@@ -56,10 +70,13 @@ function DashboardContent() {
   const [workflows, setWorkflows] = useState<WorkflowWithSettings[]>([]);
   const workflowsRef = useRef<WorkflowWithSettings[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
-  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>([]);
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionStatus[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(false);
-  const [initialExecutionsFetchDone, setInitialExecutionsFetchDone] = useState(false);
+  const [initialExecutionsFetchDone, setInitialExecutionsFetchDone] =
+    useState(false);
   const [_pollCount, setPollCount] = useState(0);
 
   // Filter values state (available options from DB)
@@ -68,19 +85,25 @@ function DashboardContent() {
   const [filterMachines, setFilterMachines] = useState<string[]>([]);
 
   // Active filter state (currently selected filters) - Load from localStorage
-  const [activeWorkflowFilter, setActiveWorkflowFilter] = useState<string | undefined>(() => {
+  const [activeWorkflowFilter, setActiveWorkflowFilter] = useState<
+    string | undefined
+  >(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('executions-filter-workflow') || undefined;
     }
     return undefined;
   });
-  const [activeStatusFilter, setActiveStatusFilter] = useState<string | undefined>(() => {
+  const [activeStatusFilter, setActiveStatusFilter] = useState<
+    string | undefined
+  >(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('executions-filter-status') || undefined;
     }
     return undefined;
   });
-  const [activeMachineFilter, setActiveMachineFilter] = useState<string | undefined>(() => {
+  const [activeMachineFilter, setActiveMachineFilter] = useState<
+    string | undefined
+  >(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('executions-filter-machine') || undefined;
     }
@@ -118,12 +141,15 @@ function DashboardContent() {
   });
   const [activeSearchMode, setActiveSearchMode] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const savedField = localStorage.getItem('executions-filter-search-field') || 'all';
+      const savedField =
+        localStorage.getItem('executions-filter-search-field') || 'all';
       // Default to 'exact' for execution_id, 'contains' for others
       if (savedField === 'execution_id') {
         return localStorage.getItem('executions-filter-search-mode') || 'exact';
       }
-      return localStorage.getItem('executions-filter-search-mode') || 'contains';
+      return (
+        localStorage.getItem('executions-filter-search-mode') || 'contains'
+      );
     }
     return 'contains';
   });
@@ -147,28 +173,43 @@ function DashboardContent() {
   // Refs to capture latest filter values without causing re-renders
   // Initialize refs with localStorage values so polling uses correct filters from the start
   const activeWorkflowFilterRef = useRef<string | undefined>(
-    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-workflow') || undefined : undefined
+    typeof window !== 'undefined'
+      ? localStorage.getItem('executions-filter-workflow') || undefined
+      : undefined
   );
   const activeStatusFilterRef = useRef<string | undefined>(
-    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-status') || undefined : undefined
+    typeof window !== 'undefined'
+      ? localStorage.getItem('executions-filter-status') || undefined
+      : undefined
   );
   const activeMachineFilterRef = useRef<string | undefined>(
-    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-machine') || undefined : undefined
+    typeof window !== 'undefined'
+      ? localStorage.getItem('executions-filter-machine') || undefined
+      : undefined
   );
   const activeSearchFilterRef = useRef<string>(
-    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-search') || '' : ''
+    typeof window !== 'undefined'
+      ? localStorage.getItem('executions-filter-search') || ''
+      : ''
   );
   const activeSearchFieldRef = useRef<string>(
-    typeof window !== 'undefined' ? localStorage.getItem('executions-filter-search-field') || 'all' : 'all'
+    typeof window !== 'undefined'
+      ? localStorage.getItem('executions-filter-search-field') || 'all'
+      : 'all'
   );
   const activeSearchModeRef = useRef<string>(
     (() => {
       if (typeof window !== 'undefined') {
-        const savedField = localStorage.getItem('executions-filter-search-field') || 'all';
+        const savedField =
+          localStorage.getItem('executions-filter-search-field') || 'all';
         if (savedField === 'execution_id') {
-          return localStorage.getItem('executions-filter-search-mode') || 'exact';
+          return (
+            localStorage.getItem('executions-filter-search-mode') || 'exact'
+          );
         }
-        return localStorage.getItem('executions-filter-search-mode') || 'contains';
+        return (
+          localStorage.getItem('executions-filter-search-mode') || 'contains'
+        );
       }
       return 'contains';
     })()
@@ -225,21 +266,31 @@ function DashboardContent() {
   // UI state
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOverview | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] =
+    useState<WorkflowOverview | null>(null);
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
-  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(
+    null
+  );
   const [executionDetailsOpen, setExecutionDetailsOpen] = useState(false);
   const [actionsDialogOpen, setActionsDialogOpen] = useState(false);
-  const [actionsDialogMode, setActionsDialogMode] = useState<'rename' | 'duplicate' | null>(null);
+  const [actionsDialogMode, setActionsDialogMode] = useState<
+    'rename' | 'duplicate' | null
+  >(null);
   const [batchTestOpen, setBatchTestOpen] = useState(false);
-  const [selectedWorkflowForAction, setSelectedWorkflowForAction] = useState<WorkflowWithSettings | null>(null);
+  const [selectedWorkflowForAction, setSelectedWorkflowForAction] =
+    useState<WorkflowWithSettings | null>(null);
   const [templateYaml, setTemplateYaml] = useState<string>('');
   const [templateName, setTemplateName] = useState<string>('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [orgAssignmentOpen, setOrgAssignmentOpen] = useState(false);
-  const [selectedWorkflowForOrgAssignment, setSelectedWorkflowForOrgAssignment] = useState<WorkflowWithSettings | null>(null);
+  const [
+    selectedWorkflowForOrgAssignment,
+    setSelectedWorkflowForOrgAssignment,
+  ] = useState<WorkflowWithSettings | null>(null);
   const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
-  const [selectedWorkflowForVersion, setSelectedWorkflowForVersion] = useState<WorkflowWithSettings | null>(null);
+  const [selectedWorkflowForVersion, setSelectedWorkflowForVersion] =
+    useState<WorkflowWithSettings | null>(null);
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -260,9 +311,19 @@ function DashboardContent() {
   // Keyboard shortcut for new workflow (N key)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      if (
+        e.key === 'n' &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
         const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        if (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable
+        ) {
           return;
         }
         e.preventDefault();
@@ -270,138 +331,168 @@ function DashboardContent() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Fetch functions
-  const fetchWorkflows = useCallback(async (showLoading = true) => {
-    try {
-      if (showLoading) setLoading(true);
-      const apiUrl = viewOrgId
-        ? `/api/remote-workflows/list?viewOrgId=${viewOrgId}`
-        : '/api/remote-workflows/list';
-      const response = await fetch(apiUrl);
-      const workflowData = await response.json();
-      if (workflowData.success) {
-        const sortedWorkflows = (workflowData.workflows || []).sort(
-          (a: WorkflowWithSettings, b: WorkflowWithSettings) => {
-            const dateA = new Date(a.created_at).getTime();
-            const dateB = new Date(b.created_at).getTime();
-            return dateA - dateB;
+  const fetchWorkflows = useCallback(
+    async (showLoading = true) => {
+      try {
+        if (showLoading) setLoading(true);
+        const apiUrl = viewOrgId
+          ? `/api/remote-workflows/list?viewOrgId=${viewOrgId}`
+          : '/api/remote-workflows/list';
+        const response = await fetch(apiUrl);
+        const workflowData = await response.json();
+        if (workflowData.success) {
+          const sortedWorkflows = (workflowData.workflows || []).sort(
+            (a: WorkflowWithSettings, b: WorkflowWithSettings) => {
+              const dateA = new Date(a.created_at).getTime();
+              const dateB = new Date(b.created_at).getTime();
+              return dateA - dateB;
+            }
+          );
+          setWorkflows(sortedWorkflows);
+          workflowsRef.current = sortedWorkflows;
+
+          // Update stats
+          const activeWorkflows = sortedWorkflows.filter(
+            (w: any) => w.status === 'active'
+          ).length;
+          let totalExecutions = 0;
+          let successfulExecutions = 0;
+          let totalDuration = 0;
+          let durationCount = 0;
+
+          sortedWorkflows.forEach((w: any) => {
+            totalExecutions += w.total_executions || 0;
+            successfulExecutions += w.successful_runs || 0;
+            if (w.current_version_stats?.average_duration_seconds) {
+              totalDuration += w.current_version_stats.average_duration_seconds;
+              durationCount++;
+            }
+          });
+
+          const successRate =
+            totalExecutions > 0
+              ? Math.round((successfulExecutions / totalExecutions) * 100)
+              : 0;
+
+          const avgDuration =
+            durationCount > 0 ? Math.round(totalDuration / durationCount) : 0;
+
+          setStats([
+            {
+              label: 'Active Workflows',
+              value: activeWorkflows.toString(),
+              icon: Workflow,
+              change: '',
+            },
+            {
+              label: 'Total Executions',
+              value: totalExecutions.toString(),
+              icon: Activity,
+              change: '',
+            },
+            {
+              label: 'Avg Speed',
+              value: `${avgDuration}s`,
+              icon: Zap,
+              change: '',
+            },
+            {
+              label: 'Success Rate',
+              value: `${successRate}%`,
+              icon: TrendingUp,
+              change: '',
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch workflows:', error);
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [viewOrgId]
+  );
+
+  const fetchExecutions = useCallback(
+    async (
+      showLoading = true,
+      filterWorkflow?: string,
+      filterStatus?: string,
+      filterMachine?: string,
+      searchQuery?: string,
+      searchField?: string,
+      searchMode?: string,
+      page?: number,
+      pageSizeParam?: number
+    ) => {
+      try {
+        if (showLoading) setExecutionsLoading(true);
+
+        // Build query params
+        const params = new URLSearchParams();
+
+        // Pagination
+        const effectivePageSize = pageSizeParam || pageSize;
+        const effectivePage = page || currentPage;
+        const offset = (effectivePage - 1) * effectivePageSize;
+        params.set('limit', effectivePageSize.toString());
+        params.set('offset', offset.toString());
+
+        if (viewOrgId) params.set('viewOrgId', viewOrgId);
+
+        // Apply filters to API query
+        if (filterWorkflow) {
+          // Find workflow ID from name - use ref to avoid dependency
+          const workflow = workflowsRef.current.find(
+            w => w.name === filterWorkflow
+          );
+          if (workflow) {
+            params.set('workflow_id', workflow.id.toString());
           }
-        );
-        setWorkflows(sortedWorkflows);
-        workflowsRef.current = sortedWorkflows;
-
-        // Update stats
-        const activeWorkflows = sortedWorkflows.filter((w: any) => w.status === 'active').length;
-        let totalExecutions = 0;
-        let successfulExecutions = 0;
-        let totalDuration = 0;
-        let durationCount = 0;
-
-        sortedWorkflows.forEach((w: any) => {
-          totalExecutions += w.total_executions || 0;
-          successfulExecutions += w.successful_runs || 0;
-          if (w.current_version_stats?.average_duration_seconds) {
-            totalDuration += w.current_version_stats.average_duration_seconds;
-            durationCount++;
+        }
+        if (filterStatus) {
+          params.set('status', filterStatus);
+        }
+        if (filterMachine) {
+          params.set('machine', filterMachine);
+        }
+        if (searchQuery) {
+          params.set('search', searchQuery);
+          if (searchField) {
+            params.set('search_field', searchField);
           }
-        });
-
-        const successRate = totalExecutions > 0
-          ? Math.round((successfulExecutions / totalExecutions) * 100)
-          : 0;
-
-        const avgDuration = durationCount > 0
-          ? Math.round(totalDuration / durationCount)
-          : 0;
-
-        setStats([
-          { label: 'Active Workflows', value: activeWorkflows.toString(), icon: Workflow, change: '' },
-          { label: 'Total Executions', value: totalExecutions.toString(), icon: Activity, change: '' },
-          { label: 'Avg Speed', value: `${avgDuration}s`, icon: Zap, change: '' },
-          { label: 'Success Rate', value: `${successRate}%`, icon: TrendingUp, change: '' },
-        ]);
-      }
-    } catch (error) {
-      console.error("Failed to fetch workflows:", error);
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  }, [viewOrgId]);
-
-  const fetchExecutions = useCallback(async (
-    showLoading = true,
-    filterWorkflow?: string,
-    filterStatus?: string,
-    filterMachine?: string,
-    searchQuery?: string,
-    searchField?: string,
-    searchMode?: string,
-    page?: number,
-    pageSizeParam?: number
-  ) => {
-    try {
-      if (showLoading) setExecutionsLoading(true);
-
-      // Build query params
-      const params = new URLSearchParams();
-
-      // Pagination
-      const effectivePageSize = pageSizeParam || pageSize;
-      const effectivePage = page || currentPage;
-      const offset = (effectivePage - 1) * effectivePageSize;
-      params.set('limit', effectivePageSize.toString());
-      params.set('offset', offset.toString());
-
-      if (viewOrgId) params.set('viewOrgId', viewOrgId);
-
-      // Apply filters to API query
-      if (filterWorkflow) {
-        // Find workflow ID from name - use ref to avoid dependency
-        const workflow = workflowsRef.current.find(w => w.name === filterWorkflow);
-        if (workflow) {
-          params.set('workflow_id', workflow.id.toString());
+          if (searchMode) {
+            params.set('search_mode', searchMode);
+          }
         }
-      }
-      if (filterStatus) {
-        params.set('status', filterStatus);
-      }
-      if (filterMachine) {
-        params.set('machine', filterMachine);
-      }
-      if (searchQuery) {
-        params.set('search', searchQuery);
-        if (searchField) {
-          params.set('search_field', searchField);
-        }
-        if (searchMode) {
-          params.set('search_mode', searchMode);
-        }
-      }
 
-      const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
-      const response = await fetch(apiUrl);
-      const executionsData = await response.json();
-      if (executionsData.success) {
-        // Always update with fresh data from API to ensure UI stays in sync
-        setExecutions(executionsData.executions || []);
-        // Update total count for pagination
-        setTotalExecutions(executionsData.pagination?.total || 0);
-        // Mark initial fetch as complete
+        const apiUrl = `/api/remote-workflows/executions?${params.toString()}`;
+        const response = await fetch(apiUrl);
+        const executionsData = await response.json();
+        if (executionsData.success) {
+          // Always update with fresh data from API to ensure UI stays in sync
+          setExecutions(executionsData.executions || []);
+          // Update total count for pagination
+          setTotalExecutions(executionsData.pagination?.total || 0);
+          // Mark initial fetch as complete
+          setInitialExecutionsFetchDone(true);
+        }
+      } catch (error) {
+        console.error('Failed to fetch executions:', error);
+        setExecutions([]);
+        setTotalExecutions(0);
         setInitialExecutionsFetchDone(true);
+      } finally {
+        if (showLoading) setExecutionsLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch executions:', error);
-      setExecutions([]);
-      setTotalExecutions(0);
-      setInitialExecutionsFetchDone(true);
-    } finally {
-      if (showLoading) setExecutionsLoading(false);
-    }
-  }, [viewOrgId, pageSize, currentPage]);
+    },
+    [viewOrgId, pageSize, currentPage]
+  );
 
   const fetchLiveExecutions = useCallback(async () => {
     try {
@@ -446,358 +537,612 @@ function DashboardContent() {
     }
   }, [viewOrgId]);
 
-  const fetchWorkflowOverview = useCallback(async (workflowId: number) => {
-    try {
-      posthog?.capture('dashboard_view_workflow_details', {
-        workflow_id: workflowId,
-        timestamp: new Date().toISOString(),
-      });
+  const fetchWorkflowOverview = useCallback(
+    async (workflowId: number) => {
+      try {
+        posthog?.capture('dashboard_view_workflow_details', {
+          workflow_id: workflowId,
+          timestamp: new Date().toISOString(),
+        });
 
-      const response = await fetch(`/api/remote-workflows/${workflowId}/overview`);
-      const overviewData = await response.json();
-      if (response.ok && overviewData.success) {
-        setSelectedWorkflow(overviewData.workflow);
-        setWorkflowDetailsOpen(true);
+        const response = await fetch(
+          `/api/remote-workflows/${workflowId}/overview`
+        );
+        const overviewData = await response.json();
+        if (response.ok && overviewData.success) {
+          setSelectedWorkflow(overviewData.workflow);
+          setWorkflowDetailsOpen(true);
+        }
+      } catch (error) {
+        console.error('Failed to fetch workflow overview:', error);
       }
-    } catch (error) {
-      console.error('Failed to fetch workflow overview:', error);
-    }
-  }, [posthog]);
+    },
+    [posthog]
+  );
 
-  const fetchExecutionDetails = useCallback(async (executionId: number) => {
-    try {
-      posthog?.capture('dashboard_view_execution_details', {
-        execution_id: executionId,
-        timestamp: new Date().toISOString(),
-      });
+  const fetchExecutionDetails = useCallback(
+    async (executionId: number) => {
+      try {
+        posthog?.capture('dashboard_view_execution_details', {
+          execution_id: executionId,
+          timestamp: new Date().toISOString(),
+        });
 
-      setSelectedExecution(null);
-      setExecutionDetailsOpen(true);
-      // Fetch only basic info first - heavy fields will be loaded on demand
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}`);
-      const executionData = await response.json();
-      if (executionData.success) {
-        setSelectedExecution(executionData.execution);
+        setSelectedExecution(null);
+        setExecutionDetailsOpen(true);
+        // Fetch only basic info first - heavy fields will be loaded on demand
+        const response = await fetch(
+          `/api/remote-workflows/executions/${executionId}`
+        );
+        const executionData = await response.json();
+        if (executionData.success) {
+          setSelectedExecution(executionData.execution);
+        }
+      } catch (error) {
+        console.error('Failed to fetch execution details:', error);
+        setExecutionDetailsOpen(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch execution details:', error);
-      setExecutionDetailsOpen(false);
-    }
-  }, [posthog]);
+    },
+    [posthog]
+  );
 
-  const handleCancelExecution = useCallback(async (executionId: number) => {
-    try {
-      posthog?.capture('dashboard_cancel_execution', {
-        execution_id: executionId,
-        timestamp: new Date().toISOString(),
-      });
+  const handleCancelExecution = useCallback(
+    async (executionId: number) => {
+      try {
+        posthog?.capture('dashboard_cancel_execution', {
+          execution_id: executionId,
+          timestamp: new Date().toISOString(),
+        });
 
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}/cancel`, {
-        method: 'POST',
-      });
-      if (response.ok) {
-        await fetchExecutions(false);
-        await fetchLiveExecutions();
-      } else {
-        const error = await response.json();
-        console.error('Cancel failed:', error);
-        toast.error(`Failed to cancel execution: ${error.error || 'Unknown error'}`);
+        const response = await fetch(
+          `/api/remote-workflows/executions/${executionId}/cancel`,
+          {
+            method: 'POST',
+          }
+        );
+        if (response.ok) {
+          await fetchExecutions(false);
+          await fetchLiveExecutions();
+        } else {
+          const error = await response.json();
+          console.error('Cancel failed:', error);
+          toast.error(
+            `Failed to cancel execution: ${error.error || 'Unknown error'}`
+          );
+        }
+      } catch (error) {
+        console.error('Error canceling execution:', error);
+        toast.error('Error canceling execution');
       }
-    } catch (error) {
-      console.error('Error canceling execution:', error);
-      toast.error('Error canceling execution');
-    }
-  }, [fetchExecutions, fetchLiveExecutions, posthog]);
+    },
+    [fetchExecutions, fetchLiveExecutions, posthog]
+  );
 
-  const handleDeleteExecution = useCallback(async (executionId: number) => {
-    try {
-      posthog?.capture('dashboard_delete_execution', {
-        execution_id: executionId,
-        timestamp: new Date().toISOString(),
-      });
+  const handleDeleteExecution = useCallback(
+    async (executionId: number) => {
+      try {
+        posthog?.capture('dashboard_delete_execution', {
+          execution_id: executionId,
+          timestamp: new Date().toISOString(),
+        });
 
-      const response = await fetch(`/api/remote-workflows/executions/${executionId}/delete`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        await fetchExecutions(false);
-        await fetchLiveExecutions();
-      } else {
-        const error = await response.json();
-        console.error('Delete failed:', error);
-        toast.error(`Failed to delete execution: ${error.error || 'Unknown error'}`);
+        const response = await fetch(
+          `/api/remote-workflows/executions/${executionId}/delete`,
+          {
+            method: 'DELETE',
+          }
+        );
+        if (response.ok) {
+          await fetchExecutions(false);
+          await fetchLiveExecutions();
+        } else {
+          const error = await response.json();
+          console.error('Delete failed:', error);
+          toast.error(
+            `Failed to delete execution: ${error.error || 'Unknown error'}`
+          );
+        }
+      } catch (error) {
+        console.error('Error deleting execution:', error);
+        toast.error('Error deleting execution');
       }
-    } catch (error) {
-      console.error('Error deleting execution:', error);
-      toast.error('Error deleting execution');
-    }
-  }, [fetchExecutions, fetchLiveExecutions, posthog]);
+    },
+    [fetchExecutions, fetchLiveExecutions, posthog]
+  );
 
   const handleRefreshExecutions = useCallback(() => {
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize]);
+    fetchExecutions(
+      true,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      currentPage,
+      pageSize
+    );
+  }, [
+    fetchExecutions,
+    activeWorkflowFilter,
+    activeStatusFilter,
+    activeMachineFilter,
+    activeSearchFilter,
+    activeSearchField,
+    activeSearchMode,
+    currentPage,
+    pageSize,
+  ]);
 
   // Handle filter changes - refetch from API and save to localStorage
-  const handleWorkflowFilterChange = useCallback((workflowName: string | undefined) => {
-    posthog?.capture('dashboard_filter_workflow', {
-      workflow_name: workflowName,
-      timestamp: new Date().toISOString(),
-    });
-
-    setActiveWorkflowFilter(workflowName);
-    setCurrentPage(1); // Reset to first page on filter change
-    if (typeof window !== 'undefined') {
-      if (workflowName) {
-        localStorage.setItem('executions-filter-workflow', workflowName);
-      } else {
-        localStorage.removeItem('executions-filter-workflow');
-      }
-    }
-    fetchExecutions(true, workflowName, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
-
-  const handleStatusFilterChange = useCallback((status: string | undefined) => {
-    posthog?.capture('dashboard_filter_status', {
-      status,
-      timestamp: new Date().toISOString(),
-    });
-
-    setActiveStatusFilter(status);
-    setCurrentPage(1); // Reset to first page on filter change
-    if (typeof window !== 'undefined') {
-      if (status) {
-        localStorage.setItem('executions-filter-status', status);
-      } else {
-        localStorage.removeItem('executions-filter-status');
-      }
-    }
-    fetchExecutions(true, activeWorkflowFilter, status, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
-
-  const handleMachineFilterChange = useCallback((machine: string | undefined) => {
-    posthog?.capture('dashboard_filter_machine', {
-      machine,
-      timestamp: new Date().toISOString(),
-    });
-
-    setActiveMachineFilter(machine);
-    setCurrentPage(1); // Reset to first page on filter change
-    if (typeof window !== 'undefined') {
-      if (machine) {
-        localStorage.setItem('executions-filter-machine', machine);
-      } else {
-        localStorage.removeItem('executions-filter-machine');
-      }
-    }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, machine, activeSearchFilter, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
-
-  const handleSearchFilterChange = useCallback((search: string) => {
-    posthog?.capture('dashboard_search_executions', {
-      search_query: search,
-      search_field: activeSearchField,
-      search_mode: activeSearchMode,
-      timestamp: new Date().toISOString(),
-    });
-
-    setActiveSearchFilter(search);
-    setCurrentPage(1); // Reset to first page on search change
-    if (typeof window !== 'undefined') {
-      if (search) {
-        localStorage.setItem('executions-filter-search', search);
-      } else {
-        localStorage.removeItem('executions-filter-search');
-      }
-    }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, search, activeSearchField, activeSearchMode, 1, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
-
-  const handleSearchFieldChange = useCallback((searchField: string) => {
-    setActiveSearchField(searchField);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('executions-filter-search-field', searchField);
-    }
-
-    // Auto-switch search mode: exact for execution_id, contains for others
-    const newMode = searchField === 'execution_id' ? 'exact' : 'contains';
-    if (newMode !== activeSearchMode) {
-      setActiveSearchMode(newMode);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('executions-filter-search-mode', newMode);
-      }
-    }
-
-    // If there's an active search, refetch with new field and mode
-    if (activeSearchFilter) {
-      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, searchField, newMode, currentPage, pageSize);
-    }
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchMode, currentPage, pageSize]);
-
-  const handleSearchModeChange = useCallback((searchMode: string) => {
-    setActiveSearchMode(searchMode);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('executions-filter-search-mode', searchMode);
-    }
-    // If there's an active search, refetch with new mode
-    if (activeSearchFilter) {
-      fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, searchMode, currentPage, pageSize);
-    }
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, currentPage, pageSize]);
-
-  const handlePageChange = useCallback((newPage: number) => {
-    posthog?.capture('dashboard_change_page', {
-      page: newPage,
-      timestamp: new Date().toISOString(),
-    });
-
-    setCurrentPage(newPage);
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, newPage, pageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, pageSize, posthog]);
-
-  const handlePageSizeChange = useCallback((newPageSize: number) => {
-    posthog?.capture('dashboard_change_page_size', {
-      page_size: newPageSize,
-      timestamp: new Date().toISOString(),
-    });
-
-    setPageSize(newPageSize);
-    setCurrentPage(1); // Reset to first page when changing page size
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('executions-page-size', newPageSize.toString());
-    }
-    fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, 1, newPageSize);
-  }, [fetchExecutions, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, posthog]);
-
-  // Handlers
-  const handleWorkflowCreated = useCallback((_newWorkflow: any) => {
-    fetchWorkflows(false);
-  }, [fetchWorkflows]);
-
-  const handleQuickExecute = useCallback(async (workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    posthog?.capture('dashboard_execute_workflow', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
-
-    setSelectedWorkflowForAction(workflow);
-    setBatchTestOpen(true);
-  }, [workflows, posthog]);
-
-  const _handleQuickEdit = useCallback((workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    setSelectedWorkflowForAction(workflow);
-    setActionsDialogMode('rename');
-    setActionsDialogOpen(true);
-  }, [workflows]);
-
-  const handleQuickDuplicate = useCallback((workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    posthog?.capture('dashboard_duplicate_workflow', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
-
-    setSelectedWorkflowForAction(workflow);
-    setActionsDialogMode('duplicate');
-    setActionsDialogOpen(true);
-  }, [workflows, posthog]);
-
-  const handleToggleCron = useCallback(async (workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
-
-    posthog?.capture('dashboard_toggle_cron', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      action: !workflow.cron_enabled ? 'enable' : 'disable',
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      const response = await fetch(`/api/remote-workflows/${workflowId}/cron`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !workflow.cron_enabled })
+  const handleWorkflowFilterChange = useCallback(
+    (workflowName: string | undefined) => {
+      posthog?.capture('dashboard_filter_workflow', {
+        workflow_name: workflowName,
+        timestamp: new Date().toISOString(),
       });
 
-      const result = await response.json();
-      if (result.success) {
-        fetchWorkflows(false);
-      } else {
-        console.error('Failed to toggle cron:', result.error);
-        // Show user-friendly error notification
-        if (response.status === 403) {
-          toast.error('This action requires organization admin privileges');
+      setActiveWorkflowFilter(workflowName);
+      setCurrentPage(1); // Reset to first page on filter change
+      if (typeof window !== 'undefined') {
+        if (workflowName) {
+          localStorage.setItem('executions-filter-workflow', workflowName);
         } else {
-          toast.error(`Failed to toggle cron: ${result.error || 'Unknown error'}`);
+          localStorage.removeItem('executions-filter-workflow');
         }
       }
-    } catch (error) {
-      console.error('Error toggling cron:', error);
-      toast.error('Error toggling cron');
-    }
-  }, [workflows, fetchWorkflows, posthog]);
+      fetchExecutions(
+        true,
+        workflowName,
+        activeStatusFilter,
+        activeMachineFilter,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        1,
+        pageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      pageSize,
+      posthog,
+    ]
+  );
 
-  const handleManageOrganizations = useCallback((workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
+  const handleStatusFilterChange = useCallback(
+    (status: string | undefined) => {
+      posthog?.capture('dashboard_filter_status', {
+        status,
+        timestamp: new Date().toISOString(),
+      });
 
-    posthog?.capture('dashboard_manage_organizations', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
+      setActiveStatusFilter(status);
+      setCurrentPage(1); // Reset to first page on filter change
+      if (typeof window !== 'undefined') {
+        if (status) {
+          localStorage.setItem('executions-filter-status', status);
+        } else {
+          localStorage.removeItem('executions-filter-status');
+        }
+      }
+      fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        status,
+        activeMachineFilter,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        1,
+        pageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      pageSize,
+      posthog,
+    ]
+  );
 
-    setSelectedWorkflowForOrgAssignment(workflow);
-    setOrgAssignmentOpen(true);
-  }, [workflows, posthog]);
+  const handleMachineFilterChange = useCallback(
+    (machine: string | undefined) => {
+      posthog?.capture('dashboard_filter_machine', {
+        machine,
+        timestamp: new Date().toISOString(),
+      });
 
-  const handleDeleteWorkflow = useCallback(async (workflowId: number) => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (!workflow) return;
+      setActiveMachineFilter(machine);
+      setCurrentPage(1); // Reset to first page on filter change
+      if (typeof window !== 'undefined') {
+        if (machine) {
+          localStorage.setItem('executions-filter-machine', machine);
+        } else {
+          localStorage.removeItem('executions-filter-machine');
+        }
+      }
+      fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        activeStatusFilter,
+        machine,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        1,
+        pageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      pageSize,
+      posthog,
+    ]
+  );
 
-    posthog?.capture('dashboard_delete_workflow', {
-      workflow_id: workflowId,
-      workflow_name: workflow.name,
-      timestamp: new Date().toISOString(),
-    });
+  const handleSearchFilterChange = useCallback(
+    (search: string) => {
+      posthog?.capture('dashboard_search_executions', {
+        search_query: search,
+        search_field: activeSearchField,
+        search_mode: activeSearchMode,
+        timestamp: new Date().toISOString(),
+      });
 
-    try {
-      // Optimistic update - remove from UI immediately
-      setWorkflows(prev => prev.filter(w => w.id !== workflowId));
-      workflowsRef.current = workflowsRef.current.filter(w => w.id !== workflowId);
+      setActiveSearchFilter(search);
+      setCurrentPage(1); // Reset to first page on search change
+      if (typeof window !== 'undefined') {
+        if (search) {
+          localStorage.setItem('executions-filter-search', search);
+        } else {
+          localStorage.removeItem('executions-filter-search');
+        }
+      }
+      fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        activeStatusFilter,
+        activeMachineFilter,
+        search,
+        activeSearchField,
+        activeSearchMode,
+        1,
+        pageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchField,
+      activeSearchMode,
+      pageSize,
+      posthog,
+    ]
+  );
 
-      // Delete from server
-      const response = await fetch(`/api/remote-workflows/${workflowId}`, { method: 'DELETE' });
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to delete workflow');
+  const handleSearchFieldChange = useCallback(
+    (searchField: string) => {
+      setActiveSearchField(searchField);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('executions-filter-search-field', searchField);
       }
 
-      toast.success(`Deleted workflow "${workflow.name}"`);
+      // Auto-switch search mode: exact for execution_id, contains for others
+      const newMode = searchField === 'execution_id' ? 'exact' : 'contains';
+      if (newMode !== activeSearchMode) {
+        setActiveSearchMode(newMode);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('executions-filter-search-mode', newMode);
+        }
+      }
 
-      // Refresh workflows and stats after a short delay
-      setTimeout(() => {
-        fetchWorkflows(false);
-      }, 500);
-    } catch (err) {
-      // Revert optimistic update on error
-      await fetchWorkflows(false);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Failed to delete workflow: ${errorMessage}`);
-      throw err;
-    }
-  }, [workflows, fetchWorkflows, posthog]);
+      // If there's an active search, refetch with new field and mode
+      if (activeSearchFilter) {
+        fetchExecutions(
+          true,
+          activeWorkflowFilter,
+          activeStatusFilter,
+          activeMachineFilter,
+          activeSearchFilter,
+          searchField,
+          newMode,
+          currentPage,
+          pageSize
+        );
+      }
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchMode,
+      currentPage,
+      pageSize,
+    ]
+  );
+
+  const handleSearchModeChange = useCallback(
+    (searchMode: string) => {
+      setActiveSearchMode(searchMode);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('executions-filter-search-mode', searchMode);
+      }
+      // If there's an active search, refetch with new mode
+      if (activeSearchFilter) {
+        fetchExecutions(
+          true,
+          activeWorkflowFilter,
+          activeStatusFilter,
+          activeMachineFilter,
+          activeSearchFilter,
+          activeSearchField,
+          searchMode,
+          currentPage,
+          pageSize
+        );
+      }
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      currentPage,
+      pageSize,
+    ]
+  );
+
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      posthog?.capture('dashboard_change_page', {
+        page: newPage,
+        timestamp: new Date().toISOString(),
+      });
+
+      setCurrentPage(newPage);
+      fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        activeStatusFilter,
+        activeMachineFilter,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        newPage,
+        pageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      pageSize,
+      posthog,
+    ]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (newPageSize: number) => {
+      posthog?.capture('dashboard_change_page_size', {
+        page_size: newPageSize,
+        timestamp: new Date().toISOString(),
+      });
+
+      setPageSize(newPageSize);
+      setCurrentPage(1); // Reset to first page when changing page size
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('executions-page-size', newPageSize.toString());
+      }
+      fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        activeStatusFilter,
+        activeMachineFilter,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        1,
+        newPageSize
+      );
+    },
+    [
+      fetchExecutions,
+      activeWorkflowFilter,
+      activeStatusFilter,
+      activeMachineFilter,
+      activeSearchFilter,
+      activeSearchField,
+      activeSearchMode,
+      posthog,
+    ]
+  );
+
+  // Handlers
+  const handleWorkflowCreated = useCallback(
+    (_newWorkflow: any) => {
+      fetchWorkflows(false);
+    },
+    [fetchWorkflows]
+  );
+
+  const handleQuickExecute = useCallback(
+    async (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      posthog?.capture('dashboard_execute_workflow', {
+        workflow_id: workflowId,
+        workflow_name: workflow.name,
+        timestamp: new Date().toISOString(),
+      });
+
+      setSelectedWorkflowForAction(workflow);
+      setBatchTestOpen(true);
+    },
+    [workflows, posthog]
+  );
+
+  const _handleQuickEdit = useCallback(
+    (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      setSelectedWorkflowForAction(workflow);
+      setActionsDialogMode('rename');
+      setActionsDialogOpen(true);
+    },
+    [workflows]
+  );
+
+  const handleQuickDuplicate = useCallback(
+    (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      posthog?.capture('dashboard_duplicate_workflow', {
+        workflow_id: workflowId,
+        workflow_name: workflow.name,
+        timestamp: new Date().toISOString(),
+      });
+
+      setSelectedWorkflowForAction(workflow);
+      setActionsDialogMode('duplicate');
+      setActionsDialogOpen(true);
+    },
+    [workflows, posthog]
+  );
+
+  const handleToggleCron = useCallback(
+    async (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      posthog?.capture('dashboard_toggle_cron', {
+        workflow_id: workflowId,
+        workflow_name: workflow.name,
+        action: !workflow.cron_enabled ? 'enable' : 'disable',
+        timestamp: new Date().toISOString(),
+      });
+
+      try {
+        const response = await fetch(
+          `/api/remote-workflows/${workflowId}/cron`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !workflow.cron_enabled }),
+          }
+        );
+
+        const result = await response.json();
+        if (result.success) {
+          fetchWorkflows(false);
+        } else {
+          console.error('Failed to toggle cron:', result.error);
+          // Show user-friendly error notification
+          if (response.status === 403) {
+            toast.error('This action requires organization admin privileges');
+          } else {
+            toast.error(
+              `Failed to toggle cron: ${result.error || 'Unknown error'}`
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Error toggling cron:', error);
+        toast.error('Error toggling cron');
+      }
+    },
+    [workflows, fetchWorkflows, posthog]
+  );
+
+  const handleManageOrganizations = useCallback(
+    (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      posthog?.capture('dashboard_manage_organizations', {
+        workflow_id: workflowId,
+        workflow_name: workflow.name,
+        timestamp: new Date().toISOString(),
+      });
+
+      setSelectedWorkflowForOrgAssignment(workflow);
+      setOrgAssignmentOpen(true);
+    },
+    [workflows, posthog]
+  );
+
+  const handleDeleteWorkflow = useCallback(
+    async (workflowId: number) => {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      posthog?.capture('dashboard_delete_workflow', {
+        workflow_id: workflowId,
+        workflow_name: workflow.name,
+        timestamp: new Date().toISOString(),
+      });
+
+      try {
+        // Optimistic update - remove from UI immediately
+        setWorkflows(prev => prev.filter(w => w.id !== workflowId));
+        workflowsRef.current = workflowsRef.current.filter(
+          w => w.id !== workflowId
+        );
+
+        // Delete from server
+        const response = await fetch(`/api/remote-workflows/${workflowId}`, {
+          method: 'DELETE',
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to delete workflow');
+        }
+
+        toast.success(`Deleted workflow "${workflow.name}"`);
+
+        // Refresh workflows and stats after a short delay
+        setTimeout(() => {
+          fetchWorkflows(false);
+        }, 500);
+      } catch (err) {
+        // Revert optimistic update on error
+        await fetchWorkflows(false);
+        const errorMessage =
+          err instanceof Error ? err.message : 'Unknown error';
+        toast.error(`Failed to delete workflow: ${errorMessage}`);
+        throw err;
+      }
+    },
+    [workflows, fetchWorkflows, posthog]
+  );
 
   // Initial data loading and refetch when viewOrgId changes
   useEffect(() => {
@@ -811,14 +1156,34 @@ function DashboardContent() {
       await workflowsPromise;
 
       // Now fetch executions with saved filters (workflow lookup will work)
-      const executionsPromise = fetchExecutions(true, activeWorkflowFilter, activeStatusFilter, activeMachineFilter, activeSearchFilter, activeSearchField, activeSearchMode, currentPage, pageSize);
+      const executionsPromise = fetchExecutions(
+        true,
+        activeWorkflowFilter,
+        activeStatusFilter,
+        activeMachineFilter,
+        activeSearchFilter,
+        activeSearchField,
+        activeSearchMode,
+        currentPage,
+        pageSize
+      );
 
       // Wait for all remaining requests to complete
-      await Promise.all([executionsPromise, liveExecutionsPromise, filtersPromise]);
+      await Promise.all([
+        executionsPromise,
+        liveExecutionsPromise,
+        filtersPromise,
+      ]);
     };
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchWorkflows, fetchLiveExecutions, fetchExecutionFilters, viewOrgId, organization?.id]);
+  }, [
+    fetchWorkflows,
+    fetchLiveExecutions,
+    fetchExecutionFilters,
+    viewOrgId,
+    organization?.id,
+  ]);
 
   // Polling for workflows and executions - always poll to catch changes
   useEffect(() => {
@@ -861,8 +1226,8 @@ function DashboardContent() {
   useEffect(() => {
     if (loading) return;
 
-    const executionId = searchParams.get("execution");
-    const workflowId = searchParams.get("workflow");
+    const executionId = searchParams.get('execution');
+    const workflowId = searchParams.get('workflow');
 
     if (executionId) {
       const execId = parseInt(executionId);
@@ -878,18 +1243,29 @@ function DashboardContent() {
         }
       }
     }
-  }, [loading, searchParams, executionDetailsOpen, selectedWorkflow, workflows, fetchExecutionDetails, fetchWorkflowOverview]);
+  }, [
+    loading,
+    searchParams,
+    executionDetailsOpen,
+    selectedWorkflow,
+    workflows,
+    fetchExecutionDetails,
+    fetchWorkflowOverview,
+  ]);
 
   // Check if user has admin privileges
-  const hasMediarEmail = user?.emailAddresses?.some(
-    email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
-  ) || false;
+  const hasMediarEmail =
+    user?.emailAddresses?.some(email =>
+      email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+    ) || false;
 
-  const isMemberOfMediarOrg = userMemberships?.data?.some(
-    membership => MEDIAR_ORG_IDS.includes(membership.organization.id)
-  ) || false;
+  const isMemberOfMediarOrg =
+    userMemberships?.data?.some(membership =>
+      MEDIAR_ORG_IDS.includes(membership.organization.id)
+    ) || false;
 
-  const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const _isMediarOrg =
+    organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
   const isGlobalAdmin = hasMediarEmail || isMemberOfMediarOrg;
   const canDelete = isGlobalAdmin;
 
@@ -906,7 +1282,7 @@ function DashboardContent() {
 
             {/* Stats Bar Skeleton */}
             <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3, 4].map(i => (
                 <div key={i} className="flex items-center gap-2">
                   <Skeleton className="w-4 h-4" />
                   <div className="flex items-baseline gap-1.5">
@@ -928,7 +1304,7 @@ function DashboardContent() {
 
             {/* Workflow Cards Skeleton */}
             <div className="border-2 border-black divide-y divide-gray-200 mb-4">
-              {[1, 2, 3, 4, 5].map((i) => (
+              {[1, 2, 3, 4, 5].map(i => (
                 <div key={i} className="p-2">
                   <div className="flex items-center gap-2 min-w-0">
                     {/* Name and status */}
@@ -976,7 +1352,7 @@ function DashboardContent() {
             <>
               {/* Stats Bar Skeleton */}
               <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
-                {[1, 2, 3, 4].map((i) => (
+                {[1, 2, 3, 4].map(i => (
                   <div key={i} className="flex items-center gap-2">
                     <Skeleton className="w-4 h-4" />
                     <div className="flex items-baseline gap-1.5">
@@ -998,7 +1374,7 @@ function DashboardContent() {
 
               {/* Workflow Cards Skeleton */}
               <div className="border-2 border-black divide-y divide-gray-200 mb-4">
-                {[1, 2, 3, 4, 5].map((i) => (
+                {[1, 2, 3, 4, 5].map(i => (
                   <div key={i} className="p-2">
                     <div className="flex items-center gap-2 min-w-0">
                       {/* Name and status */}
@@ -1031,187 +1407,215 @@ function DashboardContent() {
             <>
               {/* Stats Bar - Inline */}
               <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
-              {stats.map((stat) => {
-                const Icon = stat.icon;
-                return (
-                  <div key={stat.label} className="flex items-center gap-2">
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="font-mono text-sm font-medium text-gray-600 uppercase">{stat.label}</span>
-                      <span className="font-mono text-lg font-bold">{stat.value}</span>
+                {stats.map(stat => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={stat.label} className="flex items-center gap-2">
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-mono text-sm font-medium text-gray-600 uppercase">
+                          {stat.label}
+                        </span>
+                        <span className="font-mono text-lg font-bold">
+                          {stat.value}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Header with Actions */}
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold font-mono uppercase">Available Workflows</h2>
-              <div className="flex items-center gap-2">
-                {/* Command Bar */}
-                <button
-                  onClick={() => {
-                    posthog?.capture('dashboard_open_command_palette', {
-                      timestamp: new Date().toISOString(),
-                    });
-                    setCommandPaletteOpen(true);
-                  }}
-                  className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm min-h-[42px]"
-                  aria-label="Open command palette"
-                >
-                  <Search className="w-4 h-4" />
-                  <span className="font-mono text-xs uppercase">Search</span>
-                  <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black border border-black rounded font-mono">
-                    {typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'}K
-                  </kbd>
-                </button>
-
-                <a
-                  href="https://mediar.ai/turnkey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    posthog?.capture('dashboard_turnkey_automation_click', {
-                      timestamp: new Date().toISOString(),
-                    });
-                  }}
-                  className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm min-h-[42px]"
-                  aria-label="Turn recording into automation"
-                >
-                  <Wand2 className="w-4 h-4" />
-                  <span className="font-mono text-xs uppercase">Turnkey Automation</span>
-                </a>
-
+                  );
+                })}
               </div>
-            </div>
 
-            {/* Workflows List */}
-            <div className="mb-4">
-              {workflows.length > 0 ? (
-                <div className="border-2 border-black divide-y divide-gray-200">
-                  {workflows.map((workflow, index) => (
-                    <WorkflowCardEnhanced
-                      key={workflow.id}
-                      workflow={workflow}
-                      executions={executions.filter(e => e.workflow_id === workflow.id)}
+              {/* Header with Actions */}
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold font-mono uppercase">
+                  Available Workflows
+                </h2>
+                <div className="flex items-center gap-2">
+                  {/* Command Bar */}
+                  <button
+                    onClick={() => {
+                      posthog?.capture('dashboard_open_command_palette', {
+                        timestamp: new Date().toISOString(),
+                      });
+                      setCommandPaletteOpen(true);
+                    }}
+                    className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm min-h-[42px]"
+                    aria-label="Open command palette"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span className="font-mono text-xs uppercase">Search</span>
+                    <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white text-black border border-black rounded font-mono">
+                      {typeof window !== 'undefined' &&
+                      navigator.platform.toLowerCase().includes('mac')
+                        ? '⌘'
+                        : 'Ctrl'}
+                      K
+                    </kbd>
+                  </button>
+
+                  <a
+                    href="https://mediar.ai/turnkey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      posthog?.capture('dashboard_turnkey_automation_click', {
+                        timestamp: new Date().toISOString(),
+                      });
+                    }}
+                    className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm min-h-[42px]"
+                    aria-label="Turn recording into automation"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    <span className="font-mono text-xs uppercase">
+                      Turnkey Automation
+                    </span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Workflows List */}
+              <div className="mb-4">
+                {workflows.length > 0 ? (
+                  <div className="border-2 border-black divide-y divide-gray-200">
+                    {workflows.map((workflow, index) => (
+                      <WorkflowCardEnhanced
+                        key={workflow.id}
+                        workflow={workflow}
+                        executions={executions.filter(
+                          e => e.workflow_id === workflow.id
+                        )}
+                        liveExecutions={liveExecutions}
+                        isSelected={selectedIndex === index}
+                        onSelect={() => setSelectedIndex(index)}
+                        onExecute={() => handleQuickExecute(workflow.id)}
+                        onView={() => fetchWorkflowOverview(workflow.id)}
+                        onToggleCron={() => handleToggleCron(workflow.id)}
+                        onManageOrganizations={() =>
+                          handleManageOrganizations(workflow.id)
+                        }
+                        onDelete={handleDeleteWorkflow}
+                        isMediarAdmin={!!isGlobalAdmin}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 border-2 border-dashed border-black">
+                    <p className="font-mono text-gray-600">No workflows yet.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Executions */}
+              {initialExecutionsFetchDone &&
+                (executions.length > 0 ||
+                  executionsLoading ||
+                  activeWorkflowFilter ||
+                  activeStatusFilter ||
+                  activeMachineFilter ||
+                  activeSearchFilter) && (
+                  <div className="space-y-3 mt-4">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-bold font-mono uppercase">
+                        Recent Executions
+                      </h2>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[11px] font-mono text-black">
+                          Show:
+                        </span>
+                        <button
+                          onClick={() => {
+                            const newValue = !showQueuedExecutions;
+                            setShowQueuedExecutions(newValue);
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem(
+                                'showQueuedExecutions',
+                                JSON.stringify(newValue)
+                              );
+                            }
+                            handleRefreshExecutions();
+                          }}
+                          className={`h-7 px-3 text-[11px] font-mono transition-colors border-2 border-black ${
+                            showQueuedExecutions
+                              ? 'bg-black text-white'
+                              : 'bg-white text-black hover:bg-gray-50'
+                          }`}
+                          title={
+                            showQueuedExecutions
+                              ? 'Hide queued executions'
+                              : 'Show queued executions'
+                          }
+                        >
+                          Queued
+                        </button>
+                        <button
+                          onClick={() => {
+                            const newValue = !showSkippedExecutions;
+                            setShowSkippedExecutions(newValue);
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem(
+                                'showSkippedExecutions',
+                                JSON.stringify(newValue)
+                              );
+                            }
+                            handleRefreshExecutions();
+                          }}
+                          className={`h-7 px-3 text-[11px] font-mono transition-colors border-2 border-black ${
+                            showSkippedExecutions
+                              ? 'bg-black text-white'
+                              : 'bg-white text-black hover:bg-gray-50'
+                          }`}
+                          title={
+                            showSkippedExecutions
+                              ? 'Hide skipped executions'
+                              : 'Show skipped executions'
+                          }
+                        >
+                          Skipped
+                        </button>
+                      </div>
+                    </div>
+
+                    <ExecutionsDataTable
+                      executions={executions.filter(e => {
+                        if (!showQueuedExecutions && e.status === 'queued')
+                          return false;
+                        if (!showSkippedExecutions && e.status === 'skipped')
+                          return false;
+                        return true;
+                      })}
+                      workflows={workflows}
                       liveExecutions={liveExecutions}
-                      isSelected={selectedIndex === index}
-                      onSelect={() => setSelectedIndex(index)}
-                      onExecute={() => handleQuickExecute(workflow.id)}
-                      onView={() => fetchWorkflowOverview(workflow.id)}
-                      onToggleCron={() => handleToggleCron(workflow.id)}
-                      onManageOrganizations={() => handleManageOrganizations(workflow.id)}
-                      onDelete={handleDeleteWorkflow}
-                      isMediarAdmin={!!isGlobalAdmin}
+                      loading={executionsLoading}
+                      canDelete={canDelete}
+                      onViewDetails={fetchExecutionDetails}
+                      onCancelExecution={handleCancelExecution}
+                      onDeleteExecution={handleDeleteExecution}
+                      onRefresh={handleRefreshExecutions}
+                      filterWorkflowNames={filterWorkflowNames}
+                      filterStatuses={filterStatuses}
+                      filterMachines={filterMachines}
+                      onWorkflowFilterChange={handleWorkflowFilterChange}
+                      onStatusFilterChange={handleStatusFilterChange}
+                      onMachineFilterChange={handleMachineFilterChange}
+                      onSearchFilterChange={handleSearchFilterChange}
+                      onSearchFieldChange={handleSearchFieldChange}
+                      onSearchModeChange={handleSearchModeChange}
+                      onPageChange={handlePageChange}
+                      onPageSizeChange={handlePageSizeChange}
+                      activeWorkflowFilter={activeWorkflowFilter}
+                      activeStatusFilter={activeStatusFilter}
+                      activeMachineFilter={activeMachineFilter}
+                      activeSearchFilter={activeSearchFilter}
+                      activeSearchField={activeSearchField}
+                      activeSearchMode={activeSearchMode}
+                      currentPage={currentPage}
+                      pageSize={pageSize}
+                      totalRecords={totalExecutions}
                     />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 border-2 border-dashed border-black">
-                  <p className="font-mono text-gray-600">No workflows yet.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Recent Executions */}
-            {initialExecutionsFetchDone && (executions.length > 0 || executionsLoading || activeWorkflowFilter || activeStatusFilter || activeMachineFilter || activeSearchFilter) && (
-              <div className="space-y-3 mt-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold font-mono uppercase">Recent Executions</h2>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        const newValue = !showQueuedExecutions;
-                        setShowQueuedExecutions(newValue);
-                        if (typeof window !== 'undefined') {
-                          localStorage.setItem('showQueuedExecutions', JSON.stringify(newValue));
-                        }
-                        // Trigger fresh API fetch with current filters
-                        handleRefreshExecutions();
-                      }}
-                      className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
-                      title={showQueuedExecutions ? "Hide queued executions" : "Show queued executions"}
-                    >
-                      {showQueuedExecutions ? (
-                        <>
-                          <EyeOff className="w-3.5 h-3.5 inline mr-1" />
-                          HIDE QUEUED
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3.5 h-3.5 inline mr-1" />
-                          SHOW QUEUED
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newValue = !showSkippedExecutions;
-                        setShowSkippedExecutions(newValue);
-                        if (typeof window !== 'undefined') {
-                          localStorage.setItem('showSkippedExecutions', JSON.stringify(newValue));
-                        }
-                        // Trigger fresh API fetch with current filters
-                        handleRefreshExecutions();
-                      }}
-                      className="px-3 py-1 border border-black rounded text-xs font-mono font-bold hover:bg-black hover:text-white transition-colors"
-                      title={showSkippedExecutions ? "Hide skipped executions" : "Show skipped executions"}
-                    >
-                      {showSkippedExecutions ? (
-                        <>
-                          <EyeOff className="w-3.5 h-3.5 inline mr-1" />
-                          HIDE SKIPPED
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3.5 h-3.5 inline mr-1" />
-                          SHOW SKIPPED
-                        </>
-                      )}
-                    </button>
                   </div>
-                </div>
-
-                <ExecutionsDataTable
-                  executions={executions.filter(e => {
-                    if (!showQueuedExecutions && e.status === 'queued') return false;
-                    if (!showSkippedExecutions && e.status === 'skipped') return false;
-                    return true;
-                  })}
-                  workflows={workflows}
-                  liveExecutions={liveExecutions}
-                  loading={executionsLoading}
-                  canDelete={canDelete}
-                  onViewDetails={fetchExecutionDetails}
-                  onCancelExecution={handleCancelExecution}
-                  onDeleteExecution={handleDeleteExecution}
-                  onRefresh={handleRefreshExecutions}
-                  filterWorkflowNames={filterWorkflowNames}
-                  filterStatuses={filterStatuses}
-                  filterMachines={filterMachines}
-                  onWorkflowFilterChange={handleWorkflowFilterChange}
-                  onStatusFilterChange={handleStatusFilterChange}
-                  onMachineFilterChange={handleMachineFilterChange}
-                  onSearchFilterChange={handleSearchFilterChange}
-                  onSearchFieldChange={handleSearchFieldChange}
-                  onSearchModeChange={handleSearchModeChange}
-                  onPageChange={handlePageChange}
-                  onPageSizeChange={handlePageSizeChange}
-                  activeWorkflowFilter={activeWorkflowFilter}
-                  activeStatusFilter={activeStatusFilter}
-                  activeMachineFilter={activeMachineFilter}
-                  activeSearchFilter={activeSearchFilter}
-                  activeSearchField={activeSearchField}
-                  activeSearchMode={activeSearchMode}
-                  currentPage={currentPage}
-                  pageSize={pageSize}
-                  totalRecords={totalExecutions}
-                />
-              </div>
-            )}
-          </>
-        )}
+                )}
+            </>
+          )}
         </div>
 
         {/* Command Palette */}
@@ -1248,13 +1652,15 @@ function DashboardContent() {
         <UnifiedWorkflowDialog
           workflow={selectedWorkflow}
           open={workflowDetailsOpen}
-          onOpenChange={(open) => {
+          onOpenChange={open => {
             setWorkflowDetailsOpen(open);
             if (!open) {
               // Remove workflow parameter from URL when closing
               const params = new URLSearchParams(searchParams.toString());
               params.delete('workflow');
-              router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ''}`);
+              router.replace(
+                `/dashboard${params.toString() ? `?${params.toString()}` : ''}`
+              );
             }
           }}
           onSettingsUpdated={() => fetchWorkflows(false)}
@@ -1264,13 +1670,15 @@ function DashboardContent() {
         <ExecutionDetailsDialog
           execution={selectedExecution}
           open={executionDetailsOpen}
-          onOpenChange={(open) => {
+          onOpenChange={open => {
             setExecutionDetailsOpen(open);
             if (!open) {
               // Remove execution parameter from URL when closing
               const params = new URLSearchParams(searchParams.toString());
               params.delete('execution');
-              router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ''}`);
+              router.replace(
+                `/dashboard${params.toString() ? `?${params.toString()}` : ''}`
+              );
             }
           }}
         />
@@ -1309,7 +1717,7 @@ function DashboardContent() {
         {selectedWorkflowForOrgAssignment && (
           <OrganizationAssignmentDialog
             open={orgAssignmentOpen}
-            onOpenChange={(open) => {
+            onOpenChange={open => {
               setOrgAssignmentOpen(open);
               if (!open) {
                 setSelectedWorkflowForOrgAssignment(null);
@@ -1328,7 +1736,7 @@ function DashboardContent() {
         {selectedWorkflowForVersion && (
           <CreateWorkflowDialog
             open={uploadVersionOpen}
-            onOpenChange={(open) => {
+            onOpenChange={open => {
               setUploadVersionOpen(open);
               if (!open) {
                 setSelectedWorkflowForVersion(null);
@@ -1350,13 +1758,15 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto"></div>
-        </div>
-      </DashboardLayout>
-    }>
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="p-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto"></div>
+          </div>
+        </DashboardLayout>
+      }
+    >
       <DashboardContent />
     </Suspense>
   );

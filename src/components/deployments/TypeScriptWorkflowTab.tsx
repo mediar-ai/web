@@ -9,7 +9,6 @@ import {
   Loader2,
   RefreshCw,
   Code,
-  Zap,
   AlertCircle,
   CheckCircle,
   XCircle,
@@ -76,36 +75,16 @@ export function TypeScriptWorkflowTab({
     fetchMetadata(true);
   };
 
-  // Show message if not a TypeScript workflow
+  // Show nothing if not a TypeScript workflow
   if (workflowFormat !== 'typescript') {
-    return (
-      <div className="p-6">
-        <Alert className="border-2 border-black rounded-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            This workflow is not in TypeScript format. TypeScript visualization
-            is only available for workflows created with the{' '}
-            <code className="font-mono text-sm">@mediar-ai/workflow</code> SDK.
-            <div className="mt-2 text-sm text-muted-foreground">
-              Current format:{' '}
-              <Badge variant="outline">{workflowFormat || 'unknown'}</Badge>
-            </div>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
+    return null;
   }
 
   // Loading state
   if (loading && !metadata) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" />
-          <p className="text-sm text-muted-foreground">
-            Parsing TypeScript workflow...
-          </p>
-        </div>
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="w-5 h-5 animate-spin" />
       </div>
     );
   }
@@ -113,149 +92,66 @@ export function TypeScriptWorkflowTab({
   // Error state
   if (error) {
     return (
-      <div className="p-6">
-        <Alert className="border-2 border-black rounded-lg">
-          <XCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="font-semibold mb-1">
-              Failed to load TypeScript workflow
-            </div>
-            <div className="text-sm">{error}</div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchMetadata()}
-              className="mt-3 border-2 border-black"
-            >
-              <RefreshCw className="w-3 h-3 mr-2" />
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </div>
+      <Alert className="border-2 border-black rounded-lg">
+        <XCircle className="h-4 w-4" />
+        <AlertDescription>
+          <div className="font-semibold mb-1">Failed to load workflow details</div>
+          <div className="text-sm">{error}</div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchMetadata()}
+            className="mt-3 border-2 border-black"
+          >
+            <RefreshCw className="w-3 h-3 mr-2" />
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
   if (!metadata) {
     return (
-      <div className="p-6">
-        <Alert className="border-2 border-black rounded-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            No metadata available for this workflow.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <Alert className="border-2 border-black rounded-lg">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          No workflow details available.
+        </AlertDescription>
+      </Alert>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header with refresh button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Code className="w-5 h-5" />
-          <h3 className="font-mono font-bold text-lg uppercase">
-            TypeScript Workflow
-          </h3>
-          {source && (
-            <Badge
-              variant={source === 'cached' ? 'secondary' : 'default'}
-              className="font-mono"
-            >
-              {source === 'cached' ? 'Cached' : 'Live Parsed'}
-            </Badge>
-          )}
+    <div className="space-y-6">
+      {/* Workflow Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="flex items-center gap-2 p-3 border-2 border-black rounded-lg">
+          <CheckCircle className="w-4 h-4" />
+          <div>
+            <div className="text-xs text-muted-foreground font-mono">Steps</div>
+            <div className="font-bold font-mono">{metadata.steps.length}</div>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="border-2 border-black"
-        >
-          {refreshing ? (
-            <>
-              <Loader2 className="w-3 h-3 mr-2 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-3 h-3 mr-2" />
-              Refresh
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2 p-3 border-2 border-black rounded-lg">
+          <Code className="w-4 h-4" />
+          <div>
+            <div className="text-xs text-muted-foreground font-mono">Inputs</div>
+            <div className="font-bold font-mono">{metadata.inputs.length}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 p-3 border-2 border-black rounded-lg">
+          <AlertCircle className="w-4 h-4" />
+          <div>
+            <div className="text-xs text-muted-foreground font-mono">
+              Error Handler
+            </div>
+            <div className="font-bold font-mono">
+              {metadata.errorHandler ? 'Yes' : 'No'}
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* Workflow Info */}
-      <Card className="border-2 border-black">
-        <CardHeader className="bg-black text-white">
-          <CardTitle className="font-mono text-sm uppercase flex items-center gap-2">
-            <Zap className="w-4 h-4" />
-            Workflow Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-3">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-xs text-muted-foreground uppercase font-mono mb-1">
-                Name
-              </div>
-              <div className="font-mono text-sm">{metadata.name}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase font-mono mb-1">
-                Version
-              </div>
-              <div className="font-mono text-sm">v{metadata.version}</div>
-            </div>
-          </div>
-          {metadata.description && (
-            <div>
-              <div className="text-xs text-muted-foreground uppercase font-mono mb-1">
-                Description
-              </div>
-              <div className="text-sm">{metadata.description}</div>
-            </div>
-          )}
-          <div className="grid grid-cols-3 gap-4 pt-2">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" />
-              <div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  Steps
-                </div>
-                <div className="font-bold font-mono">
-                  {metadata.steps.length}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Code className="w-4 h-4" />
-              <div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  Inputs
-                </div>
-                <div className="font-bold font-mono">
-                  {metadata.inputs.length}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              <div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  Error Handler
-                </div>
-                <div className="font-bold font-mono">
-                  {metadata.errorHandler ? 'Yes' : 'No'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Input Schema */}
       {metadata.inputs.length > 0 && (

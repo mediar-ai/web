@@ -90,6 +90,7 @@ function AdminPageContent() {
   const [orgSearchQuery, setOrgSearchQuery] = useState('');
 
   const [updatingMachine, setUpdatingMachine] = useState<number | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string>('');
   const [machineColumnVisibility, setMachineColumnVisibility] = useState<
     Record<string, boolean>
   >(() => {
@@ -308,7 +309,7 @@ function AdminPageContent() {
           const healthOrder: Record<string, number> = {
             healthy: 0,
             unhealthy: 1,
-            unknown: 2
+            unknown: 2,
           };
           const aHealth = a.health_status || 'unknown';
           const bHealth = b.health_status || 'unknown';
@@ -435,10 +436,9 @@ function AdminPageContent() {
 
     setUpdatingMachine(machineId);
     try {
-      const response = await fetch(
-        `/api/admin/machines/${machineId}/restart`,
-        { method: 'POST' }
-      );
+      const response = await fetch(`/api/admin/machines/${machineId}/restart`, {
+        method: 'POST',
+      });
 
       const data = await response.json();
       if (response.ok) {
@@ -463,14 +463,17 @@ function AdminPageContent() {
     if (
       !force &&
       !confirm(
-        `Update MCP agent on "${machineName}" to latest version? This will take ~30 seconds.`
+        `Update MCP agent on "${machineName}" to latest version?\n\nThis process takes 1-2 minutes:\n• Stop MCP agent\n• Download latest release\n• Install and restart\n• Verify new version\n\nContinue?`
       )
     ) {
       return;
     }
 
     setUpdatingMachine(machineId);
+    setUpdateStatus('Connecting to Azure VM...');
+
     try {
+      setUpdateStatus('Running update script on VM (this takes ~1 min)...');
       const response = await fetch(
         `/api/admin/machines/${machineId}/update-version`,
         {
@@ -483,10 +486,20 @@ function AdminPageContent() {
       const data = await response.json();
 
       if (response.ok) {
+        setUpdateStatus('Update complete! Waiting for MCP agent to restart...');
+
+        // Wait for the MCP agent to restart (it takes a few seconds)
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Refresh machines - version will update on next health check cron
+        setUpdateStatus('Refreshing machine list...');
+        await fetchMachines();
         toast.success(
-          `Update completed for ${machineName}!`
+          `${machineName} updated successfully! Version will refresh shortly.`,
+          {
+            duration: 5000,
+          }
         );
-        setTimeout(() => fetchMachines(), 5000);
       } else if (response.status === 409) {
         // VM is in a bad state - offer actions
         const action = data.action;
@@ -518,6 +531,7 @@ function AdminPageContent() {
       toast.error('Failed to trigger update');
     } finally {
       setUpdatingMachine(null);
+      setUpdateStatus('');
     }
   };
 
@@ -1213,8 +1227,14 @@ function AdminPageContent() {
                     {/* Machines Table */}
                     <div className="border-2 border-black">
                       <div className="bg-gray-50 p-4 border-b-2 border-black flex items-center justify-between">
-                        <h3 className="font-mono font-bold">
+                        <h3 className="font-mono font-bold flex items-center gap-3">
                           MACHINE REGISTRY
+                          {updatingMachine && updateStatus && (
+                            <span className="text-xs font-normal bg-black text-white px-2 py-1 animate-pulse flex items-center gap-2">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              {updateStatus}
+                            </span>
+                          )}
                         </h3>
                         <div className="flex items-center gap-2 relative">
                           <button
@@ -1867,7 +1887,9 @@ function AdminPageContent() {
                                                 machine.name
                                               )
                                             }
-                                            disabled={updatingMachine === machine.id}
+                                            disabled={
+                                              updatingMachine === machine.id
+                                            }
                                             className={`p-1 border border-black ${updatingMachine === machine.id ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'hover:bg-blue-600 hover:text-white hover:border-blue-600'}`}
                                             title="Update MCP version"
                                           >
