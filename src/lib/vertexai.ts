@@ -111,9 +111,9 @@ export async function withHealthMonitoring<T>(
 }
 
 // Initialize Google GenAI with Vertex AI backend
-const getVertexAIConfig = (): GoogleGenAI => {
+const getVertexAIConfig = (locationOverride?: string): GoogleGenAI => {
   const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
-  const location = process.env.VERTEX_AI_LOCATION || 'us-central1';
+  const location = locationOverride || process.env.VERTEX_AI_LOCATION || 'us-central1';
 
   // Detect environment
   const isVercel = process.env.VERCEL === '1';
@@ -455,9 +455,15 @@ export async function callVertexWithStructuredOutput(
     retryDelayMs = 1000
   } = options;
 
+  // Check if this is a Gemini 3 model - requires global endpoint
+  const mappedModelName = getVertexModelName(modelName);
+  const isGemini3 = mappedModelName.includes('gemini-3');
+  const location = isGemini3 ? 'global' : undefined;
+
   console.log('🚀 Using Vertex AI with structured output for model:', modelName);
+  console.log(`🌍 Location: ${location || 'us-central1 (default)'}, isGemini3: ${isGemini3}`);
   console.log(`⏱️ Timeout configured: ${timeoutMs}ms, Max retries: ${maxRetries}`);
-  
+
   const startTime = Date.now();
   let attempt = 0;
 
@@ -470,8 +476,11 @@ export async function callVertexWithStructuredOutput(
 
   reportProgress('Initializing Vertex AI');
 
-  const genAI = getVertexGenAI();
-  const model = genAI.getGenerativeModel({
+  // Use location-specific GenAI instance for Gemini 3
+  const genAI = isGemini3 ? getVertexAIConfig('global') : getVertexGenAI()._client;
+
+  // For Gemini 3, use the new SDK directly; for others, use the wrapper
+  const model = isGemini3 ? null : getVertexGenAI().getGenerativeModel({
     model: modelName,
     safetySettings: [
       { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -513,14 +522,28 @@ export async function callVertexWithStructuredOutput(
         }, timeoutMs);
       });
 
-      // Create the actual request promise
-      const requestPromise = model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-        generationConfig: {
-          responseMimeType,
-          responseSchema,
-        },
-      });
+      // Create the actual request promise - different path for Gemini 3
+      let requestPromise;
+      if (isGemini3) {
+        // Gemini 3: Use new SDK directly with global endpoint
+        requestPromise = genAI.models.generateContent({
+          model: mappedModelName,
+          contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+          config: {
+            responseMimeType,
+            responseSchema,
+          },
+        });
+      } else {
+        // Other models: Use wrapper
+        requestPromise = model!.generateContent({
+          contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+          generationConfig: {
+            responseMimeType,
+            responseSchema,
+          },
+        });
+      }
 
       reportProgress('Waiting for Vertex AI response');
 
@@ -530,12 +553,18 @@ export async function callVertexWithStructuredOutput(
       const requestElapsed = Date.now() - attemptStartTime;
       reportProgress(`Received response in ${requestElapsed}ms`);
 
-      // TypeScript check - result should be the generateContent response
-      if (!result || typeof result !== 'object' || !('response' in result)) {
-        throw new Error('Invalid response structure from Vertex AI');
+      // Handle different response structures for Gemini 3 vs other models
+      let response;
+      if (isGemini3) {
+        // Gemini 3: Response is direct from new SDK
+        response = result;
+      } else {
+        // Other models: Response is wrapped
+        if (!result || typeof result !== 'object' || !('response' in result)) {
+          throw new Error('Invalid response structure from Vertex AI');
+        }
+        response = (result as { response: any }).response;
       }
-
-      const response = (result as { response: any }).response;
 
       // 🔥 CAPTURE USAGE METADATA FOR TOKEN TRACKING
       const usageMetadata = response?.usageMetadata;
