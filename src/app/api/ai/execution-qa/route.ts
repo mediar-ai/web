@@ -96,7 +96,7 @@ async function sendMessageWithRetry(
       console.log(
         `[Q&A-HTTP] Sending ${messageType} to Vertex AI (attempt ${attempt + 1}/${maxRetries + 1})`
       );
-      const response = await chat.sendMessage(message);
+      const response = await chat.sendMessage({ message });
 
       if (attempt > 0) {
         console.log(`[Q&A-RETRY] ✅ Success after ${attempt} retries`);
