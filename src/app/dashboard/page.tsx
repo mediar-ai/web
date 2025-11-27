@@ -27,8 +27,17 @@ import {
   Eye,
   EyeOff,
   Wand2,
+  Tag,
+  X,
 } from 'lucide-react';
-import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
+import {
+  useEffect,
+  useState,
+  useCallback,
+  Suspense,
+  useRef,
+  useMemo,
+} from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import {
@@ -153,6 +162,17 @@ function DashboardContent() {
     }
     return 'contains';
   });
+
+  // Workflow tag filter state (for filtering workflow cards)
+  const [selectedWorkflowTags, setSelectedWorkflowTags] = useState<string[]>(
+    () => {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('workflow-filter-tags');
+        return saved ? JSON.parse(saved) : [];
+      }
+      return [];
+    }
+  );
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -307,6 +327,39 @@ function DashboardContent() {
   useEffect(() => {
     setSelectedIndex(navSelectedIndex);
   }, [navSelectedIndex]);
+
+  // Compute unique tags from all workflows
+  const allWorkflowTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    workflows.forEach(w => {
+      if (w.tags && Array.isArray(w.tags)) {
+        w.tags.forEach(tag => tagSet.add(tag));
+      }
+    });
+    return Array.from(tagSet).sort();
+  }, [workflows]);
+
+  // Filter workflows by selected tags
+  const filteredWorkflows = useMemo(() => {
+    if (selectedWorkflowTags.length === 0) return workflows;
+    return workflows.filter(w => {
+      if (!w.tags || !Array.isArray(w.tags)) return false;
+      return selectedWorkflowTags.every(tag => w.tags!.includes(tag));
+    });
+  }, [workflows, selectedWorkflowTags]);
+
+  // Toggle tag filter
+  const toggleTagFilter = (tag: string) => {
+    setSelectedWorkflowTags(prev => {
+      const newTags = prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('workflow-filter-tags', JSON.stringify(newTags));
+      }
+      return newTags;
+    });
+  };
 
   // Keyboard shortcut for new workflow (N key)
   useEffect(() => {
@@ -1473,11 +1526,47 @@ function DashboardContent() {
                 </div>
               </div>
 
+              {/* Tag Filters */}
+              {allWorkflowTags.length > 0 && (
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <span className="text-[11px] font-mono text-gray-500">
+                    Tags:
+                  </span>
+                  {allWorkflowTags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleTagFilter(tag)}
+                      className={`h-6 px-2 text-[11px] font-mono border-2 transition-colors ${
+                        selectedWorkflowTags.includes(tag)
+                          ? 'bg-black text-white border-black'
+                          : 'bg-white text-black border-gray-300 hover:border-black'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                  {selectedWorkflowTags.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelectedWorkflowTags([]);
+                        if (typeof window !== 'undefined') {
+                          localStorage.removeItem('workflow-filter-tags');
+                        }
+                      }}
+                      className="h-6 px-2 text-[11px] font-mono text-gray-500 hover:text-black flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Workflows List */}
               <div className="mb-4">
-                {workflows.length > 0 ? (
+                {filteredWorkflows.length > 0 ? (
                   <div className="border-2 border-black divide-y divide-gray-200">
-                    {workflows.map((workflow, index) => (
+                    {filteredWorkflows.map((workflow, index) => (
                       <WorkflowCardEnhanced
                         key={workflow.id}
                         workflow={workflow}
@@ -1497,6 +1586,12 @@ function DashboardContent() {
                         isMediarAdmin={!!isGlobalAdmin}
                       />
                     ))}
+                  </div>
+                ) : workflows.length > 0 ? (
+                  <div className="text-center py-12 border-2 border-dashed border-black">
+                    <p className="font-mono text-gray-600">
+                      No workflows match selected tags.
+                    </p>
                   </div>
                 ) : (
                   <div className="text-center py-12 border-2 border-dashed border-black">
