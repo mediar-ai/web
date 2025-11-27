@@ -170,75 +170,94 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // For private repos, we need to use the GitHub API to download assets
-    // Parse the browser_download_url to get release info
-    // Format: https://github.com/{owner}/{repo}/releases/download/{tag}/{asset_name}
-    const urlMatch = workflow.github_release_url.match(
-      /github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/
+    // Support two URL formats:
+    // 1. Browser download URL: https://github.com/{owner}/{repo}/releases/download/{tag}/{asset_name}
+    // 2. Direct API URL: https://api.github.com/repos/{owner}/{repo}/releases/assets/{asset_id}
+
+    let assetApiUrl: string;
+
+    // Check for direct API URL format first
+    const apiUrlMatch = workflow.github_release_url.match(
+      /api\.github\.com\/repos\/([^/]+)\/([^/]+)\/releases\/assets\/(\d+)$/
     );
 
-    if (!urlMatch) {
-      console.error('Invalid GitHub release URL format:', workflow.github_release_url);
-      return NextResponse.json(
-        { error: 'Invalid GitHub release URL format' },
-        { status: 500 }
-      );
-    }
-
-    const [, owner, repo, tag, assetName] = urlMatch;
-
-    console.log(`Fetching workflow ${workflowUuid} via GitHub API`, {
-      owner,
-      repo,
-      tag,
-      assetName,
-      auth_method: authMethod,
-      org_id: authenticatedOrgId,
-    });
-
-    // Get release info to find asset ID
-    const releaseApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
-    const releaseResponse = await fetch(releaseApiUrl, {
-      headers: {
-        'Authorization': `token ${githubToken}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'mediar-workflow-downloader/1.0',
-      },
-    });
-
-    if (!releaseResponse.ok) {
-      console.error('Failed to fetch release info:', {
-        status: releaseResponse.status,
-        statusText: releaseResponse.statusText,
-        url: releaseApiUrl,
+    if (apiUrlMatch) {
+      // Direct API URL - use as-is
+      assetApiUrl = workflow.github_release_url;
+      console.log(`Fetching workflow ${workflowUuid} via direct API URL`, {
+        url: assetApiUrl,
+        auth_method: authMethod,
+        org_id: authenticatedOrgId,
       });
-      return NextResponse.json(
-        {
-          error: 'Failed to fetch release info from GitHub',
+    } else {
+      // Try browser download URL format
+      const browserUrlMatch = workflow.github_release_url.match(
+        /github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/
+      );
+
+      if (!browserUrlMatch) {
+        console.error('Invalid GitHub release URL format:', workflow.github_release_url);
+        return NextResponse.json(
+          { error: 'Invalid GitHub release URL format', url: workflow.github_release_url },
+          { status: 500 }
+        );
+      }
+
+      const [, owner, repo, tag, assetName] = browserUrlMatch;
+
+      console.log(`Fetching workflow ${workflowUuid} via GitHub API`, {
+        owner,
+        repo,
+        tag,
+        assetName,
+        auth_method: authMethod,
+        org_id: authenticatedOrgId,
+      });
+
+      // Get release info to find asset ID
+      const releaseApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
+      const releaseResponse = await fetch(releaseApiUrl, {
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'mediar-workflow-downloader/1.0',
+        },
+      });
+
+      if (!releaseResponse.ok) {
+        console.error('Failed to fetch release info:', {
           status: releaseResponse.status,
           statusText: releaseResponse.statusText,
-        },
-        { status: 502 }
-      );
+          url: releaseApiUrl,
+        });
+        return NextResponse.json(
+          {
+            error: 'Failed to fetch release info from GitHub',
+            status: releaseResponse.status,
+            statusText: releaseResponse.statusText,
+          },
+          { status: 502 }
+        );
+      }
+
+      const releaseData = await releaseResponse.json();
+      const asset = releaseData.assets?.find((a: { name: string }) => a.name === assetName);
+
+      if (!asset) {
+        console.error('Asset not found in release:', { assetName, availableAssets: releaseData.assets?.map((a: { name: string }) => a.name) });
+        return NextResponse.json(
+          {
+            error: 'Asset not found in release',
+            assetName,
+            availableAssets: releaseData.assets?.map((a: { name: string }) => a.name),
+          },
+          { status: 404 }
+        );
+      }
+
+      // Build asset API URL from parsed info
+      assetApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`;
     }
-
-    const releaseData = await releaseResponse.json();
-    const asset = releaseData.assets?.find((a: { name: string }) => a.name === assetName);
-
-    if (!asset) {
-      console.error('Asset not found in release:', { assetName, availableAssets: releaseData.assets?.map((a: { name: string }) => a.name) });
-      return NextResponse.json(
-        {
-          error: 'Asset not found in release',
-          assetName,
-          availableAssets: releaseData.assets?.map((a: { name: string }) => a.name),
-        },
-        { status: 404 }
-      );
-    }
-
-    // Download asset via API URL (works for private repos)
-    const assetApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`;
     const githubResponse = await fetch(assetApiUrl, {
       headers: {
         'Authorization': `token ${githubToken}`,
