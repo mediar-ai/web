@@ -1,18 +1,13 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Input } from '@/components/ui/input';
 import {
   Search,
   Play,
   Copy,
-  Plus,
   RefreshCw,
   Eye,
   Edit,
@@ -32,8 +27,6 @@ interface CommandPaletteProps {
   onViewWorkflow?: (workflowId: number) => void;
   onEditWorkflow?: (workflowId: number) => void;
   onViewExecution?: (execution: Execution) => void;
-  // onDeleteWorkflow?: (workflowId: number) => void; // Reserved for future use
-  onCreateWorkflow?: () => void;
   onRefresh?: () => void;
 }
 
@@ -57,8 +50,6 @@ export function CommandPalette({
   onViewWorkflow,
   onEditWorkflow,
   onViewExecution,
-  // onDeleteWorkflow,
-  onCreateWorkflow,
   onRefresh,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -73,19 +64,6 @@ export function CommandPalette({
 
     // Add global actions
     items.push({
-      id: 'create-workflow',
-      title: 'Create New Workflow',
-      description: 'Create a new workflow from scratch or template',
-      icon: <Plus className="w-4 h-4" />,
-      category: 'action',
-      action: () => {
-        setOpen(false);
-        onCreateWorkflow?.();
-      },
-      keywords: ['create', 'new', 'workflow', 'add', 'plus'],
-    });
-
-    items.push({
       id: 'refresh',
       title: 'Refresh Workflows',
       description: 'Refresh the workflow list',
@@ -99,7 +77,7 @@ export function CommandPalette({
     });
 
     // Add workflow-specific commands
-    workflows.forEach((workflow) => {
+    workflows.forEach(workflow => {
       // Execute workflow
       items.push({
         id: `execute-${workflow.id}`,
@@ -111,7 +89,13 @@ export function CommandPalette({
           setOpen(false);
           onExecuteWorkflow?.(workflow.id);
         },
-        keywords: ['execute', 'run', 'start', 'play', workflow.name.toLowerCase()],
+        keywords: [
+          'execute',
+          'run',
+          'start',
+          'play',
+          workflow.name.toLowerCase(),
+        ],
       });
 
       // View workflow
@@ -125,7 +109,13 @@ export function CommandPalette({
           setOpen(false);
           onViewWorkflow?.(workflow.id);
         },
-        keywords: ['view', 'details', 'settings', 'info', workflow.name.toLowerCase()],
+        keywords: [
+          'view',
+          'details',
+          'settings',
+          'info',
+          workflow.name.toLowerCase(),
+        ],
       });
 
       // Duplicate workflow
@@ -153,18 +143,27 @@ export function CommandPalette({
           setOpen(false);
           onEditWorkflow?.(workflow.id);
         },
-        keywords: ['edit', 'modify', 'change', 'update', workflow.name.toLowerCase()],
+        keywords: [
+          'edit',
+          'modify',
+          'change',
+          'update',
+          workflow.name.toLowerCase(),
+        ],
       });
     });
 
     // Add execution items (show latest 10)
-    executions.slice(0, 10).forEach((execution) => {
+    executions.slice(0, 10).forEach(execution => {
       const workflow = workflows.find(w => w.id === execution.workflow_id);
-      const statusIcon = execution.status === 'completed' ?
-        <CheckCircle className="w-4 h-4 text-green-500" /> :
-        execution.status === 'failed' ?
-        <AlertCircle className="w-4 h-4 text-red-500" /> :
-        <Clock className="w-4 h-4 text-yellow-500" />;
+      const statusIcon =
+        execution.status === 'completed' ? (
+          <CheckCircle className="w-4 h-4 text-green-500" />
+        ) : execution.status === 'failed' ? (
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        ) : (
+          <Clock className="w-4 h-4 text-yellow-500" />
+        );
 
       items.push({
         id: `execution-${execution.execution_id}`,
@@ -183,24 +182,34 @@ export function CommandPalette({
           execution.execution_id.toString(),
           workflow?.name.toLowerCase() || '',
           'details',
-          'view'
+          'view',
         ],
       });
     });
 
     return items;
-  }, [workflows, executions, onExecuteWorkflow, onDuplicateWorkflow, onViewWorkflow, onEditWorkflow, onViewExecution, onCreateWorkflow, onRefresh, setOpen]);
+  }, [
+    workflows,
+    executions,
+    onExecuteWorkflow,
+    onDuplicateWorkflow,
+    onViewWorkflow,
+    onEditWorkflow,
+    onViewExecution,
+    onRefresh,
+    setOpen,
+  ]);
 
   // Filter items based on search
   const filteredItems = useMemo(() => {
     if (!search) return commandItems;
 
     const searchLower = search.toLowerCase();
-    return commandItems.filter((item) => {
+    return commandItems.filter(item => {
       return (
         item.title.toLowerCase().includes(searchLower) ||
         item.description?.toLowerCase().includes(searchLower) ||
-        item.keywords.some((keyword) => keyword.includes(searchLower))
+        item.keywords.some(keyword => keyword.includes(searchLower))
       );
     });
   }, [commandItems, search]);
@@ -214,7 +223,7 @@ export function CommandPalette({
       execution: [],
     };
 
-    filteredItems.forEach((item) => {
+    filteredItems.forEach(item => {
       if (!groups[item.category]) {
         groups[item.category] = [];
       }
@@ -236,10 +245,12 @@ export function CommandPalette({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % filteredItems.length);
+        setSelectedIndex(prev => (prev + 1) % filteredItems.length);
       } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + filteredItems.length) % filteredItems.length);
+        setSelectedIndex(
+          prev => (prev - 1 + filteredItems.length) % filteredItems.length
+        );
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (filteredItems[selectedIndex]) {
@@ -275,7 +286,7 @@ export function CommandPalette({
         <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
           {title}
         </div>
-        {items.map((item) => {
+        {items.map(item => {
           const globalIndex = filteredItems.indexOf(item);
           const isSelected = globalIndex === selectedIndex;
 
@@ -313,7 +324,9 @@ export function CommandPalette({
     );
   };
 
-  const _isMac = typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+  const _isMac =
+    typeof window !== 'undefined' &&
+    navigator.platform.toLowerCase().includes('mac');
 
   return (
     <>
@@ -326,22 +339,28 @@ export function CommandPalette({
             <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
             <Input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value)}
               placeholder="Type a command or search..."
               className="flex-1 border-0 focus:ring-0 focus:outline-none px-3 py-1 text-base placeholder:text-gray-400"
               autoFocus
             />
             <div className="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">↑↓</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">
+                  ↑↓
+                </kbd>
                 <span>Navigate</span>
               </div>
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">⏎</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">
+                  ⏎
+                </kbd>
                 <span>Select</span>
               </div>
               <div className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">Esc</kbd>
+                <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded font-mono">
+                  Esc
+                </kbd>
                 <span>Close</span>
               </div>
             </div>
