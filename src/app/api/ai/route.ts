@@ -1605,9 +1605,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // NOTE: Tool results are NOT added to persistent history
-    // They are only sent to the AI provider via the toolResults parameter
-    // This prevents re-sending large tool results on every subsequent turn
+    // CRITICAL: Add tool results to persistent history (TRUNCATED to save tokens)
+    // This ensures every functionCall has a corresponding functionResponse (required by Gemini API)
+    // Without this, chained tool calls fail with: "function response parts is equal to function call parts"
+    if (toolResults && toolResults.length > 0) {
+      updatedHistory.push({
+        role: 'user',
+        parts: toolResults.map(tr => ({
+          functionResponse: {
+            name: tr.name,
+            response: truncateToolResult(tr.result, 500), // Truncate to 500 chars to save tokens
+          },
+        })),
+      });
+    }
 
     // Add model response to history - use rawParts to preserve thought_signature for Gemini 3
     if (result.rawParts && result.rawParts.length > 0) {
