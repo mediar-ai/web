@@ -46,12 +46,17 @@ export async function POST(
       );
     }
 
+    // Get version from query params (desktop app sends version=latest)
+    const { searchParams } = new URL(request.url);
+    const versionParam = searchParams.get('version');
+    const useLatest = versionParam === 'latest';
+
     // Optional: accept custom name and description in request body
     const body = await request.json().catch(() => ({}));
     const customName = body.name;
     const customDescription = body.description;
 
-    console.log(`🔄 Duplicating workflow ID: ${workflowId}`);
+    console.log(`🔄 Duplicating workflow ID: ${workflowId}${useLatest ? ' (using latest version)' : ''}`);
 
     // Fetch the original workflow
     const { data: originalWorkflow, error: fetchError } = await supabase
@@ -109,24 +114,37 @@ export async function POST(
       );
     }
 
-    // Fetch the active version of the original workflow
-    const { data: activeVersion, error: versionError } = await supabase
+    // Fetch the source version of the original workflow
+    // Desktop app (version=latest): get latest version by created_at
+    // Web app: get active version (is_active=true)
+    let versionQuery = supabase
       .from('deployed_workflow_versions')
       .select('*')
-      .eq('workflow_id', workflowId)
-      .eq('is_active', true)
-      .single();
+      .eq('workflow_id', workflowId);
 
-    if (versionError || !activeVersion) {
-      console.error('❌ Error fetching active version:', versionError);
+    if (useLatest) {
+      // Desktop app behavior - get the latest version by creation date
+      versionQuery = versionQuery.order('created_at', { ascending: false }).limit(1);
+    } else {
+      // Web app/production behavior - get the active version
+      versionQuery = versionQuery.eq('is_active', true);
+    }
+
+    const { data: sourceVersion, error: versionError } = await versionQuery.single();
+
+    if (versionError || !sourceVersion) {
+      const errorMessage = useLatest ? 'No versions found' : 'Active version not found';
+      console.error(`❌ Error fetching source version: ${errorMessage}`, versionError);
       return NextResponse.json(
         {
           success: false,
-          error: `Active version not found: ${versionError?.message || 'Unknown error'}`,
+          error: `${errorMessage}: ${versionError?.message || 'Unknown error'}`,
         },
         { status: 404 }
       );
     }
+
+    console.log(`📋 Source version: ${sourceVersion.version_number} (${useLatest ? 'latest' : 'active'})`);
 
     // Use custom name if provided, otherwise generate a unique name
     let duplicateName: string;
@@ -177,7 +195,7 @@ export async function POST(
       status: 'deployed',
       workflow_type: originalWorkflow.workflow_type || 'execution',
       parent_workflow_id: originalWorkflow.parent_workflow_id,
-      automation_sequence: activeVersion.automation_sequence,
+      automation_sequence: sourceVersion.automation_sequence,
       estimated_duration_seconds: originalWorkflow.estimated_duration_seconds,
       // Preserve cron settings but disable by default for safety
       // If there's no cron expression, don't set cron fields
@@ -237,9 +255,9 @@ export async function POST(
     const duplicateVersionData = {
       workflow_id: newWorkflow.id,
       version_number: '1.0.0',
-      automation_sequence_yaml: activeVersion.automation_sequence_yaml,
-      automation_sequence: activeVersion.automation_sequence,
-      preferred_format: activeVersion.preferred_format || 'yaml',
+      automation_sequence_yaml: sourceVersion.automation_sequence_yaml,
+      automation_sequence: sourceVersion.automation_sequence,
+      preferred_format: sourceVersion.preferred_format || 'yaml',
       is_active: true,
       change_notes: `Duplicated from workflow "${originalWorkflow.name}" (ID: ${workflowId})`,
     };
