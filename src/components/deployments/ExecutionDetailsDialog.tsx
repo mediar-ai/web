@@ -800,6 +800,19 @@ export function ExecutionDetailsDialog({
                               </dd>
                             </div>
                           )}
+                          {(execution as any).assigned_machine_mcp_version && (
+                            <div className="flex justify-between">
+                              <dt className="text-muted-foreground">
+                                MCP Version:
+                              </dt>
+                              <dd className="font-mono text-sm">
+                                {
+                                  (execution as any)
+                                    .assigned_machine_mcp_version
+                                }
+                              </dd>
+                            </div>
+                          )}
                         </dl>
                       </div>
 
