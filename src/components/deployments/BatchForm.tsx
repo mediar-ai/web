@@ -1332,10 +1332,20 @@ export function BatchForm({
       return error;
     }
 
+    // Convert value to proper type based on schema
+    const flatSchema = flattenSchema(schema);
+    const schemaItem = flatSchema[path];
+    let typedValue: JsonValue = value;
+    if (schemaItem?.type === 'number') {
+      typedValue = Number(value);
+    } else if (schemaItem?.type === 'boolean') {
+      typedValue = value.toLowerCase() === 'true';
+    }
+
     setDynamicValues(prev => {
       const newDynamicValues = {
         ...prev,
-        [path]: [...(prev[path] || []), value],
+        [path]: [...(prev[path] || []), typedValue],
       };
 
       const schemaItem = schema[path] as SchemaItem;
