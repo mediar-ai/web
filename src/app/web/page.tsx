@@ -34,6 +34,7 @@ import ActivityTabContent from '../../components/tabs/ActivityTabContent';
 import DebugTabContent from '../../components/tabs/DebugTabContent';
 import EventsTabContent from '../../components/tabs/EventsTabContent';
 import SettingsTabContent from '../../components/tabs/SettingsTabContent';
+import WorkflowTabContent from '../../components/tabs/WorkflowTabContent';
 import { useAutoDetection } from '../../hooks/useAutoDetection';
 import { useEventGenerator } from '../../hooks/useEventGenerator';
 import { useFrameAnalysisDispatcher } from '../../hooks/useFrameAnalysisDispatcher';
@@ -245,6 +246,11 @@ function HomeComponent() {
       setActivityItems(uniqueActivityItems);
       logToUI(
         `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+      );
+
+      setEvents(uniqueEvents);
+      logToUI(
+        `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
       );
 
       setCompletedAnalyses(uniqueCompletedAnalyses);
@@ -1383,7 +1389,7 @@ function HomeComponent() {
             }
           }}>
             <div className='flex items-center justify-between mb-1'>
-              <TabsList className='grid grid-cols-2 flex-1 mr-2'>
+              <TabsList className='grid grid-cols-3 flex-1 mr-2'>
                 <TabsTrigger value='recent' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('recent');
@@ -1392,6 +1398,10 @@ function HomeComponent() {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('events');
                 }}>Events ({events.length}){avgTimeBetweenEvents !== null && ` • ~${avgTimeBetweenEvents}s`}</TabsTrigger>
+                <TabsTrigger value='workflow' onClick={() => {
+                  setSelectedMoreOption(null);
+                  setSelectedMainTab('workflow');
+                }}>Workflow</TabsTrigger>
               </TabsList>
               
               <div className="flex items-center gap-2">
@@ -1444,6 +1454,14 @@ function HomeComponent() {
                 events={events}
                 selectedEvent={selectedEvent}
                 onEventSelect={handleEventSelect}
+              />
+            </TabsContent>
+
+            <TabsContent value='workflow' className='-mt-3'>
+              <WorkflowTabContent
+                userId={userId}
+                eventsCount={events.length}
+                activityItemsCount={activityItems.length}
               />
             </TabsContent>
 
