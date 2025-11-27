@@ -310,6 +310,9 @@ export function WorkflowCardEnhanced({
                     <h3 className="text-sm font-semibold text-gray-900 truncate cursor-default">
                       {workflow.name}
                     </h3>
+                    <span className="text-[11px] font-mono text-gray-400 flex-shrink-0">
+                      #{workflow.id}
+                    </span>
                     {workflow.version_info?.current_version && (
                       <span className="text-[11px] font-mono text-gray-500 flex-shrink-0">
                         v{workflow.version_info.current_version}
@@ -319,11 +322,11 @@ export function WorkflowCardEnhanced({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="font-mono text-xs">{workflow.name}</p>
-                  {workflow.version_info?.current_version && (
-                    <p className="font-mono text-xs text-gray-400 mt-1">
-                      Version {workflow.version_info.current_version}
-                    </p>
-                  )}
+                  <p className="font-mono text-xs text-gray-400 mt-1">
+                    ID: {workflow.id}
+                    {workflow.version_info?.current_version &&
+                      ` • Version ${workflow.version_info.current_version}`}
+                  </p>
                   {workflow.tags && workflow.tags.length > 0 && (
                     <div className="flex items-center gap-1 mt-1">
                       <span className="text-[10px] text-gray-400">Tags:</span>
