@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
-  Loader2,
   RefreshCw,
   Code,
   AlertCircle,
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react';
 import WorkflowGraphViewer from '@/components/workflow-graph-viewer';
 import { WorkflowMetadata } from '@/lib/typescript-workflow-parser';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface TypeScriptWorkflowTabProps {
   workflowId: number;
@@ -80,11 +80,56 @@ export function TypeScriptWorkflowTab({
     return null;
   }
 
-  // Loading state
+  // Loading state - skeleton matching the expected UI
   if (loading && !metadata) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-5 h-5 animate-spin" />
+      <div className="space-y-6">
+        {/* Stats skeleton */}
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="flex items-center gap-2 p-3 border-2 border-black rounded-lg"
+            >
+              <Skeleton className="w-4 h-4 rounded" />
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-5 w-6" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Visualization skeleton */}
+        <Card className="border-2 border-black">
+          <CardHeader className="bg-black text-white">
+            <Skeleton className="h-4 w-32 bg-gray-700" />
+          </CardHeader>
+          <CardContent className="pt-4">
+            <Skeleton className="h-48 w-full" />
+          </CardContent>
+        </Card>
+
+        {/* Steps skeleton */}
+        <Card className="border-2 border-black">
+          <CardHeader className="bg-white border-b-2 border-black">
+            <Skeleton className="h-4 w-24" />
+          </CardHeader>
+          <CardContent className="pt-4 space-y-2">
+            {[1, 2, 3].map(i => (
+              <div
+                key={i}
+                className="flex items-start gap-3 p-3 border-2 border-black rounded"
+              >
+                <Skeleton className="w-8 h-8 rounded" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
