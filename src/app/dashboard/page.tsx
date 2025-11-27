@@ -164,14 +164,9 @@ function DashboardContent() {
   });
 
   // Workflow tag filter state (for filtering workflow cards)
+  // Don't persist across orgs - start fresh each session
   const [selectedWorkflowTags, setSelectedWorkflowTags] = useState<string[]>(
-    () => {
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('workflow-filter-tags');
-        return saved ? JSON.parse(saved) : [];
-      }
-      return [];
-    }
+    []
   );
 
   // Pagination state
@@ -362,16 +357,10 @@ function DashboardContent() {
     });
   }, [workflows, selectedWorkflowTags]);
 
-  // Toggle tag filter
+  // Toggle tag filter (no localStorage - session only)
   const toggleTagFilter = (tag: string) => {
     setSelectedWorkflowTags(prev => {
-      const newTags = prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('workflow-filter-tags', JSON.stringify(newTags));
-      }
-      return newTags;
+      return prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
     });
   };
 
@@ -1498,7 +1487,7 @@ function DashboardContent() {
                   <h2 className="text-sm font-bold font-mono uppercase">
                     Available Workflows
                   </h2>
-                  {/* Tag Filter Dropdown */}
+                  {/* Tag Filter Dropdown (session only, no localStorage) */}
                   {allWorkflowTags.length > 0 && (
                     <div className="flex items-center gap-2">
                       <select
@@ -1507,17 +1496,8 @@ function DashboardContent() {
                           const tag = e.target.value;
                           if (tag) {
                             setSelectedWorkflowTags([tag]);
-                            if (typeof window !== 'undefined') {
-                              localStorage.setItem(
-                                'workflow-filter-tags',
-                                JSON.stringify([tag])
-                              );
-                            }
                           } else {
                             setSelectedWorkflowTags([]);
-                            if (typeof window !== 'undefined') {
-                              localStorage.removeItem('workflow-filter-tags');
-                            }
                           }
                         }}
                         className="h-7 px-2 text-[11px] font-mono border-2 border-black bg-white focus:outline-none"
@@ -1531,12 +1511,7 @@ function DashboardContent() {
                       </select>
                       {selectedWorkflowTags.length > 0 && (
                         <button
-                          onClick={() => {
-                            setSelectedWorkflowTags([]);
-                            if (typeof window !== 'undefined') {
-                              localStorage.removeItem('workflow-filter-tags');
-                            }
-                          }}
+                          onClick={() => setSelectedWorkflowTags([])}
                           className="h-7 px-2 text-[11px] font-mono border-2 border-black hover:bg-black hover:text-white transition-colors"
                         >
                           <X className="w-3 h-3" />
@@ -1605,12 +1580,7 @@ function DashboardContent() {
                     </button>
                   ))}
                   <button
-                    onClick={() => {
-                      setSelectedWorkflowTags([]);
-                      if (typeof window !== 'undefined') {
-                        localStorage.removeItem('workflow-filter-tags');
-                      }
-                    }}
+                    onClick={() => setSelectedWorkflowTags([])}
                     className="h-6 px-2 text-[11px] font-mono text-gray-500 hover:text-black flex items-center gap-1"
                   >
                     <X className="w-3 h-3" />
