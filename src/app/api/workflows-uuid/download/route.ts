@@ -162,34 +162,101 @@ export async function GET(req: NextRequest) {
     // Fetch from GitHub (with auth if private repo)
     const githubToken = process.env.GITHUB_TOKEN;
 
-    const headers: Record<string, string> = {
-      'User-Agent': 'mediar-workflow-downloader/1.0',
-      'Accept': 'application/octet-stream', // Required for private repo asset downloads
-    };
-
-    if (githubToken) {
-      headers['Authorization'] = `token ${githubToken}`;
+    if (!githubToken) {
+      console.error('GITHUB_TOKEN not configured');
+      return NextResponse.json(
+        { error: 'GitHub token not configured' },
+        { status: 500 }
+      );
     }
 
-    console.log(`Fetching workflow ${workflowUuid} from ${workflow.github_release_url}`, {
+    // For private repos, we need to use the GitHub API to download assets
+    // Parse the browser_download_url to get release info
+    // Format: https://github.com/{owner}/{repo}/releases/download/{tag}/{asset_name}
+    const urlMatch = workflow.github_release_url.match(
+      /github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/
+    );
+
+    if (!urlMatch) {
+      console.error('Invalid GitHub release URL format:', workflow.github_release_url);
+      return NextResponse.json(
+        { error: 'Invalid GitHub release URL format' },
+        { status: 500 }
+      );
+    }
+
+    const [, owner, repo, tag, assetName] = urlMatch;
+
+    console.log(`Fetching workflow ${workflowUuid} via GitHub API`, {
+      owner,
+      repo,
+      tag,
+      assetName,
       auth_method: authMethod,
       org_id: authenticatedOrgId,
     });
 
-    const githubResponse = await fetch(workflow.github_release_url, {
-      headers,
+    // Get release info to find asset ID
+    const releaseApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
+    const releaseResponse = await fetch(releaseApiUrl, {
+      headers: {
+        'Authorization': `token ${githubToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'mediar-workflow-downloader/1.0',
+      },
+    });
+
+    if (!releaseResponse.ok) {
+      console.error('Failed to fetch release info:', {
+        status: releaseResponse.status,
+        statusText: releaseResponse.statusText,
+        url: releaseApiUrl,
+      });
+      return NextResponse.json(
+        {
+          error: 'Failed to fetch release info from GitHub',
+          status: releaseResponse.status,
+          statusText: releaseResponse.statusText,
+        },
+        { status: 502 }
+      );
+    }
+
+    const releaseData = await releaseResponse.json();
+    const asset = releaseData.assets?.find((a: { name: string }) => a.name === assetName);
+
+    if (!asset) {
+      console.error('Asset not found in release:', { assetName, availableAssets: releaseData.assets?.map((a: { name: string }) => a.name) });
+      return NextResponse.json(
+        {
+          error: 'Asset not found in release',
+          assetName,
+          availableAssets: releaseData.assets?.map((a: { name: string }) => a.name),
+        },
+        { status: 404 }
+      );
+    }
+
+    // Download asset via API URL (works for private repos)
+    const assetApiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`;
+    const githubResponse = await fetch(assetApiUrl, {
+      headers: {
+        'Authorization': `token ${githubToken}`,
+        'Accept': 'application/octet-stream',
+        'User-Agent': 'mediar-workflow-downloader/1.0',
+      },
     });
 
     if (!githubResponse.ok) {
-      console.error('GitHub fetch failed:', {
+      console.error('GitHub asset download failed:', {
         status: githubResponse.status,
         statusText: githubResponse.statusText,
-        url: workflow.github_release_url,
+        url: assetApiUrl,
       });
 
       return NextResponse.json(
         {
-          error: 'Failed to fetch from GitHub',
+          error: 'Failed to download asset from GitHub',
           status: githubResponse.status,
           statusText: githubResponse.statusText,
         },
