@@ -48,6 +48,7 @@ import { ChevronDown, ChevronRight, Pencil, RefreshCw, Trash2 } from 'lucide-rea
 // Owner-only components
 
 import RoleManagementSection from '@/components/admin/RoleManagementSection';
+import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 
 const truncateId = (id: string) => `...${id.slice(-4)}`;
 
@@ -633,9 +634,12 @@ function AuthenticatedAdminPage({
       <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center mb-3">
           <div>
-            <h1 className="text-xl font-bold">
-              {isGlobalAdmin ? "All Users" : `${organizationName || "Organization"} Users`}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold">
+                {isGlobalAdmin ? "All Users" : `${organizationName || "Organization"} Users`}
+              </h1>
+              <MediarOrgSwitcher inSidebar={true} />
+            </div>
             <span className={`text-sm font-medium ${getAccessLevelColor()}`}>
               {getAccessLevelText()}
             </span>
