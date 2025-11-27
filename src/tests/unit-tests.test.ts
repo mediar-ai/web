@@ -6,6 +6,7 @@
 
 import { AuthenticationTests } from './authentication.test';
 import { MessageFormatTests } from './message-format.test';
+import { WorkflowRenameSyncTests } from './workflow-rename-sync.test';
 // import { SchemaConversionTests } from './schema-conversion.test'; // Commented out missing import
 import { TestLogger } from './utils';
 
@@ -27,6 +28,7 @@ class UnitTestRunner {
       // { name: 'Schema Conversion Tests', runner: new SchemaConversionTests() }, // Commented out missing class
       { name: 'Authentication Tests', runner: new AuthenticationTests() },
       { name: 'Message Format Tests', runner: new MessageFormatTests() },
+      { name: 'Workflow Rename Sync Tests', runner: new WorkflowRenameSyncTests() },
     ];
 
     for (const suite of testSuites) {
