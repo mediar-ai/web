@@ -169,6 +169,11 @@ function DashboardContent() {
     []
   );
 
+  // Reset tag filter when org changes
+  useEffect(() => {
+    setSelectedWorkflowTags([]);
+  }, [organization?.id, viewOrgId]);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => {
