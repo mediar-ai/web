@@ -397,6 +397,7 @@ All infrastructure components send telemetry to a **centralized OTLP collector**
   - Differentiated by `host.name`, `vm_name`, `resource_group`, `customer`, `organization_id`
 - **Rust Executor** (Azure ACI): Service name `mediar-workflow-executor-rust`
   - Differentiated by `deployment.environment`, `container.name`, `azure.resource_group`
+  - **NOTE**: In ClickHouse, `host.name` = `SandboxHost-*` is the **Rust Executor** (NOT Modal/Python)
 
 **Collector infrastructure:**
 - **Endpoint**: `http://otel-collector-mcp-s3-mount-test.eastus.azurecontainer.io:4318`
