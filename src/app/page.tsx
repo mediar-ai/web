@@ -229,9 +229,6 @@ function HomePageContent() {
                   <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                     <Play className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
-                    WEB APP
-                  </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Record workflows in your browser
                   </p>
@@ -269,9 +266,6 @@ function HomePageContent() {
                       />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
-                    DESKTOP APP
-                  </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Build automated workflows
                   </p>
@@ -282,11 +276,7 @@ function HomePageContent() {
                       onClick={handleDownloadClick}
                     >
                       <Button
-                        className={`w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2 ${
-                          purchaseToken
-                            ? 'animate-pulse ring-2 ring-black ring-offset-2'
-                            : ''
-                        }`}
+                        className="w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2 animate-shake hover:animate-none"
                       >
                         DOWNLOAD APP (Windows)
                       </Button>
@@ -329,9 +319,6 @@ function HomePageContent() {
                       />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
-                    DASHBOARD
-                  </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Manage workflows and deployments
                   </p>
@@ -351,12 +338,6 @@ function HomePageContent() {
                   <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
                     <Briefcase className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="text-lg font-bold text-black font-mono mb-2">
-                    TURNKEY SERVICE
-                  </h3>
-                  <p className="text-xs text-gray-500 font-mono uppercase mb-3">
-                    B2B Consulting
-                  </p>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     We build the automation for you
                   </p>

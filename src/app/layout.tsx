@@ -72,7 +72,7 @@ export default function RootLayout({
               <main className="min-h-screen stable-container pt-4">
                 {children}
               </main>
-              <Toaster />
+              <Toaster position="top-center" />
               <CrispChat />
             </ThemeProvider>
           </PHProvider>
