@@ -221,12 +221,14 @@ export function getVertexGenAI() {
       return {
         // Wrap generateContent to use the new SDK's models.generateContent
         generateContent: async (params: any) => {
-          const contents = params.contents?.[0]?.parts?.[0]?.text ||
-                          (Array.isArray(params.contents) ? params.contents : params.contents);
+          // Preserve full contents structure including all parts (text AND images)
+          // The old SDK format: { contents: [{ role: "user", parts: [{ text: "..." }, { inlineData: {...} }] }] }
+          // The new SDK format: { contents: [{ role: "user", parts: [{ text: "..." }, { inlineData: {...} }] }] }
+          const contents = params.contents;
 
           const result = await genAI.models.generateContent({
             model: vertexModelName,
-            contents: typeof contents === 'string' ? contents : JSON.stringify(contents),
+            contents: contents,
             config: {
               ...params.generationConfig,
               safetySettings: config.safetySettings,
