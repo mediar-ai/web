@@ -292,9 +292,6 @@ export async function GET(
               : new Date(); // Now if still running
 
             // Search by execution_id in log body (accurate per-execution filtering)
-            // Note: We do NOT fall back to time-window filtering because it would merge
-            // logs from multiple concurrent executions. MCP agent must include execution_id
-            // in log messages for proper correlation.
             mcpLogs = await getMcpAgentLogsByExecutionId(
               executionIdNum,
               expandedStart,
@@ -305,6 +302,32 @@ export async function GET(
               console.log(
                 `[LOGS] Found ${mcpLogs.length} MCP agent logs for execution ${executionIdNum}`
               );
+
+              // If we only found the start log (1-2 logs), try to get all logs from that host
+              // during the execution window. This handles TypeScript workflows where nested logs
+              // don't have execution_id in the message body yet.
+              if (mcpLogs.length <= 2) {
+                const startLog = mcpLogs[0];
+                const hostname = startLog.host_name;
+                if (hostname) {
+                  console.log(
+                    `[LOGS] Only found ${mcpLogs.length} MCP logs with execution_id, fetching all logs from host ${hostname} during execution window`
+                  );
+                  const { getMcpAgentLogs } = await import('@/lib/clickhouse');
+                  const allHostLogs = await getMcpAgentLogs(
+                    expandedStart,
+                    expandedEnd,
+                    hostname,
+                    1000 // higher limit for full workflow logs
+                  );
+                  if (allHostLogs.length > mcpLogs.length) {
+                    console.log(
+                      `[LOGS] Found ${allHostLogs.length} total MCP agent logs from host ${hostname}`
+                    );
+                    mcpLogs = allHostLogs;
+                  }
+                }
+              }
             }
           } catch (mcpError) {
             console.error('[LOGS] Failed to fetch MCP agent logs:', mcpError);
