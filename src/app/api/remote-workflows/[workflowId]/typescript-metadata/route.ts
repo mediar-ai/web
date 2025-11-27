@@ -22,14 +22,25 @@ interface RouteContext {
 }
 
 /**
+ * Get the correct terminator.ts path based on github_folder
+ *
+ * github_folder formats:
+ * - UUID: "440ebe87-4da6-4821-b77d-941afbdf6299" (new format)
+ * - Legacy snake_case: "onedrive_install_typescript"
+ *
+ * Both map to: {github_folder}/src/terminator.ts
+ */
+function getTerminatorPath(githubFolder: string): string {
+  return `${githubFolder}/src/terminator.ts`;
+}
+
+/**
  * Fetch TypeScript workflow from GitHub workflows repository
- * @param githubFolder - The workflow folder name (e.g., "onedrive_auth_typescript")
- * @param orgId - The Clerk organization ID
+ * @param githubFolder - The workflow folder name (UUID or legacy snake_case)
  * @returns The terminator.ts file content, or null if not found
  */
 async function fetchWorkflowFromGitHub(
-  githubFolder: string,
-  orgId: string
+  githubFolder: string
 ): Promise<string | null> {
   const githubToken = process.env.GITHUB_TOKEN;
   if (!githubToken) {
@@ -38,10 +49,9 @@ async function fetchWorkflowFromGitHub(
   }
 
   // GitHub workflows repo: mediar-ai/workflows
-  // Path: org-{orgId}/{githubFolder}/src/terminator.ts
   const owner = 'mediar-ai';
   const repo = 'workflows';
-  const filePath = `org-${orgId}/${githubFolder}/src/terminator.ts`;
+  const filePath = getTerminatorPath(githubFolder);
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
 
@@ -134,8 +144,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           `[GitHub] Fetching TypeScript workflow from GitHub: ${workflow.github_folder}`
         );
         const terminatorContent = await fetchWorkflowFromGitHub(
-          workflow.github_folder,
-          workflow.organization_id || ''
+          workflow.github_folder
         );
 
         if (terminatorContent) {

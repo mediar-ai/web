@@ -336,7 +336,21 @@ function DashboardContent() {
         w.tags.forEach(tag => tagSet.add(tag));
       }
     });
-    return Array.from(tagSet).sort();
+    const tags = Array.from(tagSet).sort();
+    console.log(
+      '[Dashboard] allWorkflowTags:',
+      tags,
+      'from',
+      workflows.length,
+      'workflows'
+    );
+    console.log(
+      '[Dashboard] Workflows with tags:',
+      workflows
+        .filter(w => w.tags && w.tags.length > 0)
+        .map(w => ({ id: w.id, name: w.name, tags: w.tags }))
+    );
+    return tags;
   }, [workflows]);
 
   // Filter workflows by selected tags
