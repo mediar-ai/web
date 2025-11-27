@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { AlertTriangle, PictureInPicture, RefreshCw, Zap, Wand2 } from 'lucide-react';
 import Link from 'next/link';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
 import { CustomOrgSwitcher } from '@/components/navigation/CustomOrgSwitcher';
 
@@ -66,10 +66,18 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   reconnectRequired,
 }) => {
   const [isPipSupported, setIsPipSupported] = useState(false);
+  const [isInIframe, setIsInIframe] = useState(false);
 
   useEffect(() => {
     if (window.documentPictureInPicture) {
       setIsPipSupported(true);
+    }
+    // Check if running in iframe (must be done client-side)
+    try {
+      setIsInIframe(window.self !== window.top);
+    } catch {
+      // If we can't access window.top due to cross-origin, we're in an iframe
+      setIsInIframe(true);
     }
   }, []);
 
@@ -118,9 +126,24 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
           />
         </SignedIn>
         <SignedOut>
-          <Button asChild>
-            <Link href="/sign-in">Sign In</Link>
-          </Button>
+          {isInIframe ? (
+            <Button
+              onClick={() => {
+                // Send message to parent window to redirect to app
+                console.log('Sending postMessage to parent for sign-in redirect');
+                window.parent.postMessage(
+                  { type: 'mediar-redirect', action: 'sign-in' },
+                  '*'
+                );
+              }}
+            >
+              Sign In
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/sign-in">Sign In</Link>
+            </Button>
+          )}
         </SignedOut>
       </div>
     </div>
