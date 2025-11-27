@@ -399,9 +399,12 @@ export async function GET(request: NextRequest) {
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
-    const { orgId, isMediarOrg, isMediarAdmin, actualOrgId: _actualOrgId } = await getEffectiveOrgId(
-      viewOrgId === 'ALL' ? null : viewOrgId
-    );
+    const {
+      orgId,
+      isMediarOrg,
+      isMediarAdmin,
+      actualOrgId: _actualOrgId,
+    } = await getEffectiveOrgId(viewOrgId === 'ALL' ? null : viewOrgId);
 
     if (!orgId) {
       return NextResponse.json(
@@ -438,7 +441,10 @@ export async function GET(request: NextRequest) {
         .is('parent_workflow_id', null);
 
       if (allError) {
-        console.error('[Workflows List] Error fetching all workflows:', allError);
+        console.error(
+          '[Workflows List] Error fetching all workflows:',
+          allError
+        );
       }
       accessibleWorkflowIds = (allWorkflows || []).map(w => w.id);
     } else {
@@ -455,7 +461,10 @@ export async function GET(request: NextRequest) {
         .is('parent_workflow_id', null);
 
       if (ownedError) {
-        console.error('[Workflows List] Error fetching owned workflows:', ownedError);
+        console.error(
+          '[Workflows List] Error fetching owned workflows:',
+          ownedError
+        );
       }
 
       // Get workflows explicitly shared with this org
@@ -465,7 +474,10 @@ export async function GET(request: NextRequest) {
         .eq('organization_id', orgId);
 
       if (sharedError) {
-        console.error('[Workflows List] Error fetching shared workflows:', sharedError);
+        console.error(
+          '[Workflows List] Error fetching shared workflows:',
+          sharedError
+        );
       }
 
       // Get globally public workflows (is_public = true)
@@ -476,7 +488,10 @@ export async function GET(request: NextRequest) {
         .is('parent_workflow_id', null);
 
       if (publicError) {
-        console.error('[Workflows List] Error fetching public workflows:', publicError);
+        console.error(
+          '[Workflows List] Error fetching public workflows:',
+          publicError
+        );
       }
 
       const ownedIds = (ownedWorkflows || []).map(w => w.id);
@@ -484,7 +499,9 @@ export async function GET(request: NextRequest) {
       const publicIds = (publicWorkflows || []).map(w => w.id);
 
       // Combine and deduplicate
-      accessibleWorkflowIds = [...new Set([...ownedIds, ...sharedIds, ...publicIds])];
+      accessibleWorkflowIds = [
+        ...new Set([...ownedIds, ...sharedIds, ...publicIds]),
+      ];
     }
 
     if (accessibleWorkflowIds.length === 0 && !showAllWorkflows) {
@@ -517,9 +534,10 @@ export async function GET(request: NextRequest) {
     // Build query with filters - using statistics summary view for version-specific stats
     // Desktop app (version=latest) uses latest version, web app uses active version
     // Only fetch workflows this org has access to
-    const statsViewName = versionParam === 'latest'
-      ? 'workflow_statistics_summary_latest'  // Desktop: uses latest version by created_at
-      : 'workflow_statistics_summary';         // Web: uses active version
+    const statsViewName =
+      versionParam === 'latest'
+        ? 'workflow_statistics_summary_latest' // Desktop: uses latest version by created_at
+        : 'workflow_statistics_summary'; // Web: uses active version
 
     let query = supabase
       .from(statsViewName)
@@ -572,9 +590,10 @@ export async function GET(request: NextRequest) {
     const cronData: Record<number, any> = {};
 
     // Determine which view to use based on version parameter
-    const viewName = versionParam === 'latest'
-      ? 'deployed_workflows_with_sequence_latest'
-      : 'deployed_workflows_with_sequence';
+    const viewName =
+      versionParam === 'latest'
+        ? 'deployed_workflows_with_sequence_latest'
+        : 'deployed_workflows_with_sequence';
 
     if (versionParam === 'latest') {
       console.log('[API] Using LATEST view for desktop app');
@@ -611,10 +630,19 @@ export async function GET(request: NextRequest) {
         .in('id', workflowIds);
 
       if (!cronError && cronWorkflows) {
-        console.log('[API] Fetched cron data for', cronWorkflows.length, 'workflows');
+        console.log(
+          '[API] Fetched cron data for',
+          cronWorkflows.length,
+          'workflows'
+        );
         cronWorkflows.forEach(cw => {
           if (cw.cron_expression) {
-            console.log(`[API] Workflow ${cw.id} has cron:`, cw.cron_expression, 'enabled:', cw.cron_enabled);
+            console.log(
+              `[API] Workflow ${cw.id} has cron:`,
+              cw.cron_expression,
+              'enabled:',
+              cw.cron_enabled
+            );
           }
           cronData[cw.id] = {
             organization_id: cw.organization_id,
@@ -634,10 +662,15 @@ export async function GET(request: NextRequest) {
             consecutive_failures: cw.consecutive_failures,
             last_failure_message: cw.last_failure_message,
             preferred_format: cw.preferred_format,
-            typescript_metadata: cw.typescript_metadata
+            typescript_metadata: cw.typescript_metadata,
           };
         });
-        console.log('[API] Total workflows with cron data in cronData:', Object.keys(cronData).filter(id => cronData[parseInt(id)].cron_expression).length);
+        console.log(
+          '[API] Total workflows with cron data in cronData:',
+          Object.keys(cronData).filter(
+            id => cronData[parseInt(id)].cron_expression
+          ).length
+        );
       } else if (cronError) {
         console.error('[API] Error fetching cron data:', cronError);
       }
@@ -657,22 +690,36 @@ export async function GET(request: NextRequest) {
         )
         .in('id', workflowIds);
 
-      console.log('[API] Fetched automation sequences:', sequences?.length, 'error:', sequencesError?.message);
+      console.log(
+        '[API] Fetched automation sequences:',
+        sequences?.length,
+        'error:',
+        sequencesError?.message
+      );
 
       if (!sequencesError && sequences) {
         sequences.forEach(seq => {
           // Merge cron data with automation sequence data
           automationSequences[seq.id] = {
             ...seq,
-            ...(cronData[seq.id] || {})
+            ...(cronData[seq.id] || {}),
           };
         });
-        console.log('[API] After merge, workflows with cron in automationSequences:',
-          Object.keys(automationSequences).filter(id => automationSequences[parseInt(id)]?.cron_expression).length);
+        console.log(
+          '[API] After merge, workflows with cron in automationSequences:',
+          Object.keys(automationSequences).filter(
+            id => automationSequences[parseInt(id)]?.cron_expression
+          ).length
+        );
         // Log specific workflows
-        [71, 73, 74, 65].forEach(id => {
+        [71, 73, 74, 65, 313, 84].forEach(id => {
           if (automationSequences[id]) {
-            console.log(`[API] Workflow ${id} cron after merge:`, automationSequences[id].cron_expression);
+            console.log(
+              `[API] Workflow ${id} cron after merge:`,
+              automationSequences[id].cron_expression,
+              'enabled:',
+              automationSequences[id].cron_enabled
+            );
           }
         });
       }
@@ -687,7 +734,7 @@ export async function GET(request: NextRequest) {
 
     if (workflowIds.length > 0) {
       const { data: settings, error: settingsError } = await supabase
-        .from(viewName)  // Use the same view as for execution workflows
+        .from(viewName) // Use the same view as for execution workflows
         .select(
           `
           id,
@@ -753,7 +800,10 @@ export async function GET(request: NextRequest) {
 
       try {
         // Handle TypeScript workflows
-        if (workflow.preferred_format === 'typescript' && workflow.typescript_metadata?.inputs) {
+        if (
+          workflow.preferred_format === 'typescript' &&
+          workflow.typescript_metadata?.inputs
+        ) {
           // Transform TypeScript inputs to YAML parameter format
           const inputs = workflow.typescript_metadata.inputs;
 
@@ -764,8 +814,12 @@ export async function GET(request: NextRequest) {
 
             const paramConfig: any = {
               type: yamlType,
-              label: input.name.charAt(0).toUpperCase() +
-                     input.name.slice(1).replace(/([A-Z])/g, ' $1').trim(),
+              label:
+                input.name.charAt(0).toUpperCase() +
+                input.name
+                  .slice(1)
+                  .replace(/([A-Z])/g, ' $1')
+                  .trim(),
               description: input.description,
               required: input.required,
               default: input.defaultValue,
@@ -877,7 +931,8 @@ export async function GET(request: NextRequest) {
           failed_runs: workflow.overall_failed_runs,
           total_executions: workflow.overall_total_executions,
           // Add config fields
-          estimated_duration_seconds: automationSequences[workflow.id]?.estimated_duration_seconds,
+          estimated_duration_seconds:
+            automationSequences[workflow.id]?.estimated_duration_seconds,
           // Add automation sequence from separate query
           automation_sequence:
             automationSequences[workflow.id]?.automation_sequence,
@@ -904,12 +959,16 @@ export async function GET(request: NextRequest) {
           // Add auto-pause fields
           cron_auto_paused: automationSequences[workflow.id]?.cron_auto_paused,
           auto_paused_at: automationSequences[workflow.id]?.auto_paused_at,
-          auto_pause_reason: automationSequences[workflow.id]?.auto_pause_reason,
-          consecutive_failures: automationSequences[workflow.id]?.consecutive_failures,
-          last_failure_message: automationSequences[workflow.id]?.last_failure_message,
+          auto_pause_reason:
+            automationSequences[workflow.id]?.auto_pause_reason,
+          consecutive_failures:
+            automationSequences[workflow.id]?.consecutive_failures,
+          last_failure_message:
+            automationSequences[workflow.id]?.last_failure_message,
           // Add TypeScript workflow fields
           preferred_format: automationSequences[workflow.id]?.preferred_format,
-          typescript_metadata: automationSequences[workflow.id]?.typescript_metadata,
+          typescript_metadata:
+            automationSequences[workflow.id]?.typescript_metadata,
           // Add version-specific statistics as additional fields
           current_version_stats: {
             successful_runs: workflow.current_version_successful_runs,
@@ -928,7 +987,9 @@ export async function GET(request: NextRequest) {
             current_version: workflow.current_version,
             total_versions: workflow.total_versions,
             // Latest version by created_at (from _latest view when version=latest param is used)
-            latest_version: automationSequences[workflow.id]?.latest_version_number || workflow.current_version,
+            latest_version:
+              automationSequences[workflow.id]?.latest_version_number ||
+              workflow.current_version,
           },
           // Add access info for Mediar admins
           ...((isMediarOrg || isMediarAdmin) && {
