@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createServerClient } from '@/lib/supabase-server';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-11-17.clover',
@@ -70,6 +71,29 @@ export async function POST(req: NextRequest) {
           console.error('stripe webhook: failed to insert purchase', error);
         } else {
           console.log('stripe webhook: purchase recorded', { purchaseToken });
+
+          // Track successful purchase in PostHog
+          try {
+            const posthog = getPostHogClient();
+            posthog.capture({
+              distinctId: userId || email || session.id,
+              event: 'credits_purchase_success',
+              properties: {
+                user_id: userId,
+                email: email,
+                price: parseFloat(price || '0'),
+                purchase_token: purchaseToken,
+                stripe_session_id: session.id,
+                stripe_payment_intent:
+                  typeof session.payment_intent === 'string'
+                    ? session.payment_intent
+                    : session.payment_intent?.id,
+              },
+            });
+            await posthog.flush();
+          } catch (posthogErr) {
+            console.error('stripe webhook: posthog tracking error', posthogErr);
+          }
         }
       } catch (err) {
         console.error('stripe webhook: database error', err);
