@@ -358,6 +358,7 @@ export async function POST(request: NextRequest) {
                 preferred_format: 'typescript',
                 automation_sequence: {}, // Empty object for TypeScript workflows
                 organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
+                created_by: 'louis@mediar.ai', // GitHub-synced workflows attributed to Louis
               })
               .select()
               .single();
@@ -851,6 +852,7 @@ export async function POST(request: NextRequest) {
               total_versions: 1,
               // Default to primary Mediar organization for all workflows created from GitHub
               organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
+              created_by: 'louis@mediar.ai', // GitHub-synced workflows attributed to Louis
             })
             .select()
             .single();
