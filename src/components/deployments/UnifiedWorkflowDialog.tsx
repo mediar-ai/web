@@ -617,7 +617,7 @@ export function UnifiedWorkflowDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-6xl h-[85vh] flex flex-col rounded-2xl border-0 shadow-2xl p-0 overflow-hidden"
+        className="max-w-5xl h-[85vh] flex flex-col border-2 border-black p-0 overflow-hidden"
         hideClose
       >
         <DialogHeader>
@@ -676,7 +676,7 @@ export function UnifiedWorkflowDialog({
               className="text-2xl cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors"
               onClick={() => setIsEditingName(true)}
             >
-              {workflow.name}
+              {editedName || workflow.name}
             </DialogTitle>
           )}
 

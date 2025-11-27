@@ -74,16 +74,15 @@ export class GitHubWorkflowManager {
         .eq('id', workflowId)
         .single();
 
-      if (fetchError || !workflow?.github_path) {
+      if (fetchError || !workflow?.github_folder) {
         return {
           success: false,
-          error: `Workflow ${workflowId} not found or has no github_path (legacy workflow)`
+          error: `Workflow ${workflowId} not found or has no github_folder (legacy workflow)`
         };
       }
 
-      // Derive package.json path from workflow.yaml path
-      const workflowDir = workflow.github_path.replace(/\/[^/]+$/, '');
-      const packageJsonPath = `${workflowDir}/package.json`;
+      // Use github_folder for package.json path (not github_path which points to src/terminator.ts)
+      const packageJsonPath = `${workflow.github_folder}/package.json`;
 
       // Fetch existing package.json from GitHub
       let existingContent: any = {};
