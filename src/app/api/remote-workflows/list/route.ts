@@ -651,7 +651,8 @@ export async function GET(request: NextRequest) {
           automation_sequence,
           workflow_type,
           parent_workflow_id,
-          display_order
+          display_order,
+          latest_version_number
         `
         )
         .in('id', workflowIds);
@@ -926,6 +927,8 @@ export async function GET(request: NextRequest) {
           version_info: {
             current_version: workflow.current_version,
             total_versions: workflow.total_versions,
+            // Latest version by created_at (from _latest view when version=latest param is used)
+            latest_version: automationSequences[workflow.id]?.latest_version_number || workflow.current_version,
           },
           // Add access info for Mediar admins
           ...((isMediarOrg || isMediarAdmin) && {
