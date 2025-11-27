@@ -1480,9 +1480,57 @@ function DashboardContent() {
 
               {/* Header with Actions */}
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold font-mono uppercase">
-                  Available Workflows
-                </h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-sm font-bold font-mono uppercase">
+                    Available Workflows
+                  </h2>
+                  {/* Tag Filter Dropdown */}
+                  {allWorkflowTags.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedWorkflowTags[0] || ''}
+                        onChange={e => {
+                          const tag = e.target.value;
+                          if (tag) {
+                            setSelectedWorkflowTags([tag]);
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem(
+                                'workflow-filter-tags',
+                                JSON.stringify([tag])
+                              );
+                            }
+                          } else {
+                            setSelectedWorkflowTags([]);
+                            if (typeof window !== 'undefined') {
+                              localStorage.removeItem('workflow-filter-tags');
+                            }
+                          }
+                        }}
+                        className="h-7 px-2 text-[11px] font-mono border-2 border-black bg-white focus:outline-none"
+                      >
+                        <option value="">All Tags</option>
+                        {allWorkflowTags.map(tag => (
+                          <option key={tag} value={tag}>
+                            {tag}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedWorkflowTags.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setSelectedWorkflowTags([]);
+                            if (typeof window !== 'undefined') {
+                              localStorage.removeItem('workflow-filter-tags');
+                            }
+                          }}
+                          className="h-7 px-2 text-[11px] font-mono border-2 border-black hover:bg-black hover:text-white transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {/* Command Bar */}
                   <button
@@ -1526,39 +1574,34 @@ function DashboardContent() {
                 </div>
               </div>
 
-              {/* Tag Filters */}
-              {allWorkflowTags.length > 0 && (
+              {/* Tag Pills (when multiple tags selected or for quick access) */}
+              {selectedWorkflowTags.length > 1 && (
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <span className="text-[11px] font-mono text-gray-500">
-                    Tags:
+                    Active filters:
                   </span>
-                  {allWorkflowTags.map(tag => (
+                  {selectedWorkflowTags.map(tag => (
                     <button
                       key={tag}
                       onClick={() => toggleTagFilter(tag)}
-                      className={`h-6 px-2 text-[11px] font-mono border-2 transition-colors ${
-                        selectedWorkflowTags.includes(tag)
-                          ? 'bg-black text-white border-black'
-                          : 'bg-white text-black border-gray-300 hover:border-black'
-                      }`}
+                      className="h-6 px-2 text-[11px] font-mono border-2 bg-black text-white border-black flex items-center gap-1"
                     >
                       {tag}
+                      <X className="w-3 h-3" />
                     </button>
                   ))}
-                  {selectedWorkflowTags.length > 0 && (
-                    <button
-                      onClick={() => {
-                        setSelectedWorkflowTags([]);
-                        if (typeof window !== 'undefined') {
-                          localStorage.removeItem('workflow-filter-tags');
-                        }
-                      }}
-                      className="h-6 px-2 text-[11px] font-mono text-gray-500 hover:text-black flex items-center gap-1"
-                    >
-                      <X className="w-3 h-3" />
-                      Clear
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedWorkflowTags([]);
+                      if (typeof window !== 'undefined') {
+                        localStorage.removeItem('workflow-filter-tags');
+                      }
+                    }}
+                    className="h-6 px-2 text-[11px] font-mono text-gray-500 hover:text-black flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" />
+                    Clear all
+                  </button>
                 </div>
               )}
 
@@ -1725,7 +1768,6 @@ function DashboardContent() {
           onViewExecution={execution => {
             fetchExecutionDetails(execution.execution_id);
           }}
-          onCreateWorkflow={() => setCreateWorkflowOpen(true)}
           onRefresh={() => fetchWorkflows(true)}
         />
 

@@ -512,18 +512,28 @@ export function UnifiedWorkflowDialog({
   };
 
   const saveTags = async (newTags: string[]) => {
+    if (!workflow?.id) {
+      console.error('Cannot save tags: workflow.id is undefined');
+      return;
+    }
     setSavingTags(true);
     try {
+      console.log(`Saving tags for workflow ${workflow.id}:`, newTags);
       const response = await fetch(`/api/remote-workflows/${workflow.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: newTags }),
       });
 
-      if (!response.ok)
-        throw new Error(`Failed to update tags: ${response.status}`);
-
       const data = await response.json();
+      console.log('Save tags response:', response.status, data);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to update tags: ${response.status} - ${data.error || 'Unknown error'}`
+        );
+      }
+
       if (data.success) {
         onSettingsUpdated?.();
       } else {
