@@ -279,7 +279,7 @@ export async function GET(
   const { data: workflowOwnership, error: ownershipError } = await supabase
     .from('deployed_workflows')
     .select(
-      'id, name, created_by, organization_id, automation_sequence, preferred_format, typescript_metadata, github_folder'
+      'id, name, created_by, organization_id, automation_sequence, preferred_format, typescript_metadata, github_folder, tags'
     )
     .eq('id', workflowId)
     .single();
@@ -465,6 +465,7 @@ export async function GET(
       total_versions: workflow.total_versions,
     },
     automation_sequence: workflowSequence?.automation_sequence || null,
+    tags: workflowOwnership.tags || [],
     created_at: workflow.created_at,
     updated_at: workflow.updated_at,
   };
