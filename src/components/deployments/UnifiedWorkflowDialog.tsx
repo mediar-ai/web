@@ -41,7 +41,6 @@ import {
   GitBranch,
   Server,
   Activity,
-  Code2,
   FileInput,
 } from 'lucide-react';
 import { CodeBlock, JsonBlock } from '@/components/ui/code-block';
@@ -111,6 +110,11 @@ export function UnifiedWorkflowDialog({
   const [editedName, setEditedName] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [savingNameDescription, setSavingNameDescription] = useState(false);
+
+  // Tags state
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [savingTags, setSavingTags] = useState(false);
 
   // Machine assignment state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
@@ -431,6 +435,7 @@ export function UnifiedWorkflowDialog({
       loadCronConfig();
       setEditedName(workflow.name || '');
       setEditedDescription(workflow.description || '');
+      setTags(workflow.tags || []);
     }
   }, [
     open,
@@ -485,6 +490,54 @@ export function UnifiedWorkflowDialog({
       );
     } finally {
       setSavingNameDescription(false);
+    }
+  };
+
+  // Tag management functions
+  const addTag = async (tag: string) => {
+    const trimmedTag = tag.trim().toLowerCase();
+    if (!trimmedTag || tags.includes(trimmedTag) || !workflow) return;
+
+    const newTags = [...tags, trimmedTag];
+    setTags(newTags);
+    setNewTagInput('');
+    await saveTags(newTags);
+  };
+
+  const removeTag = async (tagToRemove: string) => {
+    if (!workflow) return;
+    const newTags = tags.filter(t => t !== tagToRemove);
+    setTags(newTags);
+    await saveTags(newTags);
+  };
+
+  const saveTags = async (newTags: string[]) => {
+    setSavingTags(true);
+    try {
+      const response = await fetch(`/api/remote-workflows/${workflow.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: newTags }),
+      });
+
+      if (!response.ok)
+        throw new Error(`Failed to update tags: ${response.status}`);
+
+      const data = await response.json();
+      if (data.success) {
+        onSettingsUpdated?.();
+      } else {
+        throw new Error(data.error || 'Failed to update tags');
+      }
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      setErrorMessage(
+        `Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      // Revert on error
+      setTags(workflow.tags || []);
+    } finally {
+      setSavingTags(false);
     }
   };
 
@@ -739,6 +792,48 @@ export function UnifiedWorkflowDialog({
               {workflow.description || 'Click to add description'}
             </DialogDescription>
           )}
+
+          {/* Tags - Notion style */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap px-3">
+            {tags.map(tag => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-mono rounded transition-colors group"
+              >
+                {tag}
+                <button
+                  onClick={() => removeTag(tag)}
+                  className="opacity-0 group-hover:opacity-100 hover:text-black transition-opacity"
+                  disabled={savingTags}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            <input
+              type="text"
+              value={newTagInput}
+              onChange={e => setNewTagInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addTag(newTagInput);
+                } else if (
+                  e.key === 'Backspace' &&
+                  !newTagInput &&
+                  tags.length > 0
+                ) {
+                  removeTag(tags[tags.length - 1]);
+                }
+              }}
+              placeholder={tags.length === 0 ? 'Add tags...' : '+'}
+              className="px-2 py-0.5 text-xs font-mono bg-transparent border-none outline-none min-w-16 placeholder:text-gray-400"
+              disabled={savingTags}
+            />
+            {savingTags && (
+              <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+            )}
+          </div>
         </DialogHeader>
 
         {/* Success/Error Messages */}
@@ -757,19 +852,10 @@ export function UnifiedWorkflowDialog({
         )}
 
         <Tabs
-          defaultValue={isTypescript ? 'typescript' : 'overview'}
+          defaultValue="overview"
           className="mt-2 flex-1 flex flex-col overflow-hidden"
         >
           <TabsList className="flex w-full justify-center px-6 py-3 bg-transparent gap-2 h-auto overflow-x-auto border-0">
-            {isTypescript && (
-              <TabsTrigger
-                value="typescript"
-                className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
-              >
-                <Code2 className="w-4 h-4 mr-2" />
-                TypeScript
-              </TabsTrigger>
-            )}
             <TabsTrigger
               value="overview"
               className="rounded-lg px-4 py-2.5 data-[state=active]:bg-black data-[state=active]:text-white hover:bg-gray-100 transition-colors flex-shrink-0 whitespace-nowrap border-0"
@@ -897,6 +983,14 @@ export function UnifiedWorkflowDialog({
                 </CardContent>
               </Card>
             </div>
+
+            {/* Workflow details for TypeScript workflows */}
+            {isTypescript && (
+              <TypeScriptWorkflowTab
+                workflowId={workflow.id}
+                workflowFormat="typescript"
+              />
+            )}
           </TabsContent>
 
           <TabsContent
@@ -1719,21 +1813,6 @@ body: JSON.stringify(${JSON.stringify(hasDetailedInfo ? workflow.sample_inputs :
               </CodeBlock>
             </div>
           </TabsContent>
-
-          {/* TypeScript Workflow Tab */}
-          {isTypescript && (
-            <TabsContent
-              value="typescript"
-              className="space-y-6 px-8 py-6 overflow-y-auto flex-1"
-            >
-              <TypeScriptWorkflowTab
-                workflowId={workflow.id}
-                workflowFormat={
-                  isTypescript ? 'typescript' : workflow.preferred_format
-                }
-              />
-            </TabsContent>
-          )}
         </Tabs>
       </DialogContent>
     </Dialog>

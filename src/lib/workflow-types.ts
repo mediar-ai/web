@@ -91,6 +91,7 @@ export interface Workflow {
   organization_id?: string;
   is_public?: boolean; // Whether workflow is publicly accessible to all organizations
   shared_with_orgs?: string[];
+  tags?: string[]; // Array of tags for filtering (e.g., dev, prod, wip, test)
 }
 
 // Workflow with nested settings workflows

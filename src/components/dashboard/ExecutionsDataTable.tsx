@@ -963,10 +963,110 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
         }}
       />
       {/* Table Controls */}
-      <div className="flex flex-col gap-2 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1">
-            {/* Search Field Dropdown */}
+      <div className="flex flex-col gap-3 py-2">
+        {/* All Filters Row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Workflow Filter */}
+          <div className="relative">
+            <select
+              value={activeWorkflowFilter ?? ''}
+              onChange={e => {
+                const value = e.target.value || undefined;
+                if (onWorkflowFilterChange) {
+                  onWorkflowFilterChange(value);
+                }
+              }}
+              className={cn(
+                'h-7 w-28 pl-2 pr-6 font-mono text-[11px] appearance-none cursor-pointer transition-colors border-2 border-black',
+                activeWorkflowFilter
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-gray-50'
+              )}
+            >
+              <option value="">Workflow</option>
+              {uniqueWorkflowNames.map(name => (
+                <option key={name} value={name} title={name}>
+                  {name.length > 12 ? name.slice(0, 12) + '...' : name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className={cn(
+                'absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none',
+                activeWorkflowFilter ? 'text-white' : 'text-black'
+              )}
+            />
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
+            <select
+              value={activeStatusFilter ?? ''}
+              onChange={e => {
+                const value = e.target.value || undefined;
+                if (onStatusFilterChange) {
+                  onStatusFilterChange(value);
+                }
+              }}
+              className={cn(
+                'h-7 w-24 pl-2 pr-6 font-mono text-[11px] appearance-none cursor-pointer transition-colors border-2 border-black',
+                activeStatusFilter
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-gray-50'
+              )}
+            >
+              <option value="">Status</option>
+              {uniqueStatuses.map(status => (
+                <option key={status} value={status}>
+                  {status.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className={cn(
+                'absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none',
+                activeStatusFilter ? 'text-white' : 'text-black'
+              )}
+            />
+          </div>
+
+          {/* Machine Filter */}
+          <div className="relative">
+            <select
+              value={activeMachineFilter ?? ''}
+              onChange={e => {
+                const value = e.target.value || undefined;
+                if (onMachineFilterChange) {
+                  onMachineFilterChange(value);
+                }
+              }}
+              className={cn(
+                'h-7 w-28 pl-2 pr-6 font-mono text-[11px] appearance-none cursor-pointer transition-colors border-2 border-black',
+                activeMachineFilter
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-gray-50'
+              )}
+            >
+              <option value="">Machine</option>
+              {uniqueMachines.map(machine => (
+                <option key={machine} value={machine} title={machine}>
+                  {machine.length > 12 ? machine.slice(0, 12) + '...' : machine}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className={cn(
+                'absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none',
+                activeMachineFilter ? 'text-white' : 'text-black'
+              )}
+            />
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-5 bg-gray-300 mx-1" />
+
+          {/* Search Field Dropdown */}
+          <div className="relative">
             <select
               value={activeSearchField || 'all'}
               onChange={e => {
@@ -974,16 +1074,20 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   onSearchFieldChange(e.target.value);
                 }
               }}
-              className="h-8 px-2 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+              className="h-7 w-28 pl-2 pr-6 border-2 border-black font-mono text-[11px] appearance-none cursor-pointer transition-colors bg-white text-black focus:outline-none"
             >
               <option value="all">All Fields</option>
-              <option value="execution_id">Execution ID</option>
-              <option value="error_message">Error Message</option>
-              <option value="formatted_output">Formatted Output</option>
+              <option value="execution_id">Exec ID</option>
+              <option value="error_message">Error</option>
+              <option value="formatted_output">Output</option>
               <option value="client_id">Client ID</option>
-              <option value="modal_call_id">Modal Call ID</option>
+              <option value="modal_call_id">Modal ID</option>
             </select>
-            {/* Search Mode Dropdown */}
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-black" />
+          </div>
+
+          {/* Search Mode Dropdown */}
+          <div className="relative">
             <select
               value={activeSearchMode || 'contains'}
               onChange={e => {
@@ -991,205 +1095,58 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   onSearchModeChange(e.target.value);
                 }
               }}
-              className="h-8 px-2 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+              className="h-7 w-24 pl-2 pr-6 border-2 border-black font-mono text-[11px] appearance-none cursor-pointer transition-colors bg-white text-black focus:outline-none"
             >
               <option value="contains">Contains</option>
               <option value="exact">Exact</option>
             </select>
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-600" />
-              <Input
-                placeholder="Search executions... (press Enter)"
-                value={localSearchValue}
-                onChange={event => {
-                  setLocalSearchValue(event.target.value);
-                }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    handleSearch();
-                  }
-                }}
-                className="h-8 pl-7 pr-7 text-xs font-mono border-2 border-black focus:ring-2 focus:ring-black"
-              />
-              {localSearchValue && (
-                <button
-                  onClick={handleClearSearch}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-black"
-                  aria-label="Clear search"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSearch}
-              className="h-8 text-xs border-2 border-black hover:bg-black hover:text-white"
-            >
-              <Search className="mr-1 h-3 w-3" />
-              SEARCH
-            </Button>
-            {table.getFilteredSelectedRowModel().rows.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-600 font-mono">
-                  {table.getFilteredSelectedRowModel().rows.length} selected
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => table.toggleAllRowsSelected(false)}
-                  className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
-                >
-                  Clear
-                </Button>
-              </div>
-            )}
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-black" />
           </div>
-          <div className="flex items-center gap-2">
-            {onRefresh && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  posthog?.capture('dashboard_table_refresh', {
-                    timestamp: new Date().toISOString(),
-                  });
-                  onRefresh();
-                }}
-                className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
-              >
-                <RefreshCw className="h-3 w-3" />
-              </Button>
-            )}
-            <DropdownMenu
-              modal={false}
-              onOpenChange={open => {
-                if (!open) {
-                  cleanupDropdownClose();
+
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-48 max-w-md">
+            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-black" />
+            <Input
+              placeholder="Search..."
+              value={localSearchValue}
+              onChange={event => {
+                setLocalSearchValue(event.target.value);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  handleSearch();
                 }
               }}
-            >
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
-                >
-                  <Columns3 className="mr-1 h-3 w-3" />
-                  Columns
-                  <ChevronDown className="ml-1 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="border-2 border-black"
+              className="h-7 pl-7 pr-7 text-[11px] font-mono border-2 border-black focus:ring-1 focus:ring-black rounded-none"
+            />
+            {localSearchValue && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-black"
+                aria-label="Clear search"
               >
-                <DropdownMenuLabel className="font-mono uppercase text-xs">
-                  Toggle Columns
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {table
-                  .getAllColumns()
-                  .filter(column => column.getCanHide())
-                  .map(column => {
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={column.id}
-                        className="font-mono text-sm capitalize hover:bg-gray-100"
-                        checked={column.getIsVisible()}
-                        onCheckedChange={value => {
-                          posthog?.capture('dashboard_table_toggle_column', {
-                            column: column.id,
-                            visible: !!value,
-                            timestamp: new Date().toISOString(),
-                          });
-                          column.toggleVisibility(!!value);
-                        }}
-                      >
-                        {column.id.replace(/_/g, ' ')}
-                      </DropdownMenuCheckboxItem>
-                    );
-                  })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* Column Filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1">
-            <Filter className="h-3 w-3 text-gray-600" />
-            <span className="text-xs font-mono text-gray-600 uppercase">
-              Filters:
-            </span>
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
 
-          {/* Workflow Name Filter */}
-          <select
-            value={activeWorkflowFilter ?? ''}
-            onChange={e => {
-              const value = e.target.value || undefined;
-              if (onWorkflowFilterChange) {
-                onWorkflowFilterChange(value);
-              }
-            }}
-            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
+          {/* Search Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSearch}
+            className="h-7 text-[11px] font-mono border-2 border-black bg-black text-white hover:bg-white hover:text-black px-3"
           >
-            <option value="">All Workflows</option>
-            {uniqueWorkflowNames.map(name => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            <Search className="mr-1 h-3 w-3" />
+            SEARCH
+          </Button>
 
-          {/* Status Filter */}
-          <select
-            value={activeStatusFilter ?? ''}
-            onChange={e => {
-              const value = e.target.value || undefined;
-              if (onStatusFilterChange) {
-                onStatusFilterChange(value);
-              }
-            }}
-            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
-          >
-            <option value="">All Statuses</option>
-            {uniqueStatuses.map(status => (
-              <option key={status} value={status}>
-                {status.toUpperCase()}
-              </option>
-            ))}
-          </select>
-
-          {/* Machine Filter */}
-          <select
-            value={activeMachineFilter ?? ''}
-            onChange={e => {
-              const value = e.target.value || undefined;
-              if (onMachineFilterChange) {
-                onMachineFilterChange(value);
-              }
-            }}
-            className="h-7 px-2 py-0 border-2 border-black font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black"
-          >
-            <option value="">All Machines</option>
-            {uniqueMachines.map(machine => (
-              <option key={machine} value={machine}>
-                {machine}
-              </option>
-            ))}
-          </select>
-
-          {/* Clear Filters Button */}
+          {/* Clear All - only show when filters active */}
           {(activeWorkflowFilter ||
             activeStatusFilter ||
             activeMachineFilter ||
             activeSearchFilter) && (
-            <Button
-              variant="outline"
-              size="sm"
+            <button
               onClick={() => {
                 posthog?.capture('dashboard_table_clear_filters', {
                   had_workflow_filter: !!activeWorkflowFilter,
@@ -1198,19 +1155,102 @@ export const ExecutionsDataTable = memo(function ExecutionsDataTable({
                   had_search_filter: !!activeSearchFilter,
                   timestamp: new Date().toISOString(),
                 });
-
-                // Clear all server-side filters
                 if (onWorkflowFilterChange) onWorkflowFilterChange(undefined);
                 if (onStatusFilterChange) onStatusFilterChange(undefined);
                 if (onMachineFilterChange) onMachineFilterChange(undefined);
                 if (onSearchFilterChange) onSearchFilterChange('');
               }}
-              className="h-7 text-xs border-2 border-black hover:bg-black hover:text-white"
+              className="h-7 px-2 font-mono text-[11px] text-black hover:bg-black hover:text-white transition-colors flex items-center gap-1 border-2 border-black"
             >
-              <X className="mr-1 h-3 w-3" />
-              Clear Filters
+              <X className="h-3 w-3" />
+              Clear
+            </button>
+          )}
+
+          {table.getFilteredSelectedRowModel().rows.length > 0 && (
+            <>
+              <div className="w-px h-5 bg-gray-300 mx-1" />
+              <span className="text-[11px] text-gray-600 font-mono">
+                {table.getFilteredSelectedRowModel().rows.length} selected
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.toggleAllRowsSelected(false)}
+                className="h-7 text-[11px] font-mono border-2 border-black hover:bg-black hover:text-white px-2"
+              >
+                Deselect
+              </Button>
+            </>
+          )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Right side controls */}
+          {onRefresh && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                posthog?.capture('dashboard_table_refresh', {
+                  timestamp: new Date().toISOString(),
+                });
+                onRefresh();
+              }}
+              className="h-7 w-7 p-0 border-2 border-black hover:bg-black hover:text-white"
+            >
+              <RefreshCw className="h-3 w-3" />
             </Button>
           )}
+          <DropdownMenu
+            modal={false}
+            onOpenChange={open => {
+              if (!open) {
+                cleanupDropdownClose();
+              }
+            }}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px] font-mono border-2 border-black hover:bg-black hover:text-white px-3"
+              >
+                <Columns3 className="mr-1 h-3 w-3" />
+                Columns
+                <ChevronDown className="ml-1 h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="border-2 border-black">
+              <DropdownMenuLabel className="font-mono uppercase text-xs">
+                Toggle Columns
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {table
+                .getAllColumns()
+                .filter(column => column.getCanHide())
+                .map(column => {
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="font-mono text-sm capitalize hover:bg-gray-100"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={value => {
+                        posthog?.capture('dashboard_table_toggle_column', {
+                          column: column.id,
+                          visible: !!value,
+                          timestamp: new Date().toISOString(),
+                        });
+                        column.toggleVisibility(!!value);
+                      }}
+                    >
+                      {column.id.replace(/_/g, ' ')}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
