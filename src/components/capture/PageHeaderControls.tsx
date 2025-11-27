@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
-import { AlertTriangle, PictureInPicture, RefreshCw, Zap, Wand2 } from 'lucide-react';
+import { AlertTriangle, ExternalLink, PictureInPicture, RefreshCw, Zap, Wand2 } from 'lucide-react';
 import Link from 'next/link';
 import React, { useEffect, useState, useCallback } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
@@ -112,9 +112,21 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             <Wand2 className="mr-2 h-4 w-4" /> Turn recording into automation
           </Link>
         </Button>
-        <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
-          <PictureInPicture className="h-4 w-4" />
-        </Button>
+        {isInIframe ? (
+          <Button
+            onClick={() => window.open('https://app.mediar.ai/web', '_blank')}
+            variant="outline"
+            size="icon"
+            aria-label="Open in new window"
+            title="Open in new window for full features"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button onClick={onTogglePip} variant="outline" size="icon" aria-label="Toggle Picture-in-Picture" disabled={!isPipSupported}>
+            <PictureInPicture className="h-4 w-4" />
+          </Button>
+        )}
         <SignedIn>
           <ConditionalOrganizationSwitcher />
           <UserButton 
