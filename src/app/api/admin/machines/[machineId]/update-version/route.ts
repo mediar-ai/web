@@ -108,6 +108,102 @@ try {
 }
 `;
 
+interface AzureVmState {
+  powerState: string;
+  provisioningState: string;
+  extensionsReady: boolean;
+  blockedExtensions: string[];
+}
+
+async function getVmState(
+  computeClient: ComputeManagementClient,
+  resourceGroup: string,
+  vmName: string
+): Promise<AzureVmState> {
+  const instanceView = await computeClient.virtualMachines.instanceView(
+    resourceGroup,
+    vmName
+  );
+
+  const statuses = instanceView.statuses || [];
+  const powerStatus = statuses.find((s) => s.code?.startsWith('PowerState/'));
+  const provisioningStatus = statuses.find((s) =>
+    s.code?.startsWith('ProvisioningState/')
+  );
+
+  // Check extensions
+  const extensions = instanceView.extensions || [];
+  const blockedExtensions = extensions
+    .filter(
+      (ext) =>
+        ext.statuses?.some(
+          (s) =>
+            s.code?.includes('Updating') ||
+            s.code?.includes('Transitioning') ||
+            s.level === 'Error'
+        )
+    )
+    .map((ext) => ext.name || 'unknown');
+
+  return {
+    powerState: powerStatus?.code?.replace('PowerState/', '') || 'unknown',
+    provisioningState:
+      provisioningStatus?.code?.replace('ProvisioningState/', '') || 'unknown',
+    extensionsReady: blockedExtensions.length === 0,
+    blockedExtensions,
+  };
+}
+
+async function runCommandWithTimeout(
+  computeClient: ComputeManagementClient,
+  resourceGroup: string,
+  vmName: string,
+  script: string[],
+  timeoutMs: number = 120000
+): Promise<{ success: boolean; output: string; timedOut: boolean }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const poller = await computeClient.virtualMachines.beginRunCommand(
+      resourceGroup,
+      vmName,
+      {
+        commandId: 'RunPowerShellScript',
+        script,
+      }
+    );
+
+    // Poll with timeout
+    const result = await Promise.race([
+      poller.pollUntilDone(),
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error('Operation timed out'));
+        });
+      }),
+    ]);
+
+    clearTimeout(timeoutId);
+    const output = result.value?.[0]?.message || '';
+    return {
+      success: output.includes('UPDATE COMPLETE'),
+      output,
+      timedOut: false,
+    };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.message === 'Operation timed out') {
+      return {
+        success: false,
+        output: 'Operation timed out after ' + timeoutMs / 1000 + 's',
+        timedOut: true,
+      };
+    }
+    throw error;
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ machineId: string }> }
@@ -122,7 +218,7 @@ export async function POST(
   try {
     const { machineId: id } = await params;
     const machineId = parseInt(id);
-    const { version = 'latest' } = await request.json();
+    const { version = 'latest', force = false } = await request.json();
 
     // Fetch machine details
     const { data: machine, error: fetchError } = await supabase
@@ -135,7 +231,6 @@ export async function POST(
       return NextResponse.json({ error: 'Machine not found' }, { status: 404 });
     }
 
-    // Ensure machine has Azure Resource ID
     if (!machine.azure_resource_id) {
       return NextResponse.json(
         { error: 'Machine does not have Azure Resource ID configured' },
@@ -144,7 +239,6 @@ export async function POST(
     }
 
     // Parse Azure Resource ID
-    // Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachines/{name}
     const parts = machine.azure_resource_id.split('/');
     const subscriptionIndex = parts.indexOf('subscriptions');
     const rgIndex = parts.indexOf('resourceGroups');
@@ -165,60 +259,146 @@ export async function POST(
       `[Update MCP] Triggering update for ${vmName} in ${resourceGroup} to version ${version}`
     );
 
-    // Initialize Azure SDK client
     const credential = new DefaultAzureCredential();
     const computeClient = new ComputeManagementClient(
       credential,
       subscriptionId
     );
 
-    // Execute Run Command using Azure SDK
-    const runCommandParams = {
-      commandId: 'RunPowerShellScript',
-      script: [UPDATE_SCRIPT],
-    };
+    // Pre-flight check: Get VM state
+    console.log(`[Update MCP] Running pre-flight checks...`);
+    const vmState = await getVmState(computeClient, resourceGroup, vmName);
 
-    console.log(`[Update MCP] Executing Azure Run Command via SDK...`);
-
-    const result = await computeClient.virtualMachines.beginRunCommandAndWait(
-      resourceGroup,
-      vmName,
-      runCommandParams
-    );
-
-    console.log(`[Update MCP] Command executed:`, result);
-
-    // Check if update was successful
-    const output = result.value?.[0]?.message || '';
-    const success = output.includes('UPDATE COMPLETE');
-
-    if (!success) {
-      console.warn('[Update MCP] Update may have failed:', output);
+    // Check if VM is in a good state
+    if (vmState.powerState !== 'running') {
       return NextResponse.json(
         {
-          error: 'Update command executed but may have failed',
-          output,
+          error: `VM is not running (state: ${vmState.powerState})`,
+          vmState,
+          action: 'start_vm',
+        },
+        { status: 409 }
+      );
+    }
+
+    if (vmState.provisioningState === 'Updating' && !force) {
+      return NextResponse.json(
+        {
+          error: `VM has pending operations (state: ${vmState.provisioningState})`,
+          vmState,
+          action: 'wait_or_restart',
+          hint: 'Use force=true to attempt anyway, or restart the VM to clear stuck state',
+        },
+        { status: 409 }
+      );
+    }
+
+    if (!vmState.extensionsReady && !force) {
+      return NextResponse.json(
+        {
+          error: `VM extensions are not ready: ${vmState.blockedExtensions.join(', ')}`,
+          vmState,
+          action: 'restart_vm',
+          hint: 'Restart the VM to clear stuck extensions, or use force=true',
+        },
+        { status: 409 }
+      );
+    }
+
+    // Record update attempt in database
+    await supabase
+      .from('remote_machines')
+      .update({
+        update_status: 'updating',
+        update_started_at: new Date().toISOString(),
+        update_target_version: version,
+      })
+      .eq('id', machineId);
+
+    console.log(`[Update MCP] Executing Azure Run Command with 2min timeout...`);
+
+    // Execute with timeout
+    const result = await runCommandWithTimeout(
+      computeClient,
+      resourceGroup,
+      vmName,
+      [UPDATE_SCRIPT],
+      120000 // 2 minutes
+    );
+
+    if (result.timedOut) {
+      console.warn('[Update MCP] Command timed out');
+      await supabase
+        .from('remote_machines')
+        .update({
+          update_status: 'timeout',
+          update_error: 'Azure RunCommand timed out after 2 minutes',
+        })
+        .eq('id', machineId);
+
+      return NextResponse.json(
+        {
+          error: 'Update timed out - VM may be stuck',
+          action: 'restart_vm',
+          hint: 'The VM may need a restart to clear stuck operations',
+        },
+        { status: 504 }
+      );
+    }
+
+    if (!result.success) {
+      console.warn('[Update MCP] Update failed:', result.output);
+      await supabase
+        .from('remote_machines')
+        .update({
+          update_status: 'failed',
+          update_error: result.output.slice(0, 1000),
+        })
+        .eq('id', machineId);
+
+      return NextResponse.json(
+        {
+          error: 'Update command executed but failed',
+          output: result.output,
         },
         { status: 500 }
       );
     }
 
-    // Update machine status to trigger health check
+    // Success - update database
     await supabase
       .from('remote_machines')
-      .update({ updated_at: new Date().toISOString() })
+      .update({
+        update_status: 'completed',
+        update_completed_at: new Date().toISOString(),
+        update_error: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', machineId);
 
     return NextResponse.json({
       success: true,
-      message: `Update triggered for ${machine.name}`,
+      message: `Update completed for ${machine.name}`,
       version,
       vmName,
       resourceGroup,
-      output,
+      output: result.output,
     });
   } catch (error: any) {
     console.error('[Update MCP] Error:', error);
+
+    // Try to update status on error
+    try {
+      const { machineId: id } = await params;
+      await supabase
+        ?.from('remote_machines')
+        .update({
+          update_status: 'error',
+          update_error: error.message?.slice(0, 500),
+        })
+        .eq('id', parseInt(id));
+    } catch {}
+
     return NextResponse.json(
       { error: error.message || 'Update failed' },
       { status: 500 }

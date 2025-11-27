@@ -559,7 +559,13 @@ export function ExecutionDetailsDialog({
     const isRustExecutor = execution?.executor_type === 'rust';
 
     // Connect to SSE stream when logs tab is active and execution is running
-    if (open && activeTab === 'logs' && isRunning && isRustExecutor && execution) {
+    if (
+      open &&
+      activeTab === 'logs' &&
+      isRunning &&
+      isRustExecutor &&
+      execution
+    ) {
       // Close any existing connection
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -574,7 +580,7 @@ export function ExecutionDetailsDialog({
         setIsStreaming(true);
       };
 
-      eventSource.onmessage = (event) => {
+      eventSource.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
 
@@ -598,7 +604,6 @@ export function ExecutionDetailsDialog({
 
               return newLogs;
             });
-
           } else if (data.type === 'completed') {
             setIsStreaming(false);
           } else if (data.type === 'error') {
@@ -629,7 +634,14 @@ export function ExecutionDetailsDialog({
       eventSourceRef.current = null;
       setIsStreaming(false);
     }
-  }, [open, activeTab, execution, fetchExecutionLogs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    activeTab,
+    execution?.execution_id,
+    execution?.status,
+    execution?.executor_type,
+  ]);
 
   // Polling fallback for running executions when SSE isn't active
   useEffect(() => {
@@ -846,12 +858,18 @@ export function ExecutionDetailsDialog({
                     >
                       <Alert
                         variant="default"
-                        className="border-black bg-gray-100"
+                        className="border-black bg-gray-100 relative"
                       >
                         <XCircle className="h-4 w-4" />
-                        <AlertDescription className="break-words overflow-wrap-anywhere whitespace-pre-wrap">
+                        <AlertDescription className="break-words overflow-wrap-anywhere whitespace-pre-wrap pr-8">
                           {execution.error_message}
                         </AlertDescription>
+                        <div className="absolute top-2 right-2">
+                          <CopyToClipboardButton
+                            contentToCopy={execution.error_message}
+                            size="sm"
+                          />
+                        </div>
                       </Alert>
                     </CollapsibleSection>
                   )}
@@ -1023,7 +1041,10 @@ export function ExecutionDetailsDialog({
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       {executionLogs && executionLogs.length > 0 && (
-                        <Badge variant="outline" className="text-xs font-mono px-2 py-1">
+                        <Badge
+                          variant="outline"
+                          className="text-xs font-mono px-2 py-1"
+                        >
                           {executionLogs.length} logs
                         </Badge>
                       )}
@@ -1117,15 +1138,22 @@ export function ExecutionDetailsDialog({
                           })
                           .map((log, idx, filteredArray) => {
                             // Find original index for highlight tracking (from original array)
-                            const originalIndex = executionLogs?.indexOf(log) ?? idx;
+                            const originalIndex =
+                              executionLogs?.indexOf(log) ?? idx;
                             // Display number should be reversed (newest = highest number)
-                            const displayNumber = executionLogs ? executionLogs.length - (executionLogs.indexOf(log)) : idx + 1;
+                            const displayNumber = executionLogs
+                              ? executionLogs.length -
+                                executionLogs.indexOf(log)
+                              : idx + 1;
                             const isExpanded = expandedLogIndex === idx;
                             const isNew = newLogIndices.has(originalIndex);
                             const level = log.level || 'info';
-                            const timestamp = log.timestamp ? new Date(log.timestamp) : null;
+                            const timestamp = log.timestamp
+                              ? new Date(log.timestamp)
+                              : null;
                             const service = (log as any).service || '';
-                            const isMcpAgent = service === 'terminator-mcp-agent';
+                            const isMcpAgent =
+                              service === 'terminator-mcp-agent';
 
                             return (
                               <div
@@ -1134,7 +1162,9 @@ export function ExecutionDetailsDialog({
                               >
                                 {/* Compact Log Line */}
                                 <button
-                                  onClick={() => setExpandedLogIndex(isExpanded ? null : idx)}
+                                  onClick={() =>
+                                    setExpandedLogIndex(isExpanded ? null : idx)
+                                  }
                                   className={`w-full border hover:border-black hover:bg-gray-50 p-2 text-left transition-colors ${
                                     isNew ? 'border-black' : 'border-gray-300'
                                   }`}
@@ -1148,28 +1178,46 @@ export function ExecutionDetailsDialog({
 
                                     {/* Time */}
                                     <span className="text-gray-500 w-20 flex-shrink-0">
-                                      {timestamp ? timestamp.toLocaleTimeString() : '-'}
+                                      {timestamp
+                                        ? timestamp.toLocaleTimeString()
+                                        : '-'}
                                     </span>
 
                                     {/* Service Badge */}
                                     {service && (
-                                      <span className={`px-1.5 py-0.5 border rounded-sm text-[10px] flex-shrink-0 flex items-center gap-1 ${
-                                        isMcpAgent ? 'border-gray-500 bg-gray-100 text-gray-600' : 'border-black bg-black text-white'
-                                      }`}>
+                                      <span
+                                        className={`px-1.5 py-0.5 border rounded-sm text-[10px] flex-shrink-0 flex items-center gap-1 ${
+                                          isMcpAgent
+                                            ? 'border-gray-500 bg-gray-100 text-gray-600'
+                                            : 'border-black bg-black text-white'
+                                        }`}
+                                      >
                                         <Monitor className="w-2.5 h-2.5" />
                                         {isMcpAgent ? 'SERVER' : 'CLIENT'}
                                       </span>
                                     )}
 
                                     {/* Level Badge */}
-                                    <span className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 flex-shrink-0 ${
-                                      level === 'error' ? 'border-black bg-black text-white' :
-                                      level === 'warn' || level === 'warning' ? 'border-black bg-white text-black' :
-                                      'border-gray-400 bg-gray-100 text-gray-700'
-                                    }`}>
-                                      {level === 'error' && <AlertCircle className="w-3 h-3" />}
-                                      {(level === 'warn' || level === 'warning') && <AlertTriangle className="w-3 h-3" />}
-                                      {level === 'info' && <Info className="w-3 h-3" />}
+                                    <span
+                                      className={`px-2 py-0.5 border rounded-sm flex items-center gap-1 flex-shrink-0 ${
+                                        level === 'error'
+                                          ? 'border-black bg-black text-white'
+                                          : level === 'warn' ||
+                                              level === 'warning'
+                                            ? 'border-black bg-white text-black'
+                                            : 'border-gray-400 bg-gray-100 text-gray-700'
+                                      }`}
+                                    >
+                                      {level === 'error' && (
+                                        <AlertCircle className="w-3 h-3" />
+                                      )}
+                                      {(level === 'warn' ||
+                                        level === 'warning') && (
+                                        <AlertTriangle className="w-3 h-3" />
+                                      )}
+                                      {level === 'info' && (
+                                        <Info className="w-3 h-3" />
+                                      )}
                                       {level.toUpperCase()}
                                     </span>
 
@@ -1179,7 +1227,9 @@ export function ExecutionDetailsDialog({
                                     </span>
 
                                     {/* Expand Icon */}
-                                    <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                    <ChevronDown
+                                      className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                    />
                                   </div>
                                 </button>
 
@@ -1188,23 +1238,46 @@ export function ExecutionDetailsDialog({
                                   <div className="border-2 border-black bg-gray-50 p-4 space-y-3 mb-1 font-mono text-xs">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                       <div>
-                                        <span className="font-bold uppercase text-gray-600">Timestamp:</span>
-                                        <div className="mt-1">{timestamp ? timestamp.toISOString() : 'N/A'}</div>
+                                        <span className="font-bold uppercase text-gray-600">
+                                          Timestamp:
+                                        </span>
+                                        <div className="mt-1">
+                                          {timestamp
+                                            ? timestamp.toISOString()
+                                            : 'N/A'}
+                                        </div>
                                       </div>
                                       <div>
-                                        <span className="font-bold uppercase text-gray-600">Level:</span>
-                                        <div className="mt-1">{level.toUpperCase()}</div>
+                                        <span className="font-bold uppercase text-gray-600">
+                                          Level:
+                                        </span>
+                                        <div className="mt-1">
+                                          {level.toUpperCase()}
+                                        </div>
                                       </div>
                                       {service && (
                                         <div>
-                                          <span className="font-bold uppercase text-gray-600">Service:</span>
-                                          <div className="mt-1">{isMcpAgent ? 'MCP Agent' : 'Executor'} <span className="text-gray-500 text-[10px]">({service})</span></div>
+                                          <span className="font-bold uppercase text-gray-600">
+                                            Service:
+                                          </span>
+                                          <div className="mt-1">
+                                            {isMcpAgent
+                                              ? 'MCP Agent'
+                                              : 'Executor'}{' '}
+                                            <span className="text-gray-500 text-[10px]">
+                                              ({service})
+                                            </span>
+                                          </div>
                                         </div>
                                       )}
                                       {(log as any).host_name && (
                                         <div>
-                                          <span className="font-bold uppercase text-gray-600">Host:</span>
-                                          <div className="mt-1">{(log as any).host_name}</div>
+                                          <span className="font-bold uppercase text-gray-600">
+                                            Host:
+                                          </span>
+                                          <div className="mt-1">
+                                            {(log as any).host_name}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -1213,20 +1286,30 @@ export function ExecutionDetailsDialog({
                                     {(log as any).scope_name && (
                                       <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                          <span className="font-bold uppercase text-gray-600">Module:</span>
-                                          <div className="mt-1 text-gray-700">{(log as any).scope_name}</div>
+                                          <span className="font-bold uppercase text-gray-600">
+                                            Module:
+                                          </span>
+                                          <div className="mt-1 text-gray-700">
+                                            {(log as any).scope_name}
+                                          </div>
                                         </div>
                                         {(log as any).span_id && (
                                           <div>
-                                            <span className="font-bold uppercase text-gray-600">Span ID:</span>
-                                            <div className="mt-1 text-gray-500">{(log as any).span_id}</div>
+                                            <span className="font-bold uppercase text-gray-600">
+                                              Span ID:
+                                            </span>
+                                            <div className="mt-1 text-gray-500">
+                                              {(log as any).span_id}
+                                            </div>
                                           </div>
                                         )}
                                       </div>
                                     )}
 
                                     <div className="border-t-2 border-gray-300 pt-3">
-                                      <span className="font-bold uppercase text-gray-600 mb-2 block">Message:</span>
+                                      <span className="font-bold uppercase text-gray-600 mb-2 block">
+                                        Message:
+                                      </span>
                                       <div className="p-3 bg-white border border-gray-300 break-all whitespace-pre-wrap">
                                         {log.message}
                                       </div>
@@ -1235,10 +1318,16 @@ export function ExecutionDetailsDialog({
                                     {/* Additional context if available */}
                                     {(log as any).context && (
                                       <div className="border-t-2 border-gray-300 pt-3">
-                                        <span className="font-bold uppercase text-gray-600 mb-2 block">Context:</span>
+                                        <span className="font-bold uppercase text-gray-600 mb-2 block">
+                                          Context:
+                                        </span>
                                         <div className="p-3 bg-white border border-gray-300">
                                           <pre className="text-xs overflow-auto">
-                                            {JSON.stringify((log as any).context, null, 2)}
+                                            {JSON.stringify(
+                                              (log as any).context,
+                                              null,
+                                              2
+                                            )}
                                           </pre>
                                         </div>
                                       </div>

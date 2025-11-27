@@ -421,11 +421,47 @@ function AdminPageContent() {
     }
   };
 
-  const handleUpdateMachineVersion = async (
+  const handleRestartMachine = async (
     machineId: number,
     machineName: string
   ) => {
     if (
+      !confirm(
+        `Restart VM "${machineName}"? This will take ~2 minutes and clear any stuck operations.`
+      )
+    ) {
+      return;
+    }
+
+    setUpdatingMachine(machineId);
+    try {
+      const response = await fetch(
+        `/api/admin/machines/${machineId}/restart`,
+        { method: 'POST' }
+      );
+
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(data.message || `Restart initiated for ${machineName}`);
+        setTimeout(() => fetchMachines(), 120000); // Check after 2 min
+      } else {
+        toast.error(`Failed to restart: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error restarting machine:', error);
+      toast.error('Failed to restart VM');
+    } finally {
+      setUpdatingMachine(null);
+    }
+  };
+
+  const handleUpdateMachineVersion = async (
+    machineId: number,
+    machineName: string,
+    force = false
+  ) => {
+    if (
+      !force &&
       !confirm(
         `Update MCP agent on "${machineName}" to latest version? This will take ~30 seconds.`
       )
@@ -440,18 +476,42 @@ function AdminPageContent() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version: 'latest' }),
+          body: JSON.stringify({ version: 'latest', force }),
         }
       );
 
+      const data = await response.json();
+
       if (response.ok) {
         toast.success(
-          `Update triggered for ${machineName}. Version will update in ~30s.`
+          `Update completed for ${machineName}!`
         );
-        setTimeout(() => fetchMachines(), 35000);
+        setTimeout(() => fetchMachines(), 5000);
+      } else if (response.status === 409) {
+        // VM is in a bad state - offer actions
+        const action = data.action;
+        if (action === 'restart_vm' || action === 'wait_or_restart') {
+          const shouldRestart = confirm(
+            `${data.error}\n\nWould you like to restart the VM to clear the stuck state?`
+          );
+          if (shouldRestart) {
+            await handleRestartMachine(machineId, machineName);
+          }
+        } else if (action === 'start_vm') {
+          toast.error(`VM is not running. Please start it first.`);
+        } else {
+          toast.error(data.error || 'VM is not ready for updates');
+        }
+      } else if (response.status === 504) {
+        // Timeout - suggest restart
+        const shouldRestart = confirm(
+          `${data.error}\n\nThe update timed out. Would you like to restart the VM?`
+        );
+        if (shouldRestart) {
+          await handleRestartMachine(machineId, machineName);
+        }
       } else {
-        const error = await response.json();
-        toast.error(`Failed to update: ${error.error || 'Unknown error'}`);
+        toast.error(`Failed to update: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error updating machine:', error);

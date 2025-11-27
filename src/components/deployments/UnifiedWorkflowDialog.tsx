@@ -1040,7 +1040,12 @@ export function UnifiedWorkflowDialog({
                       cronMaxConcurrent={cronConfig.maxConcurrent}
                       cronRetryOnFailure={cronConfig.retryOnFailure}
                       cronRetryCount={cronConfig.retryCount}
-                      onChange={(newConfig) => setCronConfig({ ...newConfig, executorType: cronConfig.executorType || 'python' })}
+                      onChange={newConfig =>
+                        setCronConfig({
+                          ...newConfig,
+                          executorType: cronConfig.executorType || 'python',
+                        })
+                      }
                       showAdvanced={true}
                     />
 
@@ -1052,10 +1057,12 @@ export function UnifiedWorkflowDialog({
                         </label>
                         <select
                           value={cronConfig.executorType || 'python'}
-                          onChange={(e) => setCronConfig({
-                            ...cronConfig,
-                            executorType: e.target.value as 'python' | 'rust'
-                          })}
+                          onChange={e =>
+                            setCronConfig({
+                              ...cronConfig,
+                              executorType: e.target.value as 'python' | 'rust',
+                            })
+                          }
                           className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
                         >
                           <option value="python">Python (Legacy Modal)</option>
@@ -1076,23 +1083,23 @@ export function UnifiedWorkflowDialog({
                       </div>
                       {machineAssignments.length > 0 ? (
                         <div className="space-y-2">
-                          <div className="text-sm">
-                            {(() => {
-                              // Get the exclusive assignment (only type supported)
-                              const exclusiveAssignment =
-                                machineAssignments.find(
-                                  a => a.assignment_type === 'exclusive'
-                                );
-                              const primaryAssignment = exclusiveAssignment;
-
-                              if (primaryAssignment) {
-                                const machineData = availableMachines.find(
-                                  m => m.id === primaryAssignment.machine_id
-                                );
-                                return (
-                                  <div className="flex items-center gap-2 p-2 bg-white border border-black rounded">
-                                    <span className="font-mono font-bold">
-                                      {primaryAssignment.machine_name}
+                          {machineAssignments
+                            .sort((a, b) => a.priority - b.priority)
+                            .map(assignment => {
+                              const machineData = availableMachines.find(
+                                m => m.id === assignment.machine_id
+                              );
+                              return (
+                                <div
+                                  key={assignment.assignment_id}
+                                  className="flex items-center justify-between p-2 bg-white border border-black rounded"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className="font-mono font-bold truncate"
+                                      title={assignment.machine_name}
+                                    >
+                                      {assignment.machine_name}
                                     </span>
                                     {machineData && (
                                       <span
@@ -1110,54 +1117,93 @@ export function UnifiedWorkflowDialog({
                                     )}
                                     <Badge
                                       className={
-                                        primaryAssignment.assignment_type ===
+                                        assignment.assignment_type ===
                                         'exclusive'
                                           ? 'bg-black text-white text-xs'
                                           : 'bg-white text-black border border-black text-xs'
                                       }
                                     >
-                                      {primaryAssignment.assignment_type}
+                                      {assignment.assignment_type}
                                     </Badge>
                                   </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
+                                  <Button
+                                    variant="black-outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() =>
+                                      removeMachineAssignment(
+                                        assignment.assignment_id
+                                      )
+                                    }
+                                    disabled={
+                                      removingAssignment ===
+                                      assignment.assignment_id
+                                    }
+                                  >
+                                    {removingAssignment ===
+                                    assignment.assignment_id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3 h-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              );
+                            })}
                           <p className="text-xs text-gray-600">
-                            Cron jobs will execute on the assigned machine.{' '}
-                            <button
-                              onClick={() => {
-                                const tabsList =
-                                  document.querySelector('[value="machines"]');
-                                if (tabsList instanceof HTMLElement) {
-                                  tabsList.click();
-                                }
-                              }}
-                              className="underline hover:text-black font-mono"
-                            >
-                              View all assignments →
-                            </button>
+                            Cron jobs will execute on the assigned machine.
                           </p>
                         </div>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <p className="text-sm text-gray-600">
                             No machine assigned. Cron jobs will use automatic
                             load-balanced assignment.
                           </p>
-                          <button
-                            onClick={() => {
-                              const tabsList =
-                                document.querySelector('[value="machines"]');
-                              if (tabsList instanceof HTMLElement) {
-                                tabsList.click();
-                              }
-                            }}
-                            className="text-xs underline hover:text-black font-mono"
-                          >
-                            Assign a machine →
-                          </button>
+                          {getAvailableMachinesForAssignment().length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={selectedMachineId}
+                                onChange={e =>
+                                  setSelectedMachineId(e.target.value)
+                                }
+                                className="flex-1 p-2 border-2 border-black rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                              >
+                                <option value="">Select a machine...</option>
+                                {getAvailableMachinesForAssignment()
+                                  .filter(m => m.status === 'active')
+                                  .map(machine => (
+                                    <option
+                                      key={machine.id}
+                                      value={machine.id.toString()}
+                                    >
+                                      {machine.name}{' '}
+                                      {machine.health_status === 'healthy'
+                                        ? '●'
+                                        : '○'}
+                                    </option>
+                                  ))}
+                              </select>
+                              <Button
+                                size="sm"
+                                onClick={addMachineAssignment}
+                                disabled={
+                                  !selectedMachineId || addingAssignment
+                                }
+                                className="bg-black text-white hover:bg-gray-800"
+                              >
+                                {addingAssignment ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  'Assign'
+                                )}
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-500 font-mono">
+                              No machines available for assignment.
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
