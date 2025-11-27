@@ -324,6 +324,19 @@ export function WorkflowCardEnhanced({
                       Version {workflow.version_info.current_version}
                     </p>
                   )}
+                  {workflow.tags && workflow.tags.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[10px] text-gray-400">Tags:</span>
+                      {workflow.tags.map(tag => (
+                        <span
+                          key={tag}
+                          className="text-[10px] font-mono bg-gray-700 text-white px-1 py-0.5 rounded"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </TooltipContent>
               </Tooltip>
               {/* Only show status badge if it's meaningful (not deployed/running/paused) */}

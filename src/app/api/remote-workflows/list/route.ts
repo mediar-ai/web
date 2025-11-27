@@ -397,7 +397,9 @@ export async function GET(request: NextRequest) {
     const viewOrgId = searchParams.get('viewOrgId'); // Allow Mediar admins to specify org
     const versionParam = searchParams.get('version'); // 'latest' for desktop app
     const tagsParam = searchParams.get('tags'); // Comma-separated tags to filter by
-    const filterTags = tagsParam ? tagsParam.split(',').map(t => t.trim().toLowerCase()) : [];
+    const filterTags = tagsParam
+      ? tagsParam.split(',').map(t => t.trim().toLowerCase())
+      : [];
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
@@ -675,6 +677,17 @@ export async function GET(request: NextRequest) {
             id => cronData[parseInt(id)].cron_expression
           ).length
         );
+        // Debug: log workflows with tags
+        const workflowsWithTags = Object.entries(cronData).filter(
+          ([_, data]: [string, any]) => data.tags && data.tags.length > 0
+        );
+        console.log(
+          '[API] Workflows with tags in cronData:',
+          workflowsWithTags.map(([id, data]: [string, any]) => ({
+            id,
+            tags: data.tags,
+          }))
+        );
       } else if (cronError) {
         console.error('[API] Error fetching cron data:', cronError);
       }
@@ -688,8 +701,7 @@ export async function GET(request: NextRequest) {
           automation_sequence,
           workflow_type,
           parent_workflow_id,
-          display_order,
-          latest_version_number
+          display_order
         `
         )
         .in('id', workflowIds);
@@ -1010,12 +1022,15 @@ export async function GET(request: NextRequest) {
       });
 
     // Filter by tags if provided
-    const filteredWorkflows = filterTags.length > 0
-      ? formattedWorkflows.filter(w => {
-          const workflowTags = (w.tags || []).map((t: string) => t.toLowerCase());
-          return filterTags.some(tag => workflowTags.includes(tag));
-        })
-      : formattedWorkflows;
+    const filteredWorkflows =
+      filterTags.length > 0
+        ? formattedWorkflows.filter(w => {
+            const workflowTags = (w.tags || []).map((t: string) =>
+              t.toLowerCase()
+            );
+            return filterTags.some(tag => workflowTags.includes(tag));
+          })
+        : formattedWorkflows;
 
     const responseData = {
       success: true,
