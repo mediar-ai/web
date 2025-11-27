@@ -148,6 +148,32 @@ export async function PATCH(
     // Push updated workflow to GitHub (fire-and-forget)
     (async () => {
       try {
+        // For TypeScript workflows, update package.json instead of workflow.yaml
+        if (updatedWorkflow.preferred_format === 'typescript') {
+          const result = await githubWorkflowManager.updatePackageJson(
+            workflowId,
+            { name: name.trim(), description: description },
+            { email: userEmail || undefined }
+          );
+
+          if (result.success) {
+            console.log(`✅ Updated package.json for renamed TS workflow: ${result.path}`);
+            await supabase
+              .from('github_workflow_sync_log')
+              .insert({
+                workflow_id: workflowId,
+                operation: 'rename',
+                github_path: result.path,
+                github_sha: result.sha,
+                status: 'success'
+              });
+          } else {
+            console.warn(`⚠️ GitHub package.json update failed: ${result.error}`);
+          }
+          return;
+        }
+
+        // For YAML workflows, save the workflow.yaml with updated metadata
         const { data: activeVersion } = await supabase
           .from('deployed_workflow_versions')
           .select('automation_sequence_yaml, automation_sequence')
