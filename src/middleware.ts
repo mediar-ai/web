@@ -31,6 +31,8 @@ const isPublicApiRoute = createRouteMatcher([
   '/api/cron/process-pending-notifications(.*)',
   '/api/ai/execution-qa/context(.*)', // Allow context loading without auth (data is org-scoped)
   '/api/agents(.*)', // Allow agent streaming for desktop app (has own auth via Bearer token)
+  // Workflow download route handles its own auth (service token or Clerk session)
+  '/api/workflows-uuid/download(.*)',
 ]);
 
 const isProtectedApiRoute = createRouteMatcher([
