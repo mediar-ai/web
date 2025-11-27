@@ -2,9 +2,10 @@ import { Button } from '@/components/ui/button';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { AlertTriangle, ExternalLink, PictureInPicture, RefreshCw, Zap, Wand2 } from 'lucide-react';
 import Link from 'next/link';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { PageHeaderControlsProps } from '../../types';
 import { CustomOrgSwitcher } from '@/components/navigation/CustomOrgSwitcher';
+import { toast } from 'sonner';
 
 interface StatusIndicatorProps {
   mainStatus: string;
@@ -67,6 +68,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
 }) => {
   const [isPipSupported, setIsPipSupported] = useState(false);
   const [isInIframe, setIsInIframe] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (window.documentPictureInPicture) {
@@ -79,11 +81,33 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
       // If we can't access window.top due to cross-origin, we're in an iframe
       setIsInIframe(true);
     }
+    // Check if on mobile device
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const mobileKeywords = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/;
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobile(mobileKeywords.test(userAgent) || isSmallScreen);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  const handleStartClick = () => {
+    if (isMobile) {
+      toast('Desktop Required', {
+        description: 'Screen sharing is only available on desktop browsers. Please open this page on a computer to start training.',
+        duration: 5000,
+      });
+      return;
+    }
+    handleStartScreenShare();
+  };
+
   return (
-    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-4">
-      <div className="flex items-center gap-4 text-sm font-mono w-full sm:w-auto">
+    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-3">
+      {/* Status indicator - hidden on mobile since training won't work anyway */}
+      <div className="hidden sm:flex items-center gap-4 text-sm font-mono w-full sm:w-auto">
         <StatusIndicator
           mainStatus={mainStatus}
           autoDetectionEnabled={autoDetectionEnabled}
@@ -97,9 +121,44 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
         />
       </div>
 
-      <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
+      {/* Mobile: simplified layout */}
+      <div className="flex sm:hidden flex-col w-full gap-2">
         {!stream ? (
-          <Button onClick={handleStartScreenShare} variant="outline">
+          <Button onClick={handleStartClick} variant="outline" className="w-full">
+            <Zap className="mr-2 h-4 w-4" /> Start Training
+          </Button>
+        ) : (
+          <Button onClick={handleStopScreenShare} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
+            Stop Training
+          </Button>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <Button asChild variant="outline" className="flex-1">
+            <Link href="https://mediar.ai/turnkey" target="_blank" rel="noopener noreferrer">
+              <Wand2 className="mr-2 h-4 w-4" /> Get Automation
+            </Link>
+          </Button>
+          <SignedIn>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8"
+                }
+              }}
+            />
+          </SignedIn>
+          <SignedOut>
+            <Button asChild size="sm">
+              <Link href="/sign-in">Sign In</Link>
+            </Button>
+          </SignedOut>
+        </div>
+      </div>
+
+      {/* Desktop: full layout */}
+      <div className="hidden sm:flex items-center justify-end gap-2">
+        {!stream ? (
+          <Button onClick={handleStartClick} variant="outline">
             <Zap className="mr-2 h-4 w-4" /> Start Training
           </Button>
         ) : (
