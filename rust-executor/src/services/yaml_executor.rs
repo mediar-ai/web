@@ -9,7 +9,8 @@ use tracing::{debug, error, info, warn};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::{McpClient, WorkflowExecutor};
 use crate::models::{Workflow, WorkflowExecution, WorkflowResult, WorkflowSequence};
-use crate::services::GitHubLoader;
+use crate::services::{CancellationToken, GitHubLoader};
+use crate::models::WorkflowState;
 
 /// Executor for YAML-based workflows
 pub struct YamlExecutor<'a> {
@@ -17,6 +18,7 @@ pub struct YamlExecutor<'a> {
     mcp_client: McpClient,
     workflow: &'a Workflow,
     execution: &'a WorkflowExecution,
+    cancellation_token: Option<CancellationToken>,
 }
 
 impl<'a> YamlExecutor<'a> {
@@ -32,11 +34,46 @@ impl<'a> YamlExecutor<'a> {
             mcp_client,
             workflow,
             execution,
+            cancellation_token: None,
         }
+    }
+
+    /// Add a cancellation token to the executor
+    pub fn with_cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
+        self
+    }
+
+    /// Check if cancellation has been requested
+    fn is_cancelled(&self) -> bool {
+        self.cancellation_token
+            .as_ref()
+            .map(|t| t.is_cancelled())
+            .unwrap_or(false)
     }
 
     /// Execute the YAML workflow
     pub async fn execute(&self) -> Result<WorkflowResult> {
+        // Check for cancellation before starting
+        if self.is_cancelled() {
+            info!(
+                execution_id = %self.execution.id,
+                "Execution cancelled before starting YAML workflow"
+            );
+            return Ok(WorkflowResult {
+                success: false,
+                message: "Execution cancelled by user".to_string(),
+                state: WorkflowState::Cancelled,
+                error: Some("Cancelled by user request".to_string()),
+                data: None,
+                steps_completed: 0,
+                total_steps: 1,
+                step_results: vec![],
+                execution_time_ms: 0,
+                screenshot_urls: vec![],
+            });
+        }
+
         let start_time = Instant::now();
 
         info!(

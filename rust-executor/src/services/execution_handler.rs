@@ -100,6 +100,52 @@ impl<'a> ExecutionHandler<'a> {
         Ok(())
     }
 
+    /// Handle user-requested cancellation
+    pub async fn handle_user_cancelled(
+        &self,
+        execution: &WorkflowExecution,
+        workflow: &Workflow,
+        trace_id: &str,
+    ) -> Result<()> {
+        let reason = "Cancelled by user request";
+
+        info!(
+            execution_id = %execution.id,
+            workflow_id = %workflow.id,
+            trace_id = %trace_id,
+            "Execution cancelled by user"
+        );
+
+        WorkflowQueries::update_execution_status(
+            self.db_pool,
+            execution.id,
+            ExecutionStatus::Cancelled,
+            Some(reason.to_string()),
+            None,
+            None,
+        )
+        .await?;
+
+        if let Err(e) = self
+            .monitor_client
+            .notify_cancelled(
+                execution.id,
+                workflow.id,
+                Some(workflow.name.clone()),
+                reason,
+            )
+            .await
+        {
+            warn!(
+                execution_id = %execution.id,
+                error = %e,
+                "Failed to send monitor notification for user-cancelled execution"
+            );
+        }
+
+        Ok(())
+    }
+
     /// Handle successful workflow completion (success or workflow-level failure)
     pub async fn handle_completion(
         &self,

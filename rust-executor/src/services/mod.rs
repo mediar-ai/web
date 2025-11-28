@@ -1,3 +1,4 @@
+pub mod cancellation;
 pub mod execution_handler;
 pub mod github_loader;
 pub mod monitor_client;
@@ -8,6 +9,7 @@ pub mod workflow_service;
 pub mod yaml_executor;
 
 #[allow(unused_imports)]
+pub use cancellation::*;
 pub use execution_handler::*;
 pub use github_loader::*;
 pub use monitor_client::*;

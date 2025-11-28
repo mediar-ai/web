@@ -15,9 +15,10 @@ mod telemetry;
 mod utils;
 mod workflow_downloader;
 
+use crate::api::AppState;
 use crate::db::{create_pool, DatabasePool};
 use crate::models::ExecutionRequest;
-use crate::services::QueueProcessor;
+use crate::services::{CancellationRegistry, QueueProcessor};
 
 #[derive(Parser)]
 #[command(name = "workflow-executor")]
@@ -151,19 +152,24 @@ async fn start_server(port: u16) -> Result<()> {
         }
     }
 
-    // Start queue processor in background
+    // Create shared cancellation registry
+    let cancellation_registry = CancellationRegistry::new();
+    info!("Cancellation registry initialized");
+
+    // Start queue processor in background with shared registry
     info!("Starting queue processor...");
-    let queue_processor = QueueProcessor::new(db_pool.clone());
+    let queue_processor = QueueProcessor::with_registry(db_pool.clone(), cancellation_registry.clone());
     tokio::spawn(async move {
         info!("Queue processor task spawned, starting polling loop");
         if let Err(e) = queue_processor.start().await {
             error!("Queue processor error: {}", e);
         }
     });
-    info!("✓ Queue processor started");
+    info!("Queue processor started");
 
-    // Build API router
-    let app = build_router(db_pool)?;
+    // Build API router with shared state (db_pool + cancellation_registry)
+    let app_state = AppState::new(db_pool, cancellation_registry);
+    let app = build_router(app_state)?;
 
     // Start server
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -395,7 +401,7 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
     Ok(())
 }
 
-fn build_router(db_pool: DatabasePool) -> Result<Router> {
+fn build_router(app_state: AppState) -> Result<Router> {
     let app = Router::new()
         .nest("/api/v1", api::routes())
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max body size
@@ -404,7 +410,7 @@ fn build_router(db_pool: DatabasePool) -> Result<Router> {
         .layer(TraceLayer::new_for_http())
         .layer(sentry_tower::NewSentryLayer::new_from_top())
         .layer(sentry_tower::SentryHttpLayer::new().enable_transaction())
-        .with_state(db_pool);
+        .with_state(app_state);
 
     Ok(app)
 }

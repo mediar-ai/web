@@ -117,11 +117,33 @@ export async function POST(
       );
     }
 
-    // If it was running, we might need to notify the Modal executor to stop
-    // This is a placeholder - actual implementation would depend on Modal's API
-    if (execution.status === 'running' && execution.modal_task_id) {
-      // TODO: Call Modal API to cancel the running task
-      console.log(`Would cancel Modal task: ${execution.modal_task_id}`);
+    // Notify the appropriate executor to stop the running execution
+    if (execution.status === 'running') {
+      // Check if this is a Rust executor execution
+      if (execution.executor_type === 'rust') {
+        // Call Rust executor cancel endpoint
+        const rustExecutorUrl = process.env.RUST_EXECUTOR_URL || 'http://workflow-executor-dev.eastus.azurecontainer.io:8080';
+        try {
+          const cancelResponse = await fetch(`${rustExecutorUrl}/api/v1/executions/${executionId}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+
+          if (cancelResponse.ok) {
+            console.log(`[SUCCESS] Rust executor acknowledged cancellation for execution ${executionId}`);
+          } else {
+            // Log but don't fail - the DB update is the source of truth
+            console.warn(`[WARN] Rust executor returned ${cancelResponse.status} for cancel request (execution may have completed)`);
+          }
+        } catch (rustError) {
+          // Log but don't fail - the execution might be on a different instance
+          console.warn(`[WARN] Could not reach Rust executor to cancel execution ${executionId}:`, rustError);
+        }
+      } else if (execution.modal_task_id) {
+        // Modal executor - placeholder for future implementation
+        console.log(`Would cancel Modal task: ${execution.modal_task_id}`);
+      }
     }
 
     console.log(`[SUCCESS] User ${authenticatedUserId} cancelled execution ${executionId} (workflow ${execution.workflow_id})`);
