@@ -10,6 +10,7 @@ use tracing::{debug, error, info, warn};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::McpClient;
 use crate::models::{StepStatus, Workflow, WorkflowExecution, WorkflowResult, WorkflowState};
+use std::collections::HashMap;
 
 /// Executor for TypeScript workflows
 pub struct TypeScriptExecutor<'a> {
@@ -52,6 +53,34 @@ impl<'a> TypeScriptExecutor<'a> {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Workflow has no organization_id"))?;
 
+        // Load org secrets once - used for both injection and output redaction
+        let secrets = match crate::services::secrets::load_org_secrets(
+            self.db_pool,
+            clerk_org_id,
+            Some(self.execution.id),
+        )
+        .await
+        {
+            Ok(s) => {
+                if !s.is_empty() {
+                    info!(
+                        execution_id = %self.execution.id,
+                        secret_count = %s.len(),
+                        "Loaded org secrets for workflow execution"
+                    );
+                }
+                s
+            }
+            Err(e) => {
+                warn!(
+                    execution_id = %self.execution.id,
+                    error = %e,
+                    "Failed to load org secrets, continuing without secrets"
+                );
+                HashMap::new()
+            }
+        };
+
         // Resolve workflow file URL
         let file_url = self.resolve_workflow_url(clerk_org_id).await?;
 
@@ -62,9 +91,9 @@ impl<'a> TypeScriptExecutor<'a> {
             "TypeScript workflow path resolved"
         );
 
-        // Build execution arguments
+        // Build execution arguments (with secret injection)
         let args = self
-            .build_execution_args(&file_url, &trace_id, clerk_org_id)
+            .build_execution_args(&file_url, &trace_id, &secrets)
             .await?;
 
         // Update progress
@@ -103,8 +132,8 @@ impl<'a> TypeScriptExecutor<'a> {
             "MCP execute_sequence call completed"
         );
 
-        // Parse result
-        self.parse_execution_result(result, execution_time_ms)
+        // Parse result and redact any secrets from output
+        self.parse_execution_result(result, execution_time_ms, &secrets)
     }
 
     /// Resolve the workflow URL (UUID-based or legacy S3)
@@ -168,37 +197,23 @@ impl<'a> TypeScriptExecutor<'a> {
         &self,
         file_url: &str,
         trace_id: &str,
-        clerk_org_id: &str,
+        secrets: &HashMap<String, String>,
     ) -> Result<Map<String, Value>> {
         let mut args = Map::new();
         args.insert("url".to_string(), Value::String(file_url.to_string()));
         args.insert("include_detailed_results".to_string(), Value::Bool(true));
         args.insert("stop_on_error".to_string(), Value::Bool(true));
 
-        // Load and inject org secrets
+        // Inject secrets into params
         let params_with_secrets = if let Some(params) = &self.execution.execution_params {
-            match crate::services::secrets::load_org_secrets(self.db_pool, clerk_org_id, Some(self.execution.id)).await {
-                Ok(secrets) if !secrets.is_empty() => {
-                    info!(
-                        execution_id = %self.execution.id,
-                        secret_count = %secrets.len(),
-                        "Loaded org secrets for workflow execution"
-                    );
-                    crate::services::secrets::inject_secrets_into_params(
-                        params.clone(),
-                        &secrets,
-                        true,
-                    )
-                }
-                Ok(_) => params.clone(),
-                Err(e) => {
-                    warn!(
-                        execution_id = %self.execution.id,
-                        error = %e,
-                        "Failed to load org secrets, continuing without secrets"
-                    );
-                    params.clone()
-                }
+            if !secrets.is_empty() {
+                crate::services::secrets::inject_secrets_into_params(
+                    params.clone(),
+                    secrets,
+                    true,
+                )
+            } else {
+                params.clone()
             }
         } else {
             Value::Object(Map::new())
@@ -233,6 +248,7 @@ impl<'a> TypeScriptExecutor<'a> {
         &self,
         result: Result<Value>,
         execution_time_ms: u64,
+        secrets: &HashMap<String, String>,
     ) -> Result<WorkflowResult> {
         match result {
             Ok(tool_result) => {
@@ -280,6 +296,12 @@ impl<'a> TypeScriptExecutor<'a> {
                     );
                 }
 
+                // Redact any secrets from the output to prevent leaking through DB/UI
+                let redacted_result = crate::services::secrets::redact_secrets_from_output(
+                    Some(tool_result),
+                    secrets,
+                );
+
                 Ok(WorkflowResult {
                     success,
                     message,
@@ -289,7 +311,7 @@ impl<'a> TypeScriptExecutor<'a> {
                         WorkflowState::Failure
                     },
                     error,
-                    data: Some(tool_result),
+                    data: redacted_result,
                     steps_completed: if total_steps > 0 { steps_completed } else { 1 },
                     total_steps: if total_steps > 0 { total_steps } else { 1 },
                     step_results,
