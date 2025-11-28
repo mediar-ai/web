@@ -13,6 +13,8 @@ import {
   Film,
   Calendar,
   HardDrive,
+  Radio,
+  Video,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
@@ -24,6 +26,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LiveVncView } from './LiveVncView';
 
 interface RecordingSegment {
   filename: string;
@@ -52,7 +56,10 @@ interface ProcessedSegment extends RecordingSegment {
 
 interface AgentScreenTabProps {
   executionId: number;
+  machineId?: number;
+  isLive?: boolean;
 }
+
 
 // Helper to format seconds to HH:MM:SS
 const formatDuration = (seconds: number) => {
@@ -63,7 +70,31 @@ const formatDuration = (seconds: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-export function AgentScreenTab({ executionId }: AgentScreenTabProps) {
+export function AgentScreenTab({ executionId, machineId, isLive = false }: AgentScreenTabProps) {
+  const [activeTab, setActiveTab] = useState<"live" | "recording">(isLive && machineId ? "live" : "recording");
+
+  // If machine has VNC, show tabs
+  if (machineId) {
+    return (
+      <div className="h-full flex flex-col">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "live" | "recording")} className="h-full flex flex-col">
+          <TabsList className="grid w-full grid-cols-2 mb-2">
+            <TabsTrigger value="live" className="font-mono text-xs"><Radio className="w-3 h-3 mr-2" />LIVE</TabsTrigger>
+            <TabsTrigger value="recording" className="font-mono text-xs"><Video className="w-3 h-3 mr-2" />RECORDING</TabsTrigger>
+          </TabsList>
+          <TabsContent value="live" className="flex-1 mt-0"><LiveVncView machineId={machineId} /></TabsContent>
+          <TabsContent value="recording" className="flex-1 mt-0"><RecordingView executionId={executionId} /></TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
+
+  // Original recording-only view
+  return <RecordingView executionId={executionId} />;
+}
+
+// Recording view component (original AgentScreenTab logic)
+function RecordingView({ executionId }: { executionId: number }) {
   // Data State
   const [data, setData] = useState<RecordingResponse | null>(null);
   const [loading, setLoading] = useState(true);
