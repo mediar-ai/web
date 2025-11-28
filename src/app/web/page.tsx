@@ -83,6 +83,8 @@ function HomeComponent() {
   const [showError, setShowError] = useState<boolean>(false);
   const [isCapturingForBuffer, setIsCapturingForBuffer] = useState(false);
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
+  const [activityPagination, setActivityPagination] = useState<{ offset: number; limit: number; total: number; hasMore: boolean } | null>(null);
+  const [isLoadingMoreActivities, setIsLoadingMoreActivities] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [frameBuffer, setFrameBuffer] = useState<BufferedFrame[]>([]);
   const [activeAnalysesCount, setActiveAnalysesCount] = useState<number>(0);
@@ -225,41 +227,81 @@ function HomeComponent() {
     if (!provider) return;
     logToUI(`[loadData] Loading data using ${provider.constructor.name}...`);
     try {
-      const [savedSteps, savedEvents, savedActivityItemsFromDB, savedCompletedAnalyses] =
-        await Promise.all([
-          provider.loadWorkflowSteps(),
-          provider.loadEvents(),
-          provider.loadActivityItems(),
-          provider.loadCompletedAnalyses(),
-        ]);
-      
-      // De-duplicate data on the client-side to prevent key errors
-      const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+      // For RemoteDataProvider, use paginated loading for activity items
+      let savedActivityItemsFromDB: ActivityItem[];
+      let paginationInfo: { offset: number; limit: number; total: number; hasMore: boolean } | null = null;
 
       if (provider instanceof RemoteDataProvider) {
-          setRemoteUserName(provider.getUserName());
-      }
+        const sessionId = viewingMode.type === 'remote' ? viewingMode.sessionId : undefined;
+        const [_savedSteps, savedEvents, activityResult, savedCompletedAnalyses] =
+          await Promise.all([
+            provider.loadWorkflowSteps(),
+            provider.loadEvents(sessionId),
+            provider.loadActivityItemsWithPagination(sessionId),
+            provider.loadCompletedAnalyses(sessionId),
+          ]);
 
-      // Always set the data, even if it's empty, to clear out old state.
-      setActivityItems(uniqueActivityItems);
-      logToUI(
-        `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
-      );
+        savedActivityItemsFromDB = activityResult.activityItems;
+        paginationInfo = activityResult.pagination;
 
-      setEvents(uniqueEvents);
-      logToUI(
-        `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
-      );
+        // De-duplicate data on the client-side to prevent key errors
+        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
 
-      setCompletedAnalyses(uniqueCompletedAnalyses);
-      logToUI(
-        `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
-      );
-      
-      // In local mode, we also load and save data to IndexedDB
-      if (viewingMode.type === 'local') {
+        setRemoteUserName(provider.getUserName());
+
+        // Always set the data, even if it's empty, to clear out old state.
+        setActivityItems(uniqueActivityItems);
+        setActivityPagination(paginationInfo);
+        logToUI(
+          `[loadData] Loaded ${uniqueActivityItems.length} of ${paginationInfo?.total || 0} activity items (paginated)`
+        );
+
+        setEvents(uniqueEvents);
+        logToUI(
+          `[loadData] Loaded ${uniqueEvents.length} events`
+        );
+
+        setCompletedAnalyses(uniqueCompletedAnalyses);
+        logToUI(
+          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses`
+        );
+      } else {
+        // Local mode - load all at once (no pagination)
+        const [savedSteps, savedEvents, localActivityItems, savedCompletedAnalyses] =
+          await Promise.all([
+            provider.loadWorkflowSteps(),
+            provider.loadEvents(),
+            provider.loadActivityItems(),
+            provider.loadCompletedAnalyses(),
+          ]);
+
+        savedActivityItemsFromDB = localActivityItems;
+
+        // De-duplicate data on the client-side to prevent key errors
+        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
+        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+
+        // Always set the data, even if it's empty, to clear out old state.
+        setActivityItems(uniqueActivityItems);
+        setActivityPagination(null); // No pagination for local mode
+        logToUI(
+          `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
+        );
+
+        setEvents(uniqueEvents);
+        logToUI(
+          `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
+        );
+
+        setCompletedAnalyses(uniqueCompletedAnalyses);
+        logToUI(
+          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
+        );
+
+        // In local mode, we also load and save data to IndexedDB
         const logs = await loadFrontendLogs();
         if (logs.length > 0) {
           setFrontendLogs(logs);
@@ -270,30 +312,65 @@ function HomeComponent() {
         if (uniqueEvents.length > 0) saveEvents(uniqueEvents);
         if (uniqueActivityItems.length > 0) saveActivityItems(uniqueActivityItems);
         if (uniqueCompletedAnalyses.length > 0) saveCompletedAnalyses(uniqueCompletedAnalyses);
-      }
 
-      // In local mode AND when capturing, stream new items to Supabase
-      if (viewingMode.type === 'local' && streamRef.current) {
-        uniqueActivityItems.filter(item => !streamedItemIds.current.has(item.id))
-          .forEach(item => streamData('activity_item', item));
-        uniqueEvents.filter(item => !streamedItemIds.current.has(item.id))
-          .forEach(item => streamData('event', item));
-        uniqueCompletedAnalyses.filter(item => !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime)
-          .forEach(item => {
-            const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
-            streamData('completed_analysis', itemToStream);
-          });
+        // In local mode AND when capturing, stream new items to Supabase
+        if (streamRef.current) {
+          uniqueActivityItems.filter(item => !streamedItemIds.current.has(item.id))
+            .forEach(item => streamData('activity_item', item));
+          uniqueEvents.filter(item => !streamedItemIds.current.has(item.id))
+            .forEach(item => streamData('event', item));
+          uniqueCompletedAnalyses.filter(item => !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime)
+            .forEach(item => {
+              const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
+              streamData('completed_analysis', itemToStream);
+            });
+        }
       }
 
     } catch (err) {
       logError('[loadData] Failed to load data:', err);
     }
-  }, [logError, logToUI, viewingMode.type, streamData]);
+  }, [logError, logToUI, viewingMode, streamData]);
+
+  // Callback to load more activity items for infinite scroll
+  const loadMoreActivities = useCallback(async () => {
+    if (isLoadingMoreActivities || !activityPagination?.hasMore) {
+      return;
+    }
+
+    if (!(dataProvider instanceof RemoteDataProvider)) {
+      return;
+    }
+
+    setIsLoadingMoreActivities(true);
+    try {
+      const sessionId = viewingMode.type === 'remote' ? viewingMode.sessionId : undefined;
+      const newOffset = activityItems.length;
+      const result = await dataProvider.loadMoreActivityItems(newOffset, sessionId);
+
+      if (result.activityItems.length > 0) {
+        // Append new items (older) to existing items
+        setActivityItems(prev => {
+          // De-duplicate when merging
+          const existingIds = new Set(prev.map(item => item.id));
+          const newItems = result.activityItems.filter(item => !existingIds.has(item.id));
+          return [...prev, ...newItems];
+        });
+        setActivityPagination(result.pagination);
+        logToUI(`[loadMoreActivities] Loaded ${result.activityItems.length} more activities`);
+      }
+    } catch (err) {
+      logError('[loadMoreActivities] Failed to load more:', err);
+    } finally {
+      setIsLoadingMoreActivities(false);
+    }
+  }, [isLoadingMoreActivities, activityPagination, dataProvider, viewingMode, activityItems.length, logToUI, logError]);
 
   useEffect(() => {
     if (viewingMode.type === 'remote') {
       // Clear local data to prevent flash of incorrect content
       setActivityItems([]);
+      setActivityPagination(null);
       setEvents([]);
       setCompletedAnalyses([]);
       setRunningAnalyses([]);
@@ -1446,6 +1523,9 @@ function HomeComponent() {
                 activityItems={activityItems}
                 selectedActivity={selectedActivity}
                 onActivitySelect={setSelectedActivity}
+                pagination={activityPagination}
+                onLoadMore={loadMoreActivities}
+                isLoadingMore={isLoadingMoreActivities}
               />
             </TabsContent>
 

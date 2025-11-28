@@ -26,46 +26,59 @@ export const LocalDataProvider: DataProvider = {
   loadCompletedAnalyses: async () => loadLocalCompletedAnalyses(),
 };
 
+export interface PaginationInfo {
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PaginatedActivityResult {
+  activityItems: ActivityItem[];
+  pagination: PaginationInfo;
+}
+
 export class RemoteDataProvider implements DataProvider {
   private userId: string;
   private userName: string | null = null;
   private activityItems: ActivityItem[] | null = null;
   private events: Event[] | null = null;
   private completedAnalyses: RunningAnalysis[] | null = null;
-  
+  private pagination: PaginationInfo | null = null;
+  private currentSessionId: string | undefined = undefined;
+
   constructor(userId: string) {
     this.userId = userId;
   }
-  
-  private async fetchData(sessionId?: string) {
-    // Only fetch if data hasn't been loaded yet - REMOVED CACHING LOGIC
-    // if (this.activityItems !== null && this.events !== null && this.completedAnalyses !== null) {
-    //   return;
-    // }
 
+  private async fetchData(sessionId?: string, offset: number = 0) {
     try {
       const cacheBuster = `cb=${Date.now()}`;
-      const url = sessionId 
-        ? `/api/users/${this.userId}/data?sessionId=${sessionId}&${cacheBuster}`
-        : `/api/users/${this.userId}/data?${cacheBuster}`;
-      
+      let url = `/api/users/${this.userId}/data?${cacheBuster}&offset=${offset}`;
+      if (sessionId) {
+        url += `&sessionId=${sessionId}`;
+      }
+
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch remote data for user ${this.userId}`);
       }
       const data = await response.json();
       console.log('[RemoteDataProvider] Data received from API:', data);
-      
+
       this.userName = data.userName;
       this.activityItems = data.activityItems || [];
       this.events = data.events || [];
       this.completedAnalyses = data.completedAnalyses || [];
+      this.pagination = data.pagination || null;
+      this.currentSessionId = sessionId;
 
     } catch (error) {
       console.error('[RemoteDataProvider] Error fetching data:', error);
       this.activityItems = [];
       this.events = [];
       this.completedAnalyses = [];
+      this.pagination = null;
     }
   }
 
@@ -73,16 +86,57 @@ export class RemoteDataProvider implements DataProvider {
     return this.userName;
   }
 
+  getPagination(): PaginationInfo | null {
+    return this.pagination;
+  }
+
   async loadActivityItems(sessionId?: string): Promise<ActivityItem[]> {
-    await this.fetchData(sessionId);
+    await this.fetchData(sessionId, 0);
     return this.activityItems || [];
+  }
+
+  async loadActivityItemsWithPagination(sessionId?: string): Promise<PaginatedActivityResult> {
+    await this.fetchData(sessionId, 0);
+    return {
+      activityItems: this.activityItems || [],
+      pagination: this.pagination || { offset: 0, limit: 1009, total: 0, hasMore: false },
+    };
+  }
+
+  async loadMoreActivityItems(offset: number, sessionId?: string): Promise<PaginatedActivityResult> {
+    try {
+      const cacheBuster = `cb=${Date.now()}`;
+      let url = `/api/users/${this.userId}/data?${cacheBuster}&offset=${offset}`;
+      if (sessionId) {
+        url += `&sessionId=${sessionId}`;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch more activity items for user ${this.userId}`);
+      }
+      const data = await response.json();
+      console.log('[RemoteDataProvider] More activity items received:', data.activityItems?.length);
+
+      return {
+        activityItems: data.activityItems || [],
+        pagination: data.pagination || { offset, limit: 1009, total: 0, hasMore: false },
+      };
+
+    } catch (error) {
+      console.error('[RemoteDataProvider] Error loading more activity items:', error);
+      return {
+        activityItems: [],
+        pagination: { offset, limit: 1009, total: 0, hasMore: false },
+      };
+    }
   }
 
   async loadEvents(sessionId?: string): Promise<Event[]> {
     await this.fetchData(sessionId);
     return this.events || [];
   }
-  
+
   async loadCompletedAnalyses(sessionId?: string): Promise<RunningAnalysis[]> {
     await this.fetchData(sessionId);
     return this.completedAnalyses || [];

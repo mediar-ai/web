@@ -26,6 +26,8 @@ function isRunningAnalysis(item: unknown): item is RunningAnalysis {
   );
 }
 
+const ACTIVITY_PAGE_SIZE = 1009;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -33,6 +35,8 @@ export async function GET(
   const { userId } = await params;
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const limit = parseInt(searchParams.get('limit') || String(ACTIVITY_PAGE_SIZE), 10);
 
   if (!userId) {
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -45,91 +49,133 @@ export async function GET(
       .select('name')
       .eq('user_id', userId)
       .single();
-    
+
     if (userError && userError.code !== 'PGRST116') { // Ignore 'not found' error
       console.error(`[API/data] Error fetching user name for ${userId}:`, JSON.stringify(userError, null, 2));
       throw userError;
     }
 
-    // Base query
-    let query = supabaseAdmin
+    // Build base filter for activity items
+    const activityTypes = ['activity_item', 'ui_diff', 'initial_dump'];
+
+    // Query for activity items with pagination
+    let activityQuery = supabaseAdmin
       .from('user_activity_data')
       .select('item_type, item_data, client_item_id, client_timestamp, user_id, session_id')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .in('item_type', activityTypes)
+      .order('client_timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    // Filter by session ID if provided
     if (sessionId) {
-      query = query.eq('session_id', sessionId);
-    }
-    
-    // Execute query
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error(`[API/data] Initial query failed for user ${userId}. Full error:`, JSON.stringify(error, null, 2));
-      throw error;
+      activityQuery = activityQuery.eq('session_id', sessionId);
     }
 
-    if (!data) {
-      // If data is still null/undefined, return empty
-      return NextResponse.json({
-        userName: userData?.name || null,
-        activityItems: [],
-        events: [],
-        completedAnalyses: [],
-      }, { status: 200 });
+    // Query for events (no pagination - typically fewer)
+    let eventsQuery = supabaseAdmin
+      .from('user_activity_data')
+      .select('item_type, item_data, client_item_id, client_timestamp')
+      .eq('user_id', userId)
+      .eq('item_type', 'event')
+      .order('client_timestamp', { ascending: false });
+
+    if (sessionId) {
+      eventsQuery = eventsQuery.eq('session_id', sessionId);
     }
-    
-    // Process and segregate data
-    const activityItems: ActivityItem[] = [];
-    const events: Event[] = [];
+
+    // Query for completed analyses (no pagination - typically fewer)
+    let analysesQuery = supabaseAdmin
+      .from('user_activity_data')
+      .select('item_type, item_data, client_item_id, client_timestamp')
+      .eq('user_id', userId)
+      .eq('item_type', 'completed_analysis')
+      .order('client_timestamp', { ascending: false });
+
+    if (sessionId) {
+      analysesQuery = analysesQuery.eq('session_id', sessionId);
+    }
+
+    // Count total activity items for pagination info
+    let countQuery = supabaseAdmin
+      .from('user_activity_data')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('item_type', activityTypes);
+
+    if (sessionId) {
+      countQuery = countQuery.eq('session_id', sessionId);
+    }
+
+    // Execute all queries in parallel
+    const [activityResult, eventsResult, analysesResult, countResult] = await Promise.all([
+      activityQuery,
+      eventsQuery,
+      analysesQuery,
+      countQuery,
+    ]);
+
+    if (activityResult.error) {
+      console.error(`[API/data] Activity query failed for user ${userId}:`, JSON.stringify(activityResult.error, null, 2));
+      throw activityResult.error;
+    }
+
+    if (eventsResult.error) {
+      console.error(`[API/data] Events query failed for user ${userId}:`, JSON.stringify(eventsResult.error, null, 2));
+      throw eventsResult.error;
+    }
+
+    if (analysesResult.error) {
+      console.error(`[API/data] Analyses query failed for user ${userId}:`, JSON.stringify(analysesResult.error, null, 2));
+      throw analysesResult.error;
+    }
+
+    // Process activity items
+    const activityItems: ActivityItem[] = (activityResult.data || []).map((item) => ({
+      id: item.client_item_id,
+      timestamp: item.client_timestamp,
+      ...item.item_data as object,
+      user_id: item.user_id,
+      session_id: item.session_id,
+    } as ActivityItem));
+
+    // Process events
+    const events: Event[] = (eventsResult.data || []).map((item) => ({
+      id: item.client_item_id,
+      timestamp: item.client_timestamp,
+      ...item.item_data as object,
+    } as Event));
+
+    // Process completed analyses
     const completedAnalyses: RunningAnalysis[] = [];
-    
-    data.forEach((item) => {
-      // Start with base properties common to all
+    (analysesResult.data || []).forEach((item) => {
       const baseItem = {
         id: item.client_item_id,
         timestamp: item.client_timestamp,
         ...item.item_data as object,
       };
-
-      switch (item.item_type) {
-        case 'activity_item':
-        case 'ui_diff':
-        case 'initial_dump':
-          // For activities, we also need user and session IDs for image paths
-          const activityItem = {
-            ...baseItem,
-            user_id: item.user_id,
-            session_id: item.session_id,
-          };
-          activityItems.push(activityItem as ActivityItem);
-          break;
-        case 'event':
-          events.push(baseItem as Event);
-          break;
-        case 'completed_analysis':
-          if (isRunningAnalysis(baseItem)) {
-            completedAnalyses.push(baseItem);
-          } else {
-            console.warn('[API/data] Received item with type "completed_analysis" that did not match RunningAnalysis shape:', baseItem);
-          }
-          break;
+      if (isRunningAnalysis(baseItem)) {
+        completedAnalyses.push(baseItem);
       }
     });
 
-    // Sort by timestamp descending
-    activityItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Sort completed analyses by endTime
     completedAnalyses.sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
+
+    const totalActivityItems = countResult.count || 0;
+    const hasMore = offset + activityItems.length < totalActivityItems;
 
     return NextResponse.json({
       userName: userData?.name || null,
       activityItems,
       events,
       completedAnalyses,
-      // workflowSteps can be added here if stored
-    }, { 
+      pagination: {
+        offset,
+        limit,
+        total: totalActivityItems,
+        hasMore,
+      },
+    }, {
       status: 200,
       headers: {
         'Cache-Control': 'no-store, max-age=0',
