@@ -122,8 +122,8 @@ export default function WorkflowTabContent({
   return (
     <div className="space-y-4 p-4">
       <Card className="border-2 border-black">
-        <CardHeader className="bg-black text-white py-3">
-          <CardTitle className="font-mono text-sm">WORKFLOW SYNTHESIS</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="font-mono text-sm uppercase text-gray-600">Workflow Synthesis</CardTitle>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center gap-4">
@@ -188,14 +188,14 @@ export default function WorkflowTabContent({
 
       {workflowNames.length > 0 && (
         <Card className="border-2 border-black">
-          <CardHeader className="bg-black text-white py-3 flex flex-row items-center justify-between">
-            <CardTitle className="font-mono text-sm">IDENTIFIED WORKFLOWS ({workflowNames.length})</CardTitle>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="font-mono text-sm uppercase text-gray-600">Identified Workflows ({workflowNames.length})</CardTitle>
             <Button
               variant="ghost"
               size="sm"
               onClick={startAnalysis}
               disabled={isAnalyzing}
-              className="text-white hover:bg-gray-800 h-7"
+              className="hover:bg-gray-100 h-7"
             >
               <RefreshCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
             </Button>
@@ -217,8 +217,8 @@ export default function WorkflowTabContent({
 
       {workflowContext && (
         <Card className="border-2 border-black">
-          <CardHeader className="bg-black text-white py-3">
-            <CardTitle className="font-mono text-sm">USER CONTEXT</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-mono text-sm uppercase text-gray-600">User Context</CardTitle>
           </CardHeader>
           <CardContent className="p-4 space-y-3">
             {workflowContext.user_job_role && (
