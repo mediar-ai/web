@@ -118,6 +118,27 @@ impl<'a> ExecutionHandler<'a> {
 
         let execution_time = (end_time - start_time).num_seconds();
 
+
+        // Extract human-readable markdown summary if workflow provided one
+        // Path: result.data.parsed_output.data.human OR result.data.data.human
+        let human_summary = result
+            .data
+            .as_ref()
+            .and_then(|d| {
+                // Try parsed_output.data.human first (from MCP agent)
+                d.get("parsed_output")
+                    .and_then(|p| p.get("data"))
+                    .and_then(|data| data.get("human"))
+                    .and_then(|h| h.as_str())
+                    // Fallback to data.human directly
+                    .or_else(|| {
+                        d.get("data")
+                            .and_then(|data| data.get("human"))
+                            .and_then(|h| h.as_str())
+                    })
+            })
+            .map(String::from);
+
         // Build formatted output like Python executor
         let formatted_output = serde_json::json!({
             "success": result.success,
@@ -125,7 +146,8 @@ impl<'a> ExecutionHandler<'a> {
             "skipped": false,
             "message": result.message.clone(),
             "data": result.data,
-            "validation": {}
+            "validation": {},
+            "human": human_summary
         });
 
         let formatted_output_str = Some(formatted_output.to_string());
