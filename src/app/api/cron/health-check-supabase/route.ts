@@ -213,11 +213,6 @@ export async function GET(request: Request) {
             updateData.last_check_had_taskbar = hasTaskbar;
           }
 
-          if ('uptime_percentage' in machine && updateData.total_checks) {
-            updateData.uptime_percentage =
-              ((updateData.successful_checks / updateData.total_checks) * 100).toFixed(2);
-          }
-
           if ('avg_response_time_ms' in machine && updateData.total_checks) {
             updateData.avg_response_time_ms = Math.round(
               ((machine.avg_response_time_ms || 0) * (machine.total_checks || 0) + responseTime) / updateData.total_checks
@@ -230,6 +225,29 @@ export async function GET(request: Request) {
 
           if ('last_unhealthy_at' in machine && !isHealthy) {
             updateData.last_unhealthy_at = currentTime;
+          }
+
+          // Insert health check history record for rolling window calculation
+          const { error: historyError } = await supabase
+            .from('health_check_history')
+            .insert({
+              machine_id: machine.id,
+              is_healthy: isHealthy,
+              response_time_ms: responseTime,
+              status_code: response.status
+            });
+
+          if (historyError) {
+            console.error(`Failed to insert health history for ${machine.name}:`, historyError);
+          }
+
+          // Calculate 24h rolling uptime percentage
+          if ('uptime_percentage' in machine) {
+            const { data: uptimeData } = await supabase
+              .rpc('get_machine_uptime_24h', { p_machine_id: machine.id });
+            if (uptimeData !== null) {
+              updateData.uptime_percentage = uptimeData;
+            }
           }
 
           const { error: updateError } = await supabase
@@ -283,10 +301,6 @@ export async function GET(request: Request) {
           if ('total_checks' in machine) {
             updateData.total_checks = (machine.total_checks || 0) + 1;
             updateData.consecutive_failures = (machine.consecutive_failures || 0) + 1;
-
-            if ('uptime_percentage' in machine) {
-              updateData.uptime_percentage = (((machine.successful_checks || 0) / updateData.total_checks) * 100).toFixed(2);
-            }
           }
 
           if ('last_unhealthy_at' in machine) {
@@ -299,6 +313,29 @@ export async function GET(request: Request) {
 
           if ('last_check_had_taskbar' in machine) {
             updateData.last_check_had_taskbar = false;
+          }
+
+          // Insert health check history record for rolling window calculation
+          const { error: historyError } = await supabase
+            .from('health_check_history')
+            .insert({
+              machine_id: machine.id,
+              is_healthy: false,
+              response_time_ms: responseTime,
+              error_message: error.message || 'Health check failed'
+            });
+
+          if (historyError) {
+            console.error(`Failed to insert health history for ${machine.name}:`, historyError);
+          }
+
+          // Calculate 24h rolling uptime percentage
+          if ('uptime_percentage' in machine) {
+            const { data: uptimeData } = await supabase
+              .rpc('get_machine_uptime_24h', { p_machine_id: machine.id });
+            if (uptimeData !== null) {
+              updateData.uptime_percentage = uptimeData;
+            }
           }
 
           const { error: updateError } = await supabase
@@ -338,6 +375,16 @@ export async function GET(request: Request) {
     };
 
     console.log(`Health check complete: ${summary.healthy}/${summary.totalMachines} healthy`);
+
+    // Cleanup old health check history records (older than 7 days)
+    const { data: cleanedCount, error: cleanupError } = await supabase
+      .rpc('cleanup_old_health_checks');
+
+    if (cleanupError) {
+      console.error('Failed to cleanup old health checks:', cleanupError);
+    } else if (cleanedCount > 0) {
+      console.log(`Cleaned up ${cleanedCount} old health check records`);
+    }
 
     return NextResponse.json({
       success: true,
