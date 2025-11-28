@@ -118,7 +118,6 @@ impl<'a> ExecutionHandler<'a> {
 
         let execution_time = (end_time - start_time).num_seconds();
 
-
         // Extract human-readable markdown summary if workflow provided one
         // Path: result.data.parsed_output.data.human OR result.data.data.human
         let human_summary = result

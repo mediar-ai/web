@@ -24,9 +24,9 @@ impl Default for RetryConfig {
     fn default() -> Self {
         Self {
             max_infrastructure_retries: 3,
-            initial_delay_secs: 30,      // Start with 30s delay
-            max_delay_secs: 600,         // Cap at 10 minutes
-            backoff_multiplier: 2.0,     // Double each time
+            initial_delay_secs: 30,  // Start with 30s delay
+            max_delay_secs: 600,     // Cap at 10 minutes
+            backoff_multiplier: 2.0, // Double each time
             enabled: true,
         }
     }
@@ -35,8 +35,9 @@ impl Default for RetryConfig {
 impl RetryConfig {
     /// Calculate delay for a given retry attempt
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
-        let delay_secs = (self.initial_delay_secs as f64 * self.backoff_multiplier.powi(attempt as i32))
-            .min(self.max_delay_secs as f64);
+        let delay_secs = (self.initial_delay_secs as f64
+            * self.backoff_multiplier.powi(attempt as i32))
+        .min(self.max_delay_secs as f64);
 
         Duration::from_secs(delay_secs as u64)
     }
@@ -74,7 +75,6 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "failed to connect",
         "unable to connect",
         "connection error",
-
         // HTTP/Server errors (5xx)
         "500 internal server error",
         "502 bad gateway",
@@ -84,7 +84,6 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "http error 502",
         "http error 503",
         "http error 504",
-
         // MCP/Service errors
         "mcp service unavailable",
         "mcp endpoint unavailable",
@@ -93,7 +92,6 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "mcp connection failed",
         "service not ready",
         "service unavailable",
-
         // VM/Machine errors
         "vm is down",
         "machine is down",
@@ -102,17 +100,14 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "vm unreachable",
         "machine unreachable",
         "health check failed",
-
         // DNS/Resolution errors
         "name or service not known",
         "temporary failure in name resolution",
         "could not resolve host",
-
         // Timeout errors
         "timeout",
         "timed out",
         "deadline exceeded",
-
         // Resource errors
         "too many open files",
         "out of memory",
@@ -127,7 +122,6 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "invalid parameter",
         "invalid argument",
         "missing required",
-
         // Business logic errors
         "record not found",
         "item not found",
@@ -138,13 +132,11 @@ pub fn classify_error(error_message: &str) -> ErrorCategory {
         "forbidden",
         "already exists",
         "duplicate",
-
         // Step execution errors (user-defined logic)
         "step failed",
         "assertion failed",
         "condition not met",
         "expected",
-
         // File/Data errors
         "file not found",
         "no such file",

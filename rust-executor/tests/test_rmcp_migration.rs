@@ -75,9 +75,7 @@ async fn test_rmcp_sdk_real_server() {
         }
         Err(e) => {
             // This might fail if the element doesn't exist, but connection should work
-            println!(
-                "  Tool call with args returned error (expected if element not found): {e}"
-            );
+            println!("  Tool call with args returned error (expected if element not found): {e}");
         }
     }
 

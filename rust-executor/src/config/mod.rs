@@ -1,3 +1,3 @@
 pub mod retry;
 
-pub use retry::{RetryConfig, ErrorCategory, classify_error};
+pub use retry::{classify_error, ErrorCategory, RetryConfig};
