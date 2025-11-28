@@ -783,7 +783,7 @@ export function ExecutionDetailsDialog({
                 <Sparkles className="w-3 h-3" />
                 Q&A
               </TabsTrigger>
-              {/*{execution?.assigned_machine_id && (
+              {execution?.assigned_machine_id && (
                 <TabsTrigger
                   value="agent-screen"
                   className="flex items-center gap-1"
@@ -791,7 +791,7 @@ export function ExecutionDetailsDialog({
                   <Monitor className="w-3 h-3" />
                   Agent Screen
                 </TabsTrigger>
-              )}*/}
+              )}
             </TabsList>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-6">
