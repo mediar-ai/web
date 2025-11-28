@@ -2,9 +2,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronDown, ChevronRight, Loader2, Play, RefreshCw } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { ChevronDown, ChevronRight, Loader2, Play, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { DateRange } from 'react-day-picker';
 
 interface WorkflowContext {
   user_job_role?: string;
@@ -55,7 +57,7 @@ interface WorkflowTabContentProps {
   activityItemsCount: number;
 }
 
-type AnalysisPhase = 'idle' | 'identifying' | 'synthesizing' | 'complete';
+type AnalysisPhase = 'idle' | 'identifying' | 'synthesizing' | 'saving' | 'complete';
 
 export default function WorkflowTabContent({
   userId,
@@ -71,6 +73,58 @@ export default function WorkflowTabContent({
   const [synthesizedWorkflows, setSynthesizedWorkflows] = useState<SynthesizedWorkflow[]>([]);
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<number>>(new Set());
   const [model, setModel] = useState('gemini-3-pro-preview');
+
+  // Date range state - default to last 24 hours
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    to: new Date(),
+  });
+
+  // Filtered counts for selected period
+  const [filteredCounts, setFilteredCounts] = useState<{ events: number; activities: number } | null>(null);
+  const [loadingCounts, setLoadingCounts] = useState(false);
+
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Fetch counts when date range changes
+  const fetchFilteredCounts = useCallback(async () => {
+    if (!userId || !dateRange?.from || !dateRange?.to) {
+      setFilteredCounts(null);
+      return;
+    }
+
+    setLoadingCounts(true);
+    try {
+      const response = await fetch('/api/web-activity-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          startDate: dateRange.from.toISOString(),
+          endDate: dateRange.to.toISOString(),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFilteredCounts({ events: data.eventsCount || 0, activities: data.activitiesCount || 0 });
+      } else {
+        setFilteredCounts(null);
+      }
+    } catch (err) {
+      console.error('Error fetching counts:', err);
+      setFilteredCounts(null);
+    } finally {
+      setLoadingCounts(false);
+    }
+  }, [userId, dateRange]);
+
+  // Fetch counts when date range or userId changes
+  useEffect(() => {
+    fetchFilteredCounts();
+  }, [fetchFilteredCounts]);
 
   const toggleWorkflowExpanded = (id: number) => {
     setExpandedWorkflows(prev => {
@@ -90,14 +144,14 @@ export default function WorkflowTabContent({
       return;
     }
 
-    const sessionId = localStorage.getItem('app_session_id');
-    if (!sessionId) {
-      setError('No active session. Please start a recording first.');
+    if (!dateRange?.from || !dateRange?.to) {
+      setError('Please select a date range.');
       return;
     }
 
-    if (eventsCount === 0) {
-      setError('No events to analyze. Record some activity first.');
+    const effectiveCount = filteredCounts?.events ?? eventsCount;
+    if (effectiveCount === 0) {
+      setError('No events in selected period. Try a different date range.');
       return;
     }
 
@@ -108,9 +162,13 @@ export default function WorkflowTabContent({
     setWorkflowNames([]);
     setWorkflowContext(null);
     setSynthesizedWorkflows([]);
+    setSaveSuccess(false);
 
     let identifiedNames: string[] = [];
     let identifiedContext: WorkflowContext | null = null;
+
+    const startDate = dateRange.from.toISOString();
+    const endDate = dateRange.to.toISOString();
 
     try {
       // PHASE 1: Identify workflows
@@ -119,8 +177,9 @@ export default function WorkflowTabContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
-          sessionId,
           model,
+          startDate,
+          endDate,
         }),
       });
 
@@ -184,12 +243,11 @@ export default function WorkflowTabContent({
             model,
             context: {
               userId,
-              sessionId,
               workflows: identifiedNames.map(name => ({ name })),
               workflowContext: identifiedContext,
             },
-            startDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Last 24 hours
-            endDate: new Date().toISOString(),
+            startDate,
+            endDate,
           }),
         });
 
@@ -204,16 +262,20 @@ export default function WorkflowTabContent({
         const synthesisResult = await synthesisResponse.json();
 
         if (synthesisResult.workflows && Array.isArray(synthesisResult.workflows)) {
-          setSynthesizedWorkflows(synthesisResult.workflows);
-          // Expand all workflows by default
-          setExpandedWorkflows(new Set(synthesisResult.workflows.map((w: SynthesizedWorkflow) => w.id)));
+          // Add temporary IDs for UI purposes
+          const workflowsWithIds = synthesisResult.workflows.map((w: SynthesizedWorkflow, index: number) => ({
+            ...w,
+            id: w.id || index + 1,
+          }));
+          setSynthesizedWorkflows(workflowsWithIds);
+          setExpandedWorkflows(new Set(workflowsWithIds.map((w: SynthesizedWorkflow) => w.id)));
         }
 
         setProgress(100);
-        setStatus('Analysis complete!');
+        setStatus('Synthesis complete! Click Save to store workflows.');
         setPhase('complete');
       } else {
-        setError('No workflows identified. Try recording more activity.');
+        setError('No workflows identified. Try recording more activity or adjusting the date range.');
         setPhase('idle');
       }
     } catch (err) {
@@ -221,9 +283,48 @@ export default function WorkflowTabContent({
       setError(err instanceof Error ? err.message : 'An error occurred');
       setPhase('idle');
     }
-  }, [userId, eventsCount, model]);
+  }, [userId, dateRange, filteredCounts, eventsCount, model]);
+
+  // Save workflows to database
+  const saveWorkflows = useCallback(async () => {
+    if (!userId || synthesizedWorkflows.length === 0) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Transform workflows for the API
+      const recordsToInsert = synthesizedWorkflows.map(workflow => ({
+        title: workflow.title || 'Untitled Workflow',
+        detailed_workflow_data: workflow,
+      }));
+
+      const response = await fetch('/api/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, workflows: recordsToInsert }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save workflows');
+      }
+
+      const result = await response.json();
+      console.log('Saved workflows:', result);
+
+      setSaveSuccess(true);
+      setStatus(`Saved ${result.data?.length || synthesizedWorkflows.length} workflows to database!`);
+    } catch (err) {
+      console.error('Save error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save workflows');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [userId, synthesizedWorkflows]);
 
   const isAnalyzing = phase === 'identifying' || phase === 'synthesizing';
+  const canAnalyze = (filteredCounts?.events ?? eventsCount) > 0 && dateRange?.from && dateRange?.to;
 
   return (
     <div className="space-y-4 p-4">
@@ -232,6 +333,33 @@ export default function WorkflowTabContent({
           <CardTitle className="font-mono text-sm uppercase text-gray-600">Workflow Synthesis</CardTitle>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
+          {/* Date Range Picker */}
+          <div>
+            <label className="font-mono text-xs text-gray-600 uppercase mb-1 block">Time Period</label>
+            <DateRangePicker
+              date={dateRange}
+              onDateChange={setDateRange}
+              showTime={true}
+              placeholder="Select date range"
+            />
+          </div>
+
+          {/* Filtered counts display */}
+          <div className="text-sm font-mono text-gray-600 flex items-center gap-2">
+            {loadingCounts ? (
+              <span className="flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Loading counts...
+              </span>
+            ) : filteredCounts ? (
+              <span className="bg-gray-100 px-2 py-1 border border-gray-300">
+                Selected period: {filteredCounts.events} events, {filteredCounts.activities} activities
+              </span>
+            ) : (
+              <span>Total: {eventsCount} events, {activityItemsCount} activities</span>
+            )}
+          </div>
+
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <label className="font-mono text-xs text-gray-600 uppercase mb-1 block">Model</label>
@@ -250,7 +378,7 @@ export default function WorkflowTabContent({
             <div className="pt-5">
               <Button
                 onClick={startAnalysis}
-                disabled={isAnalyzing || eventsCount === 0}
+                disabled={isAnalyzing || !canAnalyze}
                 className="bg-black text-white hover:bg-gray-800 font-mono"
               >
                 {isAnalyzing ? (
@@ -266,10 +394,6 @@ export default function WorkflowTabContent({
                 )}
               </Button>
             </div>
-          </div>
-
-          <div className="text-sm font-mono text-gray-600">
-            {eventsCount} events, {activityItemsCount} activities available
           </div>
 
           {isAnalyzing && (
@@ -299,17 +423,51 @@ export default function WorkflowTabContent({
             <CardTitle className="font-mono text-sm uppercase text-gray-600">
               Synthesized Workflows ({synthesizedWorkflows.length})
             </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={startAnalysis}
-              disabled={isAnalyzing}
-              className="hover:bg-gray-100 h-7"
-            >
-              <RefreshCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Save Button */}
+              <Button
+                onClick={saveWorkflows}
+                disabled={isSaving || saveSuccess}
+                className={saveSuccess
+                  ? "bg-gray-400 text-white font-mono"
+                  : "bg-black text-white hover:bg-gray-800 font-mono"
+                }
+                size="sm"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : saveSuccess ? (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Saved!
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    SAVE
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={startAnalysis}
+                disabled={isAnalyzing}
+                className="hover:bg-gray-100 h-7"
+              >
+                <RefreshCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-4 space-y-4">
+            {saveSuccess && (
+              <div className="border-2 border-black bg-gray-50 p-3 text-sm font-mono">
+                {status}
+              </div>
+            )}
             {synthesizedWorkflows.map((workflow) => (
               <div key={workflow.id} className="border-2 border-black">
                 <button
@@ -475,8 +633,8 @@ export default function WorkflowTabContent({
 
       {phase === 'idle' && workflowNames.length === 0 && !error && (
         <div className="text-center py-8 text-gray-500 font-mono">
-          <p>Click &quot;ANALYZE WORKFLOWS&quot; to identify and synthesize workflows from your recorded session.</p>
-          <p className="text-xs mt-2">Requires at least 1 event to analyze.</p>
+          <p>Select a time period and click &quot;ANALYZE WORKFLOWS&quot; to synthesize workflows.</p>
+          <p className="text-xs mt-2">Requires at least 1 event in selected period.</p>
         </div>
       )}
     </div>
