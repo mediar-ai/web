@@ -12,7 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { parseCronExpression, describeCronExpression, calculateNextExecutions } from '@/lib/cronParser';
+import {
+  parseCronExpression,
+  describeCronExpression,
+  calculateNextExecutions,
+} from '@/lib/cronParser';
 import { Clock, AlertCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -62,7 +66,9 @@ export interface CronConfig {
   timezone: string;
   enabled: boolean;
   maxConcurrent?: number;
+  /** @deprecated Only used for Python/YAML workflows. Rust executor handles infra retries automatically. */
   retryOnFailure?: boolean;
+  /** @deprecated Only used for Python/YAML workflows. Rust executor handles infra retries automatically. */
   retryCount?: number;
   executorType?: 'python' | 'rust';
 }
@@ -72,11 +78,15 @@ interface CronScheduleEditorProps {
   cronTimezone?: string;
   cronEnabled?: boolean;
   cronMaxConcurrent?: number;
+  /** @deprecated Only used for Python/YAML workflows */
   cronRetryOnFailure?: boolean;
+  /** @deprecated Only used for Python/YAML workflows */
   cronRetryCount?: number;
   onChange: (config: CronConfig) => void;
   showAdvanced?: boolean;
   className?: string;
+  /** Executor type - retry fields are excluded for 'rust' executor */
+  executorType?: 'python' | 'rust';
 }
 
 export function CronScheduleEditor({
@@ -89,6 +99,7 @@ export function CronScheduleEditor({
   onChange,
   showAdvanced: _showAdvanced = false,
   className = '',
+  executorType = 'python',
 }: CronScheduleEditorProps) {
   const [enabled, setEnabled] = useState(cronEnabled);
   const [expression, setExpression] = useState(cronExpression);
@@ -101,8 +112,10 @@ export function CronScheduleEditor({
 
   // Fixed values for advanced settings (not configurable)
   const maxConcurrent = 1;
-  const retryOnFailure = true;
-  const retryCount = 3;
+  // Retry is only relevant for Python/YAML workflows
+  // Rust executor handles infrastructure retries automatically; business logic retries are in workflow code
+  const retryOnFailure = executorType === 'python';
+  const retryCount = executorType === 'python' ? 3 : 0;
 
   // Parse and validate the cron expression
   const validation = useMemo(() => {
@@ -134,7 +147,14 @@ export function CronScheduleEditor({
     });
     // NOTE: onChange is intentionally excluded from deps to prevent infinite loops
     // The parent passes a stable callback or handles rerenders appropriately
-  }, [expression, timezone, enabled, maxConcurrent, retryOnFailure, retryCount]);
+  }, [
+    expression,
+    timezone,
+    enabled,
+    maxConcurrent,
+    retryOnFailure,
+    retryCount,
+  ]);
 
   const handlePresetChange = (value: string) => {
     console.log('📅 Preset changed:', value);
@@ -175,7 +195,10 @@ export function CronScheduleEditor({
           <>
             {/* Preset Selector */}
             <div className="space-y-2">
-              <Label htmlFor="cron-preset" className="font-mono text-xs text-gray-600 uppercase">
+              <Label
+                htmlFor="cron-preset"
+                className="font-mono text-xs text-gray-600 uppercase"
+              >
                 Quick Presets
               </Label>
               <Select value={selectedPreset} onValueChange={handlePresetChange}>
@@ -186,7 +209,7 @@ export function CronScheduleEditor({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CRON_PRESETS.map((preset) => (
+                  {CRON_PRESETS.map(preset => (
                     <SelectItem key={preset.value} value={preset.value}>
                       {preset.label}
                     </SelectItem>
@@ -197,13 +220,16 @@ export function CronScheduleEditor({
 
             {/* Cron Expression Input */}
             <div className="space-y-2">
-              <Label htmlFor="cron-expression" className="font-mono text-xs text-gray-600 uppercase">
+              <Label
+                htmlFor="cron-expression"
+                className="font-mono text-xs text-gray-600 uppercase"
+              >
                 Cron Expression (6-field format: SEC MIN HOUR DAY MONTH DOW)
               </Label>
               <Input
                 id="cron-expression"
                 value={expression}
-                onChange={(e) => handleExpressionChange(e.target.value)}
+                onChange={e => handleExpressionChange(e.target.value)}
                 placeholder="0 0 9 * * 1-5"
                 className={cn(
                   'font-mono border-2',
@@ -238,7 +264,10 @@ export function CronScheduleEditor({
 
             {/* Timezone Selector */}
             <div className="space-y-2">
-              <Label htmlFor="cron-timezone" className="font-mono text-xs text-gray-600 uppercase">
+              <Label
+                htmlFor="cron-timezone"
+                className="font-mono text-xs text-gray-600 uppercase"
+              >
                 Timezone
               </Label>
               <Select value={timezone} onValueChange={setTimezone}>
@@ -249,7 +278,7 @@ export function CronScheduleEditor({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIMEZONES.map((tz) => (
+                  {TIMEZONES.map(tz => (
                     <SelectItem key={tz} value={tz}>
                       {tz}
                     </SelectItem>
@@ -277,7 +306,6 @@ export function CronScheduleEditor({
                 </div>
               </div>
             )}
-
           </>
         )}
       </CardContent>

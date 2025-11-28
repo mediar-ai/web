@@ -28,6 +28,7 @@ import {
   Search,
   Columns3,
   ChevronDown,
+  Monitor,
 } from 'lucide-react';
 // import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
@@ -91,6 +92,7 @@ function AdminPageContent() {
 
   const [updatingMachine, setUpdatingMachine] = useState<number | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string>('');
+  const [vncMachine, setVncMachine] = useState<{ id: number; name: string; terraformKey: string } | null>(null);
   const [machineColumnVisibility, setMachineColumnVisibility] = useState<
     Record<string, boolean>
   >(() => {
@@ -1872,6 +1874,16 @@ function AdminPageContent() {
                                       ) : (
                                         <>
                                           <button
+                                            onClick={() => {
+                                              const terraformKey = machine.tags?.find((t: string) => t.startsWith("terraform:"))?.split(":")[1] || machine.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+                                              setVncMachine({ id: machine.id, name: machine.name, terraformKey });
+                                            }}
+                                            className="p-1 hover:bg-green-600 hover:text-white hover:border-green-600 border border-black"
+                                            title="View VNC"
+                                          >
+                                            <Monitor className="w-4 h-4" />
+                                          </button>
+                                          <button
                                             onClick={() =>
                                               handleEditMachine(machine)
                                             }
@@ -2231,6 +2243,33 @@ function AdminPageContent() {
           )}
 
           {/* Add Machine Modal */}
+          {/* VNC Viewer Modal */}
+          {vncMachine && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white border-2 border-black w-full max-w-6xl h-[85vh] flex flex-col">
+                <div className="p-4 border-b-2 border-black flex items-center justify-between">
+                  <h2 className="font-mono font-bold flex items-center gap-2">
+                    <Monitor className="w-5 h-5" />
+                    VNC: {vncMachine.name}
+                  </h2>
+                  <button
+                    onClick={() => setVncMachine(null)}
+                    className="p-1 hover:bg-black hover:text-white border border-black"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 bg-black">
+                  <iframe
+                    src={`https://agent.mediar.ai/vnc/${vncMachine.terraformKey}`}
+                    className="w-full h-full border-0"
+                    allow="clipboard-read; clipboard-write"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {showAddMachine && isGlobalAdmin && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-white border-2 border-black max-w-2xl w-full max-h-[90vh] overflow-y-auto">
