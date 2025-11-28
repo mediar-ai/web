@@ -38,6 +38,8 @@ import { ExecutionAIChat } from './ExecutionAIChat';
 import { AgentScreenTab } from './AgentScreenTab';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ExecutionDetailsDialogProps {
   execution: Execution | null;
@@ -188,20 +190,31 @@ export function ExecutionDetailsDialog({
           ? JSON.parse(execution.formatted_output)
           : execution.formatted_output;
 
+      // Check for human-readable markdown summary
+      const humanSummary = output.human;
+
       // Check if file_info exists at root or nested in data
       const fileInfo = output.file_info || output.data?.file_info;
 
-      if (fileInfo && fileInfo.file_path && fileInfo.original_file) {
-        const filePath = fileInfo.file_path;
-        const fileName = fileInfo.original_file;
+      return (
+        <div className="space-y-3">
+          {/* Render human-readable markdown summary if present */}
+          {humanSummary && (
+            <div className="border-2 border-black p-4 bg-white rounded">
+              <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-gray-700 prose-strong:text-black prose-table:border-collapse prose-th:border prose-th:border-black prose-th:p-2 prose-th:bg-gray-100 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {humanSummary}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
 
-        return (
-          <div className="space-y-3">
+          {fileInfo && fileInfo.file_path && fileInfo.original_file && (
             <div className="flex items-center justify-between border-2 border-black bg-gray-50 p-3 rounded">
               <div className="flex items-center gap-2">
                 <FolderOpen className="w-4 h-4" />
                 <span className="text-sm font-mono font-semibold">
-                  {fileName}
+                  {fileInfo.original_file}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -209,7 +222,7 @@ export function ExecutionDetailsDialog({
                   variant="black-outline"
                   size="sm"
                   className="h-7 px-2 text-xs"
-                  onClick={() => openFileInExplorer(filePath, 'open')}
+                  onClick={() => openFileInExplorer(fileInfo.file_path, 'open')}
                 >
                   <FileText className="w-3 h-3 mr-1" />
                   Open File
@@ -218,25 +231,19 @@ export function ExecutionDetailsDialog({
                   variant="black-outline"
                   size="sm"
                   className="h-7 px-2 text-xs"
-                  onClick={() => openFileInExplorer(filePath, 'select')}
+                  onClick={() => openFileInExplorer(fileInfo.file_path, 'select')}
                 >
                   <FolderOpen className="w-3 h-3 mr-1" />
                   Show in Folder
                 </Button>
               </div>
             </div>
-            <CodeBlock title="Formatted Output" language="json" size="sm">
-              {execution.formatted_output}
-            </CodeBlock>
-          </div>
-        );
-      }
+          )}
 
-      // No file path found, render normal CodeBlock
-      return (
-        <CodeBlock title="Formatted Output" language="json" size="sm">
-          {execution.formatted_output}
-        </CodeBlock>
+          <CodeBlock title="Formatted Output" language="json" size="sm">
+            {execution.formatted_output}
+          </CodeBlock>
+        </div>
       );
     } catch (error) {
       // If parsing fails, render normal CodeBlock
