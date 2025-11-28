@@ -10,6 +10,7 @@ use tracing::{debug, error, info, warn};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::McpClient;
 use crate::models::{StepStatus, Workflow, WorkflowExecution, WorkflowResult, WorkflowState};
+use crate::services::CancellationToken;
 use std::collections::HashMap;
 
 /// Executor for TypeScript workflows
@@ -18,6 +19,7 @@ pub struct TypeScriptExecutor<'a> {
     mcp_client: &'a McpClient,
     workflow: &'a Workflow,
     execution: &'a WorkflowExecution,
+    cancellation_token: Option<CancellationToken>,
 }
 
 impl<'a> TypeScriptExecutor<'a> {
@@ -33,11 +35,46 @@ impl<'a> TypeScriptExecutor<'a> {
             mcp_client,
             workflow,
             execution,
+            cancellation_token: None,
         }
+    }
+
+    /// Add a cancellation token to the executor
+    pub fn with_cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
+        self
+    }
+
+    /// Check if cancellation has been requested
+    fn is_cancelled(&self) -> bool {
+        self.cancellation_token
+            .as_ref()
+            .map(|t| t.is_cancelled())
+            .unwrap_or(false)
     }
 
     /// Execute the TypeScript workflow
     pub async fn execute(&self) -> Result<WorkflowResult> {
+        // Check for cancellation before starting
+        if self.is_cancelled() {
+            info!(
+                execution_id = %self.execution.id,
+                "Execution cancelled before starting TypeScript workflow"
+            );
+            return Ok(WorkflowResult {
+                success: false,
+                message: "Execution cancelled by user".to_string(),
+                state: WorkflowState::Cancelled,
+                error: Some("Cancelled by user request".to_string()),
+                data: None,
+                steps_completed: 0,
+                total_steps: 1,
+                step_results: vec![],
+                execution_time_ms: 0,
+                screenshot_urls: vec![],
+            });
+        }
+
         let start_time = Instant::now();
 
         // Extract trace_id from current OpenTelemetry span

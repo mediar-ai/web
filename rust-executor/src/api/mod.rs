@@ -7,12 +7,29 @@ use axum::{
 };
 use serde::Serialize;
 use sqlx::Row;
+use std::sync::Arc;
 
 use crate::db::DatabasePool;
 use crate::models::{ExecutionRequest, ExecutionResponse, Workflow, WorkflowExecution};
-use crate::services::WorkflowService;
+use crate::services::{CancellationRegistry, WorkflowService};
 
-pub fn routes() -> Router<DatabasePool> {
+/// Shared application state
+#[derive(Clone)]
+pub struct AppState {
+    pub db_pool: DatabasePool,
+    pub cancellation_registry: CancellationRegistry,
+}
+
+impl AppState {
+    pub fn new(db_pool: DatabasePool, cancellation_registry: CancellationRegistry) -> Self {
+        Self {
+            db_pool,
+            cancellation_registry,
+        }
+    }
+}
+
+pub fn routes() -> Router<AppState> {
     Router::new()
         // Health check
         .route("/health", get(health_check))
@@ -41,9 +58,9 @@ async fn health_check() -> Json<HealthResponse> {
 }
 
 async fn list_workflows(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<Workflow>>, (StatusCode, String)> {
-    let service = WorkflowService::new(db_pool);
+    let service = WorkflowService::new(state.db_pool.clone());
 
     service
         .list_workflows()
@@ -53,10 +70,10 @@ async fn list_workflows(
 }
 
 async fn get_workflow(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Workflow>, (StatusCode, String)> {
-    let workflow = crate::db::queries::WorkflowQueries::get_workflow(&db_pool, id)
+    let workflow = crate::db::queries::WorkflowQueries::get_workflow(&state.db_pool, id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -67,10 +84,10 @@ async fn get_workflow(
 }
 
 async fn create_execution(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
     Json(request): Json<ExecutionRequest>,
 ) -> Result<Json<ExecutionResponse>, (StatusCode, String)> {
-    let service = WorkflowService::new(db_pool);
+    let service = WorkflowService::new(state.db_pool.clone());
 
     service
         .execute_workflow(request)
@@ -80,10 +97,10 @@ async fn create_execution(
 }
 
 async fn get_execution(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<WorkflowExecution>, (StatusCode, String)> {
-    let service = WorkflowService::new(db_pool);
+    let service = WorkflowService::new(state.db_pool.clone());
 
     let execution = service
         .get_execution(id)
@@ -97,14 +114,31 @@ async fn get_execution(
 }
 
 async fn cancel_execution(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<CancelResponse>, (StatusCode, String)> {
     use crate::db::queries::WorkflowQueries;
     use crate::models::ExecutionStatus;
+    use tracing::{info, warn};
 
+    info!(execution_id = %id, "Received cancel request for execution");
+
+    // First, signal the cancellation registry
+    // This will notify the running executor to stop
+    match state.cancellation_registry.cancel(id).await {
+        Ok(()) => {
+            info!(execution_id = %id, "Successfully signaled cancellation");
+        }
+        Err(e) => {
+            // Log but don't fail - the execution might not be running on this instance
+            warn!(execution_id = %id, error = %e, "Could not signal cancellation (may not be running locally)");
+        }
+    }
+
+    // Also update the database status
+    // This ensures the status is updated even if the execution was on another instance
     WorkflowQueries::update_execution_status(
-        &db_pool,
+        &state.db_pool,
         id,
         ExecutionStatus::Cancelled,
         Some("Cancelled by user".to_string()),
@@ -135,7 +169,7 @@ struct QueueStatusResponse {
 }
 
 async fn queue_status(
-    State(db_pool): State<DatabasePool>,
+    State(state): State<AppState>,
 ) -> Result<Json<QueueStatusResponse>, (StatusCode, String)> {
     let result = sqlx::query(
         r#"
@@ -148,7 +182,7 @@ async fn queue_status(
         WHERE created_at > NOW() - INTERVAL '24 hours'
         "#,
     )
-    .fetch_one(&db_pool)
+    .fetch_one(&state.db_pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
