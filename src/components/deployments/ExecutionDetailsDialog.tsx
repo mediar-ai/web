@@ -1434,7 +1434,7 @@ export function ExecutionDetailsDialog({
                 {isTabLoading || !execution ? (
                   <LoadingSkeleton />
                 ) : (
-                  <AgentScreenTab executionId={execution.execution_id} />
+                  <AgentScreenTab executionId={execution.execution_id} machineId={execution.assigned_machine_id} isLive={execution.status === "running" || execution.status === "queued"} />
                 )}
               </TabsContent>
             )}
