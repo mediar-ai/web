@@ -58,9 +58,13 @@ describe('GitHubWorkflowManager', () => {
       expect(result.error).toContain('not found');
     });
 
-    it('should return error when workflow has no github_path (legacy)', async () => {
+    it('should return error when workflow has no github_folder (legacy)', async () => {
       mockSupabaseSingle.mockResolvedValue({
-        data: { github_path: null, name: 'Legacy Workflow' },
+        data: {
+          github_folder: null,
+          github_path: null,
+          name: 'Legacy Workflow',
+        },
         error: null,
       });
 
@@ -73,6 +77,7 @@ describe('GitHubWorkflowManager', () => {
     it('should return error when package.json not found (legacy YAML workflow)', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/my-workflow',
           github_path: 'org-123/my-workflow/workflow.yaml',
           name: 'My Workflow',
         },
@@ -90,6 +95,7 @@ describe('GitHubWorkflowManager', () => {
     it('should update package.json name and description successfully', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/my-workflow',
           github_path: 'org-123/my-workflow/workflow.yaml',
           name: 'My Workflow',
         },
@@ -99,11 +105,13 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({
-            name: 'old-name',
-            version: '1.0.0',
-            description: 'Old description',
-          })).toString('base64'),
+          content: Buffer.from(
+            JSON.stringify({
+              name: 'old-name',
+              version: '1.0.0',
+              description: 'Old description',
+            })
+          ).toString('base64'),
           sha: 'abc123',
         },
       });
@@ -146,6 +154,7 @@ describe('GitHubWorkflowManager', () => {
     it('should sanitize name for npm package naming', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/test',
           github_path: 'org-123/test/workflow.yaml',
           name: 'Test',
         },
@@ -155,7 +164,9 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({ name: 'old' })).toString('base64'),
+          content: Buffer.from(JSON.stringify({ name: 'old' })).toString(
+            'base64'
+          ),
           sha: 'abc',
         },
       });
@@ -169,7 +180,9 @@ describe('GitHubWorkflowManager', () => {
       });
 
       const call = mockOctokitCreateOrUpdate.mock.calls[0][0];
-      const content = JSON.parse(Buffer.from(call.content, 'base64').toString('utf-8'));
+      const content = JSON.parse(
+        Buffer.from(call.content, 'base64').toString('utf-8')
+      );
 
       // Should be lowercase, special chars replaced with hyphens, trimmed
       expect(content.name).toBe('my-cool-workflow');
@@ -178,6 +191,7 @@ describe('GitHubWorkflowManager', () => {
     it('should only update description when name not provided', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/test',
           github_path: 'org-123/test/workflow.yaml',
           name: 'Test',
         },
@@ -187,10 +201,12 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({
-            name: 'original-name',
-            description: 'Old desc',
-          })).toString('base64'),
+          content: Buffer.from(
+            JSON.stringify({
+              name: 'original-name',
+              description: 'Old desc',
+            })
+          ).toString('base64'),
           sha: 'abc',
         },
       });
@@ -204,7 +220,9 @@ describe('GitHubWorkflowManager', () => {
       });
 
       const call = mockOctokitCreateOrUpdate.mock.calls[0][0];
-      const content = JSON.parse(Buffer.from(call.content, 'base64').toString('utf-8'));
+      const content = JSON.parse(
+        Buffer.from(call.content, 'base64').toString('utf-8')
+      );
 
       expect(content.name).toBe('original-name'); // unchanged
       expect(content.description).toBe('New description only');
@@ -213,6 +231,7 @@ describe('GitHubWorkflowManager', () => {
     it('should include user email in commit message', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/test',
           github_path: 'org-123/test/workflow.yaml',
           name: 'Test Workflow',
         },
@@ -222,7 +241,9 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({ name: 'test' })).toString('base64'),
+          content: Buffer.from(JSON.stringify({ name: 'test' })).toString(
+            'base64'
+          ),
           sha: 'abc',
         },
       });
@@ -245,6 +266,7 @@ describe('GitHubWorkflowManager', () => {
     it('should handle GitHub API errors gracefully', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-123/test',
           github_path: 'org-123/test/workflow.yaml',
           name: 'Test',
         },
@@ -254,12 +276,16 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({ name: 'test' })).toString('base64'),
+          content: Buffer.from(JSON.stringify({ name: 'test' })).toString(
+            'base64'
+          ),
           sha: 'abc',
         },
       });
 
-      mockOctokitCreateOrUpdate.mockRejectedValue(new Error('GitHub API rate limit'));
+      mockOctokitCreateOrUpdate.mockRejectedValue(
+        new Error('GitHub API rate limit')
+      );
 
       const result = await manager.updatePackageJson(123, { name: 'test' });
 
@@ -267,9 +293,10 @@ describe('GitHubWorkflowManager', () => {
       expect(result.error).toContain('GitHub API rate limit');
     });
 
-    it('should derive package.json path correctly from workflow.yaml path', async () => {
+    it('should derive package.json path correctly from github_folder', async () => {
       mockSupabaseSingle.mockResolvedValue({
         data: {
+          github_folder: 'org-abc123/456_my-workflow',
           github_path: 'org-abc123/456_my-workflow/workflow.yaml',
           name: 'Test',
         },
@@ -279,7 +306,9 @@ describe('GitHubWorkflowManager', () => {
       mockOctokitGetContent.mockResolvedValue({
         data: {
           type: 'file',
-          content: Buffer.from(JSON.stringify({ name: 'test' })).toString('base64'),
+          content: Buffer.from(JSON.stringify({ name: 'test' })).toString(
+            'base64'
+          ),
           sha: 'abc',
         },
       });
