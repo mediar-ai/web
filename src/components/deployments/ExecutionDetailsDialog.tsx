@@ -769,7 +769,7 @@ export function ExecutionDetailsDialog({
         >
           <div className="px-6">
             <TabsList
-              className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-3' : 'grid-cols-3'}`}
+              className={`grid w-full ${execution?.assigned_machine_id ? 'grid-cols-4' : 'grid-cols-3'}`}
             >
               <TabsTrigger value="summary" className="flex items-center gap-1">
                 <Info className="w-3 h-3" />
