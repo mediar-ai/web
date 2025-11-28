@@ -201,8 +201,56 @@ export function ExecutionDetailsDialog({
           {/* Render human-readable markdown summary if present */}
           {humanSummary && (
             <div className="border-2 border-black p-4 bg-white rounded">
-              <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-gray-700 prose-strong:text-black prose-table:border-collapse prose-th:border prose-th:border-black prose-th:p-2 prose-th:bg-gray-100 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-gray-700 prose-strong:text-black ">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-4">
+                        <table className="min-w-full border-collapse border border-gray-300 text-sm">
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-gray-100">{children}</thead>
+                    ),
+                    th: ({ children }) => (
+                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-black">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="border border-gray-300 px-3 py-2 font-mono">
+                        {children}
+                      </td>
+                    ),
+                    h1: ({ children }) => (
+                      <h1 className="text-xl font-bold mt-0 mb-3 text-black">{children}</h1>
+                    ),
+                    h2: ({ children }) => (
+                      <h2 className="text-lg font-bold mt-6 mb-2 text-black border-b border-gray-200 pb-1">{children}</h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="text-base font-semibold mt-4 mb-2 text-black">{children}</h3>
+                    ),
+                    p: ({ children }) => (
+                      <p className="my-2 text-gray-700">{children}</p>
+                    ),
+                    ul: ({ children }) => (
+                      <ul className="list-disc list-inside my-2 space-y-1">{children}</ul>
+                    ),
+                    li: ({ children }) => (
+                      <li className="text-gray-700">{children}</li>
+                    ),
+                    code: ({ children }) => (
+                      <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">
+                        {children}
+                      </code>
+                    ),
+                    hr: () => <hr className="my-4 border-gray-300" />,
+                  }}
+                >
                   {humanSummary}
                 </ReactMarkdown>
               </div>
