@@ -29,6 +29,7 @@ import {
   Columns3,
   ChevronDown,
   Monitor,
+  Copy,
 } from 'lucide-react';
 // import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
@@ -1882,6 +1883,21 @@ function AdminPageContent() {
                                             title="View VNC"
                                           >
                                             <Monitor className="w-4 h-4" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              try {
+                                                const endpoint = machine.endpoints?.mcp || machine.mcp_endpoint || '';
+                                                const url = new URL(endpoint);
+                                                copyToClipboard(`tvnviewer ${url.hostname}`, 'VNC command');
+                                              } catch {
+                                                toast.error('No valid endpoint for this machine');
+                                              }
+                                            }}
+                                            className="p-1 hover:bg-black hover:text-white border border-black"
+                                            title="Copy VNC CLI command"
+                                          >
+                                            <Copy className="w-4 h-4" />
                                           </button>
                                           <button
                                             onClick={() =>
