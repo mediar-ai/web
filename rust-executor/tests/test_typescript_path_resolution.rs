@@ -104,7 +104,10 @@ fn test_regression_wrong_path_would_only_copy_src_folder() {
 
     // Demonstrate the difference
     assert_ne!(wrong_url, correct_url);
-    assert_eq!(wrong_url, "file://S:/org-test/workflows/123/src/terminator.ts");
+    assert_eq!(
+        wrong_url,
+        "file://S:/org-test/workflows/123/src/terminator.ts"
+    );
     assert_eq!(correct_url, "file://S:/org-test/workflows/123");
 }
 

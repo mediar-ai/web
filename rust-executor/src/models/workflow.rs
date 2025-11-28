@@ -5,7 +5,7 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Workflow {
-    pub uuid: Option<String>,  // NEW: UUID for folder name (C:Workflows{uuid})
+    pub uuid: Option<String>, // NEW: UUID for folder name (C:Workflows{uuid})
     pub id: i64,
     pub name: String,
     #[validate(length(min = 1))]
@@ -15,10 +15,10 @@ pub struct Workflow {
     pub category: Option<String>,
     pub github_folder: Option<String>,
     pub github_ref: Option<String>,
-    pub github_repo_url: Option<String>,  // NEW: Standalone repo URL
-    pub github_release_url: Option<String>,  // NEW: Pre-built release zip URL
-    pub github_release_checksum: Option<String>,  // NEW: SHA256 checksum
-    pub package_json_version: Option<String>,  // NEW: Version from package.json
+    pub github_repo_url: Option<String>, // NEW: Standalone repo URL
+    pub github_release_url: Option<String>, // NEW: Pre-built release zip URL
+    pub github_release_checksum: Option<String>, // NEW: SHA256 checksum
+    pub package_json_version: Option<String>, // NEW: Version from package.json
     pub organization_id: Option<String>,
     pub preferred_format: Option<String>,
     pub automation_sequence: Option<Value>,

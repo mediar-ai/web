@@ -15,7 +15,8 @@ fn test_extract_error_from_mcp_stdout_json() {
     // Simulate the error chain that queue_processor receives
     let error_chain = vec![
         "Failed to execute tool: execute_sequence".to_string(),
-        r#"{"stdout": "{\"result\":{\"error\":\"Cannot find module './steps/00-sign-out'\"}}"}"#.to_string(),
+        r#"{"stdout": "{\"result\":{\"error\":\"Cannot find module './steps/00-sign-out'\"}}"}"#
+            .to_string(),
     ];
 
     // The actual detailed error is in: stdout.result.error
@@ -38,8 +39,14 @@ fn test_extract_error_with_file_path_context() {
     let detailed_error = extract_detailed_error_from_chain(&error_chain);
 
     assert!(detailed_error.is_some());
-    assert!(detailed_error.as_ref().unwrap().contains("Cannot find module"));
-    assert!(detailed_error.as_ref().unwrap().contains("./steps/00-sign-out"));
+    assert!(detailed_error
+        .as_ref()
+        .unwrap()
+        .contains("Cannot find module"));
+    assert!(detailed_error
+        .as_ref()
+        .unwrap()
+        .contains("./steps/00-sign-out"));
 }
 
 #[test]
@@ -115,7 +122,8 @@ fn test_extract_error_handles_nested_quotes() {
 #[test]
 fn test_extract_error_from_typescript_syntax_error() {
     let error_chain = vec![
-        r#"{"stdout": "{\"result\":{\"error\":\"SyntaxError: Unexpected token '}'\"}}"}"#.to_string(),
+        r#"{"stdout": "{\"result\":{\"error\":\"SyntaxError: Unexpected token '}'\"}}"}"#
+            .to_string(),
     ];
 
     let detailed_error = extract_detailed_error_from_chain(&error_chain);
@@ -135,7 +143,10 @@ fn test_extract_error_preserves_multiline_errors() {
     let detailed_error = extract_detailed_error_from_chain(&error_chain);
 
     assert!(detailed_error.is_some());
-    assert!(detailed_error.as_ref().unwrap().contains("Validation failed"));
+    assert!(detailed_error
+        .as_ref()
+        .unwrap()
+        .contains("Validation failed"));
 }
 
 #[test]
@@ -149,7 +160,10 @@ fn test_error_chain_join_format() {
 
     let joined = error_chain.join(" → ");
 
-    assert_eq!(joined, "Step 1 failed → Connection timeout → VM not responding");
+    assert_eq!(
+        joined,
+        "Step 1 failed → Connection timeout → VM not responding"
+    );
     assert!(joined.contains("→")); // Uses arrow separator
 }
 
@@ -161,7 +175,8 @@ fn test_regression_generic_error_vs_detailed_error() {
     // AFTER fix: Extracts actual error from JSON
     let error_chain = vec![
         generic_error.to_string(),
-        r#"{"stdout": "{\"result\":{\"error\":\"Cannot find module './steps/00-sign-out'\"}}"}"#.to_string(),
+        r#"{"stdout": "{\"result\":{\"error\":\"Cannot find module './steps/00-sign-out'\"}}"}"#
+            .to_string(),
     ];
 
     let detailed_error = extract_detailed_error_from_chain(&error_chain);

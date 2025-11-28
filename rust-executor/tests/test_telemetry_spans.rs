@@ -11,7 +11,6 @@
 /// - execution_time_ms
 ///
 /// These attributes are sent to ClickHouse via OTLP for observability
-
 use serde_json::json;
 
 #[test]
@@ -28,7 +27,10 @@ fn test_span_attributes_structure() {
 
     assert_eq!(span_attributes["execution_id"], "12345");
     assert_eq!(span_attributes["workflow_id"], "123");
-    assert_eq!(span_attributes["organization_id"], "org_2yynzGa53bNM1GTPLp5mc2lYRyD");
+    assert_eq!(
+        span_attributes["organization_id"],
+        "org_2yynzGa53bNM1GTPLp5mc2lYRyD"
+    );
 }
 
 #[test]
@@ -138,7 +140,8 @@ fn test_structured_logging_field_format() {
 
     for field in valid_fields {
         assert!(!field.chars().any(|c| c.is_uppercase())); // All lowercase
-        assert!(field.contains('_') || field.chars().all(|c| c.is_lowercase())); // snake_case
+        assert!(field.contains('_') || field.chars().all(|c| c.is_lowercase()));
+        // snake_case
     }
 }
 
@@ -186,11 +189,7 @@ fn test_retry_count_increments() {
 #[test]
 fn test_organization_id_format() {
     // Organization IDs should follow Clerk format: org_{random}
-    let org_ids = vec![
-        "org_2yynzGa53bNM1GTPLp5mc2lYRyD",
-        "org_abc123",
-        "org_test",
-    ];
+    let org_ids = vec!["org_2yynzGa53bNM1GTPLp5mc2lYRyD", "org_abc123", "org_test"];
 
     for org_id in org_ids {
         assert!(org_id.starts_with("org_"));
@@ -211,7 +210,12 @@ fn test_clickhouse_compatible_types() {
 
     // Verify all values are strings
     for (key, value) in attributes.as_object().unwrap() {
-        assert!(value.is_string(), "Key {} should be string but is {:?}", key, value);
+        assert!(
+            value.is_string(),
+            "Key {} should be string but is {:?}",
+            key,
+            value
+        );
     }
 }
 

@@ -225,7 +225,10 @@ fn test_should_retry_logic() {
     let should_retry = error_cat == ErrorCategory::Infrastructure
         && config.enabled
         && retry_count < config.max_infrastructure_retries as i32;
-    assert!(should_retry, "Should retry infrastructure errors under max attempts");
+    assert!(
+        should_retry,
+        "Should retry infrastructure errors under max attempts"
+    );
 
     // Test case 2: Infrastructure error, at max retries
     let retry_count = 3;

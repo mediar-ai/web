@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
-use serde_json::{Value, Map};
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{Pool, Postgres, Row};
 use std::collections::HashMap;
 use std::env;
-use sha2::{Sha256, Digest};
 use tracing::{error, info, instrument};
 
 const IV_LENGTH: usize = 12; // 96 bits for GCM
@@ -28,7 +28,8 @@ fn decrypt_secret(encrypted_value: &str) -> Result<String> {
     let master_key = get_master_key()?;
 
     // Decode from base64
-    let combined = STANDARD.decode(encrypted_value)
+    let combined = STANDARD
+        .decode(encrypted_value)
         .map_err(|e| anyhow!("Failed to decode base64: {}", e))?;
 
     if combined.len() < IV_LENGTH {
@@ -42,8 +43,8 @@ fn decrypt_secret(encrypted_value: &str) -> Result<String> {
     let unbound_key = UnboundKey::new(&AES_256_GCM, &master_key)
         .map_err(|e| anyhow!("Failed to create key: {:?}", e))?;
     let key = LessSafeKey::new(unbound_key);
-    let nonce = Nonce::try_assume_unique_for_key(iv)
-        .map_err(|_| anyhow!("Invalid nonce length"))?;
+    let nonce =
+        Nonce::try_assume_unique_for_key(iv).map_err(|_| anyhow!("Invalid nonce length"))?;
 
     // Decrypt
     let mut in_out = ciphertext_and_tag.to_vec();
@@ -55,8 +56,7 @@ fn decrypt_secret(encrypted_value: &str) -> Result<String> {
     let plaintext_len = in_out.len().saturating_sub(tag_len);
     in_out.truncate(plaintext_len);
 
-    String::from_utf8(in_out)
-        .map_err(|e| anyhow!("Failed to convert to UTF-8: {}", e))
+    String::from_utf8(in_out).map_err(|e| anyhow!("Failed to convert to UTF-8: {}", e))
 }
 
 /// Load and decrypt all secrets for an organization
@@ -77,7 +77,7 @@ pub async fn load_org_secrets(
         SELECT name, encrypted_value
         FROM org_secrets
         WHERE org_id = $1
-        "#
+        "#,
     )
     .bind(org_id)
     .fetch_all(pool)
@@ -210,9 +210,11 @@ fn redact_recursive(value: Value, secrets: &HashMap<&str, &str>) -> Value {
             }
             Value::Object(new_map)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(|v| redact_recursive(v, secrets)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| redact_recursive(v, secrets))
+                .collect(),
+        ),
         _ => value,
     }
 }
@@ -235,9 +237,11 @@ fn substitute_placeholders_recursive(value: Value, secrets: &HashMap<String, Str
             }
             Value::Object(new_map)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(|v| substitute_placeholders_recursive(v, secrets)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| substitute_placeholders_recursive(v, secrets))
+                .collect(),
+        ),
         _ => value,
     }
 }
@@ -342,7 +346,10 @@ mod tests {
         let result = decrypt_secret(encrypted);
         assert!(result.is_err());
         // Should fail with decryption error (authentication tag won't match)
-        assert!(result.unwrap_err().to_string().contains("Decryption failed"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Decryption failed"));
     }
 
     // ==================== Redaction Tests ====================
@@ -363,7 +370,10 @@ mod tests {
 
         assert_eq!(redacted["result"], "success");
         assert_eq!(redacted["token"], "[REDACTED:GITHUB_TOKEN]");
-        assert_eq!(redacted["message"], "Used API key [REDACTED:API_KEY] for request");
+        assert_eq!(
+            redacted["message"],
+            "Used API key [REDACTED:API_KEY] for request"
+        );
     }
 
     #[test]
@@ -388,10 +398,7 @@ mod tests {
             redacted["data"]["nested"]["credentials"]["password"],
             "[REDACTED:PASSWORD]"
         );
-        assert_eq!(
-            redacted["logs"][0],
-            "Login with [REDACTED:PASSWORD]"
-        );
+        assert_eq!(redacted["logs"][0], "Login with [REDACTED:PASSWORD]");
         assert_eq!(redacted["logs"][1], "Done");
     }
 

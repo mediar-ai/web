@@ -1,7 +1,7 @@
 use serde_json::json;
 /// API Simulation Test - Demonstrates the API functionality without running a server
-use workflow_executor::{
-    models::{ExecutionRequest, ExecutionResponse, ExecutionStatus, Workflow, WorkflowStatus},
+use workflow_executor::models::{
+    ExecutionRequest, ExecutionResponse, ExecutionStatus, Workflow, WorkflowStatus,
 };
 
 #[tokio::main]

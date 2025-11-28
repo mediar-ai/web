@@ -16,7 +16,8 @@ pub struct MonitorClient {
 impl MonitorClient {
     /// Create a new MonitorClient from environment variables
     pub fn new() -> Self {
-        let app_url = std::env::var("APP_URL").unwrap_or_else(|_| "https://app.mediar.ai".to_string());
+        let app_url =
+            std::env::var("APP_URL").unwrap_or_else(|_| "https://app.mediar.ai".to_string());
         let api_key = std::env::var("MEDIAR_SERVICE_API_KEY").ok();
 
         if api_key.is_none() {
@@ -82,7 +83,10 @@ impl MonitorClient {
             }
         });
 
-        info!("Sending monitor notification for execution {} to {}", execution_id, monitor_url);
+        info!(
+            "Sending monitor notification for execution {} to {}",
+            execution_id, monitor_url
+        );
 
         // Make the API call with authentication
         let response = self
@@ -98,7 +102,10 @@ impl MonitorClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    info!("✅ Monitor notification sent successfully for execution {}", execution_id);
+                    info!(
+                        "✅ Monitor notification sent successfully for execution {}",
+                        execution_id
+                    );
                     match resp.text().await {
                         Ok(text) => info!("Response: {}", text),
                         Err(e) => warn!("Could not read response body: {}", e),

@@ -1,8 +1,8 @@
 // OpenTelemetry support for Rust workflow executor
 // Sends traces and logs to centralized OTLP collector (ClickHouse backend)
 
-use opentelemetry::KeyValue;
 use opentelemetry::trace::TracerProvider; // Trait for .tracer() method
+use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
@@ -78,7 +78,9 @@ where
 
 /// Initialize the OpenTelemetry tracer and log provider
 /// Returns a combined layer that handles both traces and logs
-fn init_telemetry_provider<S>(otlp_endpoint: &str) -> anyhow::Result<impl Layer<S> + Send + Sync + 'static>
+fn init_telemetry_provider<S>(
+    otlp_endpoint: &str,
+) -> anyhow::Result<impl Layer<S> + Send + Sync + 'static>
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a> + Send + Sync,
 {

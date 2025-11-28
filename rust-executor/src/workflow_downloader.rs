@@ -91,7 +91,11 @@ async fn ensure_workflow_downloaded_inner(
         "Checking if workflow exists"
     );
 
-    // Step 1: Always clean up and re-download for now to fix corrupted cache
+    // Step 1: Ensure C:\Workflows directory exists (may be missing on older VM images)
+    let ensure_dir_command = r#"if (-not (Test-Path 'C:\Workflows')) { New-Item -ItemType Directory -Force -Path 'C:\Workflows' | Out-Null; 'created' } else { 'exists' }"#;
+    let _ = run_command_via_mcp_with_timeout(mcp_client, ensure_dir_command, 15).await;
+
+    // Step 2: Clean up any existing cached workflow and re-download
     // TODO: Re-enable caching once the zip structure is confirmed working
     let cleanup_command = format!(
         r#"if (Test-Path '{}') {{ Remove-Item -Path '{}' -Recurse -Force -ErrorAction SilentlyContinue }}; 'cleaned'"#,
@@ -126,9 +130,12 @@ async fn ensure_workflow_downloaded_inner(
         trace_id = %trace_id,
         "Downloading workflow"
     );
-    run_command_via_mcp_with_timeout(mcp_client, &download_command, 90)
+
+    // Use retry with exponential backoff for download - this is the most failure-prone step
+    let retry_config = DownloadRetryConfig::default();
+    run_download_with_retry(mcp_client, &download_command, 90, &retry_config)
         .await
-        .context("Failed to download workflow zip - download may have timed out or failed")?;
+        .context("Failed to download workflow zip after retries")?;
 
     // Step 3: Verify zip was downloaded
     let verify_command = format!(
@@ -244,6 +251,125 @@ async fn run_command_via_mcp_with_timeout(
     }
 }
 
+/// Retry configuration for download operations
+#[derive(Debug, Clone)]
+pub struct DownloadRetryConfig {
+    pub max_attempts: u32,
+    pub initial_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub backoff_multiplier: f64,
+}
+
+impl Default for DownloadRetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            initial_delay_ms: 1000,
+            max_delay_ms: 10000,
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+/// Check if an error is retryable (timeout, network issues, transient failures)
+pub fn is_retryable_download_error(error: &anyhow::Error) -> bool {
+    let error_str = error.to_string().to_lowercase();
+
+    // Retryable conditions
+    error_str.contains("timed out")
+        || error_str.contains("timeout")
+        || error_str.contains("connection")
+        || error_str.contains("network")
+        || error_str.contains("temporarily")
+        || error_str.contains("503")
+        || error_str.contains("502")
+        || error_str.contains("504")
+        || error_str.contains("reset")
+        || error_str.contains("refused")
+        || error_str.contains("unreachable")
+}
+
+/// Calculate delay for retry attempt using exponential backoff
+pub fn calculate_retry_delay(attempt: u32, config: &DownloadRetryConfig) -> Duration {
+    let delay_ms = (config.initial_delay_ms as f64
+        * config.backoff_multiplier.powi(attempt as i32 - 1)) as u64;
+    Duration::from_millis(delay_ms.min(config.max_delay_ms))
+}
+
+/// Execute download command with retry and exponential backoff
+async fn run_download_with_retry(
+    mcp_client: &McpClient,
+    command: &str,
+    timeout_secs: u64,
+    config: &DownloadRetryConfig,
+) -> Result<String> {
+    let trace_id = current_trace_id().unwrap_or_else(|| "unknown".to_string());
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 1..=config.max_attempts {
+        info!(
+            attempt = %attempt,
+            max_attempts = %config.max_attempts,
+            trace_id = %trace_id,
+            "Attempting workflow download"
+        );
+
+        match run_command_via_mcp_with_timeout(mcp_client, command, timeout_secs).await {
+            Ok(result) => {
+                if attempt > 1 {
+                    info!(
+                        attempt = %attempt,
+                        trace_id = %trace_id,
+                        "Download succeeded after retry"
+                    );
+                }
+                return Ok(result);
+            }
+            Err(e) => {
+                let is_retryable = is_retryable_download_error(&e);
+
+                warn!(
+                    attempt = %attempt,
+                    max_attempts = %config.max_attempts,
+                    error = %e,
+                    is_retryable = %is_retryable,
+                    trace_id = %trace_id,
+                    "Download attempt failed"
+                );
+
+                if !is_retryable {
+                    // Non-retryable error, fail immediately
+                    return Err(e);
+                }
+
+                last_error = Some(e);
+
+                if attempt < config.max_attempts {
+                    let delay = calculate_retry_delay(attempt, config);
+                    info!(
+                        delay_ms = %delay.as_millis(),
+                        next_attempt = %(attempt + 1),
+                        trace_id = %trace_id,
+                        "Waiting before retry"
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+
+    // All retries exhausted
+    error!(
+        max_attempts = %config.max_attempts,
+        trace_id = %trace_id,
+        "All download retry attempts exhausted"
+    );
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!("Download failed after {} attempts", config.max_attempts)
+    }))
+}
+
 /// Execute a command on the VM via MCP run_command tool
 async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<String> {
     let mut args = serde_json::Map::new();
@@ -350,5 +476,135 @@ async fn run_command_via_mcp(mcp_client: &McpClient, command: &str) -> Result<St
 
             Ok(output)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_retry_config() {
+        let config = DownloadRetryConfig::default();
+        assert_eq!(config.max_attempts, 3);
+        assert_eq!(config.initial_delay_ms, 1000);
+        assert_eq!(config.max_delay_ms, 10000);
+        assert_eq!(config.backoff_multiplier, 2.0);
+    }
+
+    #[test]
+    fn test_is_retryable_timeout_errors() {
+        // Timeout errors should be retryable
+        let err = anyhow::anyhow!("Request timed out after 60 seconds");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Connection timeout");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("TIMED OUT waiting for response");
+        assert!(is_retryable_download_error(&err));
+    }
+
+    #[test]
+    fn test_is_retryable_network_errors() {
+        // Network errors should be retryable
+        let err = anyhow::anyhow!("Connection refused");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Network unreachable");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Connection reset by peer");
+        assert!(is_retryable_download_error(&err));
+    }
+
+    #[test]
+    fn test_is_retryable_http_status_errors() {
+        // Transient HTTP errors should be retryable
+        let err = anyhow::anyhow!("Server returned 502 Bad Gateway");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("HTTP 503 Service Unavailable");
+        assert!(is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Gateway timeout 504");
+        assert!(is_retryable_download_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_retryable_permanent_errors() {
+        // Permanent errors should NOT be retryable
+        let err = anyhow::anyhow!("HTTP 404 Not Found");
+        assert!(!is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Invalid credentials");
+        assert!(!is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("Permission denied");
+        assert!(!is_retryable_download_error(&err));
+
+        let err = anyhow::anyhow!("File not found");
+        assert!(!is_retryable_download_error(&err));
+    }
+
+    #[test]
+    fn test_calculate_retry_delay_first_attempt() {
+        let config = DownloadRetryConfig::default();
+        // First attempt: 1000ms * 2^0 = 1000ms
+        let delay = calculate_retry_delay(1, &config);
+        assert_eq!(delay.as_millis(), 1000);
+    }
+
+    #[test]
+    fn test_calculate_retry_delay_exponential_backoff() {
+        let config = DownloadRetryConfig::default();
+
+        // Second attempt: 1000ms * 2^1 = 2000ms
+        let delay = calculate_retry_delay(2, &config);
+        assert_eq!(delay.as_millis(), 2000);
+
+        // Third attempt: 1000ms * 2^2 = 4000ms
+        let delay = calculate_retry_delay(3, &config);
+        assert_eq!(delay.as_millis(), 4000);
+    }
+
+    #[test]
+    fn test_calculate_retry_delay_respects_max() {
+        let config = DownloadRetryConfig {
+            max_attempts: 10,
+            initial_delay_ms: 1000,
+            max_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+        };
+
+        // Fifth attempt would be 1000 * 2^4 = 16000, but capped at 5000
+        let delay = calculate_retry_delay(5, &config);
+        assert_eq!(delay.as_millis(), 5000);
+
+        // Tenth attempt also capped
+        let delay = calculate_retry_delay(10, &config);
+        assert_eq!(delay.as_millis(), 5000);
+    }
+
+    #[test]
+    fn test_calculate_retry_delay_custom_config() {
+        let config = DownloadRetryConfig {
+            max_attempts: 5,
+            initial_delay_ms: 500,
+            max_delay_ms: 8000,
+            backoff_multiplier: 1.5,
+        };
+
+        // First attempt: 500ms * 1.5^0 = 500ms
+        let delay = calculate_retry_delay(1, &config);
+        assert_eq!(delay.as_millis(), 500);
+
+        // Second attempt: 500ms * 1.5^1 = 750ms
+        let delay = calculate_retry_delay(2, &config);
+        assert_eq!(delay.as_millis(), 750);
+
+        // Third attempt: 500ms * 1.5^2 = 1125ms
+        let delay = calculate_retry_delay(3, &config);
+        assert_eq!(delay.as_millis(), 1125);
     }
 }

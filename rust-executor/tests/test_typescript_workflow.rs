@@ -1,5 +1,5 @@
 //! Integration test for TypeScript workflow execution
-//! 
+//!
 //! This test verifies that the Rust executor can:
 //! 1. Detect TypeScript workflows (preferred_format = 'typescript')
 //! 2. Build correct file:// URL for mounted workflow files
@@ -7,7 +7,7 @@
 //! 4. Execute via MCP server's execute_sequence with url parameter
 
 use serde_json::json;
-use workflow_executor::models::{Workflow, WorkflowStatus, WorkflowSequence};
+use workflow_executor::models::{Workflow, WorkflowSequence, WorkflowStatus};
 
 #[test]
 fn test_typescript_workflow_detection_and_sequence_building() {
@@ -44,8 +44,11 @@ fn test_typescript_workflow_detection_and_sequence_building() {
     // Build the TypeScript workflow sequence
     // Note: We can't easily test the full WorkflowService without DB connection,
     // so we'll test the sequence structure manually
-    let expected_url = format!("file:///tmp/workflow-files/{}/src/terminator.ts", workflow.id);
-    
+    let expected_url = format!(
+        "file:///tmp/workflow-files/{}/src/terminator.ts",
+        workflow.id
+    );
+
     // Manually build what the service should create
     let expected_sequence_json = json!({
         "steps": [{
@@ -62,34 +65,44 @@ fn test_typescript_workflow_detection_and_sequence_building() {
     });
 
     // Parse as WorkflowSequence
-    let sequence = WorkflowSequence::from_value(expected_sequence_json).expect("Should parse sequence");
+    let sequence =
+        WorkflowSequence::from_value(expected_sequence_json).expect("Should parse sequence");
 
     // Verify the sequence structure
     assert_eq!(sequence.steps.len(), 1, "Should have exactly 1 step");
-    
+
     let step = &sequence.steps[0];
     assert_eq!(step.id, Some("typescript_execution".to_string()));
     assert_eq!(step.tool_name, Some("execute_sequence".to_string()));
-    
+
     // Verify arguments
     let args = step.arguments.as_ref().expect("Should have arguments");
     let args_obj = args.as_object().expect("Arguments should be object");
-    
+
     // Check URL
     assert!(args_obj.contains_key("url"), "Should have 'url' parameter");
     let url_value = args_obj.get("url").unwrap();
     assert_eq!(url_value.as_str().unwrap(), expected_url);
-    
+
     // Check inputs
-    assert!(args_obj.contains_key("inputs"), "Should have 'inputs' parameter");
+    assert!(
+        args_obj.contains_key("inputs"),
+        "Should have 'inputs' parameter"
+    );
     let inputs_value = args_obj.get("inputs").unwrap();
-    assert_eq!(inputs_value.get("test_input").unwrap().as_str().unwrap(), "test_value");
-    assert_eq!(inputs_value.get("another_param").unwrap().as_i64().unwrap(), 42);
-    
+    assert_eq!(
+        inputs_value.get("test_input").unwrap().as_str().unwrap(),
+        "test_value"
+    );
+    assert_eq!(
+        inputs_value.get("another_param").unwrap().as_i64().unwrap(),
+        42
+    );
+
     // Verify stop_on_error
     assert_eq!(sequence.stop_on_error, Some(true));
     assert_eq!(sequence.include_detailed_results, Some(true));
-    
+
     println!("✅ TypeScript workflow sequence structure is correct");
 }
 
@@ -113,12 +126,15 @@ fn test_yaml_workflow_not_affected() {
         organization_id: Some("org_test".to_string()),
         preferred_format: None,
         automation_sequence: None,
-        automation_sequence_yaml: Some(r#"
+        automation_sequence_yaml: Some(
+            r#"
             steps:
               - tool_name: test_tool
                 arguments:
                   test: value
-        "#.to_string()),
+        "#
+            .to_string(),
+        ),
         skip_next_cancellation_check: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -144,13 +160,13 @@ fn test_file_path_detection_fallbacks() {
         let workflow_id = 789;
         let full_path = format!("/tmp/workflow-files/{workflow_id}/{file_path}");
         let expected_url = format!("file://{full_path}");
-        
+
         println!("Expected URL for {file_path}: {expected_url}");
-        
+
         // Verify URL format is correct
         assert!(expected_url.starts_with("file:///tmp/workflow-files/"));
         assert!(expected_url.ends_with(".ts"));
     }
-    
+
     println!("✅ All file path formats are handled correctly");
 }

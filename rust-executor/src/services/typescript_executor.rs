@@ -207,11 +207,7 @@ impl<'a> TypeScriptExecutor<'a> {
         // Inject secrets into params
         let params_with_secrets = if let Some(params) = &self.execution.execution_params {
             if !secrets.is_empty() {
-                crate::services::secrets::inject_secrets_into_params(
-                    params.clone(),
-                    secrets,
-                    true,
-                )
+                crate::services::secrets::inject_secrets_into_params(params.clone(), secrets, true)
             } else {
                 params.clone()
             }

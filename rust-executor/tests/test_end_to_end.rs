@@ -34,14 +34,20 @@ async fn test_run_command_then_execute_workflow() {
         .await
         .expect("run_command should succeed");
 
-    println!("run_command result: {}", serde_json::to_string_pretty(&check_result).unwrap());
+    println!(
+        "run_command result: {}",
+        serde_json::to_string_pretty(&check_result).unwrap()
+    );
 
     let output = check_result
         .get("output")
         .or_else(|| check_result.get("stdout"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    assert!(output.contains("exists"), "Test workflow directory should exist");
+    assert!(
+        output.contains("exists"),
+        "Test workflow directory should exist"
+    );
     println!("✅ run_command works - workflow path exists\n");
 
     // Step 2: Test run_command - Simulate download verification (like production does after download)
@@ -49,7 +55,10 @@ async fn test_run_command_then_execute_workflow() {
     let mut list_args = Map::new();
     list_args.insert(
         "run".to_string(),
-        Value::String(r#"Get-ChildItem 'C:\Users\louis\Documents\test-workflow' | Select-Object Name"#.to_string()),
+        Value::String(
+            r#"Get-ChildItem 'C:\Users\louis\Documents\test-workflow' | Select-Object Name"#
+                .to_string(),
+        ),
     );
     list_args.insert("shell".to_string(), Value::String("powershell".to_string()));
 
@@ -58,15 +67,20 @@ async fn test_run_command_then_execute_workflow() {
         .await
         .expect("run_command should succeed");
 
-    println!("Workflow files: {}", serde_json::to_string_pretty(&list_result).unwrap());
+    println!(
+        "Workflow files: {}",
+        serde_json::to_string_pretty(&list_result).unwrap()
+    );
 
     let files_output = list_result
         .get("output")
         .or_else(|| list_result.get("stdout"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    assert!(files_output.contains("terminator.ts") || files_output.contains("package.json"),
-            "Should find workflow files");
+    assert!(
+        files_output.contains("terminator.ts") || files_output.contains("package.json"),
+        "Should find workflow files"
+    );
     println!("✅ run_command works - found workflow files\n");
 
     // Step 3: Execute workflow (like production does after download)
@@ -78,28 +92,40 @@ async fn test_run_command_then_execute_workflow() {
     );
     exec_args.insert("include_detailed_results".to_string(), Value::Bool(true));
     exec_args.insert("stop_on_error".to_string(), Value::Bool(true));
-    exec_args.insert("inputs".to_string(), json!({"testInput": "hello from e2e test"}));
+    exec_args.insert(
+        "inputs".to_string(),
+        json!({"testInput": "hello from e2e test"}),
+    );
 
     let exec_result = client
         .execute_tool_with_builtin_timeout("execute_sequence".to_string(), Some(exec_args))
         .await
         .expect("execute_sequence should succeed");
 
-    println!("Workflow result: {}", serde_json::to_string_pretty(&exec_result).unwrap());
+    println!(
+        "Workflow result: {}",
+        serde_json::to_string_pretty(&exec_result).unwrap()
+    );
 
     // Verify workflow completed
     let status = exec_result
         .get("status")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    assert_eq!(status, "success", "Workflow should complete with status=success");
+    assert_eq!(
+        status, "success",
+        "Workflow should complete with status=success"
+    );
 
     // Verify our input was passed through
     let test_input = exec_result
         .pointer("/state/context/variables/testInput")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    assert_eq!(test_input, "hello from e2e test", "Input should be passed to workflow");
+    assert_eq!(
+        test_input, "hello from e2e test",
+        "Input should be passed to workflow"
+    );
 
     println!("✅ execute_sequence works - workflow completed successfully\n");
     println!("=== ALL STEPS PASSED - Full production flow works locally! ===");
