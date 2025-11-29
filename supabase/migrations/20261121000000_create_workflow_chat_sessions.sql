@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.workflow_chat_sessions (
 ALTER TABLE public.workflow_chat_sessions
   ADD CONSTRAINT fk_workflow
     FOREIGN KEY (workflow_id)
-    REFERENCES public.low_level_workflows(id)
+    REFERENCES public.deployed_workflows(id)
     ON DELETE CASCADE;
 
 -- Indexes for performance
