@@ -169,12 +169,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the next pool_order for this session
-    const { data: maxOrderData } = await supabase
+    // Get the next pool_order - scoped by workflow_id if available, otherwise by session_id
+    let poolOrderQuery = supabase
       .from('user_step_pool')
       .select('pool_order')
-      .eq('session_id', body.session_id)
       .eq('user_id', authenticatedUserId)
+      .eq('status', 'active');
+
+    if (body.workflow_id) {
+      poolOrderQuery = poolOrderQuery.eq('workflow_id', body.workflow_id);
+    } else {
+      poolOrderQuery = poolOrderQuery.eq('session_id', body.session_id);
+    }
+
+    const { data: maxOrderData } = await poolOrderQuery
       .order('pool_order', { ascending: false })
       .limit(1);
 
