@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ['@mastra/*'],
+  async rewrites() {
+    return [
+      { source: '/workflows/:id', destination: '/dashboard?workflow=:id' },
+      { source: '/executions/:id', destination: '/dashboard?execution=:id' },
+    ];
+  },
 };
 
 export default nextConfig;
