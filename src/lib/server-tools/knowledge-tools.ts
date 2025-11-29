@@ -495,14 +495,13 @@ export const serverSideTools = {
 
 /**
  * Convert server tools to Vertex AI function declarations
- * Minimal declarations - just names, no descriptions or schemas
- * AI must use get_tool_details to learn about tools before calling them
+ * Full declarations with descriptions and schemas for native function calling
  */
 export function getServerToolDeclarations() {
-  return Object.entries(serverSideTools).map(([name]) => ({
+  return Object.entries(serverSideTools).map(([name, tool]) => ({
     name,
-    description: name,
-    parameters: { type: SchemaType.OBJECT, properties: {} }
+    description: tool.description,
+    parameters: tool.parameters
   }));
 }
 
