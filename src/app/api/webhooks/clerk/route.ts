@@ -9,7 +9,7 @@ import { randomBytes } from 'crypto';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
 const MEDIAR_ORG_IDS = ['org_REDACTED', 'org_REDACTED'];
-const VM_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for VM tokens
+const ORG_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for org tokens
 
 // Initialize Supabase client for querying survey submissions
 const supabase = createClient(
@@ -18,11 +18,11 @@ const supabase = createClient(
 );
 
 /**
- * Create VM_TOKEN for an organization
+ * Create ORG_TOKEN for an organization
  * - Creates a desktop session token for the org admin
- * - Encrypts and stores it in org_secrets as VM_TOKEN
+ * - Encrypts and stores it in org_secrets as ORG_TOKEN
  */
-async function createVmTokenForOrg(
+async function createOrgTokenForOrg(
   orgId: string,
   createdBy: string,
   creatorEmail: string
@@ -31,7 +31,7 @@ async function createVmTokenForOrg(
     // Generate secure token
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + VM_TOKEN_EXPIRY_DAYS);
+    expiresAt.setDate(expiresAt.getDate() + ORG_TOKEN_EXPIRY_DAYS);
 
     // Create desktop session for this token
     const { error: sessionError } = await supabase
@@ -46,7 +46,7 @@ async function createVmTokenForOrg(
       });
 
     if (sessionError) {
-      console.error(`[Clerk Webhook] Failed to create desktop session for VM_TOKEN:`, sessionError);
+      console.error(`[Clerk Webhook] Failed to create desktop session for ORG_TOKEN:`, sessionError);
       return { success: false, error: `Failed to create desktop session: ${sessionError.message}` };
     }
 
@@ -58,8 +58,8 @@ async function createVmTokenForOrg(
       .from('org_secrets')
       .insert({
         org_id: orgId,
-        name: 'VM_TOKEN',
-        description: 'Auto-generated token for VM KV access',
+        name: 'ORG_TOKEN',
+        description: 'Auto-generated token for org API access (KV, etc.)',
         encrypted_value: encryptedToken,
         created_by: createdBy,
       });
@@ -67,17 +67,17 @@ async function createVmTokenForOrg(
     if (secretError) {
       // If secret already exists, that's fine
       if (secretError.code === '23505') { // unique constraint violation
-        console.log(`[Clerk Webhook] VM_TOKEN already exists for org ${orgId}`);
+        console.log(`[Clerk Webhook] ORG_TOKEN already exists for org ${orgId}`);
         return { success: true };
       }
-      console.error(`[Clerk Webhook] Failed to store VM_TOKEN in org_secrets:`, secretError);
+      console.error(`[Clerk Webhook] Failed to store ORG_TOKEN in org_secrets:`, secretError);
       return { success: false, error: `Failed to store secret: ${secretError.message}` };
     }
 
-    console.log(`[Clerk Webhook] ✓ Created VM_TOKEN for org ${orgId}`);
+    console.log(`[Clerk Webhook] ✓ Created ORG_TOKEN for org ${orgId}`);
     return { success: true };
   } catch (err) {
-    console.error(`[Clerk Webhook] Error creating VM_TOKEN:`, err);
+    console.error(`[Clerk Webhook] Error creating ORG_TOKEN:`, err);
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
@@ -405,14 +405,14 @@ export async function POST(req: Request) {
 
     console.log(`[Clerk Webhook] ✓ Tracked organization_created in PostHog: ${name} (is_personal: ${isPersonalWorkspace})`);
 
-    // Create VM_TOKEN for KV access (for all orgs)
+    // Create ORG_TOKEN for API access (KV, etc.) - for all orgs
     if (created_by && creatorEmail !== 'unknown') {
-      const vmTokenResult = await createVmTokenForOrg(orgId, created_by, creatorEmail);
-      if (!vmTokenResult.success) {
-        console.error(`[Clerk Webhook] ✗ Failed to create VM_TOKEN for ${name}: ${vmTokenResult.error}`);
+      const orgTokenResult = await createOrgTokenForOrg(orgId, created_by, creatorEmail);
+      if (!orgTokenResult.success) {
+        console.error(`[Clerk Webhook] ✗ Failed to create ORG_TOKEN for ${name}: ${orgTokenResult.error}`);
       }
     } else {
-      console.warn(`[Clerk Webhook] ⚠ Cannot create VM_TOKEN - missing creator info for ${name}`);
+      console.warn(`[Clerk Webhook] ⚠ Cannot create ORG_TOKEN - missing creator info for ${name}`);
     }
 
     // Only invite Mediar admins to team organizations (not personal workspaces)
