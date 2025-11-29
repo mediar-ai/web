@@ -25,6 +25,7 @@ pub struct QueueProcessor {
 }
 
 impl QueueProcessor {
+    #[allow(dead_code)]
     pub fn new(db_pool: DatabasePool) -> Self {
         Self::with_registry(db_pool, CancellationRegistry::new())
     }
@@ -48,6 +49,7 @@ impl QueueProcessor {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cancellation_registry(&self) -> &CancellationRegistry {
         &self.cancellation_registry
     }

@@ -16,7 +16,7 @@ mod utils;
 mod workflow_downloader;
 
 use crate::api::AppState;
-use crate::db::{create_pool, DatabasePool};
+use crate::db::create_pool;
 use crate::models::ExecutionRequest;
 use crate::services::{CancellationRegistry, QueueProcessor};
 
