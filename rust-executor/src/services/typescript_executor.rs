@@ -458,7 +458,17 @@ impl<'a> TypeScriptExecutor<'a> {
     fn extract_error(tool_result: &Value) -> Option<String> {
         let obj = tool_result.as_object()?;
 
-        // Try step results first
+        // Try result.message first (TypeScript SDK error format)
+        if let Some(result_obj) = obj.get("result").and_then(|v| v.as_object()) {
+            if let Some(message) = result_obj.get("message").and_then(|v| v.as_str()) {
+                return Some(message.to_string());
+            }
+            if let Some(error) = result_obj.get("error").and_then(|v| v.as_str()) {
+                return Some(error.to_string());
+            }
+        }
+
+        // Try step results
         if let Some(steps) = obj.get("step_results").and_then(|v| v.as_array()) {
             for step in steps {
                 if let Some(error) = step
@@ -549,6 +559,16 @@ impl<'a> TypeScriptExecutor<'a> {
                         // Check stdout field
                         if let Some(stdout) = json.get("stdout").and_then(|v| v.as_str()) {
                             if let Ok(stdout_json) = serde_json::from_str::<Value>(stdout) {
+                                // TypeScript SDK format: result.message
+                                if let Some(message) = stdout_json
+                                    .get("result")
+                                    .and_then(|r| r.get("message"))
+                                    .and_then(|m| m.as_str())
+                                {
+                                    return Some(message.to_string());
+                                }
+                                
+                                // Fallback: result.error
                                 if let Some(error) = stdout_json
                                     .get("result")
                                     .and_then(|r| r.get("error"))
@@ -570,6 +590,15 @@ impl<'a> TypeScriptExecutor<'a> {
                             {
                                 return Some(stdout.to_string());
                             }
+                        }
+
+                        // Direct JSON: result.message (TypeScript SDK format)
+                        if let Some(message) = json
+                            .get("result")
+                            .and_then(|r| r.get("message"))
+                            .and_then(|m| m.as_str())
+                        {
+                            return Some(message.to_string());
                         }
 
                         if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
