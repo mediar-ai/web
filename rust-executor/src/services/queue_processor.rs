@@ -25,11 +25,6 @@ pub struct QueueProcessor {
 }
 
 impl QueueProcessor {
-    #[allow(dead_code)]
-    pub fn new(db_pool: DatabasePool) -> Self {
-        Self::with_registry(db_pool, CancellationRegistry::new())
-    }
-
     pub fn with_registry(db_pool: DatabasePool, cancellation_registry: CancellationRegistry) -> Self {
         let machine_id = Self::generate_machine_id();
         let monitor_client = MonitorClient::new();
@@ -47,11 +42,6 @@ impl QueueProcessor {
             max_concurrent_executions,
             cancellation_registry,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn cancellation_registry(&self) -> &CancellationRegistry {
-        &self.cancellation_registry
     }
 
     pub async fn start(&self) -> Result<()> {
