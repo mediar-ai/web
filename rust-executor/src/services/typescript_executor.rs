@@ -584,11 +584,34 @@ impl<'a> TypeScriptExecutor<'a> {
                                 }
                             }
 
-                            if stdout.contains("Error")
-                                || stdout.contains("error")
-                                || stdout.contains("failed")
+                            // Only use stdout as error if it's short (not verbose logs)
+                            // and contains error indicators
+                            if stdout.len() < 500
+                                && (stdout.contains("Error")
+                                    || stdout.contains("error")
+                                    || stdout.contains("failed"))
                             {
                                 return Some(stdout.to_string());
+                            }
+
+                            // For longer stdout, try to extract just the last error line
+                            if stdout.contains("Error") || stdout.contains("error") {
+                                if let Some(error_line) = stdout
+                                    .lines()
+                                    .rev()
+                                    .find(|line| {
+                                        let lower = line.to_lowercase();
+                                        (lower.contains("error") || lower.contains("failed"))
+                                            && !lower.contains("debug")
+                                            && !lower.contains("info")
+                                            && !lower.contains("warn")
+                                    })
+                                {
+                                    let trimmed = error_line.trim();
+                                    if !trimmed.is_empty() && trimmed.len() < 500 {
+                                        return Some(trimmed.to_string());
+                                    }
+                                }
                             }
                         }
 
