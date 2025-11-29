@@ -142,14 +142,13 @@ export function isDevLogTool(toolName: string): boolean {
 
 /**
  * Get tool declarations for Vertex AI
- * Minimal declarations - just names, no descriptions or schemas
- * AI must use get_tool_details to learn about tools before calling them
+ * Full declarations with descriptions and schemas for native function calling
  */
 export function getDevLogToolDeclarations() {
-  return Object.entries(serverSideDevLogTools).map(([name]) => ({
+  return Object.entries(serverSideDevLogTools).map(([name, tool]) => ({
     name,
-    description: name,
-    parameters: { type: SchemaType.OBJECT, properties: {} }
+    description: tool.description,
+    parameters: tool.parameters
   }));
 }
 

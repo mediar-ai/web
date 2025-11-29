@@ -182,12 +182,11 @@ function toFunctionDeclarations(
     | undefined
 ): FunctionDeclaration[] {
   if (!tools) return [];
-  // Minimal tool declarations - just names, no descriptions or schemas
-  // AI must use get_tool_details to learn about tools before calling them
+  // Full tool declarations with descriptions and schemas for native function calling
   return tools.map(tool => ({
     name: tool.name,
-    description: tool.name,
-    parameters: { type: 'object', properties: {} } as any, // Empty schema
+    description: tool.description || tool.name,
+    parameters: cleanSchema(tool.parameters) as any,
   }));
 }
 
@@ -1817,10 +1816,15 @@ export async function POST(request: NextRequest) {
       emit({ type: 'text', content: result.text });
     }
 
+    // Emit client tools if any (for client-only tool calls with no server tools)
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      emit({ type: 'client_tools', toolCalls: result.toolCalls });
+    }
+
     // Emit final done event with all data
     emit({
       type: 'done',
-      finishReason: result.finishReason || 'stop',
+      finishReason: result.toolCalls?.length > 0 ? 'tool_calls' : (result.finishReason || 'stop'),
       sessionId: actualSessionId || '',
       model: sessionModel,
       ...(workflowData && { workflowData }),
