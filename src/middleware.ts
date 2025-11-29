@@ -59,6 +59,11 @@ export default clerkMiddleware(async (auth, req) => {
 
   // Handle protected API routes - require authentication but allow any authenticated user
   if (isProtectedApiRoute(req)) {
+    // Skip auth for OPTIONS requests (CORS preflight) - let route handler respond
+    if (req.method === 'OPTIONS') {
+      return;
+    }
+
     // First, check for desktop token in Authorization header
     const authHeader = req.headers.get('authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
