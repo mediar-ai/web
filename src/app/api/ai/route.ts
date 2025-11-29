@@ -566,8 +566,8 @@ async function handleVertexChat(params: {
     historyLength: history.length,
   });
 
-  // Check token limits
-  checkTokenLimit(history, 'VERTEX', 200000, 150000);
+  // Check token limits (Gemini 2.5/3 models have 1M context window)
+  checkTokenLimit(history, 'VERTEX', 1000000, 800000);
 
   // Build contents array for the new SDK
   const contents: Content[] = [...history] as Content[];
