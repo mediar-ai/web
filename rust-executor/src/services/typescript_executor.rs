@@ -486,6 +486,51 @@ impl<'a> TypeScriptExecutor<'a> {
             return Some(error.to_string());
         }
 
+        // Check for critical_error_occurred in state/data (workflow sets this on unrecoverable errors)
+        // Path: state.context.state.critical_error_occurred OR state.context.state.error_message
+        if let Some(state) = obj.get("state").and_then(|v| v.as_object()) {
+            if let Some(context) = state.get("context").and_then(|v| v.as_object()) {
+                if let Some(ctx_state) = context.get("state").and_then(|v| v.as_object()) {
+                    // Check if critical error occurred
+                    let is_critical = ctx_state
+                        .get("critical_error_occurred")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "true")
+                        .unwrap_or(false);
+
+                    if is_critical {
+                        // Try to get detailed error message from state
+                        if let Some(error_msg) = ctx_state
+                            .get("error_message")
+                            .and_then(|v| v.as_str())
+                        {
+                            return Some(error_msg.to_string());
+                        }
+                        // Try failure_reason
+                        if let Some(failure_reason) = ctx_state
+                            .get("failure_reason")
+                            .and_then(|v| v.as_str())
+                        {
+                            return Some(failure_reason.to_string());
+                        }
+                        // Try error_type + diagnosis for context
+                        let error_type = ctx_state
+                            .get("error_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let diagnosis = ctx_state
+                            .get("failure_diagnosis")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        return Some(format!(
+                            "Critical error occurred: {} (diagnosis: {})",
+                            error_type, diagnosis
+                        ));
+                    }
+                }
+            }
+        }
+
         // Try message as fallback
         obj.get("message")
             .and_then(|v| v.as_str())
