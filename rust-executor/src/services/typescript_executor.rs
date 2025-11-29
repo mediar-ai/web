@@ -627,6 +627,32 @@ impl<'a> TypeScriptExecutor<'a> {
                         if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
                             return Some(error.to_string());
                         }
+
+                        // Handle exit_code + note format from MCP
+                        if let Some(exit_code) = json.get("exit_code").and_then(|v| v.as_i64()) {
+                            // Extract clean error from note field if present
+                            if let Some(note) = json.get("note").and_then(|n| n.as_str()) {
+                                // Try to find last meaningful error line in note
+                                if let Some(error_line) = note
+                                    .lines()
+                                    .rev()
+                                    .find(|line| {
+                                        let lower = line.to_lowercase();
+                                        (lower.contains("error") || lower.contains("failed") || lower.contains("exception"))
+                                            && !lower.contains("debug")
+                                            && !lower.contains("info")
+                                            && !lower.contains(" warn")
+                                    })
+                                {
+                                    let trimmed = error_line.trim();
+                                    if !trimmed.is_empty() && trimmed.len() < 500 {
+                                        return Some(format!("Exit code {}: {}", exit_code, trimmed));
+                                    }
+                                }
+                            }
+                            // Fallback: just return exit code info
+                            return Some(format!("Process exited with code {}", exit_code));
+                        }
                     }
                 }
             }
