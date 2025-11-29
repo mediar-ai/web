@@ -135,6 +135,8 @@ impl WorkflowQueries {
         //
         // IMPORTANT: Only claim executions where the assigned machine doesn't have
         // another execution currently running. This ensures one workflow per machine.
+        // FIX: Also clear completed_at when claiming retried executions to prevent
+        // negative duration (completed_at < started_at) in UI
 
         let result = sqlx::query(
             r#"
@@ -142,6 +144,7 @@ impl WorkflowQueries {
             SET
                 status = 'running',
                 started_at = NOW(),
+                completed_at = NULL,
                 updated_at = NOW()
             WHERE id = (
                 SELECT we.id FROM workflow_executions we
@@ -282,6 +285,9 @@ impl WorkflowQueries {
     }
 
     /// Schedule an execution for retry after infrastructure failure
+    // IMPORTANT: Clear completed_at, formatted_output, error_message when scheduling retry
+    // Otherwise, re-claimed execution will have stale completed_at < started_at
+    // causing negative duration display in UI
     pub async fn schedule_retry(
         pool: &Pool<Postgres>,
         execution_id: i64,
@@ -298,6 +304,9 @@ impl WorkflowQueries {
                 next_retry_at = $3,
                 is_retryable = TRUE,
                 error_category = $4,
+                completed_at = NULL,
+                formatted_output = NULL,
+                error_message = NULL,
                 updated_at = NOW()
             WHERE id = $1
             "#,
