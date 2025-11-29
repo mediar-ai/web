@@ -595,7 +595,7 @@ export const serverSideWorkflowTools = {
    * Get current workflow content
    */
   get_workflow: {
-    description: 'Get the current workflow with steps. Returns structured data with 1-based step indices for use with get_step and execute_workflow.',
+    description: 'Get the current workflow with steps and variables. Returns structured data with 1-based step indices for use with get_step and execute_workflow.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {},
@@ -644,6 +644,7 @@ export const serverSideWorkflowTools = {
             ...(step.fallback_id && { fallback_id: step.fallback_id }),
           })),
           total_steps: steps.length,
+          variables: parsed.variables || {},
           version_number: currentVersion.versionNumber
         };
       } catch (error) {
@@ -904,6 +905,128 @@ export const serverSideWorkflowTools = {
             step_count: steps.length,
             last_modified: new Date().toISOString()
           }
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Update a workflow variable
+   */
+  update_workflow_variable: {
+    description: 'Update a variable in the currently focused workflow. Can add new variables or modify existing ones.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        variable_name: {
+          type: SchemaType.STRING,
+          description: 'Name of the variable to update or create'
+        },
+        variable_value: {
+          type: SchemaType.OBJECT,
+          description: 'Variable definition object with type, label, default, etc.',
+          properties: {
+            type: { type: SchemaType.STRING, description: 'Variable type (string, number, boolean, etc.)' },
+            label: { type: SchemaType.STRING, description: 'Human-readable label for the variable' },
+            default: { type: SchemaType.STRING, description: 'Default value for the variable' },
+            description: { type: SchemaType.STRING, description: 'Description of the variable' }
+          },
+          additionalProperties: true
+        },
+        delete: {
+          type: SchemaType.BOOLEAN,
+          description: 'If true, delete the variable instead of updating it'
+        }
+      },
+      required: ['variable_name']
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        variable_name: string;
+        variable_value?: Record<string, any>;
+        delete?: boolean;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Updating variable:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version using the service
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Parse content
+        let parsed: any;
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          parsed = currentVersion.jsonContent;
+        } else {
+          const content = currentVersion.yamlContent ||
+                         JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
+
+        // Ensure variables object exists
+        if (!parsed.variables) {
+          parsed.variables = {};
+        }
+
+        let action: string;
+        let changeNotes: string;
+
+        if (params.delete) {
+          // Delete the variable
+          if (!(params.variable_name in parsed.variables)) {
+            throw new Error(`Variable '${params.variable_name}' not found`);
+          }
+          delete parsed.variables[params.variable_name];
+          action = 'deleted';
+          changeNotes = `Deleted variable: ${params.variable_name}`;
+        } else if (!params.variable_value) {
+          throw new Error('variable_value is required when not deleting');
+        } else {
+          // Add or update the variable
+          const isNew = !(params.variable_name in parsed.variables);
+          parsed.variables[params.variable_name] = params.variable_value;
+          action = isNew ? 'added' : 'updated';
+          changeNotes = `${isNew ? 'Added' : 'Updated'} variable: ${params.variable_name}`;
+        }
+
+        // Convert back to YAML
+        const newYamlContent = yaml.dump(parsed);
+
+        // Create new version
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
+
+        console.log('[SERVER-WORKFLOW-EDIT] Variable updated successfully, version:', result.version?.version_number);
+
+        return {
+          success: true,
+          message: `Successfully ${action} variable "${params.variable_name}".`,
+          action,
+          variable_name: params.variable_name,
+          variable_value: params.delete ? null : params.variable_value,
+          total_variables: Object.keys(parsed.variables).length,
+          version_id: result.version?.id,
+          version_number: result.version?.version_number,
+          workflow_updated: true
         };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
