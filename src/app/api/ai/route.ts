@@ -1352,6 +1352,7 @@ export async function POST(request: NextRequest) {
       console.log(
         `🛠️ Tools available: ${clientFunctionDeclarations.length} client (${clientDescLen} desc chars), ${serverFunctionDeclarations.length} server (${serverDescLen} desc chars)`
       );
+
     }
 
     // Initialize Vertex client
