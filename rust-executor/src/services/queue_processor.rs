@@ -12,8 +12,7 @@ use crate::config::RetryConfig;
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::mcp::McpClient;
 use crate::services::{
-    CancellationRegistry, CancellationToken, ExecutionHandler, MonitorClient, TypeScriptExecutor,
-    YamlExecutor,
+    CancellationRegistry, ExecutionHandler, MonitorClient, TypeScriptExecutor, YamlExecutor,
 };
 
 pub struct QueueProcessor {

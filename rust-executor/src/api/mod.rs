@@ -7,7 +7,6 @@ use axum::{
 };
 use serde::Serialize;
 use sqlx::Row;
-use std::sync::Arc;
 
 use crate::db::DatabasePool;
 use crate::models::{ExecutionRequest, ExecutionResponse, Workflow, WorkflowExecution};
