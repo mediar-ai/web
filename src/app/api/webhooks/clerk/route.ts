@@ -43,7 +43,6 @@ async function createVmTokenForOrg(
         org_id: orgId,
         org_role: 'org:admin',
         expires_at: expiresAt.toISOString(),
-        device_name: 'VM Service Token',
       });
 
     if (sessionError) {
