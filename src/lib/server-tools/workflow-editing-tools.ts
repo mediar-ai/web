@@ -898,12 +898,14 @@ export const serverSideWorkflowTools = {
 
 /**
  * Get workflow tool declarations for Vertex AI
+ * Minimal declarations - just names, no descriptions or schemas
+ * AI must use get_tool_details to learn about tools before calling them
  */
 export function getWorkflowToolDeclarations() {
-  return Object.entries(serverSideWorkflowTools).map(([name, tool]) => ({
+  return Object.entries(serverSideWorkflowTools).map(([name]) => ({
     name,
-    description: tool.description,
-    parameters: tool.parameters
+    description: name,
+    parameters: { type: SchemaType.OBJECT, properties: {} }
   }));
 }
 
