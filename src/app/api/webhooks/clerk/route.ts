@@ -4,15 +4,84 @@ import { Webhook } from 'svix';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { createClient } from '@supabase/supabase-js';
 import { addToLoops } from '@/lib/loops';
+import { encryptSecret } from '@/lib/crypto';
+import { randomBytes } from 'crypto';
 
 const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
 const MEDIAR_ORG_IDS = ['org_2yynzGa53bNM1GTPLp5mc2lYRyD', 'org_2yydAO45WOB4RaCE4F4BNUPtw9c'];
+const VM_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for VM tokens
 
 // Initialize Supabase client for querying survey submissions
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
+
+/**
+ * Create VM_TOKEN for an organization
+ * - Creates a desktop session token for the org admin
+ * - Encrypts and stores it in org_secrets as VM_TOKEN
+ */
+async function createVmTokenForOrg(
+  orgId: string,
+  createdBy: string,
+  creatorEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Generate secure token
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + VM_TOKEN_EXPIRY_DAYS);
+
+    // Create desktop session for this token
+    const { error: sessionError } = await supabase
+      .from('mediar_desktop_sessions')
+      .insert({
+        token,
+        clerk_user_id: createdBy,
+        email: creatorEmail,
+        org_id: orgId,
+        org_role: 'org:admin',
+        expires_at: expiresAt.toISOString(),
+        device_name: 'VM Service Token',
+      });
+
+    if (sessionError) {
+      console.error(`[Clerk Webhook] Failed to create desktop session for VM_TOKEN:`, sessionError);
+      return { success: false, error: `Failed to create desktop session: ${sessionError.message}` };
+    }
+
+    // Encrypt the token
+    const encryptedToken = await encryptSecret(token);
+
+    // Store in org_secrets
+    const { error: secretError } = await supabase
+      .from('org_secrets')
+      .insert({
+        org_id: orgId,
+        name: 'VM_TOKEN',
+        description: 'Auto-generated token for VM KV access',
+        encrypted_value: encryptedToken,
+        created_by: createdBy,
+      });
+
+    if (secretError) {
+      // If secret already exists, that's fine
+      if (secretError.code === '23505') { // unique constraint violation
+        console.log(`[Clerk Webhook] VM_TOKEN already exists for org ${orgId}`);
+        return { success: true };
+      }
+      console.error(`[Clerk Webhook] Failed to store VM_TOKEN in org_secrets:`, secretError);
+      return { success: false, error: `Failed to store secret: ${secretError.message}` };
+    }
+
+    console.log(`[Clerk Webhook] ✓ Created VM_TOKEN for org ${orgId}`);
+    return { success: true };
+  } catch (err) {
+    console.error(`[Clerk Webhook] Error creating VM_TOKEN:`, err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -336,6 +405,16 @@ export async function POST(req: Request) {
     });
 
     console.log(`[Clerk Webhook] ✓ Tracked organization_created in PostHog: ${name} (is_personal: ${isPersonalWorkspace})`);
+
+    // Create VM_TOKEN for KV access (for all orgs)
+    if (created_by && creatorEmail !== 'unknown') {
+      const vmTokenResult = await createVmTokenForOrg(orgId, created_by, creatorEmail);
+      if (!vmTokenResult.success) {
+        console.error(`[Clerk Webhook] ✗ Failed to create VM_TOKEN for ${name}: ${vmTokenResult.error}`);
+      }
+    } else {
+      console.warn(`[Clerk Webhook] ⚠ Cannot create VM_TOKEN - missing creator info for ${name}`);
+    }
 
     // Only invite Mediar admins to team organizations (not personal workspaces)
     if (!isPersonalWorkspace) {
