@@ -3,6 +3,8 @@
 //! Provides a centralized registry for tracking running executions and
 //! signaling cancellation requests.
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{watch, RwLock};
