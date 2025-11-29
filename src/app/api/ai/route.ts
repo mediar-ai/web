@@ -70,7 +70,8 @@ interface SessionData {
   history: VertexMessage[];
   provider?: 'vertex' | 'anthropic'; // Track which provider is being used
   system?: string;
-  tools?: FunctionDeclaration[]; // Cached tool declarations from Turn 1 (client MCP tools + server tools)
+  tools?: FunctionDeclaration[]; // Cached tool declarations from Turn 1 (stripped - for AI)
+  originalClientTools?: Array<{ name: string; description?: string; parameters?: any }>; // Original client tools (full schemas - for get_tool_details)
   model: AllowedModel;
   createdAt: string;
   updatedAt: string;
@@ -804,6 +805,7 @@ export async function POST(request: NextRequest) {
     let sessionSystem = system;
     let sessionModel: AllowedModel = requestedModel as AllowedModel;
     let cachedTools: FunctionDeclaration[] | undefined = undefined;
+    let cachedOriginalClientTools: Array<{ name: string; description?: string; parameters?: any }> | undefined = undefined;
 
     if (sessionId) {
       const sessionData = await loadSession(sessionId);
@@ -842,9 +844,10 @@ export async function POST(request: NextRequest) {
           sessionModel = sessionData.model;
         }
 
-        cachedTools = sessionData.tools; // Retrieve cached tools from Turn 1
+        cachedTools = sessionData.tools; // Retrieve cached tools from Turn 1 (stripped)
+        cachedOriginalClientTools = sessionData.originalClientTools; // Retrieve original client tools for get_tool_details
         console.log(
-          `[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}`
+          `[AI API] Using KV session ${sessionId} with ${history.length} history message(s)${cachedTools ? `, ${cachedTools.length} cached tools` : ''}${cachedOriginalClientTools ? `, ${cachedOriginalClientTools.length} original client tools` : ''}`
         );
       } else {
         console.log(
@@ -951,7 +954,7 @@ export async function POST(request: NextRequest) {
               authenticatedUserId,
               orgId,
               workflowId,
-              clientTools: tools, // Original client tools for get_tool_details
+              clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
             },
             { preserveId: true } // Anthropic needs IDs
           );
@@ -1078,7 +1081,7 @@ export async function POST(request: NextRequest) {
                   authenticatedUserId,
                   orgId,
                   workflowId,
-                  clientTools: tools, // Original client tools for get_tool_details
+                  clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
                 },
                 { preserveId: true, isAdditional: true } // Anthropic needs IDs
               );
@@ -1198,6 +1201,7 @@ export async function POST(request: NextRequest) {
               provider,
               system: sessionSystem,
               tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
+              originalClientTools: cachedOriginalClientTools || tools, // Cache original client tools for get_tool_details
               model: sessionModel,
               createdAt: sessionId
                 ? (await loadSession(sessionId))?.createdAt ||
@@ -1287,6 +1291,7 @@ export async function POST(request: NextRequest) {
           provider,
           system: sessionSystem,
           tools: cachedTools || (allTools as any), // Cache tools on Turn 1, keep cached tools on Turn 2+
+          originalClientTools: cachedOriginalClientTools || tools, // Cache original client tools for get_tool_details
           model: sessionModel,
           createdAt: sessionId
             ? (await loadSession(sessionId))?.createdAt ||
@@ -1471,7 +1476,7 @@ export async function POST(request: NextRequest) {
             orgId,
             email: userEmail,
             workflowId,
-            clientTools: tools, // Original client tools for get_tool_details
+            clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
           },
           { preserveId: false } // Vertex doesn't need IDs
         );
@@ -1572,7 +1577,7 @@ export async function POST(request: NextRequest) {
                 authenticatedUserId,
                 orgId,
                 workflowId,
-                clientTools: tools, // Original client tools for get_tool_details
+                clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
               },
               { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
             );
@@ -1694,6 +1699,7 @@ export async function POST(request: NextRequest) {
             provider,
             system: sessionSystem,
             tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
+            originalClientTools: cachedOriginalClientTools || tools, // Cache original client tools for get_tool_details
             model: sessionModel,
             createdAt: sessionId
               ? (await loadSession(sessionId))?.createdAt ||
@@ -1795,6 +1801,7 @@ export async function POST(request: NextRequest) {
         provider,
         system: sessionSystem,
         tools: cachedTools || functionDeclarations, // Cache tools on Turn 1, keep cached tools on Turn 2+
+        originalClientTools: cachedOriginalClientTools || tools, // Cache original client tools for get_tool_details
         model: sessionModel,
         createdAt: sessionId
           ? (await loadSession(sessionId))?.createdAt ||
@@ -1803,6 +1810,11 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date().toISOString(),
       };
       await saveSession(actualSessionId, sessionData);
+    }
+
+    // Emit text if present (for non-tool-call responses)
+    if (result.text) {
+      emit({ type: 'text', content: result.text });
     }
 
     // Emit final done event with all data
