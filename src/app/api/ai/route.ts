@@ -76,6 +76,34 @@ interface SessionData {
   updatedAt: string;
 }
 
+// =================================================================
+// SSE Streaming Types for server-side tool visibility
+// =================================================================
+export type StreamEvent =
+  | { type: 'text'; content: string }
+  | { type: 'server_tool_start'; name: string; args: Record<string, any> }
+  | { type: 'server_tool_complete'; name: string; result: any; elapsedMs: number; error?: string }
+  | { type: 'client_tools'; toolCalls: Array<{ id?: string; name: string; args: Record<string, any> }> }
+  | { type: 'done'; finishReason: string; sessionId: string; model: string; workflowData?: any; metrics?: any }
+  | { type: 'error'; error: string; details?: string };
+
+// Helper to create SSE encoder and emit function
+function createSSEEmitter(controller: ReadableStreamDefaultController<Uint8Array>) {
+  const encoder = new TextEncoder();
+  return {
+    emit: (event: StreamEvent) => {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    },
+    close: () => {
+      controller.close();
+    },
+    error: (err: Error) => {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`));
+      controller.close();
+    }
+  };
+}
+
 const KV_SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 const KV_SESSION_PREFIX = 'ai-session:';
 
@@ -153,10 +181,12 @@ function toFunctionDeclarations(
     | undefined
 ): FunctionDeclaration[] {
   if (!tools) return [];
+  // Minimal tool declarations - just names, no descriptions or schemas
+  // AI must use get_tool_details to learn about tools before calling them
   return tools.map(tool => ({
     name: tool.name,
-    description: tool.description || `Execute ${tool.name}`,
-    parameters: cleanSchema(tool.parameters || {}) as any,
+    description: tool.name,
+    parameters: { type: 'object', properties: {} } as any, // Empty schema
   }));
 }
 
@@ -292,7 +322,7 @@ async function executeServerTool(
     orgId: string | null;
     email?: string | null;
     workflowId?: number;
-    allTools?: FunctionDeclaration[]; // For get_tool_details meta-tool
+    clientTools?: Array<{ name: string; description?: string; parameters?: any }>; // Original client tools for get_tool_details
   },
   options: {
     preserveId: boolean; // Anthropic needs IDs, Vertex doesn't
@@ -355,7 +385,7 @@ async function executeServerTool(
           ...(context.email && { email: context.email }),
         })
       : await executeKnowledgeTool(toolCall.name, toolArgs, {
-          allTools: context.allTools,
+          clientTools: context.clientTools,
         });
 
     // Extract workflow data if present
@@ -692,65 +722,83 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 200, headers });
 }
 
-// POST (native, non-streaming)
+// POST (SSE streaming for server-side tool visibility)
 export async function POST(request: NextRequest) {
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 
+  // Early validation - these return JSON errors before streaming starts
+  let authResult;
+  let body;
   try {
-    const authResult = await authenticate(request);
+    authResult = await authenticate(request);
     if (!authResult.authenticated) {
       return NextResponse.json(
         { error: 'Unauthorized. Please provide valid credentials.' },
         { status: 401, headers: corsHeaders }
       );
     }
+    body = await request.json();
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400, headers: corsHeaders }
+    );
+  }
 
-    // Extract user context for authorization checks
-    const authenticatedUserId = authResult.userId;
-    const orgId = authResult.orgId;
-    const userEmail = authResult.email;
+  // Extract user context for authorization checks
+  const authenticatedUserId = authResult.userId;
+  const orgId = authResult.orgId;
+  const userEmail = authResult.email;
 
-    const body = await request.json();
-    const sessionId = body.sessionId as string | undefined;
-    const requestedModel = (body.model as string) || 'gemini-2.5-flash';
-    const input = body.input as string | undefined;
-    let history = (body.history as VertexMessage[]) || [];
-    const system = (body.system as string) || undefined;
-    const workflowId = body.workflowId as number | undefined; // For server-side workflow editing
-    const generationConfig = body.generationConfig as
-      | { temperature?: number; maxOutputTokens?: number }
-      | undefined;
-    const thinkingLevel = body.thinkingLevel as 'low' | 'high' | undefined;
-    const mode = (body.mode as 'ask' | 'act') || 'act'; // Ask mode: AI can discuss tools but not execute
-    console.log(`[AI API] Mode received: '${mode}' (body.mode was: ${body.mode === undefined ? 'undefined' : `'${body.mode}'`})`);
-    const tools = body.tools as
-      | Array<{ name: string; description?: string; parameters?: JSONSchema }>
-      | undefined;
-    const toolResults = body.toolResults as
-      | Array<{ id: string; name: string; result: any }>
-      | undefined;
+  const sessionId = body.sessionId as string | undefined;
+  const requestedModel = (body.model as string) || 'gemini-2.5-flash';
+  const input = body.input as string | undefined;
+  let history = (body.history as VertexMessage[]) || [];
+  const system = (body.system as string) || undefined;
+  const workflowId = body.workflowId as number | undefined; // For server-side workflow editing
+  const generationConfig = body.generationConfig as
+    | { temperature?: number; maxOutputTokens?: number }
+    | undefined;
+  const thinkingLevel = body.thinkingLevel as 'low' | 'high' | undefined;
+  const mode = (body.mode as 'ask' | 'act') || 'act'; // Ask mode: AI can discuss tools but not execute
+  console.log(`[AI API] Mode received: '${mode}' (body.mode was: ${body.mode === undefined ? 'undefined' : `'${body.mode}'`})`);
+  const tools = body.tools as
+    | Array<{ name: string; description?: string; parameters?: JSONSchema }>
+    | undefined;
+  const toolResults = body.toolResults as
+    | Array<{ id: string; name: string; result: any }>
+    | undefined;
 
-    // Validate requested model first (before mapping to actual Vertex AI name)
-    if (!validateModel(requestedModel)) {
-      return NextResponse.json(
-        { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-    if (!input && !toolResults) {
-      return NextResponse.json(
-        { error: 'Either input or toolResults must be provided' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
+  // Validate requested model first (before mapping to actual Vertex AI name)
+  if (!validateModel(requestedModel)) {
+    return NextResponse.json(
+      { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+  if (!input && !toolResults) {
+    return NextResponse.json(
+      { error: 'Either input or toolResults must be provided' },
+      { status: 400, headers: corsHeaders }
+    );
+  }
 
-    // Determine provider based on requested model (before mapping)
-    const provider: 'vertex' | 'anthropic' = isAnthropicModel(requestedModel)
-      ? 'anthropic'
-      : 'vertex';
-    console.log(`[AI API] Using provider: ${provider} for model: ${requestedModel}`);
+  // Determine provider based on requested model (before mapping)
+  const provider: 'vertex' | 'anthropic' = isAnthropicModel(requestedModel)
+    ? 'anthropic'
+    : 'vertex';
+  console.log(`[AI API] Using provider: ${provider} for model: ${requestedModel}`);
 
+  // Track server tools executed for streaming visibility
+  const serverToolsExecuted: Array<{ name: string; args: any; result?: any; elapsedMs?: number; error?: string }> = [];
+
+  // Create streaming response
+  const stream = new ReadableStream({
+    async start(controller) {
+      const { emit, close, error: emitError } = createSSEEmitter(controller);
+
+      try {
     // Load session from KV if sessionId provided
     let actualSessionId = sessionId;
     let sessionSystem = system;
@@ -838,8 +886,11 @@ export async function POST(request: NextRequest) {
           ...devLogToolDecls,
         ];
         allTools = [...clientTools, ...serverToolDeclarations];
+        // Debug: Show description lengths
+        const clientDescLen = clientTools.reduce((sum, t) => sum + (t.description?.length || 0), 0);
+        const serverDescLen = serverToolDeclarations.reduce((sum, t) => sum + (t.description?.length || 0), 0);
         console.log(
-          `🛠️ Tools available: ${clientTools.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow`
+          `🛠️ Tools available: ${clientTools.length} client (${clientDescLen} desc chars), ${serverToolDeclarations.length} server (${serverDescLen} desc chars)`
         );
       }
 
@@ -887,19 +938,34 @@ export async function POST(request: NextRequest) {
 
         // Separate server and client tools
         for (const toolCall of result.toolCalls) {
+          // Check if this is a server-side tool and emit start event
+          const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
+          if (isServerTool) {
+            emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
+          }
+          const startTime = Date.now();
+
           const executed = await executeServerTool(
             toolCall,
             {
               authenticatedUserId,
               orgId,
               workflowId,
-              allTools: allTools as any, // For get_tool_details meta-tool
+              clientTools: tools, // Original client tools for get_tool_details
             },
             { preserveId: true } // Anthropic needs IDs
           );
 
           if (executed) {
-            // Server-side tool
+            // Server-side tool - emit completion
+            const elapsedMs = Date.now() - startTime;
+            emit({
+              type: 'server_tool_complete',
+              name: executed.name,
+              result: executed.result,
+              elapsedMs,
+              ...(executed.result?.error && { error: executed.result.error }),
+            });
             if (executed.workflowData) {
               workflowData = executed.workflowData;
             }
@@ -999,19 +1065,34 @@ export async function POST(request: NextRequest) {
 
             // Check each tool call from continuation
             for (const toolCall of finalResult.toolCalls) {
+              // Check if this is a server-side tool and emit start event
+              const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
+              if (isServerTool) {
+                emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
+              }
+              const startTime = Date.now();
+
               const executed = await executeServerTool(
                 toolCall,
                 {
                   authenticatedUserId,
                   orgId,
                   workflowId,
-                  allTools: allTools as any, // For get_tool_details meta-tool
+                  clientTools: tools, // Original client tools for get_tool_details
                 },
                 { preserveId: true, isAdditional: true } // Anthropic needs IDs
               );
 
               if (executed) {
-                // Server-side tool
+                // Server-side tool - emit completion
+                const elapsedMs = Date.now() - startTime;
+                emit({
+                  type: 'server_tool_complete',
+                  name: executed.name,
+                  result: executed.result,
+                  elapsedMs,
+                  ...(executed.result?.error && { error: executed.result.error }),
+                });
                 if (executed.workflowData) {
                   workflowData = executed.workflowData;
                 }
@@ -1127,19 +1208,25 @@ export async function POST(request: NextRequest) {
             await saveSession(actualSessionId, sessionData);
           }
 
-          // Return the final response with remaining client tools
-          return NextResponse.json(
-            {
-              model: sessionModel,
-              sessionId: actualSessionId,
-              text: finalResult.text,
-              toolCalls: clientToolCalls, // Only return client tools that haven't been executed
-              finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
-              metrics: finalResult.metrics,
-              ...(workflowData && { workflowData }), // Include workflow data if present
-            },
-            { headers: corsHeaders }
-          );
+          // Emit text if present
+          if (finalResult.text) {
+            emit({ type: 'text', content: finalResult.text });
+          }
+          // Emit client tools if any remain
+          if (clientToolCalls.length > 0) {
+            emit({ type: 'client_tools', toolCalls: clientToolCalls });
+          }
+          // Emit done and close
+          emit({
+            type: 'done',
+            finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
+            sessionId: actualSessionId || '',
+            model: sessionModel,
+            ...(workflowData && { workflowData }),
+            metrics: finalResult.metrics,
+          });
+          close();
+          return;
         }
       }
 
@@ -1210,15 +1297,25 @@ export async function POST(request: NextRequest) {
         await saveSession(actualSessionId, sessionData);
       }
 
-      return NextResponse.json(
-        {
-          model: sessionModel,
-          sessionId: actualSessionId,
-          ...result,
-          ...(workflowData && { workflowData }),
-        },
-        { headers: corsHeaders }
-      );
+      // Emit text if present
+      if (result.text) {
+        emit({ type: 'text', content: result.text });
+      }
+      // Emit client tools if any
+      if (result.toolCalls && result.toolCalls.length > 0) {
+        emit({ type: 'client_tools', toolCalls: result.toolCalls });
+      }
+      // Emit done and close
+      emit({
+        type: 'done',
+        finishReason: result.finishReason || 'stop',
+        sessionId: actualSessionId || '',
+        model: sessionModel,
+        ...(workflowData && { workflowData }),
+        metrics: result.metrics,
+      });
+      close();
+      return;
     }
 
     // Vertex AI provider path
@@ -1245,20 +1342,22 @@ export async function POST(request: NextRequest) {
         ...clientFunctionDeclarations,
         ...serverFunctionDeclarations,
       ];
+      // Debug: Show description lengths to verify stripping is working
+      const clientDescLen = clientFunctionDeclarations.reduce((sum, t) => sum + (t.description?.length || 0), 0);
+      const serverDescLen = serverFunctionDeclarations.reduce((sum, t) => sum + (t.description?.length || 0), 0);
       console.log(
-        `🛠️ Tools available: ${clientFunctionDeclarations.length} client, ${knowledgeToolDecls.length} knowledge, ${workflowToolDecls.length} workflow, ${devLogToolDecls.length} dev-logs`
+        `🛠️ Tools available: ${clientFunctionDeclarations.length} client (${clientDescLen} desc chars), ${serverFunctionDeclarations.length} server (${serverDescLen} desc chars)`
       );
     }
 
     // Initialize Vertex client
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-      return NextResponse.json(
-        {
-          error:
-            'Server misconfiguration: missing GOOGLE_APPLICATION_CREDENTIALS_BASE64',
-        },
-        { status: 500, headers: corsHeaders }
-      );
+      emit({
+        type: 'error',
+        error: 'Server misconfiguration: missing GOOGLE_APPLICATION_CREDENTIALS_BASE64',
+      });
+      close();
+      return;
     }
 
     const credentialsJson = Buffer.from(
@@ -1358,6 +1457,13 @@ export async function POST(request: NextRequest) {
 
       // Separate server and client tools
       for (const toolCall of result.toolCalls) {
+        // Check if this is a server-side tool and emit start event
+        const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
+        if (isServerTool) {
+          emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
+        }
+        const startTime = Date.now();
+
         const executed = await executeServerTool(
           toolCall,
           {
@@ -1365,13 +1471,21 @@ export async function POST(request: NextRequest) {
             orgId,
             email: userEmail,
             workflowId,
-            allTools: functionDeclarations, // For get_tool_details meta-tool
+            clientTools: tools, // Original client tools for get_tool_details
           },
           { preserveId: false } // Vertex doesn't need IDs
         );
 
         if (executed) {
-          // Server-side tool
+          // Server-side tool - emit completion
+          const elapsedMs = Date.now() - startTime;
+          emit({
+            type: 'server_tool_complete',
+            name: executed.name,
+            result: executed.result,
+            elapsedMs,
+            ...(executed.result?.error && { error: executed.result.error }),
+          });
           if (executed.workflowData) {
             workflowData = executed.workflowData;
           }
@@ -1445,19 +1559,34 @@ export async function POST(request: NextRequest) {
 
           // Check each tool call from continuation
           for (const toolCall of finalResult.toolCalls) {
+            // Check if this is a server-side tool and emit start event
+            const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
+            if (isServerTool) {
+              emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
+            }
+            const startTime = Date.now();
+
             const executed = await executeServerTool(
               toolCall,
               {
                 authenticatedUserId,
                 orgId,
                 workflowId,
-                allTools: functionDeclarations, // For get_tool_details meta-tool
+                clientTools: tools, // Original client tools for get_tool_details
               },
               { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
             );
 
             if (executed) {
-              // Server-side tool
+              // Server-side tool - emit completion
+              const elapsedMs = Date.now() - startTime;
+              emit({
+                type: 'server_tool_complete',
+                name: executed.name,
+                result: executed.result,
+                elapsedMs,
+                ...(executed.result?.error && { error: executed.result.error }),
+              });
               if (executed.workflowData) {
                 workflowData = executed.workflowData;
               }
@@ -1575,19 +1704,25 @@ export async function POST(request: NextRequest) {
           await saveSession(actualSessionId, sessionData);
         }
 
-        // Return the final response with remaining client tools
-        return NextResponse.json(
-          {
-            model: sessionModel,
-            sessionId: actualSessionId,
-            text: finalResult.text,
-            toolCalls: clientToolCalls, // Only return client tools that haven't been executed
-            finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
-            metrics: finalResult.metrics,
-            ...(workflowData && { workflowData }), // Include workflow data if present
-          },
-          { headers: corsHeaders }
-        );
+        // Emit text if present
+        if (finalResult.text) {
+          emit({ type: 'text', content: finalResult.text });
+        }
+        // Emit client tools if any remain
+        if (clientToolCalls.length > 0) {
+          emit({ type: 'client_tools', toolCalls: clientToolCalls });
+        }
+        // Emit done and close
+        emit({
+          type: 'done',
+          finishReason: clientToolCalls.length > 0 ? 'tool_calls' : 'stop',
+          sessionId: actualSessionId || '',
+          model: sessionModel,
+          ...(workflowData && { workflowData }),
+          metrics: finalResult.metrics,
+        });
+        close();
+        return;
       }
 
       // If only client tools, continue normal flow
@@ -1670,28 +1805,32 @@ export async function POST(request: NextRequest) {
       await saveSession(actualSessionId, sessionData);
     }
 
-    return NextResponse.json(
-      {
-        model: sessionModel,
-        sessionId: actualSessionId,
-        ...result,
-        ...(workflowData && { workflowData }),
-      },
-      { headers: corsHeaders }
-    );
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('🚨 Vertex AI request failed:', err?.message);
-    return NextResponse.json(
-      {
-        error: 'Failed to generate response',
-        details: err?.message || String(error),
-        errorType: err?.constructor?.name || 'Unknown',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500, headers: corsHeaders }
-    );
-  }
+    // Emit final done event with all data
+    emit({
+      type: 'done',
+      finishReason: result.finishReason || 'stop',
+      sessionId: actualSessionId || '',
+      model: sessionModel,
+      ...(workflowData && { workflowData }),
+      metrics: result.metrics,
+    });
+    close();
+      } catch (error: unknown) {
+        const err = error as Error;
+        console.error('🚨 Vertex AI request failed:', err?.message);
+        emitError(err);
+      }
+    }
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
 
 // GET (health)

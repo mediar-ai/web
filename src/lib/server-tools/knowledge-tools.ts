@@ -10,6 +10,8 @@ import { Type } from '@google/genai';
 // Alias for backward compatibility
 const SchemaType = Type;
 import { loadTerminatorDocs, searchTerminatorDocs } from '@/lib/terminator-docs-service';
+import { serverSideWorkflowTools } from './workflow-editing-tools';
+import { serverSideDevLogTools } from './dev-log-tools';
 // NOTE: terminator-api-service functions are inlined below to avoid Turbopack chunking issues with fs/path
 
 // Lazy-load Supabase client to avoid initialization errors
@@ -416,37 +418,61 @@ export const serverSideTools = {
     execute: async (params: {
       tool_names: string[];
     }, context?: {
-      allTools?: any[];
+      clientTools?: any[]; // Original client tools with full schemas
     }) => {
       try {
         console.log('[SERVER-GET-TOOL-DETAILS] Getting details for tools:', params.tool_names);
 
-        if (!context?.allTools || context.allTools.length === 0) {
-          return {
-            action: 'error',
-            error: 'No tools available in context. This tool requires the full tool list to be passed in execution context.'
-          };
+        const toolDetails: any[] = [];
+
+        for (const name of params.tool_names) {
+          // 1. Check knowledge tools (serverSideTools in this file)
+          if (serverSideTools[name as keyof typeof serverSideTools]) {
+            const tool = serverSideTools[name as keyof typeof serverSideTools];
+            toolDetails.push({
+              name,
+              description: tool.description,
+              parameters: tool.parameters
+            });
+          }
+          // 2. Check workflow editing tools
+          else if (serverSideWorkflowTools[name as keyof typeof serverSideWorkflowTools]) {
+            const tool = serverSideWorkflowTools[name as keyof typeof serverSideWorkflowTools];
+            toolDetails.push({
+              name,
+              description: tool.description,
+              parameters: tool.parameters
+            });
+          }
+          // 3. Check dev log tools
+          else if (serverSideDevLogTools[name as keyof typeof serverSideDevLogTools]) {
+            const tool = serverSideDevLogTools[name as keyof typeof serverSideDevLogTools];
+            toolDetails.push({
+              name,
+              description: tool.description,
+              parameters: tool.parameters
+            });
+          }
+          // 4. Check client tools (MCP/desktop tools)
+          else if (context?.clientTools) {
+            const clientTool = context.clientTools.find(t => t.name === name);
+            if (clientTool) {
+              toolDetails.push({
+                name: clientTool.name,
+                description: clientTool.description,
+                parameters: clientTool.parameters
+              });
+            }
+          }
         }
 
-        const requestedTools = context.allTools.filter(tool =>
-          params.tool_names.includes(tool.name)
-        );
-
-        if (requestedTools.length === 0) {
+        if (toolDetails.length === 0) {
           return {
             action: 'no_tools_found',
             requested: params.tool_names,
-            available_count: context.allTools.length,
-            message: 'None of the requested tools were found in the available tool list.'
+            message: 'None of the requested tools were found.'
           };
         }
-
-        // Format tool details for AI consumption
-        const toolDetails = requestedTools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters
-        }));
 
         console.log(`[SERVER-GET-TOOL-DETAILS] Returning details for ${toolDetails.length} tools`);
 
@@ -469,19 +495,21 @@ export const serverSideTools = {
 
 /**
  * Convert server tools to Vertex AI function declarations
+ * Minimal declarations - just names, no descriptions or schemas
+ * AI must use get_tool_details to learn about tools before calling them
  */
 export function getServerToolDeclarations() {
-  return Object.entries(serverSideTools).map(([name, tool]) => ({
+  return Object.entries(serverSideTools).map(([name]) => ({
     name,
-    description: tool.description,
-    parameters: tool.parameters
+    description: name,
+    parameters: { type: SchemaType.OBJECT, properties: {} }
   }));
 }
 
 /**
  * Execute a server-side tool by name
  */
-export async function executeServerTool(name: string, args: any, context?: { allTools?: any[] }) {
+export async function executeServerTool(name: string, args: any, context?: { clientTools?: any[] }) {
   const tool = serverSideTools[name as keyof typeof serverSideTools];
   if (!tool) {
     throw new Error(`Unknown server tool: ${name}`);
