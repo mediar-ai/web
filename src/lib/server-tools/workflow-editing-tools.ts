@@ -194,19 +194,22 @@ function setSteps(workflow: any, steps: CommandStep[]): void {
 }
 
 /**
- * Find step by identifier (ID, name, or index)
+ * Find step by identifier (ID, name, or 1-based index)
+ * Numeric indices are 1-based (1 = first step, 2 = second step, -1 = last step)
  */
 function findStepIndex(steps: CommandStep[], identifier: string | number): number {
-  // Numeric index (including negative indices)
+  // Numeric index: 1-based for positive, negative indices count from end
   if (typeof identifier === 'number') {
-    const index = identifier < 0 ? steps.length + identifier : identifier;
+    // Negative: -1 = last, -2 = second to last, etc.
+    // Positive: 1 = first (index 0), 2 = second (index 1), etc.
+    const index = identifier < 0 ? steps.length + identifier : identifier - 1;
     return index >= 0 && index < steps.length ? index : -1;
   }
 
-  // Parse string as number if possible
+  // Parse string as number if possible (1-based)
   const numId = parseInt(identifier as string, 10);
   if (!isNaN(numId)) {
-    const index = numId < 0 ? steps.length + numId : numId;
+    const index = numId < 0 ? steps.length + numId : numId - 1;
     return index >= 0 && index < steps.length ? index : -1;
   }
 
@@ -232,7 +235,7 @@ export const serverSideWorkflowTools = {
       properties: {
         step_identifier: {
           type: SchemaType.STRING,
-          description: 'Step ID, name, or numeric index (as string)'
+          description: 'Step ID, name, or 1-based index (1 = first step, 2 = second, -1 = last)'
         },
         updates: {
           type: SchemaType.OBJECT,
@@ -363,7 +366,7 @@ export const serverSideWorkflowTools = {
    * Add a new step to the workflow
    */
   add_workflow_step: {
-    description: 'Add a new step to the currently focused workflow',
+    description: 'Add a new step to the currently focused workflow. Use 1-based position.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -389,7 +392,7 @@ export const serverSideWorkflowTools = {
         },
         position: {
           type: SchemaType.NUMBER,
-          description: 'Position to insert step (0-based index, omit to append at end)'
+          description: 'Position to insert step (1-based, e.g., 1 = insert at beginning, omit to append at end)'
         }
       },
       required: ['step']  // workflow_id removed - injected by backend from request context
@@ -412,31 +415,28 @@ export const serverSideWorkflowTools = {
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use content based on preferred format
-        let content: string;
         let parsed: any;
 
         if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
-          // For jsonb format, use JSON content directly
           parsed = currentVersion.jsonContent;
-          content = JSON.stringify(parsed);
         } else {
-          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
-          content = currentVersion.yamlContent ||
+          const content = currentVersion.yamlContent ||
                    JSON.stringify(currentVersion.jsonContent || {});
           const result = parseWorkflowContent(content);
           parsed = result.parsed;
         }
         const steps = getSteps(parsed);
 
-        // Add the new step
+        // Convert 1-based position to 0-based index
+        // position=1 means insert at beginning (index 0), position=2 means after first step (index 1), etc.
         const position = params.position === null ? undefined : params.position;
-        const insertPosition = (position !== undefined && position >= 0 && position <= steps.length)
-          ? position
-          : steps.length;
+        let insertIdx: number;
 
-        if (position !== undefined && position >= 0 && position <= steps.length) {
-          steps.splice(position, 0, params.step);
+        if (position !== undefined && position >= 1 && position <= steps.length + 1) {
+          insertIdx = position - 1;  // Convert 1-based to 0-based
+          steps.splice(insertIdx, 0, params.step);
         } else {
+          insertIdx = steps.length;
           steps.push(params.step);
         }
 
@@ -465,10 +465,10 @@ export const serverSideWorkflowTools = {
 
         return {
           success: true,
-          message: `Successfully added step "${addedStep.name || addedStep.id || 'unnamed'}" at position ${insertPosition + 1}. Workflow now has ${steps.length} step${steps.length !== 1 ? 's' : ''}.`,
+          message: `Successfully added step "${addedStep.name || addedStep.id || 'unnamed'}" at position ${insertIdx + 1}. Workflow now has ${steps.length} step${steps.length !== 1 ? 's' : ''}.`,
           action: 'added',
           step_name: addedStep.name || addedStep.id || 'unnamed',
-          step_index: insertPosition,
+          step_index: insertIdx + 1,  // Return 1-based index
           added_step: addedStep,
           total_step_count: steps.length,
           version_id: result.version?.id,
@@ -498,7 +498,7 @@ export const serverSideWorkflowTools = {
       properties: {
         step_identifier: {
           type: SchemaType.STRING,
-          description: 'Step ID, name, or numeric index (supports negative indices)'
+          description: 'Step ID, name, or 1-based index (1 = first step, 2 = second, -1 = last)'
         },
       },
       required: ['step_identifier']
@@ -595,7 +595,7 @@ export const serverSideWorkflowTools = {
    * Get current workflow content
    */
   get_workflow: {
-    description: 'Get the current workflow YAML content',
+    description: 'Get the current workflow with steps. Returns structured data with 1-based step indices for use with get_step and execute_workflow.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {},
@@ -614,19 +614,38 @@ export const serverSideWorkflowTools = {
         // Get latest workflow version using the service
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
-        // Return content based on preferred format
-        let content: string;
-
+        // Parse content to extract steps
+        let parsed: any;
         if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
-          // For jsonb format, convert to YAML for consistency
-          content = yaml.dump(currentVersion.jsonContent);
+          parsed = currentVersion.jsonContent;
         } else {
-          // For yaml format, return YAML directly, or convert JSON to YAML as fallback
-          content = currentVersion.yamlContent ||
-                   yaml.dump(currentVersion.jsonContent);
+          const content = currentVersion.yamlContent ||
+                         JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
         }
 
-        return { content, version_number: currentVersion.versionNumber };
+        const steps = getSteps(parsed);
+
+        // Return structured data with 1-based indices
+        return {
+          steps: steps.map((step, i) => ({
+            index: i + 1,  // 1-based index for AI to use
+            id: step.id,
+            name: step.name,
+            tool_name: step.tool_name,
+            arguments: step.arguments,
+            ...(step.description && { description: step.description }),
+            ...(step.delay_ms && { delay_ms: step.delay_ms }),
+            ...(step.continue_on_error && { continue_on_error: step.continue_on_error }),
+            ...(step.retries && { retries: step.retries }),
+            ...(step.timeout_ms && { timeout_ms: step.timeout_ms }),
+            ...(step.if && { if: step.if }),
+            ...(step.fallback_id && { fallback_id: step.fallback_id }),
+          })),
+          total_steps: steps.length,
+          version_number: currentVersion.versionNumber
+        };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
         throw error;
@@ -728,13 +747,13 @@ export const serverSideWorkflowTools = {
    * Get a specific step from the workflow
    */
   get_step: {
-    description: 'Get a specific step from the workflow',
+    description: 'Get a specific step from the workflow. Use 1-based index (1 = first step, 2 = second, -1 = last).',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         step_identifier: {
           type: SchemaType.STRING,
-          description: 'Step ID, name, or numeric index'
+          description: '1-based step index (e.g., "1" for first step), step ID, or step name'
         },
       },
       required: ['step_identifier']
@@ -756,16 +775,12 @@ export const serverSideWorkflowTools = {
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use content based on preferred format
-        let content: string;
         let parsed: any;
 
         if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
-          // For jsonb format, use JSON content directly
           parsed = currentVersion.jsonContent;
-          content = JSON.stringify(parsed);
         } else {
-          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
-          content = currentVersion.yamlContent ||
+          const content = currentVersion.yamlContent ||
                    JSON.stringify(currentVersion.jsonContent || {});
           const result = parseWorkflowContent(content);
           parsed = result.parsed;
@@ -779,7 +794,131 @@ export const serverSideWorkflowTools = {
 
         return {
           step: steps[stepIndex],
-          index: stepIndex
+          index: stepIndex + 1  // Return 1-based index
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Prepare workflow execution arguments for mediar-app
+   */
+  execute_workflow: {
+    description: 'Prepare workflow execution. Returns execute_sequence arguments for mediar-app to execute. Use 1-based step indices.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        start_step: {
+          type: SchemaType.NUMBER,
+          description: '1-based start step index (optional, defaults to 1 = first step)'
+        },
+        end_step: {
+          type: SchemaType.NUMBER,
+          description: '1-based end step index (optional, defaults to last step)'
+        },
+        execute_jumps_at_end: {
+          type: SchemaType.BOOLEAN,
+          description: 'Follow jump conditions at end boundary (default: false)'
+        },
+        follow_fallback: {
+          type: SchemaType.BOOLEAN,
+          description: 'Follow fallback_id on failure (default: false)'
+        }
+      },
+      required: []  // All optional
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        start_step?: number;
+        end_step?: number;
+        execute_jumps_at_end?: boolean;
+        follow_fallback?: boolean;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Preparing workflow execution:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Parse content to get steps
+        let parsed: any;
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          parsed = currentVersion.jsonContent;
+        } else {
+          const content = currentVersion.yamlContent ||
+                         JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
+
+        const steps = getSteps(parsed);
+        if (steps.length === 0) {
+          throw new Error('Workflow has no steps to execute');
+        }
+
+        // Convert 1-based indices to step IDs
+        // Default: start_step = 1 (first), end_step = last
+        const startIdx = params.start_step ? params.start_step - 1 : 0;
+        const endIdx = params.end_step ? params.end_step - 1 : steps.length - 1;
+
+        // Validate indices
+        if (startIdx < 0 || startIdx >= steps.length) {
+          throw new Error(`Invalid start_step: ${params.start_step}. Must be 1-${steps.length}`);
+        }
+        if (endIdx < 0 || endIdx >= steps.length) {
+          throw new Error(`Invalid end_step: ${params.end_step}. Must be 1-${steps.length}`);
+        }
+        if (startIdx > endIdx) {
+          throw new Error(`start_step (${params.start_step}) cannot be greater than end_step (${params.end_step})`);
+        }
+
+        const startStepId = steps[startIdx].id || steps[startIdx].name || `step_${startIdx + 1}`;
+        const endStepId = steps[endIdx].id || steps[endIdx].name || `step_${endIdx + 1}`;
+
+        // Build execute_sequence arguments
+        const executeSequenceArgs: Record<string, any> = {
+          steps: steps,
+          workflow_id: params.workflow_id.toString(),
+        };
+
+        // Add step range if not running full workflow
+        if (startIdx !== 0 || endIdx !== steps.length - 1) {
+          executeSequenceArgs.start_from_step = startStepId;
+          executeSequenceArgs.end_at_step = endStepId;
+        }
+
+        // Add optional flags with defaults
+        if (params.execute_jumps_at_end !== undefined) {
+          executeSequenceArgs.execute_jumps_at_end = params.execute_jumps_at_end;
+        }
+        if (params.follow_fallback !== undefined) {
+          executeSequenceArgs.follow_fallback = params.follow_fallback;
+        }
+
+        // Include workflow-level properties if they exist
+        if (parsed.variables) executeSequenceArgs.variables = parsed.variables;
+        if (parsed.inputs) executeSequenceArgs.inputs = parsed.inputs;
+        if (parsed.selectors) executeSequenceArgs.selectors = parsed.selectors;
+
+        return {
+          instruction: 'Call execute_sequence MCP tool with these arguments to run the workflow on mediar-app',
+          execute_sequence_args: executeSequenceArgs,
+          execution_range: {
+            start_step: startIdx + 1,  // 1-based for display
+            end_step: endIdx + 1,      // 1-based for display
+            start_step_id: startStepId,
+            end_step_id: endStepId,
+            total_steps_to_execute: endIdx - startIdx + 1
+          }
         };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
@@ -792,17 +931,17 @@ export const serverSideWorkflowTools = {
    * Reorder workflow steps
    */
   reorder_workflow_steps: {
-    description: 'Reorder steps in the currently focused workflow',
+    description: 'Reorder steps in the currently focused workflow. Use 1-based indices.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         from_index: {
           type: SchemaType.NUMBER,
-          description: 'Current position of step (0-based)'
+          description: 'Current position of step (1-based, e.g., 1 = first step)'
         },
         to_index: {
           type: SchemaType.NUMBER,
-          description: 'Target position for step (0-based)'
+          description: 'Target position for step (1-based, e.g., 1 = first position)'
         }
       },
       required: ['from_index', 'to_index']
@@ -825,30 +964,32 @@ export const serverSideWorkflowTools = {
         const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
 
         // Use content based on preferred format
-        let content: string;
         let parsed: any;
 
         if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
-          // For jsonb format, use JSON content directly
           parsed = currentVersion.jsonContent;
-          content = JSON.stringify(parsed);
         } else {
-          // For yaml or typescript formats, use YAML if available, otherwise stringify JSON
-          content = currentVersion.yamlContent ||
+          const content = currentVersion.yamlContent ||
                    JSON.stringify(currentVersion.jsonContent || {});
           const result = parseWorkflowContent(content);
           parsed = result.parsed;
         }
         const steps = getSteps(parsed);
 
-        if (params.from_index < 0 || params.from_index >= steps.length ||
-            params.to_index < 0 || params.to_index >= steps.length) {
-          throw new Error('Invalid step indices');
+        // Convert 1-based to 0-based
+        const fromIdx = params.from_index - 1;
+        const toIdx = params.to_index - 1;
+
+        if (fromIdx < 0 || fromIdx >= steps.length) {
+          throw new Error(`Invalid from_index: ${params.from_index}. Must be 1-${steps.length}`);
+        }
+        if (toIdx < 0 || toIdx >= steps.length) {
+          throw new Error(`Invalid to_index: ${params.to_index}. Must be 1-${steps.length}`);
         }
 
         // Reorder steps
-        const [movedStep] = steps.splice(params.from_index, 1);
-        steps.splice(params.to_index, 0, movedStep);
+        const [movedStep] = steps.splice(fromIdx, 1);
+        steps.splice(toIdx, 0, movedStep);
         setSteps(parsed, steps);
 
         // Convert back to YAML (always use YAML for GitHub sync)
@@ -858,7 +999,7 @@ export const serverSideWorkflowTools = {
         const result = await workflowVersionService.createVersion({
           workflowId: params.workflow_id,
           yamlContent: newYamlContent,
-          changeNotes: `Reordered steps: moved from ${params.from_index} to ${params.to_index}`,
+          changeNotes: `Reordered steps: moved from position ${params.from_index} to ${params.to_index}`,
           setAsActive: false,
           userId: userContext.userId,
           orgId: userContext.orgId
@@ -872,7 +1013,7 @@ export const serverSideWorkflowTools = {
 
         return {
           success: true,
-          message: `Successfully moved step "${movedStep.name || movedStep.id || 'unnamed'}" from position ${params.from_index + 1} to position ${params.to_index + 1}.`,
+          message: `Successfully moved step "${movedStep.name || movedStep.id || 'unnamed'}" from position ${params.from_index} to position ${params.to_index}.`,
           action: 'reordered',
           moved_step_name: movedStep.name || movedStep.id || 'unnamed',
           from_index: params.from_index,
