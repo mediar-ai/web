@@ -595,7 +595,7 @@ export const serverSideWorkflowTools = {
    * Get current workflow content
    */
   get_workflow: {
-    description: 'Get the current workflow with steps and variables. Returns structured data with 1-based step indices for use with get_step and execute_workflow.',
+    description: 'Get the current workflow with steps, variables, and output parser. Returns structured data with 1-based step indices for use with get_step and execute_workflow.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {},
@@ -645,6 +645,7 @@ export const serverSideWorkflowTools = {
           })),
           total_steps: steps.length,
           variables: parsed.variables || {},
+          output: parsed.output || null,
           version_number: currentVersion.versionNumber
         };
       } catch (error) {
@@ -1024,6 +1025,111 @@ export const serverSideWorkflowTools = {
           variable_name: params.variable_name,
           variable_value: params.delete ? null : params.variable_value,
           total_variables: Object.keys(parsed.variables).length,
+          version_id: result.version?.id,
+          version_number: result.version?.version_number,
+          workflow_updated: true
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Update workflow output parser
+   */
+  update_workflow_output: {
+    description: 'Update the output parser section of the workflow. The output section contains JavaScript code that processes workflow results.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        output: {
+          type: SchemaType.OBJECT,
+          description: 'Output parser configuration object',
+          properties: {
+            run: { type: SchemaType.STRING, description: 'JavaScript code to process sequenceResult and return formatted output' }
+          },
+          additionalProperties: true
+        },
+        delete: {
+          type: SchemaType.BOOLEAN,
+          description: 'If true, remove the output section entirely'
+        }
+      },
+      required: []
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        output?: { run?: string; [key: string]: any };
+        delete?: boolean;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Updating output:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Parse content
+        let parsed: any;
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          parsed = currentVersion.jsonContent;
+        } else {
+          const content = currentVersion.yamlContent ||
+                         JSON.stringify(currentVersion.jsonContent || {});
+          const result = parseWorkflowContent(content);
+          parsed = result.parsed;
+        }
+
+        let action: string;
+        let changeNotes: string;
+
+        if (params.delete) {
+          if (!parsed.output) {
+            throw new Error('No output section to delete');
+          }
+          delete parsed.output;
+          action = 'deleted';
+          changeNotes = 'Deleted output parser section';
+        } else if (!params.output) {
+          throw new Error('output is required when not deleting');
+        } else {
+          const isNew = !parsed.output;
+          parsed.output = params.output;
+          action = isNew ? 'added' : 'updated';
+          changeNotes = `${isNew ? 'Added' : 'Updated'} output parser section`;
+        }
+
+        // Convert back to YAML
+        const newYamlContent = yaml.dump(parsed);
+
+        // Create new version
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
+
+        console.log('[SERVER-WORKFLOW-EDIT] Output updated successfully, version:', result.version?.version_number);
+
+        return {
+          success: true,
+          message: `Successfully ${action} output parser section.`,
+          action,
+          has_output: !!parsed.output,
           version_id: result.version?.id,
           version_number: result.version?.version_number,
           workflow_updated: true
