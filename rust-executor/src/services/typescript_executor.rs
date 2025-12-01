@@ -486,46 +486,62 @@ impl<'a> TypeScriptExecutor<'a> {
             return Some(error.to_string());
         }
 
-        // Check for critical_error_occurred in state/data (workflow sets this on unrecoverable errors)
-        // Path: state.context.state.critical_error_occurred OR state.context.state.error_message
+
+        // Check for critical_error_occurred in state (workflow sets this on unrecoverable errors)
+        // Try multiple paths as different workflow SDKs use different structures:
+        // - state.critical_error_occurred (TypeScript SDK direct)
+        // - state.context.state.critical_error_occurred (legacy nested)
         if let Some(state) = obj.get("state").and_then(|v| v.as_object()) {
+            // Helper to extract error from state object
+            let extract_from_state = |state_obj: &serde_json::Map<String, Value>| -> Option<String> {
+                let is_critical = state_obj
+                    .get("critical_error_occurred")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+
+                if is_critical {
+                    // Try error_message
+                    if let Some(error_msg) = state_obj
+                        .get("error_message")
+                        .and_then(|v| v.as_str())
+                    {
+                        return Some(error_msg.to_string());
+                    }
+                    // Try failure_reason
+                    if let Some(failure_reason) = state_obj
+                        .get("failure_reason")
+                        .and_then(|v| v.as_str())
+                    {
+                        return Some(failure_reason.to_string());
+                    }
+                    // Try error_type + diagnosis for context
+                    let error_type = state_obj
+                        .get("error_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let diagnosis = state_obj
+                        .get("failure_diagnosis")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    return Some(format!(
+                        "Critical error occurred: {} (diagnosis: {})",
+                        error_type, diagnosis
+                    ));
+                }
+                None
+            };
+
+            // Try direct state path first (TypeScript SDK)
+            if let Some(error) = extract_from_state(state) {
+                return Some(error);
+            }
+
+            // Try nested context.state path (legacy)
             if let Some(context) = state.get("context").and_then(|v| v.as_object()) {
                 if let Some(ctx_state) = context.get("state").and_then(|v| v.as_object()) {
-                    // Check if critical error occurred
-                    let is_critical = ctx_state
-                        .get("critical_error_occurred")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s == "true")
-                        .unwrap_or(false);
-
-                    if is_critical {
-                        // Try to get detailed error message from state
-                        if let Some(error_msg) = ctx_state
-                            .get("error_message")
-                            .and_then(|v| v.as_str())
-                        {
-                            return Some(error_msg.to_string());
-                        }
-                        // Try failure_reason
-                        if let Some(failure_reason) = ctx_state
-                            .get("failure_reason")
-                            .and_then(|v| v.as_str())
-                        {
-                            return Some(failure_reason.to_string());
-                        }
-                        // Try error_type + diagnosis for context
-                        let error_type = ctx_state
-                            .get("error_type")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let diagnosis = ctx_state
-                            .get("failure_diagnosis")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        return Some(format!(
-                            "Critical error occurred: {} (diagnosis: {})",
-                            error_type, diagnosis
-                        ));
+                    if let Some(error) = extract_from_state(ctx_state) {
+                        return Some(error);
                     }
                 }
             }
@@ -536,6 +552,7 @@ impl<'a> TypeScriptExecutor<'a> {
             .and_then(|v| v.as_str())
             .map(String::from)
     }
+
 
     /// Extract message from result
     fn extract_message(tool_result: &Value, success: bool) -> String {
@@ -673,13 +690,12 @@ impl<'a> TypeScriptExecutor<'a> {
                             return Some(error.to_string());
                         }
 
-                        // Handle exit_code + note format from MCP
+
+                        // Handle exit_code + stderr/note format from MCP
                         if let Some(exit_code) = json.get("exit_code").and_then(|v| v.as_i64()) {
-                            // Extract clean error from note field if present
-                            if let Some(note) = json.get("note").and_then(|n| n.as_str()) {
-                                // Try to find last meaningful error line in note
-                                if let Some(error_line) = note
-                                    .lines()
+                            // Helper to extract error line from text
+                            let extract_error_line = |text: &str| -> Option<String> {
+                                text.lines()
                                     .rev()
                                     .find(|line| {
                                         let lower = line.to_lowercase();
@@ -688,13 +704,24 @@ impl<'a> TypeScriptExecutor<'a> {
                                             && !lower.contains("info")
                                             && !lower.contains(" warn")
                                     })
-                                {
-                                    let trimmed = error_line.trim();
-                                    if !trimmed.is_empty() && trimmed.len() < 500 {
-                                        return Some(format!("Exit code {}: {}", exit_code, trimmed));
-                                    }
+                                    .map(|line| line.trim().to_string())
+                                    .filter(|s| !s.is_empty() && s.len() < 500)
+                            };
+
+                            // Try stderr first (TypeScript workflows return error here)
+                            if let Some(stderr) = json.get("stderr").and_then(|s| s.as_str()) {
+                                if let Some(error_line) = extract_error_line(stderr) {
+                                    return Some(format!("Exit code {}: {}", exit_code, error_line));
                                 }
                             }
+
+                            // Then try note field (legacy format)
+                            if let Some(note) = json.get("note").and_then(|n| n.as_str()) {
+                                if let Some(error_line) = extract_error_line(note) {
+                                    return Some(format!("Exit code {}: {}", exit_code, error_line));
+                                }
+                            }
+
                             // Fallback: just return exit code info
                             return Some(format!("Process exited with code {}", exit_code));
                         }
