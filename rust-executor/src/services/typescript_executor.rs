@@ -708,17 +708,44 @@ impl<'a> TypeScriptExecutor<'a> {
                                     .filter(|s| !s.is_empty() && s.len() < 500)
                             };
 
+                            // Helper to get last non-empty line as fallback
+                            let get_last_line = |text: &str| -> Option<String> {
+                                text.lines()
+                                    .rev()
+                                    .find(|line| !line.trim().is_empty())
+                                    .map(|line| {
+                                        let trimmed = line.trim();
+                                        if trimmed.len() > 300 {
+                                            format!("{}...", &trimmed[..300])
+                                        } else {
+                                            trimmed.to_string()
+                                        }
+                                    })
+                            };
+
                             // Try stderr first (TypeScript workflows return error here)
                             if let Some(stderr) = json.get("stderr").and_then(|s| s.as_str()) {
-                                if let Some(error_line) = extract_error_line(stderr) {
-                                    return Some(format!("Exit code {}: {}", exit_code, error_line));
+                                if !stderr.trim().is_empty() {
+                                    if let Some(error_line) = extract_error_line(stderr) {
+                                        return Some(format!("Exit code {}: {}", exit_code, error_line));
+                                    }
+                                    // No error keyword found, use last non-empty line
+                                    if let Some(last_line) = get_last_line(stderr) {
+                                        return Some(format!("Exit code {}: {}", exit_code, last_line));
+                                    }
                                 }
                             }
 
                             // Then try note field (legacy format)
                             if let Some(note) = json.get("note").and_then(|n| n.as_str()) {
-                                if let Some(error_line) = extract_error_line(note) {
-                                    return Some(format!("Exit code {}: {}", exit_code, error_line));
+                                if !note.trim().is_empty() {
+                                    if let Some(error_line) = extract_error_line(note) {
+                                        return Some(format!("Exit code {}: {}", exit_code, error_line));
+                                    }
+                                    // No error keyword found, use last non-empty line
+                                    if let Some(last_line) = get_last_line(note) {
+                                        return Some(format!("Exit code {}: {}", exit_code, last_line));
+                                    }
                                 }
                             }
 
@@ -790,5 +817,31 @@ mod tests {
             TypeScriptExecutor::extract_error(&result),
             Some("element not found".to_string())
         );
+    }
+
+    #[test]
+    fn test_extract_error_fallback_to_last_line() {
+        // When stderr has no error keywords, should use last non-empty line
+        let result = json!({
+            "success": false,
+            "error": "Mcp error: call_tool: {\"exit_code\":1,\"stderr\":\"Some random output\\nActual problem here\",\"note\":\"\"}"
+        });
+        let extracted = TypeScriptExecutor::extract_error(&result);
+        assert!(extracted.is_some());
+        let msg = extracted.unwrap();
+        assert!(msg.contains("Actual problem here"), "Expected last line, got: {}", msg);
+    }
+
+    #[test]
+    fn test_extract_error_prefers_error_keyword_line() {
+        // When stderr has error keywords, should prefer that line
+        let result = json!({
+            "success": false,
+            "error": "Mcp error: call_tool: {\"exit_code\":1,\"stderr\":\"Some output\\nError: connection refused\\nMore output\",\"note\":\"\"}"
+        });
+        let extracted = TypeScriptExecutor::extract_error(&result);
+        assert!(extracted.is_some());
+        let msg = extracted.unwrap();
+        assert!(msg.contains("connection refused"), "Expected error line, got: {}", msg);
     }
 }
