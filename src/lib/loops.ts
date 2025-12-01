@@ -93,3 +93,56 @@ export async function addToLoops(
     return { success: false, error: String(error) };
   }
 }
+
+/**
+ * Send a transactional email with custom content
+ */
+export async function sendTransactionalEmail(options: {
+  to: string;
+  subject: string;
+  body: string;
+  replyTo?: string;
+  senderName?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { to, subject, body, replyTo = "matt@mediar.ai", senderName = "Mediar" } = options;
+
+  if (!LOOPS_API_KEY) {
+    console.error("[Loops] LOOPS_API_KEY is not set");
+    return { success: false, error: "LOOPS_API_KEY not configured" };
+  }
+
+  try {
+    console.log(`[Loops] Sending transactional email to ${to}`);
+
+    const emailResponse = await fetch("https://app.loops.so/api/v1/transactional", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LOOPS_API_KEY}`,
+      },
+      body: JSON.stringify({
+        transactionalId: LOOPS_TRANSACTIONAL_ID,
+        email: to,
+        dataVariables: {
+          subject,
+          email_preview: subject,
+          body,
+          sender_name: senderName,
+          reply_to: replyTo,
+        },
+      }),
+    });
+
+    if (!emailResponse.ok) {
+      const status = emailResponse.status;
+      console.error(`[Loops] Transactional email failed with status: ${status}`);
+      return { success: false, error: `Email failed (${status})` };
+    }
+
+    console.log(`[Loops] Successfully sent transactional email to ${to}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[Loops] Transactional email error:", error);
+    return { success: false, error: String(error) };
+  }
+}

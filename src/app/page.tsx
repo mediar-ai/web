@@ -7,11 +7,12 @@ import { useEffect, useState, Suspense, useCallback } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Play, Briefcase, Loader2 } from 'lucide-react';
+import { Play, Briefcase, Loader2, Gift } from 'lucide-react';
 import Link from 'next/link';
 
 // Homepage components
 import PricingSection from '@/components/homepage/PricingSection';
+import { FreeEligibilitySurveyModal } from '@/components/homepage/FreeEligibilitySurveyModal';
 
 // Mediar icon SVG component
 const MediarIcon = ({ className = 'w-16 h-16' }: { className?: string }) => (
@@ -68,6 +69,7 @@ function HomePageContent() {
   const [hasAnsweredSource, setHasAnsweredSource] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [showFreeEligibilityModal, setShowFreeEligibilityModal] = useState(false);
 
   // Get token from Stripe redirect for validation
   const purchaseToken = searchParams.get('token');
@@ -128,6 +130,16 @@ function HomePageContent() {
   const handlePriceLoaded = useCallback((price: number) => {
     setCurrentPrice(price);
   }, []);
+
+  const handleFreeEligibilitySurveyComplete = useCallback(() => {
+    // User completed the survey and got free access
+    setHasPurchased(true);
+    setShowFreeEligibilityModal(false);
+    posthog?.capture('free_eligibility_access_granted', {
+      user_id: userId,
+      timestamp: new Date().toISOString(),
+    });
+  }, [posthog, userId]);
 
   const handleDownloadClick = () => {
     posthog?.capture('desktop_app_download_clicked', {
@@ -243,12 +255,24 @@ function HomePageContent() {
 
             {/* Desktop App */}
             <Card
-              className={`border-2 border-black hover:shadow-lg transition-shadow flex flex-col ${
+              className={`border-2 border-black hover:shadow-lg transition-shadow flex flex-col relative ${
                 purchaseToken && hasPurchased
                   ? 'ring-4 ring-black ring-offset-2 shadow-lg'
                   : ''
               }`}
             >
+              {/* Free eligibility button - only show when not purchased */}
+              {!hasPurchased && (
+                <Button
+                  onClick={() => setShowFreeEligibilityModal(true)}
+                  variant="outline"
+                  size="sm"
+                  className="absolute -top-2 -right-2 z-10 bg-white border-2 border-black hover:bg-black hover:text-white font-mono text-xs px-2 py-1 h-auto shadow-md"
+                >
+                  <Gift className="w-3 h-3 mr-1" />
+                  Free?
+                </Button>
+              )}
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
                   <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
@@ -395,6 +419,13 @@ function HomePageContent() {
           )}
         </div>
       </div>
+
+      {/* Free Eligibility Survey Modal */}
+      <FreeEligibilitySurveyModal
+        isOpen={showFreeEligibilityModal}
+        onOpenChange={setShowFreeEligibilityModal}
+        onSurveyComplete={handleFreeEligibilitySurveyComplete}
+      />
     </div>
   );
 }
