@@ -430,7 +430,7 @@ export const serverSideWorkflowTools = {
               }
             },
           },
-          required: ['tool_name']
+          required: ['id', 'tool_name']
         },
         position: {
           type: SchemaType.NUMBER,
@@ -1262,7 +1262,8 @@ export const serverSideWorkflowTools = {
                 required: ['if', 'to_id']
               }
             }
-          }
+          },
+          required: ['id', 'tool_name']
         }
       },
       required: ['action']
