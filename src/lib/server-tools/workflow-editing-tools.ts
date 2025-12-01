@@ -14,6 +14,12 @@ import * as yaml from 'js-yaml';
 import { workflowVersionService } from '@/lib/services/workflow-version-service';
 
 // Types matching the client-side workflow schema
+interface JumpCondition {
+  if: string;
+  to_id: string;
+  reason?: string;
+}
+
 interface CommandStep {
   name?: string;
   id?: string;
@@ -26,6 +32,7 @@ interface CommandStep {
   timeout_ms?: number;
   if?: string;
   fallback_id?: string;
+  jumps?: JumpCondition[];
 }
 
 interface _WorkflowSequence {
@@ -35,6 +42,7 @@ interface _WorkflowSequence {
 
 interface StepUpdate {
   name?: string;
+  id?: string;
   tool_name?: string;
   arguments?: Record<string, any>;
   description?: string;
@@ -42,6 +50,9 @@ interface StepUpdate {
   continue_on_error?: boolean;
   retries?: number;
   timeout_ms?: number;
+  if?: string;
+  fallback_id?: string;
+  jumps?: JumpCondition[];
 }
 
 /**
@@ -242,6 +253,7 @@ export const serverSideWorkflowTools = {
           description: 'Fields to update in the step (all optional)',
           properties: {
             name: { type: SchemaType.STRING, description: 'New step name' },
+            id: { type: SchemaType.STRING, description: 'Unique step ID for referencing in jumps/fallbacks. Results accessible as {id}_status and {id}_result' },
             tool_name: { type: SchemaType.STRING, description: 'New tool name' },
             arguments: {
               type: SchemaType.OBJECT,
@@ -253,6 +265,21 @@ export const serverSideWorkflowTools = {
             continue_on_error: { type: SchemaType.BOOLEAN, description: 'Continue if step fails' },
             retries: { type: SchemaType.NUMBER, description: 'Number of retries' },
             timeout_ms: { type: SchemaType.NUMBER, description: 'Timeout in milliseconds' },
+            if: { type: SchemaType.STRING, description: 'Condition expression to run step. Supports: ==, !=, >, <, >=, <=, &&, ||, !, contains(), startsWith(), endsWith(). Access step results as {step_id}_status or {step_id}_result' },
+            fallback_id: { type: SchemaType.STRING, description: 'Step ID to jump to if this step fails after all retries' },
+            jumps: {
+              type: SchemaType.ARRAY,
+              description: 'Conditional jumps evaluated in order after successful execution. First matching condition triggers jump.',
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  if: { type: SchemaType.STRING, description: 'Expression to evaluate (e.g., "status == success", "contains(result, error)")' },
+                  to_id: { type: SchemaType.STRING, description: 'Target step ID to jump to when condition is true' },
+                  reason: { type: SchemaType.STRING, description: 'Optional explanation logged when jump is taken' }
+                },
+                required: ['if', 'to_id']
+              }
+            },
           },
         },
       },
@@ -375,7 +402,7 @@ export const serverSideWorkflowTools = {
           description: 'Step definition',
           properties: {
             name: { type: SchemaType.STRING, description: 'Step name' },
-            id: { type: SchemaType.STRING, description: 'Step ID (optional, auto-generated if not provided)' },
+            id: { type: SchemaType.STRING, description: 'Unique step ID for referencing in jumps/fallbacks. Results accessible as {id}_status and {id}_result' },
             tool_name: { type: SchemaType.STRING, description: 'MCP tool to execute' },
             arguments: {
               type: SchemaType.OBJECT,
@@ -387,6 +414,21 @@ export const serverSideWorkflowTools = {
             continue_on_error: { type: SchemaType.BOOLEAN, description: 'Continue if step fails (optional)' },
             retries: { type: SchemaType.NUMBER, description: 'Number of retries (optional)' },
             timeout_ms: { type: SchemaType.NUMBER, description: 'Timeout in milliseconds (optional)' },
+            if: { type: SchemaType.STRING, description: 'Condition expression to run step. Supports: ==, !=, >, <, >=, <=, &&, ||, !, contains(), startsWith(), endsWith(). Access step results as {step_id}_status or {step_id}_result' },
+            fallback_id: { type: SchemaType.STRING, description: 'Step ID to jump to if this step fails after all retries' },
+            jumps: {
+              type: SchemaType.ARRAY,
+              description: 'Conditional jumps evaluated in order after successful execution. First matching condition triggers jump.',
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  if: { type: SchemaType.STRING, description: 'Expression to evaluate (e.g., "status == success", "contains(result, error)")' },
+                  to_id: { type: SchemaType.STRING, description: 'Target step ID to jump to when condition is true' },
+                  reason: { type: SchemaType.STRING, description: 'Optional explanation logged when jump is taken' }
+                },
+                required: ['if', 'to_id']
+              }
+            },
           },
           required: ['tool_name']
         },
@@ -642,9 +684,11 @@ export const serverSideWorkflowTools = {
             ...(step.timeout_ms && { timeout_ms: step.timeout_ms }),
             ...(step.if && { if: step.if }),
             ...(step.fallback_id && { fallback_id: step.fallback_id }),
+            ...(step.jumps && { jumps: step.jumps }),
           })),
           total_steps: steps.length,
           variables: parsed.variables || {},
+          troubleshooting: parsed.troubleshooting || [],
           output: parsed.output || null,
           version_number: currentVersion.versionNumber
         };
@@ -930,10 +974,32 @@ export const serverSideWorkflowTools = {
           type: SchemaType.OBJECT,
           description: 'Variable definition object with type, label, default, etc.',
           properties: {
-            type: { type: SchemaType.STRING, description: 'Variable type (string, number, boolean, etc.)' },
+            type: { type: SchemaType.STRING, description: 'Variable type: string, number, boolean, enum, array, or object' },
             label: { type: SchemaType.STRING, description: 'Human-readable label for the variable' },
             default: { type: SchemaType.STRING, description: 'Default value for the variable' },
-            description: { type: SchemaType.STRING, description: 'Description of the variable' }
+            description: { type: SchemaType.STRING, description: 'Description of the variable' },
+            required: { type: SchemaType.BOOLEAN, description: 'Whether this variable is required (default: true)' },
+            regex: { type: SchemaType.STRING, description: 'For string type: regex pattern for validation' },
+            options: {
+              type: SchemaType.ARRAY,
+              description: 'For enum type: list of allowed string values. Example: ["TEST", "LIVE"]',
+              items: { type: SchemaType.STRING }
+            },
+            item_schema: {
+              type: SchemaType.OBJECT,
+              description: 'For array type: defines schema for each array item. Example: { type: "object", properties: { name: { type: "string" }, code: { type: "string" } } }',
+              additionalProperties: true
+            },
+            properties: {
+              type: SchemaType.OBJECT,
+              description: 'For object type with known fields: defines schema for each named property. Example: { name: { type: "string", label: "Name" }, enabled: { type: "boolean" } }',
+              additionalProperties: true
+            },
+            value_schema: {
+              type: SchemaType.OBJECT,
+              description: 'For object type with uniform values: defines schema for all values. Example for environment flags: { type: "enum", options: ["TEST", "LIVE"] }',
+              additionalProperties: true
+            }
           },
           additionalProperties: true
         },
@@ -1130,6 +1196,181 @@ export const serverSideWorkflowTools = {
           message: `Successfully ${action} output parser section.`,
           action,
           has_output: !!parsed.output,
+          version_id: result.version?.id,
+          version_number: result.version?.version_number,
+          workflow_updated: true
+        };
+      } catch (error) {
+        console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Update workflow troubleshooting steps
+   */
+  update_workflow_troubleshooting: {
+    description: 'Add, update, or remove troubleshooting steps. Troubleshooting steps are error recovery steps that can be jumped to via fallback_id when main steps fail.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        action: {
+          type: SchemaType.STRING,
+          description: 'Action to perform: "add" (add new step), "update" (modify existing), "remove" (delete step), "clear" (remove all)'
+        },
+        step_id: {
+          type: SchemaType.STRING,
+          description: 'ID of the troubleshooting step to update or remove (required for update/remove actions)'
+        },
+        step: {
+          type: SchemaType.OBJECT,
+          description: 'Step definition for add/update actions',
+          properties: {
+            id: { type: SchemaType.STRING, description: 'Unique step ID (required for add, used as target for fallback_id)' },
+            tool_name: { type: SchemaType.STRING, description: 'MCP tool to execute' },
+            arguments: {
+              type: SchemaType.OBJECT,
+              description: 'Tool arguments object',
+              additionalProperties: true
+            },
+            description: { type: SchemaType.STRING, description: 'Step description' },
+            continue_on_error: { type: SchemaType.BOOLEAN, description: 'Continue if step fails' },
+            retries: { type: SchemaType.NUMBER, description: 'Number of retries' },
+            jumps: {
+              type: SchemaType.ARRAY,
+              description: 'Conditional jumps after successful execution',
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  if: { type: SchemaType.STRING, description: 'Expression to evaluate' },
+                  to_id: { type: SchemaType.STRING, description: 'Target step ID' },
+                  reason: { type: SchemaType.STRING, description: 'Optional explanation' }
+                },
+                required: ['if', 'to_id']
+              }
+            }
+          }
+        }
+      },
+      required: ['action']
+    },
+    execute: async (
+      params: {
+        workflow_id: number;
+        action: 'add' | 'update' | 'remove' | 'clear';
+        step_id?: string;
+        step?: CommandStep;
+      },
+      userContext: { userId: string; orgId: string | null; email?: string | null }
+    ) => {
+      try {
+        console.log('[SERVER-WORKFLOW-EDIT] Updating troubleshooting:', params);
+
+        // AUTHORIZATION CHECK
+        await checkWorkflowAuthorization(params.workflow_id, userContext);
+
+        // Get latest workflow version
+        const currentVersion = await workflowVersionService.getLatestVersion(params.workflow_id);
+
+        // Parse content
+        let parsed: any;
+        if (currentVersion.preferredFormat === 'jsonb' && currentVersion.jsonContent) {
+          parsed = currentVersion.jsonContent;
+        } else if (currentVersion.yamlContent) {
+          parsed = yaml.load(currentVersion.yamlContent) || {};
+        } else {
+          throw new Error('No workflow content found');
+        }
+
+        // Ensure troubleshooting array exists
+        if (!parsed.troubleshooting) {
+          parsed.troubleshooting = [];
+        }
+
+        let changeNotes: string;
+        let resultMessage: string;
+
+        switch (params.action) {
+          case 'add': {
+            if (!params.step || !params.step.id) {
+              throw new Error('step with id is required for add action');
+            }
+            // Check for duplicate ID
+            const existingIndex = parsed.troubleshooting.findIndex((s: any) => s.id === params.step!.id);
+            if (existingIndex !== -1) {
+              throw new Error(`Troubleshooting step with ID '${params.step.id}' already exists`);
+            }
+            parsed.troubleshooting.push(params.step);
+            changeNotes = `Added troubleshooting step: ${params.step.id}`;
+            resultMessage = `Successfully added troubleshooting step "${params.step.id}".`;
+            break;
+          }
+          case 'update': {
+            if (!params.step_id) {
+              throw new Error('step_id is required for update action');
+            }
+            const updateIndex = parsed.troubleshooting.findIndex((s: any) => s.id === params.step_id);
+            if (updateIndex === -1) {
+              throw new Error(`Troubleshooting step '${params.step_id}' not found`);
+            }
+            // Merge updates
+            parsed.troubleshooting[updateIndex] = {
+              ...parsed.troubleshooting[updateIndex],
+              ...params.step
+            };
+            changeNotes = `Updated troubleshooting step: ${params.step_id}`;
+            resultMessage = `Successfully updated troubleshooting step "${params.step_id}".`;
+            break;
+          }
+          case 'remove': {
+            if (!params.step_id) {
+              throw new Error('step_id is required for remove action');
+            }
+            const removeIndex = parsed.troubleshooting.findIndex((s: any) => s.id === params.step_id);
+            if (removeIndex === -1) {
+              throw new Error(`Troubleshooting step '${params.step_id}' not found`);
+            }
+            parsed.troubleshooting.splice(removeIndex, 1);
+            changeNotes = `Removed troubleshooting step: ${params.step_id}`;
+            resultMessage = `Successfully removed troubleshooting step "${params.step_id}".`;
+            break;
+          }
+          case 'clear': {
+            const count = parsed.troubleshooting.length;
+            parsed.troubleshooting = [];
+            changeNotes = `Cleared all ${count} troubleshooting steps`;
+            resultMessage = `Successfully cleared all ${count} troubleshooting steps.`;
+            break;
+          }
+          default:
+            throw new Error(`Invalid action: ${params.action}. Use add, update, remove, or clear.`);
+        }
+
+        // Convert back to YAML
+        const newYamlContent = yaml.dump(parsed);
+
+        // Create new version
+        const result = await workflowVersionService.createVersion({
+          workflowId: params.workflow_id,
+          yamlContent: newYamlContent,
+          changeNotes,
+          setAsActive: false,
+          userId: userContext.userId,
+          orgId: userContext.orgId
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to create workflow version');
+        }
+
+        console.log('[SERVER-WORKFLOW-EDIT] Troubleshooting updated successfully, version:', result.version?.version_number);
+
+        return {
+          success: true,
+          message: resultMessage,
+          action: params.action,
+          total_troubleshooting_steps: parsed.troubleshooting.length,
           version_id: result.version?.id,
           version_number: result.version?.version_number,
           workflow_updated: true
