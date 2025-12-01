@@ -23,6 +23,11 @@ import { useSearchParams } from 'next/navigation';
 
 import { BatchForm } from '@/components/deployments/BatchForm';
 import { Workflow } from '@/lib/workflow-types';
+import {
+  getWorkflowRunPreferences,
+  saveWorkflowRunPreferences,
+  WorkflowRunPreferences,
+} from '@/lib/workflow-run-preferences';
 import { toast } from 'sonner';
 import '@/styles/custom-scrollbar.css';
 
@@ -100,6 +105,12 @@ export function BatchTestDialog({
   // Track previous workflow ID to detect changes
   const prevWorkflowIdRef = useRef<number | null>(null);
 
+  // Track if preferences have been applied this session (to avoid reset on initial version load)
+  const prefsAppliedRef = useRef(false);
+  const savedPrefsRef = useRef<WorkflowRunPreferences | null>(null);
+  // Track previous version to detect actual version changes vs initial load
+  const prevVersionRef = useRef<string | null>(null);
+
   // Machine selection state
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>(''); // Start with empty, will be set when machines load
@@ -174,6 +185,9 @@ export function BatchTestDialog({
       setExecuteJumpsAtEnd(false);
       setWorkflowSteps([]);
       userSelectedMachineRef.current = false;
+      prefsAppliedRef.current = false;
+      savedPrefsRef.current = null;
+      prevVersionRef.current = null;
     }
   }, [open]);
 
@@ -204,6 +218,9 @@ export function BatchTestDialog({
         setExecuteJumpsAtEnd(false);
         setWorkflowSteps([]);
         resetBatchSpec();
+        prefsAppliedRef.current = false;
+        savedPrefsRef.current = null;
+        prevVersionRef.current = null;
       }
 
       // Update the ref with current workflow ID
@@ -211,6 +228,22 @@ export function BatchTestDialog({
 
       // Reset user selection flag when dialog opens
       userSelectedMachineRef.current = false;
+
+      // Load saved preferences for this org+workflow
+      if (!prefsAppliedRef.current && workflow.organization_id) {
+        const savedPrefs = getWorkflowRunPreferences(
+          workflow.organization_id,
+          workflow.id
+        );
+        if (savedPrefs) {
+          console.log('[BatchTestDialog] Loaded saved preferences:', savedPrefs);
+          savedPrefsRef.current = savedPrefs;
+          // Apply executor type immediately
+          if (savedPrefs.executorType) {
+            setExecutorType(savedPrefs.executorType);
+          }
+        }
+      }
 
       const fetchMachines = async () => {
         setLoadingMachines(true);
@@ -237,37 +270,53 @@ export function BatchTestDialog({
 
             // Set initial selection to first machine if no machine is selected yet
             if (!selectedMachineId && data.machines.length > 0) {
-              // Sort machines by priority (active & healthy first, then by load)
-              const sortedMachines = [...data.machines].sort(
-                (a: Machine, b: Machine) => {
-                  // First prioritize active status
-                  if (a.status === 'active' && b.status !== 'active') return -1;
-                  if (a.status !== 'active' && b.status === 'active') return 1;
-
-                  // Then prioritize healthy machines
-                  if (
-                    a.health_status === 'healthy' &&
-                    b.health_status !== 'healthy'
-                  )
-                    return -1;
-                  if (
-                    a.health_status !== 'healthy' &&
-                    b.health_status === 'healthy'
-                  )
-                    return 1;
-
-                  // Finally sort by available capacity (higher is better)
-                  const aCapacity = a.load_info?.available_capacity || 0;
-                  const bCapacity = b.load_info?.available_capacity || 0;
-                  return bCapacity - aCapacity;
-                }
+              // Check if we have a saved preference for machine
+              const savedMachineId = savedPrefsRef.current?.machineId;
+              const savedMachineExists = savedMachineId && data.machines.some(
+                (m: Machine) => m.id.toString() === savedMachineId
               );
 
-              setSelectedMachineId(sortedMachines[0].id.toString());
-              console.log(
-                '📋 Auto-selected first priority machine:',
-                sortedMachines[0].name
-              );
+              if (savedMachineExists) {
+                // Use saved machine preference
+                setSelectedMachineId(savedMachineId);
+                userSelectedMachineRef.current = true; // Prevent optimal machine override
+                console.log(
+                  '📋 Restored saved machine preference:',
+                  savedMachineId
+                );
+              } else {
+                // Sort machines by priority (active & healthy first, then by load)
+                const sortedMachines = [...data.machines].sort(
+                  (a: Machine, b: Machine) => {
+                    // First prioritize active status
+                    if (a.status === 'active' && b.status !== 'active') return -1;
+                    if (a.status !== 'active' && b.status === 'active') return 1;
+
+                    // Then prioritize healthy machines
+                    if (
+                      a.health_status === 'healthy' &&
+                      b.health_status !== 'healthy'
+                    )
+                      return -1;
+                    if (
+                      a.health_status !== 'healthy' &&
+                      b.health_status === 'healthy'
+                    )
+                      return 1;
+
+                    // Finally sort by available capacity (higher is better)
+                    const aCapacity = a.load_info?.available_capacity || 0;
+                    const bCapacity = b.load_info?.available_capacity || 0;
+                    return bCapacity - aCapacity;
+                  }
+                );
+
+                setSelectedMachineId(sortedMachines[0].id.toString());
+                console.log(
+                  '📋 Auto-selected first priority machine:',
+                  sortedMachines[0].name
+                );
+              }
             }
 
             // After loading machines, fetch optimal machine to potentially override default
@@ -346,20 +395,35 @@ export function BatchTestDialog({
             setAvailableVersions(data.versions);
             console.log('📋 Loaded versions for testing:', data.versions);
 
-            // Set default to the actual active version from the list
-            const activeVersion = data.versions.find(
-              (v: WorkflowVersion) => v.is_active
+            // Check if we have a saved preference for version
+            const savedVersionNumber = savedPrefsRef.current?.versionNumber;
+            const savedVersionExists = savedVersionNumber && data.versions.some(
+              (v: WorkflowVersion) => v.version_number === savedVersionNumber
             );
-            if (activeVersion) {
-              setSelectedVersionNumber(activeVersion.version_number);
+
+            if (savedVersionExists) {
+              // Use saved version preference
+              setSelectedVersionNumber(savedVersionNumber);
               console.log(
-                '📋 Auto-selected active version:',
-                activeVersion.version_number
+                '📋 Restored saved version preference:',
+                savedVersionNumber
               );
             } else {
-              // Fallback to empty string if no active version found (will use 'active' in API calls)
-              setSelectedVersionNumber('');
-              console.warn('⚠️ No active version found in version list');
+              // Set default to the actual active version from the list
+              const activeVersion = data.versions.find(
+                (v: WorkflowVersion) => v.is_active
+              );
+              if (activeVersion) {
+                setSelectedVersionNumber(activeVersion.version_number);
+                console.log(
+                  '📋 Auto-selected active version:',
+                  activeVersion.version_number
+                );
+              } else {
+                // Fallback to empty string if no active version found (will use 'active' in API calls)
+                setSelectedVersionNumber('');
+                console.warn('⚠️ No active version found in version list');
+              }
             }
           } else {
             console.error('[ERROR] Failed to load versions:', data.error);
@@ -402,7 +466,19 @@ export function BatchTestDialog({
     const loadVersionSchema = async () => {
       setLoadingVersionValidation(true);
       setVersionSchema(null); // Clear previous schema
-      resetBatchSpec(); // Reset form values when switching versions
+
+      // Check if this is an actual version change vs initial load
+      const isVersionChange = prevVersionRef.current !== null && prevVersionRef.current !== selectedVersionNumber;
+      const isInitialLoad = prevVersionRef.current === null;
+
+      // Only reset batch spec if user actually changed version (not on initial load)
+      if (isVersionChange) {
+        console.log('[BatchTestDialog] Version changed from', prevVersionRef.current, 'to', selectedVersionNumber, '- resetting batch spec');
+        resetBatchSpec();
+      }
+
+      // Update the version ref
+      prevVersionRef.current = selectedVersionNumber;
 
       try {
         // Use 'active' if no version selected, otherwise use the specific version
@@ -435,16 +511,19 @@ export function BatchTestDialog({
             '[SUCCESS] Version schema loaded:',
             data.workflow.version
           );
-          console.log('[DEBUG] Full data object:', data);
-          console.log('[DEBUG] Schema object:', data.schema);
-          console.log(
-            '[DEBUG] Input parameters object:',
-            data.schema?.input_parameters
-          );
-          console.log(
-            '[DEBUG] Schema parameters:',
-            Object.keys(data.schema?.input_parameters || {})
-          );
+
+          // On initial load, apply saved inputs if available and not yet applied
+          if (isInitialLoad && !prefsAppliedRef.current && savedPrefsRef.current?.inputs) {
+            const savedInputs = savedPrefsRef.current.inputs as Record<string, unknown>;
+            if (Object.keys(savedInputs).length > 0) {
+              console.log('[BatchTestDialog] Applying saved inputs preference:', savedInputs);
+              setBatchSpec({
+                static_parameters: savedInputs as JsonObject,
+                dynamic_parameters: {},
+              });
+            }
+            prefsAppliedRef.current = true;
+          }
         } else {
           setVersionValidation({
             version_number: selectedVersionNumber,
@@ -602,6 +681,18 @@ export function BatchTestDialog({
       if (data.success) {
         console.log('[SUCCESS] BatchTestDialog: Batch submission successful');
         console.log('🎯 BatchTestDialog: Execution IDs:', data.execution_ids);
+
+        // Save preferences for next time
+        if (workflow.organization_id) {
+          saveWorkflowRunPreferences(workflow.organization_id, workflow.id, {
+            inputs: batchSpec.static_parameters,
+            machineId: selectedMachineId,
+            executorType,
+            versionNumber: selectedVersionNumber,
+          });
+          console.log('[BatchTestDialog] Saved run preferences');
+        }
+
         onOpenChange(false);
         if (onSubmit) {
           onSubmit();
