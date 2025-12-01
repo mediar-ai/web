@@ -1093,7 +1093,13 @@ export const serverSideWorkflowTools = {
           total_variables: Object.keys(parsed.variables).length,
           version_id: result.version?.id,
           version_number: result.version?.version_number,
-          workflow_updated: true
+          workflow_updated: true,
+          workflow_data: {
+            id: params.workflow_id,
+            yaml_content: newYamlContent,
+            step_count: (parsed.steps || []).length,
+            last_modified: new Date().toISOString()
+          }
         };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
@@ -1198,7 +1204,13 @@ export const serverSideWorkflowTools = {
           has_output: !!parsed.output,
           version_id: result.version?.id,
           version_number: result.version?.version_number,
-          workflow_updated: true
+          workflow_updated: true,
+          workflow_data: {
+            id: params.workflow_id,
+            yaml_content: newYamlContent,
+            step_count: (parsed.steps || []).length,
+            last_modified: new Date().toISOString()
+          }
         };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
@@ -1373,7 +1385,13 @@ export const serverSideWorkflowTools = {
           total_troubleshooting_steps: parsed.troubleshooting.length,
           version_id: result.version?.id,
           version_number: result.version?.version_number,
-          workflow_updated: true
+          workflow_updated: true,
+          workflow_data: {
+            id: params.workflow_id,
+            yaml_content: newYamlContent,
+            step_count: (parsed.steps || []).length,
+            last_modified: new Date().toISOString()
+          }
         };
       } catch (error) {
         console.error('[SERVER-WORKFLOW-EDIT] Error:', error);
