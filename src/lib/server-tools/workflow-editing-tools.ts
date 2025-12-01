@@ -1114,7 +1114,7 @@ export const serverSideWorkflowTools = {
           type: SchemaType.OBJECT,
           description: 'Output parser configuration object',
           properties: {
-            run: { type: SchemaType.STRING, description: 'JavaScript code to process sequenceResult and return formatted output' }
+            run: { type: SchemaType.STRING, description: 'JavaScript code to process sequenceResult and return formatted output. sequenceResult contains: { status: "success"|"partial_success"|"error", results: [{step_id, tool_name, result, status, duration_ms}...], executed_tools: number, total_duration_ms: number }. Access step results via sequenceResult.results[i].result or find by step_id.' }
           },
           additionalProperties: true
         },
