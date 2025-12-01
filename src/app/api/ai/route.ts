@@ -414,6 +414,87 @@ async function executeServerTool(
   }
 }
 
+// Helper to process raw parts in order - emits text/tool events in the correct sequence
+async function processRawPartsInOrder(
+  rawParts: any[] | undefined,
+  emit: (event: StreamEvent) => void,
+  executeContext: {
+    authenticatedUserId: string | null;
+    orgId: string | null;
+    email?: string | null;
+    workflowId?: number;
+    clientTools?: Array<{ name: string; description?: string; parameters?: any }>;
+  },
+  options: {
+    preserveId: boolean;
+    isAdditional?: boolean;
+  }
+): Promise<{
+  serverToolResults: Array<{ name: string; result: any; id?: string }>;
+  clientToolCalls: Array<{ name: string; args: Record<string, any>; id?: string }>;
+  workflowData: any;
+}> {
+  const serverToolResults: Array<{ name: string; result: any; id?: string }> = [];
+  const clientToolCalls: Array<{ name: string; args: Record<string, any>; id?: string }> = [];
+  let workflowData = null;
+
+  if (!rawParts || rawParts.length === 0) {
+    return { serverToolResults, clientToolCalls, workflowData };
+  }
+
+  for (const part of rawParts) {
+    // Handle text parts (excluding thinking/thought)
+    if (part.text && !part.thought) {
+      emit({ type: 'text', content: part.text });
+    }
+    // Handle function calls
+    else if (part.functionCall) {
+      const toolCall = {
+        name: part.functionCall.name,
+        args: part.functionCall.args || {},
+        ...(part.functionCall.id && { id: part.functionCall.id }),
+      };
+
+      const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
+
+      if (isServerTool) {
+        // Emit start event
+        emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args });
+        const startTime = Date.now();
+
+        // Execute the server tool
+        const executed = await executeServerTool(toolCall, executeContext, options);
+
+        if (executed) {
+          // Emit completion event
+          const elapsedMs = Date.now() - startTime;
+          emit({
+            type: 'server_tool_complete',
+            name: executed.name,
+            result: executed.result,
+            elapsedMs,
+            ...(executed.result?.error && { error: executed.result.error }),
+          });
+          if (executed.workflowData) {
+            workflowData = executed.workflowData;
+          }
+          serverToolResults.push({
+            name: executed.name,
+            result: executed.result,
+            ...(executed.id && { id: executed.id }),
+          });
+        }
+      } else {
+        // Client-side tool - queue it
+        clientToolCalls.push(toolCall);
+      }
+    }
+    // Skip thought parts and other unknown parts
+  }
+
+  return { serverToolResults, clientToolCalls, workflowData };
+}
+
 // Helper function to determine if an error is retryable
 function isRetryableError(error: any): boolean {
   // Check for HTTP status codes that are retryable
@@ -1455,55 +1536,36 @@ export async function POST(request: NextRequest) {
 
     let workflowData = null; // Track workflow modifications across all tool executions
 
-    // Check if any tool calls are server-side and execute them
-    if (result.toolCalls.length > 0) {
-      const serverToolResults = [];
-      const clientToolCalls = [];
+    // DEBUG: Log rawParts to understand ordering
+    console.log('📋 Initial rawParts:', JSON.stringify(result.rawParts?.map((p: any) => ({
+      type: p.text ? 'text' : p.functionCall ? 'functionCall' : p.thought ? 'thought' : 'unknown',
+      ...(p.text && { textPreview: p.text.substring(0, 50) + '...' }),
+      ...(p.functionCall && { name: p.functionCall.name }),
+    })), null, 2));
 
-      // Separate server and client tools
-      for (const toolCall of result.toolCalls) {
-        // Check if this is a server-side tool and emit start event
-        const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
-        if (isServerTool) {
-          emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
-        }
-        const startTime = Date.now();
+    // Process raw parts in order - emits text and tool events in the correct sequence
+    const {
+      serverToolResults,
+      clientToolCalls,
+      workflowData: initialWorkflowData,
+    } = await processRawPartsInOrder(
+      result.rawParts,
+      emit,
+      {
+        authenticatedUserId,
+        orgId,
+        email: userEmail,
+        workflowId,
+        clientTools: cachedOriginalClientTools || tools,
+      },
+      { preserveId: false } // Vertex doesn't need IDs
+    );
+    if (initialWorkflowData) {
+      workflowData = initialWorkflowData;
+    }
 
-        const executed = await executeServerTool(
-          toolCall,
-          {
-            authenticatedUserId,
-            orgId,
-            email: userEmail,
-            workflowId,
-            clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
-          },
-          { preserveId: false } // Vertex doesn't need IDs
-        );
-
-        if (executed) {
-          // Server-side tool - emit completion
-          const elapsedMs = Date.now() - startTime;
-          emit({
-            type: 'server_tool_complete',
-            name: executed.name,
-            result: executed.result,
-            elapsedMs,
-            ...(executed.result?.error && { error: executed.result.error }),
-          });
-          if (executed.workflowData) {
-            workflowData = executed.workflowData;
-          }
-          serverToolResults.push({
-            name: executed.name,
-            result: executed.result,
-          });
-        } else {
-          // Client-side tool - pass to client
-          clientToolCalls.push(toolCall);
-        }
-      }
-
+    // If we have tool calls (either executed server tools or pending client tools)
+    if (serverToolResults.length > 0 || clientToolCalls.length > 0) {
       // If we executed server tools, continue conversation automatically
       if (serverToolResults.length > 0) {
         console.log(
@@ -1550,70 +1612,42 @@ export async function POST(request: NextRequest) {
           finishReason: continuationResult.finishReason,
         });
 
-        // Check if continuation has more server-side tools to execute
+        // Process continuation result parts in order
         let finalResult = continuationResult;
         const finalHistory = [...updatedHistoryWithCalls];
 
         // NOTE: Server tool results are NOT added to persistent history
         // They were sent via toolResults parameter for immediate processing only
 
+        // DEBUG: Log continuation rawParts
+        console.log('📋 Continuation rawParts:', JSON.stringify(finalResult.rawParts?.map((p: any) => ({
+          type: p.text ? 'text' : p.functionCall ? 'functionCall' : p.thought ? 'thought' : 'unknown',
+          ...(p.text && { textPreview: p.text.substring(0, 50) + '...' }),
+          ...(p.functionCall && { name: p.functionCall.name }),
+        })), null, 2));
+
+        // Process first continuation result in order
+        let continuationProcessed = await processRawPartsInOrder(
+          finalResult.rawParts,
+          emit,
+          {
+            authenticatedUserId,
+            orgId,
+            workflowId,
+            clientTools: cachedOriginalClientTools || tools,
+          },
+          { preserveId: false, isAdditional: true }
+        );
+        let moreServerTools = continuationProcessed.serverToolResults;
+        clientToolCalls.push(...continuationProcessed.clientToolCalls);
+        if (continuationProcessed.workflowData) {
+          workflowData = continuationProcessed.workflowData;
+        }
+
         // Keep executing server tools until there are none left
-        while (finalResult.toolCalls.length > 0) {
-          const moreServerTools = [];
-          const remainingClientTools = [];
-
-          // Check each tool call from continuation
-          for (const toolCall of finalResult.toolCalls) {
-            // Check if this is a server-side tool and emit start event
-            const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
-            if (isServerTool) {
-              emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
-            }
-            const startTime = Date.now();
-
-            const executed = await executeServerTool(
-              toolCall,
-              {
-                authenticatedUserId,
-                orgId,
-                workflowId,
-                clientTools: cachedOriginalClientTools || tools, // Use cached on Turn 2+, original on Turn 1
-              },
-              { preserveId: false, isAdditional: true } // Vertex doesn't need IDs
-            );
-
-            if (executed) {
-              // Server-side tool - emit completion
-              const elapsedMs = Date.now() - startTime;
-              emit({
-                type: 'server_tool_complete',
-                name: executed.name,
-                result: executed.result,
-                elapsedMs,
-                ...(executed.result?.error && { error: executed.result.error }),
-              });
-              if (executed.workflowData) {
-                workflowData = executed.workflowData;
-              }
-              moreServerTools.push({
-                name: executed.name,
-                result: executed.result,
-              });
-            } else {
-              // Client-side tool
-              remainingClientTools.push(toolCall);
-            }
-          }
-
-          // If no more server tools, break the loop
-          if (moreServerTools.length === 0) {
-            clientToolCalls.push(...remainingClientTools);
-            break;
-          }
-
+        while (moreServerTools.length > 0) {
           // Add the model's response with tool calls to history - use rawParts to preserve thought_signature
           if (finalResult.rawParts && finalResult.rawParts.length > 0) {
-            // Use raw parts from response (preserves thought_signature)
             finalHistory.push({
               role: 'model',
               parts: finalResult.rawParts,
@@ -1638,9 +1672,7 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // Don't add tool results to history yet - they'll be sent via toolResults parameter
-
-          // Continue conversation with new server tool results
+          // Continue conversation with server tool results
           console.log(
             `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
           );
@@ -1661,8 +1693,23 @@ export async function POST(request: NextRequest) {
             finishReason: finalResult.finishReason,
           });
 
-          // NOTE: Server tool results are NOT added to persistent history
-          // They were sent via toolResults parameter for immediate processing only
+          // Process this result in order
+          continuationProcessed = await processRawPartsInOrder(
+            finalResult.rawParts,
+            emit,
+            {
+              authenticatedUserId,
+              orgId,
+              workflowId,
+              clientTools: cachedOriginalClientTools || tools,
+            },
+            { preserveId: false, isAdditional: true }
+          );
+          moreServerTools = continuationProcessed.serverToolResults;
+          clientToolCalls.push(...continuationProcessed.clientToolCalls);
+          if (continuationProcessed.workflowData) {
+            workflowData = continuationProcessed.workflowData;
+          }
         }
 
         // Add final model response to history - use rawParts to preserve thought_signature for Gemini 3
@@ -1710,10 +1757,7 @@ export async function POST(request: NextRequest) {
           await saveSession(actualSessionId, sessionData);
         }
 
-        // Emit text if present
-        if (finalResult.text) {
-          emit({ type: 'text', content: finalResult.text });
-        }
+        // Text was already emitted in order by processRawPartsInOrder
         // Emit client tools if any remain
         if (clientToolCalls.length > 0) {
           emit({ type: 'client_tools', toolCalls: clientToolCalls });
@@ -1812,11 +1856,7 @@ export async function POST(request: NextRequest) {
       await saveSession(actualSessionId, sessionData);
     }
 
-    // Emit text if present (for non-tool-call responses)
-    if (result.text) {
-      emit({ type: 'text', content: result.text });
-    }
-
+    // Text was already emitted in order by processRawPartsInOrder above
     // Emit client tools if any (for client-only tool calls with no server tools)
     if (result.toolCalls && result.toolCalls.length > 0) {
       emit({ type: 'client_tools', toolCalls: result.toolCalls });
