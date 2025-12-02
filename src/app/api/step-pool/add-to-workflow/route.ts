@@ -105,12 +105,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert pool steps to workflow step format
-    const newSteps = steps.map(step => ({
-      id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      tool_name: step.tool_name,
-      name: step.step_name || step.tool_name,
-      arguments: step.arguments || {}
-    }));
+    const newSteps = steps.map(step => {
+      // Normalize arguments: disable expensive UI diff params for production workflows
+      const normalizedArgs = { ...(step.arguments || {}) };
+      if ('ui_diff_before_after' in normalizedArgs) {
+        normalizedArgs.ui_diff_before_after = false;
+      }
+      if ('include_tree_after_action' in normalizedArgs) {
+        normalizedArgs.include_tree_after_action = false;
+      }
+
+      return {
+        id: step.step_id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        tool_name: step.tool_name,
+        name: step.step_name || step.tool_name,
+        arguments: normalizedArgs
+      };
+    });
 
     let updatedJson;
     const workflow = loadedWorkflow.automation_sequence || {};

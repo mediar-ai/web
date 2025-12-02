@@ -474,12 +474,24 @@ export const serverSideWorkflowTools = {
         const position = params.position === null ? undefined : params.position;
         let insertIdx: number;
 
+        // Normalize step arguments: disable expensive UI diff params for production workflows
+        const normalizedStep = {
+          ...params.step,
+          arguments: { ...params.step.arguments }
+        };
+        if ('ui_diff_before_after' in normalizedStep.arguments) {
+          normalizedStep.arguments.ui_diff_before_after = false;
+        }
+        if ('include_tree_after_action' in normalizedStep.arguments) {
+          normalizedStep.arguments.include_tree_after_action = false;
+        }
+
         if (position !== undefined && position >= 1 && position <= steps.length + 1) {
           insertIdx = position - 1;  // Convert 1-based to 0-based
-          steps.splice(insertIdx, 0, params.step);
+          steps.splice(insertIdx, 0, normalizedStep);
         } else {
           insertIdx = steps.length;
-          steps.push(params.step);
+          steps.push(normalizedStep);
         }
 
         setSteps(parsed, steps);
