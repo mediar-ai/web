@@ -469,3 +469,22 @@ Query for latest image dynamically instead of hardcoding versions. Terraform aut
 - Avoid unnecessary colors - black & white is sufficient
 - Keep all styling consistent across the application
 - Production emails must be professional and customer-ready
+
+
+
+ALWAYS RUN ON VM 22 and not 6
+
+
+  "id": 22,
+  "name": "Imperial Treasure infra v2",
+  "status": "active",
+  "health_status": "healthy"
+}
+{
+  "id": 6,
+  "name": "Imperial treasure OneDrive to SAP",
+  "status": "active",
+  "health_status": "healthy"
+}
+
+
