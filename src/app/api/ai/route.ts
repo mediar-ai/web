@@ -486,6 +486,34 @@ async function processRawPartsInOrder(
         }
       } else {
         // Client-side tool - queue it
+        // Validate execute_sequence doesn't contain server-side tools
+        if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
+          const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
+          const invalidTools = steps
+            .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isWorkflowEditingTool(s.tool_name) || isDevLogTool(s.tool_name)))
+            .map(s => s.tool_name);
+
+          if (invalidTools.length > 0) {
+            // Return error as a tool result so AI learns the pattern
+            emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args });
+            serverToolResults.push({
+              name: toolCall.name,
+              result: {
+                error: `execute_sequence can only contain desktop automation tools (MCP tools). The following server-side tools are NOT valid inside execute_sequence: ${invalidTools.join(', ')}. Call these tools as separate top-level tool calls instead.`,
+                invalid_tools: invalidTools,
+              },
+              ...(toolCall.id && { id: toolCall.id }),
+            });
+            emit({
+              type: 'server_tool_complete',
+              name: toolCall.name,
+              result: { error: `Invalid tools: ${invalidTools.join(', ')}` },
+              elapsedMs: 0,
+              error: `Invalid tools in execute_sequence: ${invalidTools.join(', ')}`,
+            });
+            continue; // Skip adding to clientToolCalls
+          }
+        }
         clientToolCalls.push(toolCall);
       }
     }
@@ -1059,6 +1087,31 @@ export async function POST(request: NextRequest) {
             });
           } else {
             // Client-side tool - pass to client
+            // Validate execute_sequence doesn't contain server-side tools
+            if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
+              const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
+              const invalidTools = steps
+                .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isWorkflowEditingTool(s.tool_name) || isDevLogTool(s.tool_name)))
+                .map(s => s.tool_name);
+
+              if (invalidTools.length > 0) {
+                // Return error as a tool result so AI learns the pattern
+                serverToolResults.push({
+                  name: toolCall.name,
+                  result: {
+                    error: `execute_sequence can only contain desktop automation tools (MCP tools). The following server-side tools are NOT valid inside execute_sequence: ${invalidTools.join(', ')}. Call these tools as separate top-level tool calls instead.`,
+                    invalid_tools: invalidTools,
+                  },
+                  ...(toolCall.id && { id: toolCall.id }),
+                });
+                serverToolsExecuted.push({
+                  name: toolCall.name,
+                  args: toolCall.args,
+                  error: `Invalid tools in execute_sequence: ${invalidTools.join(', ')}`,
+                });
+                continue; // Skip adding to clientToolCalls
+              }
+            }
             clientToolCalls.push(toolCall);
           }
         }
@@ -1186,6 +1239,26 @@ export async function POST(request: NextRequest) {
                 });
               } else {
                 // Client-side tool
+                // Validate execute_sequence doesn't contain server-side tools
+                if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
+                  const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
+                  const invalidTools = steps
+                    .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isWorkflowEditingTool(s.tool_name) || isDevLogTool(s.tool_name)))
+                    .map(s => s.tool_name);
+
+                  if (invalidTools.length > 0) {
+                    // Return error as a tool result so AI learns the pattern
+                    moreServerTools.push({
+                      name: toolCall.name,
+                      result: {
+                        error: `execute_sequence can only contain desktop automation tools (MCP tools). The following server-side tools are NOT valid inside execute_sequence: ${invalidTools.join(', ')}. Call these tools as separate top-level tool calls instead.`,
+                        invalid_tools: invalidTools,
+                      },
+                      ...(toolCall.id && { id: toolCall.id }),
+                    });
+                    continue; // Skip adding to remainingClientTools
+                  }
+                }
                 remainingClientTools.push(toolCall);
               }
             }
