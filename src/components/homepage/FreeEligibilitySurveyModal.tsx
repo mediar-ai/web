@@ -35,9 +35,11 @@ interface FormData {
   agreesToReportMissingFeatures: 'Yes' | 'No' | '';
   agreesToReportImprovements: 'Yes' | 'No' | '';
   agreesToTestNewFeatures: 'Yes' | 'No' | '';
+  agreesToJoinWhatsAppChannel: 'Yes' | 'No' | '';
+  fullName: string;
 }
 
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 12;
 const STORAGE_KEY_FORM_DATA = 'freeEligibilityFormData';
 const STORAGE_KEY_CURRENT_STEP = 'freeEligibilityCurrentStep';
 const STORAGE_KEY_SUBMISSION_ID = 'freeEligibilitySubmissionId';
@@ -45,7 +47,7 @@ const STORAGE_KEY_SUBMISSION_ID = 'freeEligibilitySubmissionId';
 // Validation patterns
 const GITHUB_PATTERN = /^(https?:\/\/)?(www\.)?github\.com\/[\w-]+\/?$/i;
 const URL_PATTERN = /^https?:\/\/.+\..+/i;
-const PHONE_PATTERN = /^\+?[1-9]\d{6,14}$/;
+const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 const QUESTIONS = [
   {
@@ -84,11 +86,12 @@ const QUESTIONS = [
   {
     id: 'whatsappNumber',
     question: "What's your WhatsApp number?",
-    type: 'text' as const,
-    placeholder: 'e.g., +1234567890',
+    type: 'phone' as const,
+    placeholder: '+1 234 567 8900',
     errorMessage: 'Please provide your WhatsApp number for communication.',
     validation: PHONE_PATTERN,
-    validationError: 'Please enter a valid international phone number (e.g., +1234567890)',
+    validationError: 'International format required: + followed by country code and number (e.g., +1234567890)',
+    hint: 'Include country code: +1 (US), +44 (UK), +91 (India), etc.',
   },
   {
     id: 'agreesToProvideFeedback',
@@ -120,6 +123,19 @@ const QUESTIONS = [
     type: 'yesno' as const,
     errorMessage: 'Free access requires commitment to test new features.',
   },
+  {
+    id: 'agreesToJoinWhatsAppChannel',
+    question: 'Do you agree to be added to the Mediar WhatsApp feedback channel?',
+    type: 'yesno' as const,
+    errorMessage: 'Free access requires joining the WhatsApp feedback channel.',
+  },
+  {
+    id: 'fullName',
+    question: "What's your name?",
+    type: 'text' as const,
+    placeholder: 'e.g., John Smith',
+    errorMessage: 'Please provide your name.',
+  },
 ];
 
 export function FreeEligibilitySurveyModal({
@@ -142,6 +158,8 @@ export function FreeEligibilitySurveyModal({
     agreesToReportMissingFeatures: '',
     agreesToReportImprovements: '',
     agreesToTestNewFeatures: '',
+    agreesToJoinWhatsAppChannel: '',
+    fullName: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -258,7 +276,7 @@ export function FreeEligibilitySurveyModal({
           }
         }
       }
-    } else if (currentQuestion.type === 'text') {
+    } else if (currentQuestion.type === 'text' || currentQuestion.type === 'phone') {
       const value = updatedFormData[currentQuestion.id as keyof FormData];
       if (!value || (typeof value === 'string' && !value.trim())) {
         setError(currentQuestion.errorMessage);
@@ -266,8 +284,8 @@ export function FreeEligibilitySurveyModal({
       }
       // Check pattern validation if defined
       if ('validation' in currentQuestion && currentQuestion.validation && typeof value === 'string') {
-        // Remove spaces for phone validation
-        const cleanValue = currentQuestion.id === 'whatsappNumber' ? value.replace(/[\s-()]/g, '') : value.trim();
+        // Remove spaces, dashes, parentheses for phone validation
+        const cleanValue = currentQuestion.type === 'phone' ? value.replace(/[\s\-()]/g, '') : value.trim();
         if (!currentQuestion.validation.test(cleanValue)) {
           setError(currentQuestion.validationError || 'Invalid format');
           return false;
@@ -439,19 +457,34 @@ export function FreeEligibilitySurveyModal({
             </div>
           ) : (
             <div>
-              <Input
-                id={currentQuestion.id}
-                name={currentQuestion.id}
-                value={(formData[currentQuestion.id as keyof FormData] as string) || ''}
-                onChange={handleInputChange}
-                placeholder={currentQuestion.placeholder}
-                className="border-2 border-black font-mono"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleNext();
-                  }
-                }}
-              />
+              {currentQuestion.type === 'phone' && (
+                <div className="mb-3 p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                  <p className="text-sm font-mono text-gray-600">
+                    {currentQuestion.hint}
+                  </p>
+                </div>
+              )}
+              <div className="relative">
+                {currentQuestion.type === 'phone' && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-mono text-gray-400 pointer-events-none">
+                    {!(formData[currentQuestion.id as keyof FormData] as string)?.startsWith('+') && '+'}
+                  </span>
+                )}
+                <Input
+                  id={currentQuestion.id}
+                  name={currentQuestion.id}
+                  type={currentQuestion.type === 'phone' ? 'tel' : 'text'}
+                  value={(formData[currentQuestion.id as keyof FormData] as string) || ''}
+                  onChange={handleInputChange}
+                  placeholder={currentQuestion.placeholder}
+                  className={`border-2 border-black font-mono ${currentQuestion.type === 'phone' ? 'text-lg tracking-wide' : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleNext();
+                    }
+                  }}
+                />
+              </div>
             </div>
           )}
 
