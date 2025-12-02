@@ -10,6 +10,9 @@ const RATE_LIMIT_IP_PER_MIN = 100;
 const RATE_LIMIT_GLOBAL_PER_MIN = 100;
 const RATE_LIMIT_GLOBAL_PER_DAY = 1000;
 
+// Model for computer use - the dedicated computer use model
+const COMPUTER_USE_MODEL = 'gemini-2.5-computer-use-preview-10-2025';
+
 /**
  * Check rate limits using Redis
  */
@@ -64,56 +67,67 @@ async function checkRateLimit(ip: string): Promise<NextResponse | null> {
 }
 
 /**
- * History step from previous actions
+ * Function call from Gemini Computer Use model
  */
-interface HistoryStep {
-  step: number;
-  action: string;
-  args?: Record<string, unknown>;
-  result: 'success' | 'failed';
-  error?: string;
+interface ComputerUseFunctionCall {
+  name: string;
+  args: Record<string, unknown>;
+  id?: string;
 }
 
 /**
- * Computer Use action response
+ * Response from Computer Use API
  */
-interface ComputerUseAction {
-  action: string;
-  args?: {
-    x?: number;
-    y?: number;
-    text?: string;
-    keys?: string;
-    direction?: string;
-    url?: string;
-    start_x?: number;
-    start_y?: number;
-    end_x?: number;
-    end_y?: number;
-  };
-  reasoning?: string;
+interface ComputerUseResponse {
+  // True if task is complete (no more actions needed)
+  completed: boolean;
+  // Function call if action is needed
+  function_call?: ComputerUseFunctionCall;
+  // Text response from model (reasoning or final answer)
+  text?: string;
+  // Safety decision if confirmation required
   safety_decision?: 'allowed' | 'require_confirmation';
+  // Timing
+  duration_ms: number;
+  model_used: string;
+}
+
+/**
+ * Function response to send back (with screenshot)
+ */
+interface FunctionResponseData {
+  name: string;
+  response: {
+    success: boolean;
+    error?: string;
+  };
+  screenshot?: string; // base64 PNG
 }
 
 /**
  * POST /api/vision/computer-use
  *
- * Get next action from Gemini Computer Use model.
+ * Get next action from Gemini Computer Use model using native function calling.
  *
  * Request body:
  *   {
- *     image: string,       - base64 encoded PNG screenshot
- *     goal: string,        - what to achieve
- *     history?: HistoryStep[] - previous actions taken
+ *     image: string,              - base64 encoded PNG screenshot
+ *     goal: string,               - what to achieve
+ *     previous_actions?: Array<{  - previous function responses
+ *       name: string,
+ *       response: { success: boolean, error?: string },
+ *       screenshot: string        - base64 PNG after action
+ *     }>
  *   }
  *
  * Response:
  *   {
- *     action: string,
- *     args?: object,
- *     reasoning?: string,
+ *     completed: boolean,         - true if no more actions needed
+ *     function_call?: { name, args, id },
+ *     text?: string,              - model's text response
  *     safety_decision?: string,
- *     duration_ms: number
+ *     duration_ms: number,
+ *     model_used: string
  *   }
  */
 export async function POST(request: NextRequest) {
@@ -130,7 +144,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { image, goal, history } = body;
+    const { image, goal, previous_actions } = body;
 
     if (!image) {
       return NextResponse.json(
@@ -169,97 +183,126 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const modelName = 'gemini-2.0-flash';
+    console.log(`[Computer Use API] Calling ${COMPUTER_USE_MODEL} for goal: ${goal.substring(0, 50)}...`);
 
-    // Build conversation with history context
-    let contextPrompt = `You are a desktop automation assistant. Your goal is: ${goal}
+    // Build contents array - start with user goal + screenshot
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contents: any[] = [
+      {
+        role: 'user',
+        parts: [
+          { text: goal },
+          {
+            inlineData: {
+              mimeType: 'image/png',
+              data: image,
+            },
+          },
+        ],
+      },
+    ];
 
-You can see a screenshot of the current desktop state. Analyze it and decide the next action to take.
-
-Available actions:
-- click_at: Click at coordinates (x, y in 0-999 normalized range)
-- type_text_at: Type text at coordinates
-- key_combination: Press keyboard keys (e.g., "Enter", "Ctrl+C")
-- scroll_document: Scroll the page (direction: "up", "down", "left", "right")
-- drag_and_drop: Drag from start to end coordinates
-- wait_5_seconds: Wait for UI to update
-- done: Goal has been achieved
-- cannot_proceed: Cannot complete the goal (explain why in reasoning)
-
-Coordinates are normalized 0-999 where (0,0) is top-left and (999,999) is bottom-right.
-
-For potentially destructive actions (delete, submit, purchase), set safety_decision to "require_confirmation".
-`;
-
-    if (history && history.length > 0) {
-      contextPrompt += `\n\nPrevious actions taken:\n`;
-      for (const step of history as HistoryStep[]) {
-        contextPrompt += `- Step ${step.step}: ${step.action}`;
-        if (step.args) {
-          contextPrompt += ` (${JSON.stringify(step.args)})`;
-        }
-        contextPrompt += ` -> ${step.result}`;
-        if (step.error) {
-          contextPrompt += ` (error: ${step.error})`;
-        }
-        contextPrompt += '\n';
-      }
-    }
-
-    contextPrompt += `\nAnalyze the screenshot and respond with a JSON object containing:
-{
-  "action": "action_name",
-  "args": { ... },  // action-specific arguments
-  "reasoning": "why this action",
-  "safety_decision": "allowed" or "require_confirmation"
-}`;
-
-    console.log(`[Computer Use API] Calling ${modelName} for goal: ${goal.substring(0, 50)}...`);
-
-    const result = await genAI.models.generateContent({
-      model: modelName,
-      contents: [
-        {
-          role: 'user',
+    // If we have previous actions, add them as function responses
+    if (previous_actions && Array.isArray(previous_actions)) {
+      for (const action of previous_actions as FunctionResponseData[]) {
+        // Add the model's function call (reconstructed)
+        contents.push({
+          role: 'model',
           parts: [
-            { text: contextPrompt },
             {
-              inlineData: {
-                mimeType: 'image/png',
-                data: image,
+              functionCall: {
+                name: action.name,
+                args: {},
               },
             },
           ],
-        },
-      ],
+        });
+
+        // Add user's function response with new screenshot
+        const responseParts: Record<string, unknown>[] = [
+          {
+            functionResponse: {
+              name: action.name,
+              response: action.response,
+            },
+          },
+        ];
+
+        // Include new screenshot if provided
+        if (action.screenshot) {
+          responseParts.push({
+            inlineData: {
+              mimeType: 'image/png',
+              data: action.screenshot,
+            },
+          });
+        }
+
+        contents.push({
+          role: 'user',
+          parts: responseParts,
+        });
+      }
+    }
+
+    const result = await genAI.models.generateContent({
+      model: COMPUTER_USE_MODEL,
+      contents,
       config: {
         temperature: 0.1,
         maxOutputTokens: 1024,
-        responseMimeType: 'application/json',
+        tools: [
+          {
+            computerUse: {
+              // Don't set environment - let it default
+              // Exclude browser-specific functions for desktop use
+              excludedPredefinedFunctions: ['open_web_browser', 'go_back', 'go_forward'],
+            },
+          },
+        ],
       },
     });
 
     const duration = Date.now() - startTime;
-    const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const parts = result.candidates?.[0]?.content?.parts || [];
 
-    let parsedResponse: ComputerUseAction;
-    try {
-      parsedResponse = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('[Computer Use API] Failed to parse response:', responseText);
-      return NextResponse.json(
-        { error: 'Failed to parse model response', raw: responseText },
-        { status: 500 }
-      );
+    // Check if model returned any function calls
+    const functionCallPart = parts.find((p: { functionCall?: unknown }) => p.functionCall);
+    const textPart = parts.find((p: { text?: string }) => p.text);
+
+    // If no function call, task is complete
+    if (!functionCallPart?.functionCall) {
+      console.log(`[Computer Use API] Task completed in ${duration}ms. Text: ${textPart?.text?.substring(0, 100) || 'none'}`);
+      return NextResponse.json({
+        completed: true,
+        text: textPart?.text,
+        duration_ms: duration,
+        model_used: COMPUTER_USE_MODEL,
+      } as ComputerUseResponse);
     }
 
-    console.log(`[Computer Use API] Action: ${parsedResponse.action} in ${duration}ms`);
+    // Extract function call details
+    const fc = functionCallPart.functionCall as { name?: string; args?: Record<string, unknown>; id?: string };
+
+    // Check for safety_acknowledgement requirement in args
+    const safetyDecision = fc.args?.safety_acknowledgement === false
+      ? 'require_confirmation'
+      : 'allowed';
+
+    console.log(`[Computer Use API] Action: ${fc.name} in ${duration}ms`);
 
     return NextResponse.json({
-      ...parsedResponse,
+      completed: false,
+      function_call: {
+        name: fc.name || 'unknown',
+        args: fc.args || {},
+        id: fc.id,
+      },
+      text: textPart?.text,
+      safety_decision: safetyDecision,
       duration_ms: duration,
-      model_used: modelName,
-    });
+      model_used: COMPUTER_USE_MODEL,
+    } as ComputerUseResponse);
 
   } catch (error) {
     const duration = Date.now() - startTime;
