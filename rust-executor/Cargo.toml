@@ -101,3 +101,13 @@ wiremock = "0.6"
 lto = true
 opt-level = 3
 codegen-units = 1
+
+# Dev profile optimizations for faster builds
+[profile.dev]
+opt-level = 1          # Basic optimizations (faster than 0, much faster to compile than 2+)
+debug = 0              # No debug symbols (faster linking)
+split-debuginfo = "unpacked"  # Avoid PDB contention on Windows
+codegen-units = 256    # Max parallelism
+
+[profile.dev.package."*"]
+opt-level = 2          # Optimize dependencies more (they don't change often)
