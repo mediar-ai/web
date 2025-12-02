@@ -161,8 +161,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Use Google AI API key (not Vertex AI) for Computer Use preview model access
-    if (!process.env.GOOGLE_AI_API_KEY) {
-      console.error('[Computer Use API] GOOGLE_AI_API_KEY not configured');
+    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('[Computer Use API] GOOGLE_AI_API_KEY or GEMINI_API_KEY not configured');
       return NextResponse.json(
         { error: 'Server configuration error: missing Google AI API key' },
         { status: 500 }
@@ -170,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     const genAI = new GoogleGenAI({
-      apiKey: process.env.GOOGLE_AI_API_KEY,
+      apiKey,
     });
 
     console.log(`[Computer Use API] Calling ${COMPUTER_USE_MODEL} for goal: ${goal.substring(0, 50)}...`);
