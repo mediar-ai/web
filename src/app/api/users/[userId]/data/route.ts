@@ -26,7 +26,7 @@ function isRunningAnalysis(item: unknown): item is RunningAnalysis {
   );
 }
 
-const ACTIVITY_PAGE_SIZE = 1009;
+const ACTIVITY_PAGE_SIZE = 1000;
 
 export async function GET(
   request: NextRequest,
@@ -113,6 +113,11 @@ export async function GET(
       analysesQuery,
       countQuery,
     ]);
+
+    // Debug logging to understand limits
+    console.log(`[API/data] Query params: userId=${userId}, sessionId=${sessionId}, offset=${offset}, limit=${limit}`);
+    console.log(`[API/data] Activity raw count: ${activityResult.data?.length}, Events raw count: ${eventsResult.data?.length}, Analyses raw count: ${analysesResult.data?.length}`);
+    console.log(`[API/data] Total activity count from DB: ${countResult.count}`);
 
     if (activityResult.error) {
       console.error(`[API/data] Activity query failed for user ${userId}:`, JSON.stringify(activityResult.error, null, 2));
