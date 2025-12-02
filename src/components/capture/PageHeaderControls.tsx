@@ -96,7 +96,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   const handleStartClick = () => {
     if (isMobile) {
       toast('Desktop Required', {
-        description: 'Screen sharing is only available on desktop browsers. Please open this page on a computer to start training.',
+        description: 'Screen sharing is only available on desktop browsers. Please open this page on a computer to start recording.',
         duration: 5000,
       });
       return;
@@ -125,11 +125,11 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
       <div className="flex sm:hidden flex-col w-full gap-2">
         {!stream ? (
           <Button onClick={handleStartClick} variant="outline" className="w-full">
-            <Zap className="mr-2 h-4 w-4" /> Start Training
+            <Zap className="mr-2 h-4 w-4" /> Start Recording
           </Button>
         ) : (
           <Button onClick={handleStopScreenShare} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
-            Stop Training
+            Stop Recording
           </Button>
         )}
         <div className="flex items-center justify-between gap-2">
@@ -159,11 +159,11 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
       <div className="hidden sm:flex items-center justify-end gap-2">
         {!stream ? (
           <Button onClick={handleStartClick} variant="outline">
-            <Zap className="mr-2 h-4 w-4" /> Start Training
+            <Zap className="mr-2 h-4 w-4" /> Start Recording
           </Button>
         ) : (
           <Button onClick={handleStopScreenShare} variant="outline" className="border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
-            Stop Training
+            Stop Recording
           </Button>
         )}
         <Button asChild variant="outline">
