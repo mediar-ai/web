@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Environment } from '@google/genai';
 import { getRedisClient } from '@/lib/redis-client';
 
 // Vercel Pro: 5 minute timeout for computer use model
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
           {
             computerUse: {
               // Try UNSPECIFIED to see if it avoids browser-specific requirements
-              environment: 'ENVIRONMENT_UNSPECIFIED',
+              environment: Environment.ENVIRONMENT_UNSPECIFIED,
               // Exclude browser-specific functions for desktop use
               excludedPredefinedFunctions: ['open_web_browser', 'go_back', 'go_forward'],
             },
