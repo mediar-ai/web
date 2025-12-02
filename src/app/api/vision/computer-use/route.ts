@@ -5,8 +5,8 @@ import { getRedisClient } from '@/lib/redis-client';
 // Vercel Pro: 5 minute timeout for computer use model
 export const maxDuration = 300;
 
-// Rate limits (same as vision/parse)
-const RATE_LIMIT_IP_PER_MIN = 10;
+// Rate limits
+const RATE_LIMIT_IP_PER_MIN = 100;
 const RATE_LIMIT_GLOBAL_PER_MIN = 100;
 const RATE_LIMIT_GLOBAL_PER_DAY = 1000;
 
