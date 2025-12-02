@@ -33,7 +33,8 @@ export async function GET(
         remote_machines (
           name,
           mcp_endpoint,
-          azure_resource_id
+          azure_resource_id,
+          computer_name
         )
       `
       )
@@ -58,10 +59,13 @@ export async function GET(
     const assignedMachineName = execution.remote_machines?.name;
     const mcpEndpoint = execution.remote_machines?.mcp_endpoint;
     const azureResourceId = execution.remote_machines?.azure_resource_id;
+    // computer_name is the Windows COMPUTERNAME used for recording folders
+    const computerName = execution.remote_machines?.computer_name;
 
     console.log('[Recording API] Execution details:', {
       id: executionId,
       machine: assignedMachineName,
+      computerName,
       started_at: execution.started_at,
       completed_at: execution.completed_at,
     });
@@ -90,6 +94,13 @@ export async function GET(
 
     // Determine potential paths to check
     const pathsToCheck: string[] = [];
+
+    // Priority 1: Use computer_name if available (most reliable for recordings)
+    if (computerName) {
+      pathsToCheck.push(`recordings/${computerName}/${dateFolder}`);
+      pathsToCheck.push(`recordings/${dateFolder}/${computerName}`);
+      pathsToCheck.push(`${dateFolder}/${computerName}`);
+    }
 
     // 1. Current structure: {date}/{machine_name}
     pathsToCheck.push(`${dateFolder}/${machineName}`);

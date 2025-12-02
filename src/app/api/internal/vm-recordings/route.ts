@@ -60,19 +60,29 @@ export async function GET(request: NextRequest) {
 
     const mcpEndpoint = machineData.mcp_endpoint;
     const azureResourceId = machineData.azure_resource_id;
+    const dbComputerName = machineData.computer_name;
 
     console.log('[VM Recordings API] Machine details:', {
       name: machineName,
       mcpEndpoint,
       azureResourceId,
+      dbComputerName,
     });
 
-    // Define potential paths to check - start with basic machine name
-    const pathsToCheck: string[] = [
-      `${date}/${machineName}`,
-      `recordings/${machineName}/${date}`,
-      `recordings/${date}/${machineName}`,
-    ];
+    // Define potential paths to check
+    const pathsToCheck: string[] = [];
+
+    // Priority 1: Use computer_name from database if available (most reliable)
+    if (dbComputerName) {
+      pathsToCheck.push(`recordings/${dbComputerName}/${date}`);
+      pathsToCheck.push(`recordings/${date}/${dbComputerName}`);
+      pathsToCheck.push(`${date}/${dbComputerName}`);
+    }
+
+    // Fallback: Use machine name from database
+    pathsToCheck.push(`${date}/${machineName}`);
+    pathsToCheck.push(`recordings/${machineName}/${date}`);
+    pathsToCheck.push(`recordings/${date}/${machineName}`);
 
     // Try to resolve actual computer name from MCP endpoint (reverse DNS)
     if (mcpEndpoint) {
