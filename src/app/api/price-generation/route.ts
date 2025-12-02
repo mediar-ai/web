@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 
 // Hardcoded start date - DO NOT change on redeploy
-const PRICE_START_DATE = new Date('2025-11-25T00:00:00Z');
+const PRICE_START_DATE = new Date('2025-11-20T00:00:00Z');
 const BASE_PRICE = 99;
 const WEEKLY_INCREASE_BEFORE_300 = 20;
 const WEEKLY_INCREASE_AFTER_300 = 10;
@@ -18,7 +18,7 @@ export async function GET() {
       success: true,
       data: creditData.data,
       defaultIndex: creditData.defaultIndex,
-      timeUntilNextMonday: calculateTimeUntilNextMonday(),
+      timeUntilNextMonday: calculateTimeUntilNextThursday(),
       currentPrice,
       weeksSinceStart: creditData.weeksSinceStart,
     });
@@ -106,10 +106,10 @@ function getCurrentPrice(weeksSinceStart: number): number {
   return calculatePriceForWeek(weeksSinceStart);
 }
 
-function calculateTimeUntilNextMonday(): number {
+function calculateTimeUntilNextThursday(): number {
   const now = new Date();
-  const nextMonday = new Date();
-  nextMonday.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7 || 7));
-  nextMonday.setHours(0, 0, 0, 0);
-  return nextMonday.getTime() - now.getTime();
+  const nextThursday = new Date();
+  nextThursday.setDate(now.getDate() + ((4 + 7 - now.getDay()) % 7 || 7));
+  nextThursday.setHours(0, 0, 0, 0);
+  return nextThursday.getTime() - now.getTime();
 }
