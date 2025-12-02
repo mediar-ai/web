@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BufferedFrame, ActivityItem, UIDiffAnalysis, RunningAnalysis, ViewingMode } from '../types'; // Assuming types are exported
+import type { BufferedFrame, ActivityItem, UIDiffAnalysis, RunningAnalysis } from '../types';
 
 interface UseFrameAnalysisDispatcherProps {
   frameBuffer: BufferedFrame[];
@@ -13,7 +13,6 @@ interface UseFrameAnalysisDispatcherProps {
   logError: (...args: unknown[]) => void;
   setMainStatus: (status: string) => void;
   MAX_PARALLEL_ANALYSES: number;
-  viewingMode: ViewingMode;
 }
 
 export const useFrameAnalysisDispatcher = ({
@@ -28,8 +27,7 @@ export const useFrameAnalysisDispatcher = ({
   logError,
   setMainStatus,
   MAX_PARALLEL_ANALYSES,
-  viewingMode,
-}: UseFrameAnalysisDispatcherProps): void => { // This hook might not need to return anything directly
+}: UseFrameAnalysisDispatcherProps): void => {
   const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<BufferedFrame | null>(null);
   const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null);
   const [initialDumpInProgress, setInitialDumpInProgress] = useState<boolean>(false);
@@ -271,10 +269,6 @@ export const useFrameAnalysisDispatcher = ({
   );
 
   useEffect(() => {
-    if (viewingMode.type !== 'local') {
-      return;
-    }
-
     if (activeAnalysesCount >= MAX_PARALLEL_ANALYSES) {
       return; // Max capacity, wait for an analysis to complete
     }
@@ -335,7 +329,6 @@ export const useFrameAnalysisDispatcher = ({
   }, [
     frameBuffer,
     activeAnalysesCount,
-    viewingMode,
     baselineFrameForDiff,
     pendingFrameForDiff,
     initialDumpInProgress,

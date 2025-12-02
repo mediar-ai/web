@@ -335,8 +335,22 @@ export type ViewingMode =
   | { type: 'local'; userName?: never; }
   | { type: 'remote'; userId: string; sessionId?: string; userName?: string };
 
+export interface PaginationInfo {
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PaginatedActivityResult {
+  activityItems: ActivityItem[];
+  pagination: PaginationInfo;
+}
+
 export interface DataProvider {
   loadActivityItems(sessionId?: string): Promise<ActivityItem[]>;
+  loadActivityItemsWithPagination(sessionId?: string): Promise<PaginatedActivityResult>;
+  loadMoreActivityItems(offset: number, sessionId?: string): Promise<PaginatedActivityResult>;
   loadEvents(sessionId?: string): Promise<Event[]>;
   loadScreenshot(item: ActivityItem): Promise<Blob | string | null>;
   loadWorkflowSteps(sessionId?: string): Promise<Array<{
@@ -346,7 +360,7 @@ export interface DataProvider {
     timestamp: string;
   }>>;
   loadCompletedAnalyses(sessionId?: string): Promise<RunningAnalysis[]>;
-  // Add more methods as needed
+  getUserName?(): string | null;
 }
 
 export interface Session {

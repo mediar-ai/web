@@ -8,7 +8,6 @@ import VideoPreviewArea from '@/components/capture/VideoPreviewArea';
 import ScrollHint from '@/components/onboarding/ScrollHint';
 import LowLevelLogsTabContent from '@/components/tabs/LowLevelLogsTabContent';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -17,13 +16,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useViewingMode } from '@/hooks/useViewingMode';
 import { EVENTS_PROMPT, TEXT_EXTRACTION_PROMPT } from '@/lib/prompts';
 import { uploadScreenshot } from '@/lib/screenshotUploader';
-import { Bug, MoreHorizontal, Pencil, RefreshCw, Settings, User } from 'lucide-react';
-import Link from 'next/link';
+import { Bug, MoreHorizontal, Settings } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { usePostHog } from 'posthog-js/react';
@@ -38,17 +34,9 @@ import WorkflowTabContent from '../../components/tabs/WorkflowTabContent';
 import { useAutoDetection } from '../../hooks/useAutoDetection';
 import { useEventGenerator } from '../../hooks/useEventGenerator';
 import { useFrameAnalysisDispatcher } from '../../hooks/useFrameAnalysisDispatcher';
-import { LocalDataProvider, RemoteDataProvider } from '../../lib/dataProviders';
+import { RemoteDataProvider } from '../../lib/dataProviders';
 import {
-  clearPersistedData,
-  getSessions,
-  loadFrontendLogs,
-  saveActivityItems,
-  saveCompletedAnalyses,
-  saveEvents,
-  saveFrontendLogs,
   saveScreenshot,
-  saveWorkflowSteps,
 } from '../../lib/db';
 import type {
   ActivityItem,
@@ -63,13 +51,7 @@ function HomeComponent() {
   const MAX_PARALLEL_ANALYSES = 5;
 
   const posthog = usePostHog();
-  const viewingMode = useViewingMode();
-  const [dataProvider, setDataProvider] = useState<DataProvider>(LocalDataProvider);
-  const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
-  const [isRemoteUserOnline, setIsRemoteUserOnline] = useState<boolean>(false);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState('');
-  const [userType, setUserType] = useState<string | null>(null);
+  const [dataProvider, setDataProvider] = useState<DataProvider | null>(null);
 
   const [screenshotQuality, setScreenshotQuality] = useState<number>(0.95);
   const [maxScreenshots, setMaxScreenshots] = useState<number>(50);
@@ -162,8 +144,6 @@ function HomeComponent() {
     const logEntry = `${timestamp} ${message}`;
     setFrontendLogs((prevLogs) => {
       const newLogs = [logEntry, ...prevLogs].slice(0, 100);
-      // Persist logs as they are created
-      saveFrontendLogs(newLogs);
       return newLogs;
     });
     console.log(...args);
@@ -177,8 +157,6 @@ function HomeComponent() {
     const logEntry = `${timestamp} [ERROR] ${message}`;
     setFrontendLogs((prevLogs) => {
       const newLogs = [logEntry, ...prevLogs].slice(0, 100);
-      // Persist logs as they are created
-      saveFrontendLogs(newLogs);
       return newLogs;
     });
     console.error(...args);
@@ -225,128 +203,51 @@ function HomeComponent() {
 
   const loadData = useCallback(async (provider: DataProvider) => {
     if (!provider) return;
-    logToUI(`[loadData] Loading data using ${provider.constructor.name}...`);
+    logToUI(`[loadData] Loading data from Supabase...`);
     try {
-      // For RemoteDataProvider, use paginated loading for activity items
-      let savedActivityItemsFromDB: ActivityItem[];
-      let paginationInfo: { offset: number; limit: number; total: number; hasMore: boolean } | null = null;
+      const [_savedSteps, savedEvents, activityResult, savedCompletedAnalyses] =
+        await Promise.all([
+          provider.loadWorkflowSteps(),
+          provider.loadEvents(),
+          provider.loadActivityItemsWithPagination(),
+          provider.loadCompletedAnalyses(),
+        ]);
 
-      if (provider instanceof RemoteDataProvider) {
-        const sessionId = viewingMode.type === 'remote' ? viewingMode.sessionId : undefined;
-        const [_savedSteps, savedEvents, activityResult, savedCompletedAnalyses] =
-          await Promise.all([
-            provider.loadWorkflowSteps(),
-            provider.loadEvents(sessionId),
-            provider.loadActivityItemsWithPagination(sessionId),
-            provider.loadCompletedAnalyses(sessionId),
-          ]);
+      const paginationInfo = activityResult.pagination;
 
-        savedActivityItemsFromDB = activityResult.activityItems;
-        paginationInfo = activityResult.pagination;
+      // De-duplicate data on the client-side to prevent key errors
+      const uniqueActivityItems = Array.from(new Map(activityResult.activityItems.map(item => [item.id, item])).values());
+      const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
+      const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
 
-        // De-duplicate data on the client-side to prevent key errors
-        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
+      // Always set the data, even if it's empty, to clear out old state.
+      setActivityItems(uniqueActivityItems);
+      setActivityPagination(paginationInfo);
+      logToUI(
+        `[loadData] Loaded ${uniqueActivityItems.length} of ${paginationInfo?.total || 0} activity items`
+      );
 
-        setRemoteUserName(provider.getUserName());
+      setEvents(uniqueEvents);
+      logToUI(`[loadData] Loaded ${uniqueEvents.length} events`);
 
-        // Always set the data, even if it's empty, to clear out old state.
-        setActivityItems(uniqueActivityItems);
-        setActivityPagination(paginationInfo);
-        logToUI(
-          `[loadData] Loaded ${uniqueActivityItems.length} of ${paginationInfo?.total || 0} activity items (paginated)`
-        );
-
-        setEvents(uniqueEvents);
-        logToUI(
-          `[loadData] Loaded ${uniqueEvents.length} events`
-        );
-
-        setCompletedAnalyses(uniqueCompletedAnalyses);
-        logToUI(
-          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses`
-        );
-      } else {
-        // Local mode - load all at once (no pagination)
-        const [savedSteps, savedEvents, localActivityItems, savedCompletedAnalyses] =
-          await Promise.all([
-            provider.loadWorkflowSteps(),
-            provider.loadEvents(),
-            provider.loadActivityItems(),
-            provider.loadCompletedAnalyses(),
-          ]);
-
-        savedActivityItemsFromDB = localActivityItems;
-
-        // De-duplicate data on the client-side to prevent key errors
-        const uniqueActivityItems = Array.from(new Map(savedActivityItemsFromDB.map(item => [item.id, item])).values());
-        const uniqueEvents = Array.from(new Map(savedEvents.map(item => [item.id, item])).values());
-        const uniqueCompletedAnalyses = Array.from(new Map(savedCompletedAnalyses.map(item => [item.id, item])).values());
-
-        // Always set the data, even if it's empty, to clear out old state.
-        setActivityItems(uniqueActivityItems);
-        setActivityPagination(null); // No pagination for local mode
-        logToUI(
-          `[loadData] Loaded ${uniqueActivityItems.length} activity items (de-duplicated from ${savedActivityItemsFromDB.length})`
-        );
-
-        setEvents(uniqueEvents);
-        logToUI(
-          `[loadData] Loaded ${uniqueEvents.length} events (de-duplicated from ${savedEvents.length})`
-        );
-
-        setCompletedAnalyses(uniqueCompletedAnalyses);
-        logToUI(
-          `[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses (de-duplicated from ${savedCompletedAnalyses.length})`
-        );
-
-        // In local mode, we also load and save data to IndexedDB
-        const logs = await loadFrontendLogs();
-        if (logs.length > 0) {
-          setFrontendLogs(logs);
-          logToUI(`[loadData] Loaded ${logs.length} frontend logs`);
-        }
-        // Persist all loaded data locally
-        if (savedSteps.length > 0) saveWorkflowSteps(savedSteps);
-        if (uniqueEvents.length > 0) saveEvents(uniqueEvents);
-        if (uniqueActivityItems.length > 0) saveActivityItems(uniqueActivityItems);
-        if (uniqueCompletedAnalyses.length > 0) saveCompletedAnalyses(uniqueCompletedAnalyses);
-
-        // In local mode AND when capturing, stream new items to Supabase
-        if (streamRef.current) {
-          uniqueActivityItems.filter(item => !streamedItemIds.current.has(item.id))
-            .forEach(item => streamData('activity_item', item));
-          uniqueEvents.filter(item => !streamedItemIds.current.has(item.id))
-            .forEach(item => streamData('event', item));
-          uniqueCompletedAnalyses.filter(item => !streamedItemIds.current.has(item.id) && item.status === 'completed' && item.endTime)
-            .forEach(item => {
-              const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
-              streamData('completed_analysis', itemToStream);
-            });
-        }
-      }
+      setCompletedAnalyses(uniqueCompletedAnalyses);
+      logToUI(`[loadData] Loaded ${uniqueCompletedAnalyses.length} completed analyses`);
 
     } catch (err) {
       logError('[loadData] Failed to load data:', err);
     }
-  }, [logError, logToUI, viewingMode, streamData]);
+  }, [logError, logToUI]);
 
   // Callback to load more activity items for infinite scroll
   const loadMoreActivities = useCallback(async () => {
-    if (isLoadingMoreActivities || !activityPagination?.hasMore) {
-      return;
-    }
-
-    if (!(dataProvider instanceof RemoteDataProvider)) {
+    if (isLoadingMoreActivities || !activityPagination?.hasMore || !dataProvider) {
       return;
     }
 
     setIsLoadingMoreActivities(true);
     try {
-      const sessionId = viewingMode.type === 'remote' ? viewingMode.sessionId : undefined;
       const newOffset = activityItems.length;
-      const result = await dataProvider.loadMoreActivityItems(newOffset, sessionId);
+      const result = await dataProvider.loadMoreActivityItems(newOffset);
 
       if (result.activityItems.length > 0) {
         // Append new items (older) to existing items
@@ -364,42 +265,11 @@ function HomeComponent() {
     } finally {
       setIsLoadingMoreActivities(false);
     }
-  }, [isLoadingMoreActivities, activityPagination, dataProvider, viewingMode, activityItems.length, logToUI, logError]);
+  }, [isLoadingMoreActivities, activityPagination, dataProvider, activityItems.length, logToUI, logError]);
 
+  // Initialize user and load data from Supabase
   useEffect(() => {
-    if (viewingMode.type === 'remote') {
-      // Clear local data to prevent flash of incorrect content
-      setActivityItems([]);
-      setActivityPagination(null);
-      setEvents([]);
-      setCompletedAnalyses([]);
-      setRunningAnalyses([]);
-      setFrontendLogs([]);
-      setSelectedActivity(null);
-      setSelectedEvent(null);
-      
-      const remoteProvider = new RemoteDataProvider(viewingMode.userId);
-      setDataProvider(remoteProvider);
-      logToUI(`[Mode] Switched to remote data provider for user ${viewingMode.userId}`);
-      loadData(remoteProvider); // Fetch data immediately with the new provider
-
-      // Also grab userType from URL params in remote mode
-      const searchParams = new URLSearchParams(window.location.search);
-      const type = searchParams.get('userType');
-      if (type) {
-        setUserType(type);
-        logToUI(`[Mode] Viewing user of type: ${type}`);
-      }
-    } else {
-      setDataProvider(LocalDataProvider);
-      loadData(LocalDataProvider); // Fetch local data
-      logToUI('[Mode] Switched to local data provider.');
-    }
-  }, [viewingMode, logToUI, loadData]);
-
-  useEffect(() => {
-    // On initial load, check for a user ID in local storage or create a new one.
-    // This is the *local* user's ID, used for Supabase streaming.
+    // Get or create user ID
     let storedUserId = localStorage.getItem('user_id');
     if (!storedUserId) {
       storedUserId = crypto.randomUUID();
@@ -409,11 +279,17 @@ function HomeComponent() {
       logToUI(`[Auth] Found existing user ID: ${storedUserId}`);
     }
     setUserId(storedUserId);
-  }, [logToUI]);
+
+    // Create provider and load data
+    const provider = new RemoteDataProvider(storedUserId);
+    setDataProvider(provider);
+    logToUI(`[Init] Loading data for user ${storedUserId}`);
+    loadData(provider);
+  }, [logToUI, loadData]);
 
   // Stream new activity items as they're created
   useEffect(() => {
-    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+    if (!streamRef.current || !userId) {
       return;
     }
 
@@ -427,22 +303,15 @@ function HomeComponent() {
 
     if (newItems.length > 0) {
       logToUI(`[Stream] Found ${newItems.length} new activity items to stream`);
-
-      // Save to IndexedDB
-      saveActivityItems(activityItems).catch(err =>
-        logError('[Stream] Failed to save activity items to IndexedDB:', err)
-      );
-
-      // Stream each new item
       newItems.forEach(item => {
         streamData('activity_item', item);
       });
     }
-  }, [activityItems, viewingMode.type, userId, streamData, logToUI, logError]);
+  }, [activityItems, userId, streamData, logToUI]);
 
   // Stream new events as they're created
   useEffect(() => {
-    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+    if (!streamRef.current || !userId) {
       return;
     }
 
@@ -456,22 +325,15 @@ function HomeComponent() {
 
     if (newItems.length > 0) {
       logToUI(`[Stream] Found ${newItems.length} new events to stream`);
-
-      // Save to IndexedDB
-      saveEvents(events).catch(err =>
-        logError('[Stream] Failed to save events to IndexedDB:', err)
-      );
-
-      // Stream each new item
       newItems.forEach(item => {
         streamData('event', item);
       });
     }
-  }, [events, viewingMode.type, userId, streamData, logToUI, logError]);
+  }, [events, userId, streamData, logToUI]);
 
   // Stream new completed analyses as they're created
   useEffect(() => {
-    if (viewingMode.type !== 'local' || !streamRef.current || !userId) {
+    if (!streamRef.current || !userId) {
       return;
     }
 
@@ -489,19 +351,12 @@ function HomeComponent() {
 
     if (newItems.length > 0) {
       logToUI(`[Stream] Found ${newItems.length} new completed analyses to stream`);
-
-      // Save to IndexedDB
-      saveCompletedAnalyses(completedAnalyses).catch(err =>
-        logError('[Stream] Failed to save completed analyses to IndexedDB:', err)
-      );
-
-      // Stream each new item with timestamp from endTime
       newItems.forEach(item => {
         const itemToStream = { ...item, timestamp: new Date(item.endTime!).toISOString() };
         streamData('completed_analysis', itemToStream);
       });
     }
-  }, [completedAnalyses, viewingMode.type, userId, streamData, logToUI, logError]);
+  }, [completedAnalyses, userId, streamData, logToUI]);
 
   const captureFrameToBuffer = useCallback(async (changePercent: number) => {
     if (!streamRef.current) { 
@@ -685,7 +540,6 @@ function HomeComponent() {
     logError,
     setMainStatus,
     MAX_PARALLEL_ANALYSES,
-    viewingMode,
   });
 
   useEventGenerator({
@@ -704,7 +558,6 @@ function HomeComponent() {
     MAX_PARALLEL_ANALYSES,
     EVENTS_MODEL_NAME,
     eventsPrompt,
-    viewingMode,
   });
 
   const handleEventSelect = (event: Event) => {
@@ -749,26 +602,21 @@ function HomeComponent() {
     }
   }, [frontendLogs, logToUI, logError, posthog]);
 
-  const clearAllData = useCallback(async () => {
+  const clearAllData = useCallback(() => {
     posthog?.capture('web_app_clear_all_data', {
       activity_items_count: activityItems.length,
       events_count: events.length,
       logs_count: frontendLogs.length,
       timestamp: new Date().toISOString(),
     });
-    try {
-      await clearPersistedData();
-      setEvents([]);
-      setFrontendLogs([]);
-      setActivityItems([]);
-      setCompletedAnalyses([]);
-      setCaptureSessionId(1);
-      localStorage.setItem('capture_session_id', '1');
-      logToUI('[clearAllData] All data cleared, session ID reset to 1');
-    } catch (err) {
-      logError('[clearAllData] Failed to clear data:', err);
-    }
-  }, [logToUI, logError, setActivityItems, activityItems.length, events.length, frontendLogs.length, posthog]);
+    setEvents([]);
+    setFrontendLogs([]);
+    setActivityItems([]);
+    setCompletedAnalyses([]);
+    setCaptureSessionId(1);
+    localStorage.setItem('capture_session_id', '1');
+    logToUI('[clearAllData] All local state cleared, session ID reset to 1');
+  }, [logToUI, setActivityItems, activityItems.length, events.length, frontendLogs.length, posthog]);
 
   const dismissError = useCallback(() => {
     setShowError(false);
@@ -778,7 +626,6 @@ function HomeComponent() {
   const handleStopScreenShare = useCallback(() => {
     posthog?.capture('web_app_stop_recording', {
       timestamp: new Date().toISOString(),
-      viewing_mode: viewingMode.type,
       activity_items_count: activityItems.length,
       events_count: events.length,
     });
@@ -817,12 +664,11 @@ function HomeComponent() {
     logToUI,
     initialFrameCapturedRef,
     pipWindow,
-  ]); // Intentionally omit posthog/viewingMode - external refs that don't affect callback logic 
+  ]); // Intentionally omit posthog - external ref that doesn't affect callback logic
 
   const handleStartScreenShare = useCallback(async () => {
     posthog?.capture('web_app_start_recording', {
       timestamp: new Date().toISOString(),
-      viewing_mode: viewingMode.type,
     });
     logToUI('[handleStartScreenShare] Attempting start...');
     setError(null);
@@ -897,7 +743,7 @@ function HomeComponent() {
       setMainStatus('Error starting share');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream, logToUI, logError, captureSessionId]); // Intentionally omit posthog/viewingMode - stable refs, read current value when executed
+  }, [stream, logToUI, logError, captureSessionId]); // Intentionally omit posthog - stable ref
 
   useEffect(() => {
     if (selectedActivity) {
@@ -1249,159 +1095,29 @@ function HomeComponent() {
     }
   };
 
-  // Check if remote user is online
-  useEffect(() => {
-    if (viewingMode.type === 'remote') {
-      const checkOnlineStatus = async () => {
-        try {
-          const sessions = await getSessions();
-          const userSessions = sessions[viewingMode.userId];
-          if (userSessions) {
-            setRemoteUserName(userSessions.name);
-            // Check if any session is live
-            const hasLiveSession = userSessions.sessions.some(s => s.status === 'live');
-            setIsRemoteUserOnline(hasLiveSession);
-          }
-        } catch (error) {
-          logError('[checkOnlineStatus] Failed to fetch session status:', error);
-        }
-      };
-
-      // Check immediately
-      checkOnlineStatus();
-
-      // Check periodically
-      const interval = setInterval(checkOnlineStatus, 30000); // Check every 30 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [viewingMode, logError]);
-
-  const handleSaveName = async () => {
-    if (viewingMode.type !== 'remote' || !viewingMode.userId || !nameInput.trim()) {
-      logError('[handleSaveName] User ID not found or name is empty.');
-      return;
-    }
-
-    posthog?.capture('web_app_save_user_name', {
-      viewing_mode: viewingMode.type,
-      user_id: viewingMode.userId,
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      const response = await fetch(`/api/users/${viewingMode.userId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nameInput }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to save name');
-      }
-
-      setRemoteUserName(nameInput);
-      setIsEditingName(false);
-      logToUI(`[User] Updated user name to: ${nameInput}`);
-    } catch (err) {
-      logError('[handleSaveName] Error saving user name:', err);
-      // Optionally, show an error message to the user in the UI
-    }
-  };
-
   return (
     <div className='bg-background stable-container px-4 py-2 flex flex-col items-center min-h-screen antialiased'>
       <ExportStatusDialog exportInProgress={false} />
 
-      {viewingMode.type === 'local' ? (
-        <PageHeaderControls
-          stream={stream}
-          handleStartScreenShare={() => {
-            handleStartScreenShare();
-            handleTogglePip(true);
-          }}
-          handleStopScreenShare={handleStopScreenShare}
-          onTogglePip={() => handleTogglePip()}
-          isPipOpen={!!pipWindow}
-          mainStatus={mainStatus}
-          autoDetectionEnabled={autoDetectionEnabled}
-          isMonitoring={isMonitoring}
-          displayChangePercent={displayChangePercent}
-          activeAnalysesCount={activeAnalysesCount}
-          error={error}
-          streamRef={streamRef}
-          MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-          reconnectRequired={reconnectRequired}
-        />
-      ) : (
-        <Alert className="w-full mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <div className="text-sm">
-              <span className="font-semibold">Viewing recording for:</span>{' '}
-              {isEditingName ? (
-                <div className="inline-flex items-center gap-2 ml-1">
-                  <Input
-                    type="text"
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    className="h-8"
-                    placeholder="Enter user name"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveName();
-                      if (e.key === 'Escape') setIsEditingName(false);
-                    }}
-                  />
-                  <Button size="sm" onClick={handleSaveName} className="h-8">Save</Button>
-                  <Button size="sm" variant="outline" onClick={() => setIsEditingName(false)} className="h-8">Cancel</Button>
-                </div>
-              ) : (
-                <div
-                  className="inline-flex items-center gap-2 cursor-pointer group ml-1"
-                  onClick={() => {
-                    setNameInput(remoteUserName || '');
-                    setIsEditingName(true);
-                  }}
-                >
-                  <strong className="font-bold border-b border-dotted border-transparent group-hover:border-gray-400">
-                    {remoteUserName || (viewingMode.type === 'remote' ? viewingMode.userId : '')}
-                  </strong>
-                  <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              )}
-              {isRemoteUserOnline && (
-                <span className="flex items-center gap-1.5 ml-3 inline-flex">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                  </span>
-                  <span className="text-xs text-green-600 font-semibold">ONLINE</span>
-                </span>
-              )}
-              <span className="text-muted-foreground ml-2">Recording controls are disabled.</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => {
-              posthog?.capture('web_app_refresh_data', {
-                viewing_mode: viewingMode.type,
-                timestamp: new Date().toISOString(),
-              });
-              loadData(dataProvider);
-            }}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-            <Link href="/admin">
-              <Button variant="outline" size="sm">
-                Back to Admin Panel
-              </Button>
-            </Link>
-          </div>
-        </Alert>
-      )}
+      <PageHeaderControls
+        stream={stream}
+        handleStartScreenShare={() => {
+          handleStartScreenShare();
+          handleTogglePip(true);
+        }}
+        handleStopScreenShare={handleStopScreenShare}
+        onTogglePip={() => handleTogglePip()}
+        isPipOpen={!!pipWindow}
+        mainStatus={mainStatus}
+        autoDetectionEnabled={autoDetectionEnabled}
+        isMonitoring={isMonitoring}
+        displayChangePercent={displayChangePercent}
+        activeAnalysesCount={activeAnalysesCount}
+        error={error}
+        streamRef={streamRef}
+        MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+        reconnectRequired={reconnectRequired}
+      />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
 
@@ -1433,10 +1149,10 @@ function HomeComponent() {
                 {detailsCollapsed ? 'Show' : 'Hide'}
               </Button>
             </div>
-            {!detailsCollapsed && (
+            {!detailsCollapsed && dataProvider && (
               <div className="space-y-4">
-                <ScreenshotPreviewPane 
-                  selectedActivity={selectedActivity} 
+                <ScreenshotPreviewPane
+                  selectedActivity={selectedActivity}
                   activityItems={activityItems}
                   onActivitySelect={setSelectedActivity}
                   dataProvider={dataProvider}
@@ -1489,15 +1205,13 @@ function HomeComponent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align='end'>
-                    {(userType === 'low-level' || userType === 'mixed') && (
-                      <DropdownMenuItem onClick={() => {
-                        setSelectedMoreOption('low-level');
-                        setSelectedMainTab('low-level');
-                      }}>
-                        <Bug className='mr-2 h-4 w-4' />
-                        Low-level Logs{lowLevelLogsCount > 0 && ` (${lowLevelLogsCount})`}
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedMoreOption('low-level');
+                      setSelectedMainTab('low-level');
+                    }}>
+                      <Bug className='mr-2 h-4 w-4' />
+                      Low-level Logs{lowLevelLogsCount > 0 && ` (${lowLevelLogsCount})`}
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => {
                       setSelectedMoreOption('settings');
                       setSelectedMainTab('settings');

@@ -1,42 +1,6 @@
-import type { DataProvider, ActivityItem, Event, RunningAnalysis, ParsedAnalysis } from '@/types';
-import { 
-  loadActivityItems as loadLocalActivityItems,
-  loadEvents as loadLocalEvents,
-  getScreenshotById,
-  loadWorkflowSteps as loadLocalWorkflowSteps,
-  loadCompletedAnalyses as loadLocalCompletedAnalyses
-} from './db';
+import type { DataProvider, ActivityItem, Event, RunningAnalysis, ParsedAnalysis, PaginationInfo, PaginatedActivityResult } from '@/types';
 
-// This function is no longer needed as we are moving to signed URLs for downloads
-// const constructScreenshotUrl = (userId: string, sessionId: string, imageId: string): string => {
-//   const path = `${userId}/${sessionId}/screenshots/${imageId}.jpeg`;
-//   const { data } = supabase.storage.from('low-level-event-screenshots').getPublicUrl(path);
-//   return data.publicUrl;
-// };
-
-export const LocalDataProvider: DataProvider = {
-  loadActivityItems: async () => loadLocalActivityItems(),
-  loadEvents: async () => loadLocalEvents(),
-  loadScreenshot: async (item: ActivityItem) => {
-    const imageId = item.type === 'ui_diff' ? item.image2_id : item.image_id;
-    if (!imageId) return null;
-    return getScreenshotById(imageId);
-  },
-  loadWorkflowSteps: async () => loadLocalWorkflowSteps(),
-  loadCompletedAnalyses: async () => loadLocalCompletedAnalyses(),
-};
-
-export interface PaginationInfo {
-  offset: number;
-  limit: number;
-  total: number;
-  hasMore: boolean;
-}
-
-export interface PaginatedActivityResult {
-  activityItems: ActivityItem[];
-  pagination: PaginationInfo;
-}
+export type { PaginationInfo, PaginatedActivityResult };
 
 export class RemoteDataProvider implements DataProvider {
   private userId: string;
@@ -99,7 +63,7 @@ export class RemoteDataProvider implements DataProvider {
     await this.fetchData(sessionId, 0);
     return {
       activityItems: this.activityItems || [],
-      pagination: this.pagination || { offset: 0, limit: 1009, total: 0, hasMore: false },
+      pagination: this.pagination || { offset: 0, limit: 1000, total: 0, hasMore: false },
     };
   }
 
@@ -120,14 +84,14 @@ export class RemoteDataProvider implements DataProvider {
 
       return {
         activityItems: data.activityItems || [],
-        pagination: data.pagination || { offset, limit: 1009, total: 0, hasMore: false },
+        pagination: data.pagination || { offset, limit: 1000, total: 0, hasMore: false },
       };
 
     } catch (error) {
       console.error('[RemoteDataProvider] Error loading more activity items:', error);
       return {
         activityItems: [],
-        pagination: { offset, limit: 1009, total: 0, hasMore: false },
+        pagination: { offset, limit: 1000, total: 0, hasMore: false },
       };
     }
   }
