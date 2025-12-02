@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronDown, ChevronRight, Loader2, Play, RefreshCw, Save } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Play, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { DateRange } from 'react-day-picker';
 
@@ -49,6 +49,7 @@ interface SynthesizedWorkflow {
   steps: WorkflowStep[];
   workflow_types: WorkflowType[];
   workflow_instances: WorkflowInstance[];
+  created_at?: string;
 }
 
 interface WorkflowTabContentProps {
@@ -87,6 +88,93 @@ export default function WorkflowTabContent({
   // Save state
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Saved workflows state
+  const [savedWorkflows, setSavedWorkflows] = useState<SynthesizedWorkflow[]>([]);
+  const [loadingSavedWorkflows, setLoadingSavedWorkflows] = useState(false);
+  const [savedWorkflowsCollapsed, setSavedWorkflowsCollapsed] = useState(false);
+  const [expandedSavedWorkflows, setExpandedSavedWorkflows] = useState<Set<number>>(new Set());
+  const [deletingWorkflowId, setDeletingWorkflowId] = useState<number | null>(null);
+
+  // Fetch saved workflows on mount
+  const fetchSavedWorkflows = useCallback(async () => {
+    if (!userId) return;
+
+    setLoadingSavedWorkflows(true);
+    try {
+      const response = await fetch(`/api/workflows?userId=${userId}&status=saved`);
+      if (response.ok) {
+        const result = await response.json();
+        // Transform to match SynthesizedWorkflow interface
+        const workflows = (result.data || []).map((w: {
+          id: number;
+          title: string;
+          description?: string;
+          detailed_workflow_data?: {
+            steps?: WorkflowStep[];
+            workflow_types?: WorkflowType[];
+            workflow_instances?: WorkflowInstance[];
+          };
+          steps?: string[];
+          created_at?: string;
+        }) => ({
+          id: w.id,
+          title: w.title || 'Untitled Workflow',
+          description: w.description || '',
+          steps: w.detailed_workflow_data?.steps || [],
+          workflow_types: w.detailed_workflow_data?.workflow_types || [],
+          workflow_instances: w.detailed_workflow_data?.workflow_instances || [],
+          created_at: w.created_at,
+        }));
+        setSavedWorkflows(workflows);
+      }
+    } catch (err) {
+      console.error('Error fetching saved workflows:', err);
+    } finally {
+      setLoadingSavedWorkflows(false);
+    }
+  }, [userId]);
+
+  // Delete a saved workflow
+  const deleteWorkflow = useCallback(async (workflowId: number) => {
+    if (!confirm('Are you sure you want to delete this workflow?')) return;
+
+    setDeletingWorkflowId(workflowId);
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setSavedWorkflows(prev => prev.filter(w => w.id !== workflowId));
+      } else {
+        const errorData = await response.json();
+        console.error('Delete failed:', errorData);
+        alert('Failed to delete workflow');
+      }
+    } catch (err) {
+      console.error('Error deleting workflow:', err);
+      alert('Failed to delete workflow');
+    } finally {
+      setDeletingWorkflowId(null);
+    }
+  }, []);
+
+  const toggleSavedWorkflowExpanded = (id: number) => {
+    setExpandedSavedWorkflows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Fetch saved workflows on mount and when userId changes
+  useEffect(() => {
+    fetchSavedWorkflows();
+  }, [fetchSavedWorkflows]);
 
   // Fetch counts when date range changes
   const fetchFilteredCounts = useCallback(async () => {
@@ -293,10 +381,12 @@ export default function WorkflowTabContent({
     setError(null);
 
     try {
-      // Transform workflows for the API
+      // Transform workflows for the API - include synthesis_status: 'saved'
       const recordsToInsert = synthesizedWorkflows.map(workflow => ({
         title: workflow.title || 'Untitled Workflow',
         detailed_workflow_data: workflow,
+        synthesis_status: 'saved',
+        saved_at: new Date().toISOString(),
       }));
 
       const response = await fetch('/api/workflows', {
@@ -315,19 +405,166 @@ export default function WorkflowTabContent({
 
       setSaveSuccess(true);
       setStatus(`Saved ${result.data?.length || synthesizedWorkflows.length} workflows to database!`);
+
+      // Refresh saved workflows list
+      fetchSavedWorkflows();
     } catch (err) {
       console.error('Save error:', err);
       setError(err instanceof Error ? err.message : 'Failed to save workflows');
     } finally {
       setIsSaving(false);
     }
-  }, [userId, synthesizedWorkflows]);
+  }, [userId, synthesizedWorkflows, fetchSavedWorkflows]);
 
   const isAnalyzing = phase === 'identifying' || phase === 'synthesizing';
   const canAnalyze = (filteredCounts?.events ?? eventsCount) > 0 && dateRange?.from && dateRange?.to;
 
   return (
     <div className="space-y-4 p-4">
+      {/* Saved Workflows Section */}
+      {(savedWorkflows.length > 0 || loadingSavedWorkflows) && (
+        <Card className="border-2 border-black">
+          <CardHeader className="pb-2">
+            <button
+              onClick={() => setSavedWorkflowsCollapsed(!savedWorkflowsCollapsed)}
+              className="w-full flex items-center justify-between hover:bg-gray-50 -m-2 p-2 rounded"
+            >
+              <CardTitle className="font-mono text-sm uppercase text-gray-600">
+                Saved Workflows ({savedWorkflows.length})
+              </CardTitle>
+              {savedWorkflowsCollapsed ? (
+                <ChevronRight className="h-5 w-5 text-gray-600" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-600" />
+              )}
+            </button>
+          </CardHeader>
+          {!savedWorkflowsCollapsed && (
+            <CardContent className="p-4 space-y-3">
+              {loadingSavedWorkflows ? (
+                <div className="flex items-center gap-2 text-sm font-mono text-gray-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading saved workflows...
+                </div>
+              ) : savedWorkflows.length === 0 ? (
+                <p className="text-sm font-mono text-gray-500">No saved workflows yet.</p>
+              ) : (
+                savedWorkflows.map((workflow) => (
+                  <div key={workflow.id} className="border-2 border-gray-300">
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => toggleSavedWorkflowExpanded(workflow.id)}
+                        className="flex-1 p-3 flex items-center justify-between hover:bg-gray-50 text-left"
+                      >
+                        <div>
+                          <h3 className="font-mono font-bold text-sm">{workflow.title}</h3>
+                          <p className="font-mono text-xs text-gray-600 mt-1">{workflow.description}</p>
+                        </div>
+                        {expandedSavedWorkflows.has(workflow.id) ? (
+                          <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                        )}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteWorkflow(workflow.id)}
+                        disabled={deletingWorkflowId === workflow.id}
+                        className="mr-2 hover:bg-red-50 hover:text-red-600"
+                      >
+                        {deletingWorkflowId === workflow.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {expandedSavedWorkflows.has(workflow.id) && (
+                      <div className="border-t border-gray-300 p-4 space-y-4 bg-gray-50">
+                        {/* Steps */}
+                        {workflow.steps && workflow.steps.length > 0 && (
+                          <div>
+                            <h4 className="font-mono text-xs uppercase text-gray-600 mb-2">
+                              Steps ({workflow.steps.length})
+                            </h4>
+                            <ol className="space-y-2">
+                              {workflow.steps.map((step, stepIndex) => (
+                                <li key={stepIndex} className="bg-white p-3 border border-gray-200">
+                                  <div className="font-mono text-sm font-bold">
+                                    {stepIndex + 1}. {step.title || step.step_name}
+                                  </div>
+                                  <p className="font-mono text-xs text-gray-600 mt-1">
+                                    {step.description}
+                                  </p>
+                                  {step.substeps && step.substeps.length > 0 && (
+                                    <div className="mt-2 pl-4 border-l-2 border-gray-300">
+                                      {step.substeps.map((substep, subIndex) => (
+                                        <div key={subIndex} className="text-xs font-mono mt-1">
+                                          <span className="text-gray-500">{subIndex + 1}.</span>{' '}
+                                          {substep.substep_name}
+                                          {substep.inputs?.length > 0 && (
+                                            <span className="text-gray-400 ml-2">
+                                              [in: {substep.inputs.join(', ')}]
+                                            </span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+
+                        {/* Workflow Types */}
+                        {workflow.workflow_types && workflow.workflow_types.length > 0 && (
+                          <div>
+                            <h4 className="font-mono text-xs uppercase text-gray-600 mb-2">
+                              Workflow Types
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {workflow.workflow_types.map((type, typeIndex) => (
+                                <span
+                                  key={typeIndex}
+                                  className="px-2 py-1 bg-white border border-gray-300 font-mono text-xs"
+                                  title={type.description || type.type_description}
+                                >
+                                  {type.name || type.type_name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Workflow Instances */}
+                        {workflow.workflow_instances && workflow.workflow_instances.length > 0 && (
+                          <div>
+                            <h4 className="font-mono text-xs uppercase text-gray-600 mb-2">
+                              Instances
+                            </h4>
+                            <div className="space-y-1">
+                              {workflow.workflow_instances.map((instance, instIndex) => (
+                                <div key={instIndex} className="font-mono text-xs">
+                                  <span className="font-bold">{instance.name || instance.instance_name}:</span>{' '}
+                                  <span className="text-gray-600">{instance.description}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       <Card className="border-2 border-black">
         <CardHeader className="pb-2">
           <CardTitle className="font-mono text-sm uppercase text-gray-600">Workflow Synthesis</CardTitle>
