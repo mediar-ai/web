@@ -386,7 +386,6 @@ export default function WorkflowTabContent({
         title: workflow.title || 'Untitled Workflow',
         detailed_workflow_data: workflow,
         synthesis_status: 'saved',
-        saved_at: new Date().toISOString(),
       }));
 
       const response = await fetch('/api/workflows', {
