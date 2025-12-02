@@ -1301,8 +1301,7 @@ function HomeComponent() {
         </div>
       </div>
       
-      {/* Temporarily always show LLM traces for debugging */}
-      {true && (
+      {(selectedMainTab === 'recent' || selectedMainTab === 'events') && !selectedMoreOption && (
         <div className="w-full mt-4">
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1314,14 +1313,6 @@ function HomeComponent() {
             {!analysesPanelCollapsed && (
               <LiveAnalysesPanel runningAnalyses={allAnalyses} />
             )}
-            <div className="text-xs text-muted-foreground mt-2">
-              Debug: Tab={selectedMainTab}, Activity Selected={!!selectedActivity}, More Option={selectedMoreOption || 'none'}, 
-              Condition Met={(selectedMainTab === 'events' || (selectedMainTab === 'recent' && selectedActivity)) && !selectedMoreOption ? 'YES' : 'NO'}
-              <br />
-              Analyses: Queued={queuedAnalyses.length}, Pending={pendingEventAnalyses.length}, 
-              Running={runningAnalyses.length}, Completed={completedAnalyses.length}, 
-              Total={allAnalyses.length}, FrameBuffer={frameBuffer.length}
-            </div>
           </div>
         </div>
       )}
