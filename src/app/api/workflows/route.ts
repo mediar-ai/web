@@ -173,6 +173,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get('userId');
   const synthesisSessionId = searchParams.get('synthesis_session_id');
+  const status = searchParams.get('status'); // 'draft', 'saved', 'archived'
 
   if (!userId) {
     return NextResponse.json({ error: 'Missing userId parameter' }, { status: 400 });
@@ -193,6 +194,14 @@ export async function GET(req: NextRequest) {
         query = query.eq('synthesis_session_id', sessionIdNumber);
       }
     }
+
+    // Apply status filter if provided
+    if (status) {
+      query = query.eq('synthesis_status', status);
+    }
+
+    // Order by most recent first
+    query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
 
