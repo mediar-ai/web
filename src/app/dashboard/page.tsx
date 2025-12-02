@@ -1549,7 +1549,7 @@ function DashboardContent() {
                   </button>
 
                   <a
-                    href="https://mediar.ai/turnkey"
+                    href="https://app.mediar.ai"
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {
