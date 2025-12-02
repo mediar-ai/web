@@ -463,6 +463,7 @@ async function processRawPartsInOrder(
   options: {
     preserveId: boolean;
     isAdditional?: boolean;
+    mode?: 'ask' | 'act';
   }
 ): Promise<{
   serverToolResults: Array<{ name: string; result: any; id?: string }>;
@@ -472,6 +473,7 @@ async function processRawPartsInOrder(
   const serverToolResults: Array<{ name: string; result: any; id?: string }> = [];
   const clientToolCalls: Array<{ name: string; args: Record<string, any>; id?: string }> = [];
   let workflowData = null;
+  const blockedToolNames: string[] = []; // Track blocked tools in ask mode
 
   if (!rawParts || rawParts.length === 0) {
     return { serverToolResults, clientToolCalls, workflowData };
@@ -489,6 +491,13 @@ async function processRawPartsInOrder(
         args: part.functionCall.args || {},
         ...(part.functionCall.id && { id: part.functionCall.id }),
       };
+
+      // In ask mode, block tools not in the allowed list
+      if (options.mode === 'ask' && !ASK_MODE_ALLOWED_TOOLS.has(toolCall.name)) {
+        console.log(`🔒 [processRawPartsInOrder] Ask mode: Blocking action tool: ${toolCall.name}`);
+        blockedToolNames.push(toolCall.name);
+        continue; // Skip this tool call
+      }
 
       const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
 
@@ -553,6 +562,13 @@ async function processRawPartsInOrder(
       }
     }
     // Skip thought parts and other unknown parts
+  }
+
+  // Emit message about blocked tools in ask mode
+  if (blockedToolNames.length > 0) {
+    const uniqueBlocked = [...new Set(blockedToolNames)];
+    const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+    emit({ type: 'text', content: blockedMsg });
   }
 
   return { serverToolResults, clientToolCalls, workflowData };
@@ -1247,9 +1263,17 @@ export async function POST(request: NextRequest) {
           while (finalResult.toolCalls.length > 0) {
             const moreServerTools = [];
             const remainingClientTools = [];
+            const blockedInAskMode: string[] = [];
 
             // Check each tool call from continuation
             for (const toolCall of finalResult.toolCalls) {
+              // In ask mode, block tools not in the allowed list
+              if (mode === 'ask' && !ASK_MODE_ALLOWED_TOOLS.has(toolCall.name)) {
+                console.log(`🔒 [Anthropic continuation] Ask mode: Blocking action tool: ${toolCall.name}`);
+                blockedInAskMode.push(toolCall.name);
+                continue; // Skip this tool call
+              }
+
               // Check if this is a server-side tool and emit start event
               const isServerTool = isKnowledgeTool(toolCall.name) || isWorkflowEditingTool(toolCall.name) || isDevLogTool(toolCall.name);
               if (isServerTool) {
@@ -1313,6 +1337,13 @@ export async function POST(request: NextRequest) {
             }
 
             // If no more server tools, break the loop
+            // Emit message about blocked tools in ask mode
+            if (blockedInAskMode.length > 0) {
+              const uniqueBlocked = [...new Set(blockedInAskMode)];
+              const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+              emit({ type: 'text', content: blockedMsg });
+            }
+
             if (moreServerTools.length === 0) {
               clientToolCalls.push(...remainingClientTools);
               break;
@@ -1699,7 +1730,7 @@ export async function POST(request: NextRequest) {
         workflowId,
         clientTools: cachedOriginalClientTools || tools,
       },
-      { preserveId: false } // Vertex doesn't need IDs
+      { preserveId: false, mode } // Vertex doesn't need IDs
     );
     if (initialWorkflowData) {
       workflowData = initialWorkflowData;
@@ -1777,7 +1808,7 @@ export async function POST(request: NextRequest) {
             workflowId,
             clientTools: cachedOriginalClientTools || tools,
           },
-          { preserveId: false, isAdditional: true }
+          { preserveId: false, isAdditional: true, mode }
         );
         let moreServerTools = continuationProcessed.serverToolResults;
         clientToolCalls.push(...continuationProcessed.clientToolCalls);
@@ -1844,7 +1875,7 @@ export async function POST(request: NextRequest) {
               workflowId,
               clientTools: cachedOriginalClientTools || tools,
             },
-            { preserveId: false, isAdditional: true }
+            { preserveId: false, isAdditional: true, mode }
           );
           moreServerTools = continuationProcessed.serverToolResults;
           clientToolCalls.push(...continuationProcessed.clientToolCalls);
