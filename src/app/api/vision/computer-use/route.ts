@@ -245,8 +245,8 @@ export async function POST(request: NextRequest) {
         tools: [
           {
             computerUse: {
-              // Try desktop environment to avoid URL requirement
-              environment: 'ENVIRONMENT_DESKTOP',
+              // Try UNSPECIFIED to see if it avoids browser-specific requirements
+              environment: 'ENVIRONMENT_UNSPECIFIED',
               // Exclude browser-specific functions for desktop use
               excludedPredefinedFunctions: ['open_web_browser', 'go_back', 'go_forward'],
             },
