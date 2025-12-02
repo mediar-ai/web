@@ -976,7 +976,7 @@ export const serverSideWorkflowTools = {
           properties: {
             type: { type: SchemaType.STRING, description: 'Variable type: string, number, boolean, enum, array, or object' },
             label: { type: SchemaType.STRING, description: 'Human-readable label for the variable' },
-            default: { type: SchemaType.STRING, description: 'Default value for the variable' },
+            default: { description: 'Default value for the variable. Must match the variable type: for arrays use ["item1", "item2"], for objects use { "key": "value" }, for strings/numbers/booleans use the literal value.' },
             description: { type: SchemaType.STRING, description: 'Description of the variable' },
             required: { type: SchemaType.BOOLEAN, description: 'Whether this variable is required (default: true)' },
             regex: { type: SchemaType.STRING, description: 'For string type: regex pattern for validation' },
