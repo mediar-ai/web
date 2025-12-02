@@ -533,11 +533,16 @@ async function processRawPartsInOrder(
     // Skip thought parts and other unknown parts
   }
 
-  // Emit message about blocked tools in ask mode
+  // Emit action button when tools are blocked in ask mode
   if (blockedToolNames.length > 0) {
     const uniqueBlocked = [...new Set(blockedToolNames)];
-    const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+    const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}`;
     emit({ type: 'text', content: blockedMsg });
+    // Auto-emit render_action_button so user can switch to act mode
+    clientToolCalls.push({
+      name: 'render_action_button',
+      args: { action: 'switch_to_act_mode', blocked_tools: uniqueBlocked }
+    });
   }
 
   return { serverToolResults, clientToolCalls, workflowData };
@@ -1057,11 +1062,17 @@ export async function POST(request: NextRequest) {
         const blockedCalls = result.toolCalls.filter(tc => !ASK_MODE_ALLOWED_TOOLS.has(tc.name));
 
         if (blockedCalls.length > 0) {
-          const blockedNames = blockedCalls.map(tc => tc.name).join(', ');
+          const blockedNamesList = blockedCalls.map(tc => tc.name);
+          const blockedNames = blockedNamesList.join(', ');
           console.log(`🔒 [AI API] Ask mode: Blocking ${blockedCalls.length} action tool(s): ${blockedNames}`);
-          // Append message about blocked tools if there were any
-          const blockedMsg = `\n\n> **Blocked in Ask mode:** ${blockedNames}\n> Switch to **Act** mode to execute these actions.`;
+          // Append message about blocked tools
+          const blockedMsg = `\n\n> **Blocked in Ask mode:** ${blockedNames}`;
           result.text = (result.text || '') + blockedMsg;
+          // Add render_action_button to allowed calls so it gets emitted
+          allowedCalls.push({
+            name: 'render_action_button',
+            args: { action: 'switch_to_act_mode', blocked_tools: blockedNamesList }
+          });
         }
 
         if (allowedCalls.length > 0) {
@@ -1069,7 +1080,7 @@ export async function POST(request: NextRequest) {
         }
 
         result.toolCalls = allowedCalls;
-        if (allowedCalls.length === 0) {
+        if (allowedCalls.length === 0 || (allowedCalls.length === 1 && allowedCalls[0].name === 'render_action_button')) {
           result.finishReason = 'stop';
         }
       }
@@ -1305,14 +1316,19 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // If no more server tools, break the loop
-            // Emit message about blocked tools in ask mode
+            // Emit action button when tools are blocked in ask mode
             if (blockedInAskMode.length > 0) {
               const uniqueBlocked = [...new Set(blockedInAskMode)];
-              const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+              const blockedMsg = `\n\n> **Blocked in Ask mode:** ${uniqueBlocked.join(', ')}`;
               emit({ type: 'text', content: blockedMsg });
+              // Add render_action_button to remaining client tools
+              remainingClientTools.push({
+                name: 'render_action_button',
+                args: { action: 'switch_to_act_mode', blocked_tools: uniqueBlocked }
+              });
             }
 
+            // If no more server tools, break the loop
             if (moreServerTools.length === 0) {
               clientToolCalls.push(...remainingClientTools);
               break;
@@ -1642,13 +1658,18 @@ export async function POST(request: NextRequest) {
     if (mode === 'ask' && result.toolCalls.length > 0) {
       const allowedCalls = result.toolCalls.filter(tc => ASK_MODE_ALLOWED_TOOLS.has(tc.name));
       const blockedCalls = result.toolCalls.filter(tc => !ASK_MODE_ALLOWED_TOOLS.has(tc.name));
-      const blockedNames = new Set(blockedCalls.map(tc => tc.name));
+      const blockedNamesList = [...new Set(blockedCalls.map(tc => tc.name))];
 
       if (blockedCalls.length > 0) {
-        console.log(`🔒 [AI API] Ask mode: Blocking ${blockedCalls.length} action tool(s): ${[...blockedNames].join(', ')}`);
-        // Append message about blocked tools if there were any
-        const blockedMsg = `\n\n> **Blocked in Ask mode:** ${[...blockedNames].join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+        console.log(`🔒 [AI API] Ask mode: Blocking ${blockedCalls.length} action tool(s): ${blockedNamesList.join(', ')}`);
+        // Append message about blocked tools
+        const blockedMsg = `\n\n> **Blocked in Ask mode:** ${blockedNamesList.join(', ')}`;
         result.text = (result.text || '') + blockedMsg;
+        // Add render_action_button to allowed calls so it gets emitted
+        allowedCalls.push({
+          name: 'render_action_button',
+          args: { action: 'switch_to_act_mode', blocked_tools: blockedNamesList }
+        });
       }
 
       if (allowedCalls.length > 0) {
@@ -1660,9 +1681,10 @@ export async function POST(request: NextRequest) {
       // Strip blocked functionCalls from rawParts to prevent saving them to session history
       // This fixes the "function response parts ≠ function call parts" error when switching from ask to act mode
       if (result.rawParts && blockedCalls.length > 0) {
+        const blockedNamesSet = new Set(blockedNamesList);
         result.rawParts = result.rawParts.filter((part: any) => {
           if (!part.functionCall) return true; // Keep non-functionCall parts
-          return !blockedNames.has(part.functionCall.name); // Keep allowed functionCalls
+          return !blockedNamesSet.has(part.functionCall.name); // Keep allowed functionCalls
         });
         // Ensure we have at least the text part if rawParts is now empty
         if (result.rawParts.length === 0 && result.text) {
@@ -1670,7 +1692,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (allowedCalls.length === 0) {
+      // Only render_action_button means we should stop (no real tools to execute)
+      if (allowedCalls.length === 0 || (allowedCalls.length === 1 && allowedCalls[0].name === 'render_action_button')) {
         result.finishReason = 'stop';
       }
     }
