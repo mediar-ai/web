@@ -59,6 +59,41 @@ type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
 // Client-side tools: server accepts any tools from client and returns tool calls
 type JSONSchema = Record<string, unknown>;
 
+// Tools allowed in ask mode (read-only, non-destructive)
+// These tools can execute even when mode='ask' - they don't modify state or perform actions
+const ASK_MODE_ALLOWED_TOOLS = new Set([
+  // === MCP/Terminator tools (client-side) - read-only ===
+  'get_window_tree',
+  'get_applications_and_windows_list',
+  'validate_element',
+  'wait_for_element',
+  'capture_screenshot',
+  'capture_element_screenshot',
+  'highlight_element',
+  'stop_highlighting',
+  'stop_execution',
+  'delay',
+
+  // === UI tools ===
+  'render_action_button',  // Renders button in UI, doesn't execute actions
+
+  // === Server-side knowledge tools (all read-only) ===
+  'search_similar_workflow_steps',
+  'search_terminator_docs',
+  'get_terminator_api_docs',
+  'search_terminator_api',
+  'get_tool_details',
+
+  // === Server-side workflow tools (read-only only) ===
+  'get_workflow',
+  'search_workflow',
+  'get_step',
+
+  // === Server-side dev log tools (all read-only) ===
+  'getLatestExecutionLogs',
+  'searchDevLogs',
+]);
+
 // Vertex AI message format for history
 interface VertexMessage {
   role: 'user' | 'model';
@@ -1031,13 +1066,27 @@ export async function POST(request: NextRequest) {
         elapsedMs: result.metrics.elapsedMs,
       });
 
-      // In ask mode, strip any tool calls - AI can discuss tools but not execute them
+      // In ask mode, filter out action tools but allow read-only tools
       if (mode === 'ask' && result.toolCalls.length > 0) {
-        const toolNames = result.toolCalls.map(tc => tc.name).join(', ');
-        console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response: ${toolNames}`);
-        result.text = result.text || `I would use: **${toolNames}**\n\nTo execute, switch to **Act** mode using the toggle in the top-right corner.`;
-        result.toolCalls = [];
-        result.finishReason = 'stop';
+        const allowedCalls = result.toolCalls.filter(tc => ASK_MODE_ALLOWED_TOOLS.has(tc.name));
+        const blockedCalls = result.toolCalls.filter(tc => !ASK_MODE_ALLOWED_TOOLS.has(tc.name));
+
+        if (blockedCalls.length > 0) {
+          const blockedNames = blockedCalls.map(tc => tc.name).join(', ');
+          console.log(`🔒 [AI API] Ask mode: Blocking ${blockedCalls.length} action tool(s): ${blockedNames}`);
+          // Append message about blocked tools if there were any
+          const blockedMsg = `\n\n> **Blocked in Ask mode:** ${blockedNames}\n> Switch to **Act** mode to execute these actions.`;
+          result.text = (result.text || '') + blockedMsg;
+        }
+
+        if (allowedCalls.length > 0) {
+          console.log(`✅ [AI API] Ask mode: Allowing ${allowedCalls.length} read-only tool(s): ${allowedCalls.map(tc => tc.name).join(', ')}`);
+        }
+
+        result.toolCalls = allowedCalls;
+        if (allowedCalls.length === 0) {
+          result.finishReason = 'stop';
+        }
       }
 
       let workflowData = null; // Track workflow modifications across all tool executions
@@ -1589,21 +1638,40 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Response stats', responseStats);
 
-    // In ask mode, strip any tool calls - AI can discuss tools but not execute them
+    // In ask mode, filter out action tools but allow read-only tools
     if (mode === 'ask' && result.toolCalls.length > 0) {
-      const toolNames = result.toolCalls.map(tc => tc.name).join(', ');
-      console.log(`🔒 [AI API] Ask mode: Stripping ${result.toolCalls.length} tool call(s) from response: ${toolNames}`);
-      result.text = result.text || `I would use: **${toolNames}**\n\nTo execute, switch to **Act** mode using the toggle in the top-right corner.`;
-      result.toolCalls = [];
-      result.finishReason = 'stop';
-      // Also strip functionCall from rawParts to prevent saving them to session history
+      const allowedCalls = result.toolCalls.filter(tc => ASK_MODE_ALLOWED_TOOLS.has(tc.name));
+      const blockedCalls = result.toolCalls.filter(tc => !ASK_MODE_ALLOWED_TOOLS.has(tc.name));
+      const blockedNames = new Set(blockedCalls.map(tc => tc.name));
+
+      if (blockedCalls.length > 0) {
+        console.log(`🔒 [AI API] Ask mode: Blocking ${blockedCalls.length} action tool(s): ${[...blockedNames].join(', ')}`);
+        // Append message about blocked tools if there were any
+        const blockedMsg = `\n\n> **Blocked in Ask mode:** ${[...blockedNames].join(', ')}\n> Switch to **Act** mode to execute these actions.`;
+        result.text = (result.text || '') + blockedMsg;
+      }
+
+      if (allowedCalls.length > 0) {
+        console.log(`✅ [AI API] Ask mode: Allowing ${allowedCalls.length} read-only tool(s): ${allowedCalls.map(tc => tc.name).join(', ')}`);
+      }
+
+      result.toolCalls = allowedCalls;
+
+      // Strip blocked functionCalls from rawParts to prevent saving them to session history
       // This fixes the "function response parts ≠ function call parts" error when switching from ask to act mode
-      if (result.rawParts) {
-        result.rawParts = result.rawParts.filter((part: any) => !part.functionCall);
+      if (result.rawParts && blockedCalls.length > 0) {
+        result.rawParts = result.rawParts.filter((part: any) => {
+          if (!part.functionCall) return true; // Keep non-functionCall parts
+          return !blockedNames.has(part.functionCall.name); // Keep allowed functionCalls
+        });
         // Ensure we have at least the text part if rawParts is now empty
         if (result.rawParts.length === 0 && result.text) {
           result.rawParts = [{ text: result.text }];
         }
+      }
+
+      if (allowedCalls.length === 0) {
+        result.finishReason = 'stop';
       }
     }
 
