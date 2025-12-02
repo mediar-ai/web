@@ -1070,6 +1070,7 @@ export async function POST(request: NextRequest) {
           result.text = (result.text || '') + blockedMsg;
           // Add render_action_button to allowed calls so it gets emitted
           allowedCalls.push({
+            id: `toolu_render_action_${Date.now()}`,
             name: 'render_action_button',
             args: { action: 'switch_to_act_mode', blocked_tools: blockedNamesList }
           });
@@ -1323,6 +1324,7 @@ export async function POST(request: NextRequest) {
               emit({ type: 'text', content: blockedMsg });
               // Add render_action_button to remaining client tools
               remainingClientTools.push({
+                id: `toolu_render_action_${Date.now()}`,
                 name: 'render_action_button',
                 args: { action: 'switch_to_act_mode', blocked_tools: uniqueBlocked }
               });
@@ -1667,6 +1669,7 @@ export async function POST(request: NextRequest) {
         result.text = (result.text || '') + blockedMsg;
         // Add render_action_button to allowed calls so it gets emitted
         allowedCalls.push({
+          id: `toolu_render_action_${Date.now()}`,
           name: 'render_action_button',
           args: { action: 'switch_to_act_mode', blocked_tools: blockedNamesList }
         });
