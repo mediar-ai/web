@@ -60,7 +60,7 @@ type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
 type JSONSchema = Record<string, unknown>;
 
 // Tools allowed in ask mode - import from config (single source of truth)
-import { ASK_MODE_ALLOWED_TOOLS as ASK_MODE_ALLOWED_TOOLS_ARRAY } from './config/route';
+import { ASK_MODE_ALLOWED_TOOLS as ASK_MODE_ALLOWED_TOOLS_ARRAY } from './config/constants';
 const ASK_MODE_ALLOWED_TOOLS = new Set(ASK_MODE_ALLOWED_TOOLS_ARRAY);
 
 // Vertex AI message format for history
