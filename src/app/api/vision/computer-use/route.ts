@@ -160,27 +160,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-      console.error('[Computer Use API] GOOGLE_APPLICATION_CREDENTIALS_BASE64 not configured');
+    // Use Google AI API key (not Vertex AI) for Computer Use preview model access
+    if (!process.env.GOOGLE_AI_API_KEY) {
+      console.error('[Computer Use API] GOOGLE_AI_API_KEY not configured');
       return NextResponse.json(
-        { error: 'Server configuration error: missing Google credentials' },
+        { error: 'Server configuration error: missing Google AI API key' },
         { status: 500 }
       );
     }
 
-    const credentialsJson = Buffer.from(
-      process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
-      'base64'
-    ).toString('utf-8');
-    const credentials = JSON.parse(credentialsJson);
-
     const genAI = new GoogleGenAI({
-      vertexai: true,
-      project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-      location: 'us-central1',
-      googleAuthOptions: {
-        credentials,
-      },
+      apiKey: process.env.GOOGLE_AI_API_KEY,
     });
 
     console.log(`[Computer Use API] Calling ${COMPUTER_USE_MODEL} for goal: ${goal.substring(0, 50)}...`);
