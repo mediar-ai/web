@@ -79,7 +79,6 @@ const ASK_MODE_ALLOWED_TOOLS = new Set([
 
   // === Server-side knowledge tools (all read-only) ===
   'search_similar_workflow_steps',
-  'search_terminator_docs',
   'get_terminator_api_docs',
   'search_terminator_api',
   'get_tool_details',
