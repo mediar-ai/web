@@ -10,6 +10,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::{classify_error, ErrorCategory, RetryConfig};
 use crate::db::{queries::WorkflowQueries, DatabasePool};
 use crate::models::{ExecutionStatus, Workflow, WorkflowExecution, WorkflowResult};
+use crate::services::output_formatter::{extract_workflow_success, format_execution_output};
 use crate::services::MonitorClient;
 
 /// Handles execution status updates and notifications
@@ -156,46 +157,30 @@ impl<'a> ExecutionHandler<'a> {
         end_time: DateTime<Utc>,
         trace_id: &str,
     ) -> Result<()> {
-        let status = if result.success {
+        let execution_time = (end_time - start_time).num_seconds();
+
+        // Extract workflow-level success from nested MCP data
+        // This may differ from result.success (MCP execution success)
+        let workflow_success =
+            extract_workflow_success(result.data.as_ref()).unwrap_or(result.success);
+
+        // Determine execution status based on WORKFLOW success, not MCP success
+        let status = if workflow_success {
             ExecutionStatus::Completed
         } else {
             ExecutionStatus::Failed
         };
 
-        let execution_time = (end_time - start_time).num_seconds();
+        // Format output into clean, flat structure
+        let formatted_output = format_execution_output(
+            result.success,
+            result.data.as_ref(),
+            result.error.as_deref(),
+        );
 
-        // Extract human-readable markdown summary if workflow provided one
-        // Path: result.data.parsed_output.data.human OR result.data.data.human
-        let human_summary = result
-            .data
-            .as_ref()
-            .and_then(|d| {
-                // Try parsed_output.data.human first (from MCP agent)
-                d.get("parsed_output")
-                    .and_then(|p| p.get("data"))
-                    .and_then(|data| data.get("human"))
-                    .and_then(|h| h.as_str())
-                    // Fallback to data.human directly
-                    .or_else(|| {
-                        d.get("data")
-                            .and_then(|data| data.get("human"))
-                            .and_then(|h| h.as_str())
-                    })
-            })
-            .map(String::from);
+        let formatted_output_json = formatted_output.to_json();
+        let formatted_output_str = Some(formatted_output.to_json_string());
 
-        // Build formatted output like Python executor
-        let formatted_output = serde_json::json!({
-            "success": result.success,
-            "exception": result.error.is_some(),
-            "skipped": false,
-            "message": result.message.clone(),
-            "data": result.data,
-            "validation": {},
-            "human": human_summary
-        });
-
-        let formatted_output_str = Some(formatted_output.to_string());
         let step_results_json = serde_json::to_value(&result.step_results)
             .ok()
             .unwrap_or(serde_json::json!([]));
@@ -214,7 +199,8 @@ impl<'a> ExecutionHandler<'a> {
             execution_id = %execution.id,
             workflow_id = %workflow.id,
             status = ?status,
-            success = %result.success,
+            workflow_success = %workflow_success,
+            mcp_success = %result.success,
             steps_completed = %result.steps_completed,
             total_steps = %result.total_steps,
             execution_time_ms = %result.execution_time_ms,
@@ -231,7 +217,7 @@ impl<'a> ExecutionHandler<'a> {
                 Some(workflow.name.clone()),
                 status,
                 result.error.clone(),
-                Some(formatted_output),
+                Some(formatted_output_json),
                 Some(start_time),
                 Some(end_time),
                 Some(execution_time),

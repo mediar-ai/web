@@ -95,31 +95,52 @@ interface ExecutionsDataTableProps {
 
 // Helper function to extract the most informative message from parser output
 function getParserMessage(formattedResult: any, execution: Execution): string {
-  // Priority 1: Error summary from parser (e.g., SAP workflows)
+  // Priority 1: New format - structured error object (from rust-executor)
+  if (formattedResult?.error?.message) {
+    return formattedResult.error.message;
+  }
+
+  // Priority 2: Error summary from parser (e.g., SAP workflows - legacy)
   if (formattedResult?.error_summary?.error_reason) {
     const reason = formattedResult.error_summary.error_reason;
     return typeof reason === 'string' ? reason : JSON.stringify(reason);
   }
 
-  // Priority 2: For failed executions, prefer error_message over generic formatted_output.message
+  // Priority 3: For failed executions, prefer error_message over generic formatted_output.message
   // This catches TypeScript workflow errors where formatted_output.message is generic
   const isFailed =
     execution.status === 'error' ||
     execution.status === 'failed' ||
     formattedResult?.status === 'failed' ||
-    formattedResult?.success === false ||
-    formattedResult?.exception === true;
+    formattedResult?.error != null;
   if (isFailed && execution.error_message) {
     return execution.error_message;
   }
 
-  // Priority 3: Standard message field (if not the default)
+  // Priority 4: Short message field (new format - for table display)
   if (
     formattedResult?.message &&
     formattedResult.message !== 'No message from parser'
   ) {
     const message = formattedResult.message;
     return typeof message === 'string' ? message : JSON.stringify(message);
+  }
+
+  // Priority 5: Summary field first line (new format - markdown summary)
+  if (formattedResult?.summary) {
+    const summary = formattedResult.summary;
+    if (typeof summary === 'string') {
+      // Extract first meaningful line from markdown for table display
+      const firstLine = summary
+        .split('\n')
+        .find((line: string) => line.trim() && !line.startsWith('#'));
+      if (firstLine) return firstLine.trim();
+      // Fallback to first line even if it's a header
+      return summary
+        .split('\n')[0]
+        .replace(/^#+\s*/, '')
+        .trim();
+    }
   }
 
   // Priority 4: Data summary field
@@ -189,7 +210,35 @@ function getExecutionStatus(
     };
   }
 
-  // Check for exception status (highest priority after running)
+  // Priority 1: New format - check status field directly (from rust-executor)
+  // This is the authoritative source for workflow-level success/failure
+  if (formattedResult?.status === 'failed') {
+    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+  }
+  if (formattedResult?.status === 'success') {
+    return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
+  }
+  if (formattedResult?.status === 'cancelled') {
+    return {
+      badge: 'CANCELLED',
+      badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black',
+    };
+  }
+  if (formattedResult?.status === 'skipped') {
+    return {
+      badge: 'SKIPPED',
+      badgeColor: 'bg-gray-200 text-gray-800 border-2 border-black',
+    };
+  }
+
+  // Priority 2: Check for error object (new format indicates failure)
+  if (formattedResult?.error != null) {
+    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
+  }
+
+  // Legacy format support below
+
+  // Check for exception status (legacy format)
   if (formattedResult?.exception === true) {
     return {
       badge: 'EXCEPTION',
@@ -197,20 +246,12 @@ function getExecutionStatus(
     };
   }
 
-  // Check parser-determined status
-  if (
-    formattedResult?.meta_type === 'failed' ||
-    formattedResult?.status === 'failed'
-  ) {
-    return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
-  }
-
-  // Check for error summary (indicates failure)
+  // Check for error summary (legacy format)
   if (formattedResult?.error_summary) {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }
 
-  // Check skipped status
+  // Check skipped status (legacy format)
   if (formattedResult?.skipped || execution.status === 'skipped') {
     return {
       badge: 'SKIPPED',
@@ -218,7 +259,7 @@ function getExecutionStatus(
     };
   }
 
-  // Check success/failure from parser
+  // Check success/failure from parser (legacy format)
   if (formattedResult?.success === false) {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }
@@ -226,7 +267,7 @@ function getExecutionStatus(
     return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
   }
 
-  // Fall back to execution status
+  // Fall back to execution status from database
   switch (execution.status) {
     case 'error':
     case 'timeout':
