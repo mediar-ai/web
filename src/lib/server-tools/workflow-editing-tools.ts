@@ -987,7 +987,7 @@ export const serverSideWorkflowTools = {
             },
             item_schema: {
               type: SchemaType.OBJECT,
-              description: 'For array type: defines schema for each array item. Example: { type: "object", properties: { name: { type: "string" }, code: { type: "string" } } }',
+              description: 'For array type: defines schema for each array item. Access elements with {{arr[0]}}, {{arr[1].field}}. Example: { type: "object", properties: { name: { type: "string" }, code: { type: "string" } } }',
               additionalProperties: true
             },
             properties: {
