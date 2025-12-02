@@ -31,3 +31,32 @@ export const ASK_MODE_ALLOWED_TOOLS = [
   'getLatestExecutionLogs',
   'searchDevLogs',
 ];
+
+// Tools blocked in ask mode (actions that modify state)
+export const ASK_MODE_BLOCKED_TOOLS = [
+  // === MCP/Terminator action tools ===
+  'click_element',
+  'double_click_element',
+  'type_into_element',
+  'press_key',
+  'navigate_browser',
+  'scroll_element',
+  'open_application',
+  'run_command',
+  'mouse_drag',
+  'select_option',
+  'set_selected',
+  'invoke_element',
+  'set_value',
+  'execute_sequence',
+
+  // === Server-side workflow editing tools ===
+  'update_workflow_step',
+  'add_workflow_step',
+  'remove_workflow_step',
+  'create_workflow',
+  'delete_workflow',
+  'rename_workflow',
+  'save_workflow',
+  'reorder_workflow_steps',
+];
