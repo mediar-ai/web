@@ -59,39 +59,9 @@ type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
 // Client-side tools: server accepts any tools from client and returns tool calls
 type JSONSchema = Record<string, unknown>;
 
-// Tools allowed in ask mode (read-only, non-destructive)
-// These tools can execute even when mode='ask' - they don't modify state or perform actions
-const ASK_MODE_ALLOWED_TOOLS = new Set([
-  // === MCP/Terminator tools (client-side) - read-only ===
-  'get_window_tree',
-  'get_applications_and_windows_list',
-  'validate_element',
-  'wait_for_element',
-  'capture_screenshot',
-  'capture_element_screenshot',
-  'highlight_element',
-  'stop_highlighting',
-  'stop_execution',
-  'delay',
-
-  // === UI tools ===
-  'render_action_button',  // Renders button in UI, doesn't execute actions
-
-  // === Server-side knowledge tools (all read-only) ===
-  'search_similar_workflow_steps',
-  'get_terminator_api_docs',
-  'search_terminator_api',
-  'get_tool_details',
-
-  // === Server-side workflow tools (read-only only) ===
-  'get_workflow',
-  'search_workflow',
-  'get_step',
-
-  // === Server-side dev log tools (all read-only) ===
-  'getLatestExecutionLogs',
-  'searchDevLogs',
-]);
+// Tools allowed in ask mode - import from config (single source of truth)
+import { ASK_MODE_ALLOWED_TOOLS as ASK_MODE_ALLOWED_TOOLS_ARRAY } from './config/route';
+const ASK_MODE_ALLOWED_TOOLS = new Set(ASK_MODE_ALLOWED_TOOLS_ARRAY);
 
 // Vertex AI message format for history
 interface VertexMessage {
