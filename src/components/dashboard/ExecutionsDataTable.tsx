@@ -101,7 +101,19 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
     return typeof reason === 'string' ? reason : JSON.stringify(reason);
   }
 
-  // Priority 2: Standard message field (if not the default)
+  // Priority 2: For failed executions, prefer error_message over generic formatted_output.message
+  // This catches TypeScript workflow errors where formatted_output.message is generic
+  const isFailed =
+    execution.status === 'error' ||
+    execution.status === 'failed' ||
+    formattedResult?.status === 'failed' ||
+    formattedResult?.success === false ||
+    formattedResult?.exception === true;
+  if (isFailed && execution.error_message) {
+    return execution.error_message;
+  }
+
+  // Priority 3: Standard message field (if not the default)
   if (
     formattedResult?.message &&
     formattedResult.message !== 'No message from parser'
@@ -110,7 +122,7 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
     return typeof message === 'string' ? message : JSON.stringify(message);
   }
 
-  // Priority 3: Data summary field
+  // Priority 4: Data summary field
   if (formattedResult?.data?.summary) {
     // Ensure summary is a string
     if (typeof formattedResult.data.summary === 'string') {
@@ -122,7 +134,7 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
     }
   }
 
-  // Priority 4: Failure details with financial state (SAP specific)
+  // Priority 5: Failure details with financial state (SAP specific)
   if (formattedResult?.failure_details?.financial_state) {
     const state = formattedResult.failure_details.financial_state;
     if (state.difference) {
@@ -130,13 +142,13 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
     }
   }
 
-  // Priority 5: Generic error field in data
+  // Priority 6: Generic error field in data
   if (formattedResult?.data?.error) {
     const error = formattedResult.data.error;
     return typeof error === 'string' ? error : JSON.stringify(error);
   }
 
-  // Priority 6: If data is an object, stringify it for display
+  // Priority 7: If data is an object, stringify it for display
   if (formattedResult?.data && typeof formattedResult.data === 'object') {
     try {
       // Format common data patterns
@@ -154,7 +166,7 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
     }
   }
 
-  // Priority 7: Execution error message
+  // Priority 8: Fallback to error_message for non-failed statuses (shouldn't normally reach here)
   if (execution.error_message) {
     return execution.error_message;
   }
