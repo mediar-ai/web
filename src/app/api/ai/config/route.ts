@@ -3,7 +3,7 @@ import { getCorsHeaders } from '@/lib/cors';
 
 // Tools allowed in ask mode (read-only, non-destructive)
 // This is the source of truth - desktop app fetches this list
-export const ASK_MODE_ALLOWED_TOOLS = [
+const ASK_MODE_ALLOWED_TOOLS = [
   // === MCP/Terminator tools (client-side) - read-only ===
   'get_window_tree',
   'get_applications_and_windows_list',
