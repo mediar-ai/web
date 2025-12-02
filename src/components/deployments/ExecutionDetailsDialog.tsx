@@ -191,7 +191,7 @@ export function ExecutionDetailsDialog({
           : execution.formatted_output;
 
       // Check for human-readable markdown summary
-      const humanSummary = output.human;
+      const humanSummary = output.summary || output.human;
 
       // Check if file_info exists at root or nested in data
       const fileInfo = output.file_info || output.data?.file_info;
