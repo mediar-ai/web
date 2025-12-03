@@ -30,6 +30,11 @@ export const ASK_MODE_ALLOWED_TOOLS = [
   // === Server-side dev log tools (all read-only) ===
   'getLatestExecutionLogs',
   'searchDevLogs',
+  'listDevSteps',
+  'getDevStepDetails',
+  'getDevErrors',
+  'getDevTimeline',
+  'getDevPerformanceMetrics',
 ];
 
 // Tools blocked in ask mode (actions that modify state)
