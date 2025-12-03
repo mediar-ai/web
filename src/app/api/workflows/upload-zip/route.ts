@@ -6,6 +6,7 @@ import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { createClient } from '@supabase/supabase-js';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
+import { isWorkflowOwner } from '@/lib/mediarAuth';
 
 // Content sanitization check function
 function detectSuspiciousContent(content: string): { safe: boolean; issues: string[] } {
@@ -419,7 +420,7 @@ export async function POST(request: NextRequest) {
         cron_expression: extractCronConfigFromYAML(workflowContent)?.expression || null,
         cron_timezone: extractCronConfigFromYAML(workflowContent)?.timezone || 'UTC',
         cron_enabled: extractCronConfigFromYAML(workflowContent)?.enabled || false,
-        created_by: userEmail || authenticatedUserId || null, // Store email or user ID for author tracking
+        created_by: authenticatedUserId || userEmail || null, // Store userId first for consistent ownership checks
         organization_id: orgId || null,   // Set the organization
         total_versions: 1,
       };
@@ -536,7 +537,7 @@ export async function POST(request: NextRequest) {
       }
 
       // STEP 2: AUTHORIZATION - Check workflow ownership for version upload
-      const isOwner = currentWorkflow.created_by === authenticatedUserId;
+      const isOwner = isWorkflowOwner(currentWorkflow.created_by, authenticatedUserId, userEmail);
       const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
       const isSameOrg = currentWorkflow.organization_id && currentWorkflow.organization_id === orgId;
 

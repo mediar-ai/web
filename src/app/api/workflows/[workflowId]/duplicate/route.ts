@@ -17,7 +17,7 @@ export async function POST(
 ) {
   try {
     // STEP 1: Authenticate (support both desktop tokens and Clerk web auth)
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+    const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
     const authResult = await getEffectiveOrgId(null);
     const userId = authResult.userId;
     const orgId = authResult.orgId;
@@ -79,7 +79,7 @@ export async function POST(
     // STEP 2: AUTHORIZATION - Verify user has READ access to source workflow before duplicating
     // (authResult values already extracted above)
 
-    const isOwner = originalWorkflow.created_by === userId;
+    const isOwner = isWorkflowOwner(originalWorkflow.created_by, userId, userEmail);
     // For desktop tokens, has() may not be available - only check for web Clerk sessions
     const isOrgAdmin = (has && typeof has === 'function')
       ? (has({ role: 'org:admin' }) || has({ role: 'org:owner' }))
@@ -187,7 +187,7 @@ export async function POST(
       // Organization ownership - duplicate belongs to current user's organization
       organization_id: orgId || null,
       // Metadata
-      created_by: userEmail || userId || null, // Store email or user ID for author tracking
+      created_by: userId || userEmail || null, // Store userId first for consistent ownership checks
       total_versions: 1,
     };
 
