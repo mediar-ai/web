@@ -102,6 +102,7 @@ interface FunctionResponseData {
     error?: string;
   };
   screenshot?: string; // base64 PNG
+  url?: string; // Current page URL (required by Gemini Computer Use)
 }
 
 /**
@@ -194,8 +195,13 @@ export async function POST(request: NextRequest) {
     ];
 
     // If we have previous actions, add them as function responses
+    // Only include screenshots for the last 2 actions to avoid payload size issues
     if (previous_actions && Array.isArray(previous_actions)) {
-      for (const action of previous_actions as FunctionResponseData[]) {
+      const actions = previous_actions as FunctionResponseData[];
+      const screenshotStartIndex = Math.max(0, actions.length - 2);
+
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
         // Add the model's function call (reconstructed)
         contents.push({
           role: 'model',
@@ -209,18 +215,26 @@ export async function POST(request: NextRequest) {
           ],
         });
 
-        // Add user's function response with new screenshot
+        // Add user's function response with new screenshot and URL
+        // Gemini Computer Use requires URL in function response
+        const functionResponseObj: Record<string, unknown> = {
+          ...action.response,
+        };
+        if (action.url) {
+          functionResponseObj.url = action.url;
+        }
+
         const responseParts: Record<string, unknown>[] = [
           {
             functionResponse: {
               name: action.name,
-              response: action.response,
+              response: functionResponseObj,
             },
           },
         ];
 
-        // Include new screenshot if provided
-        if (action.screenshot) {
+        // Only include screenshots for the last 2 actions to reduce payload size
+        if (action.screenshot && i >= screenshotStartIndex) {
           responseParts.push({
             inlineData: {
               mimeType: 'image/png',
