@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -375,6 +376,58 @@ export async function GET(request: Request) {
     };
 
     console.log(`Health check complete: ${summary.healthy}/${summary.totalMachines} healthy`);
+
+    // Track VM uptime metrics to PostHog
+    try {
+      const posthog = getPostHogClient();
+
+      // Calculate fleet-wide uptime percentage
+      const fleetUptimePercent = summary.totalMachines > 0
+        ? Math.round((summary.healthy / summary.totalMachines) * 100)
+        : 0;
+
+      // Track aggregate fleet uptime metric (for dashboards/goals)
+      posthog.capture({
+        distinctId: 'system-health-monitor',
+        event: 'vm_fleet_uptime',
+        properties: {
+          total_machines: summary.totalMachines,
+          healthy_count: summary.healthy,
+          unhealthy_count: summary.unhealthy,
+          unknown_count: summary.unknown,
+          uptime_percent: fleetUptimePercent,
+          status_changes: summary.changed,
+          timestamp: summary.timestamp,
+        },
+      });
+
+      // Track individual VM health checks for granular analysis
+      for (const result of results) {
+        if (!result || !result.id) continue;
+
+        posthog.capture({
+          distinctId: `vm-${result.id}`,
+          event: 'vm_health_check',
+          properties: {
+            machine_id: result.id,
+            machine_name: result.name,
+            status: result.newStatus,
+            previous_status: result.previousStatus,
+            status_changed: result.changed,
+            response_time_ms: result.responseTime || result.healthDetails?.responseTime,
+            has_taskbar: result.hasTaskbar,
+            error: result.error || null,
+          },
+        });
+      }
+
+      // Flush events to PostHog
+      await posthog.flush();
+      console.log(`[PostHog] Tracked fleet uptime: ${fleetUptimePercent}% (${summary.healthy}/${summary.totalMachines})`);
+    } catch (posthogError) {
+      console.error('[PostHog] Failed to track uptime metrics:', posthogError);
+      // Don't fail the health check if PostHog tracking fails
+    }
 
     // Cleanup old health check history records (older than 7 days)
     const { data: cleanedCount, error: cleanupError } = await supabase
