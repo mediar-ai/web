@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
       cron_retry_on_failure: cronConfig?.retryOnFailure !== false,
       cron_retry_count: cronConfig?.retryCount || 3,
       // Metadata
-      created_by: email || userId || null, // Store email or user ID for author tracking
+      created_by: userId || email || null, // Store userId first for consistent ownership checks
       total_versions: 1,
     };
 

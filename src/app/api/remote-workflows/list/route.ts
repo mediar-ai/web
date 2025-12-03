@@ -634,6 +634,28 @@ export async function GET(request: NextRequest) {
         )
         .in('id', workflowIds);
 
+      // Lookup user emails for author display
+      // created_by can be either a user_id (e.g., user_2yyb...) or email (for legacy/deleted users)
+      const userIdToEmail: Record<string, string> = {};
+      if (!cronError && cronWorkflows) {
+        const userIds = cronWorkflows
+          .map(cw => cw.created_by)
+          .filter((id): id is string => !!id && id.startsWith('user_'));
+
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('mediar_users')
+            .select('user_id, email')
+            .in('user_id', [...new Set(userIds)]);
+
+          if (users) {
+            users.forEach(u => {
+              if (u.email) userIdToEmail[u.user_id] = u.email;
+            });
+          }
+        }
+      }
+
       if (!cronError && cronWorkflows) {
         console.log(
           '[API] Fetched cron data for',
@@ -649,9 +671,13 @@ export async function GET(request: NextRequest) {
               cw.cron_enabled
             );
           }
+          // Resolve author email: if created_by is a user_id, look up email
+          const authorEmail = cw.created_by?.startsWith('user_')
+            ? userIdToEmail[cw.created_by] || cw.created_by
+            : cw.created_by;
           cronData[cw.id] = {
             organization_id: cw.organization_id,
-            created_by: cw.created_by,
+            created_by: authorEmail, // Store resolved email for display
             estimated_duration_seconds: cw.estimated_duration_seconds,
             cron_expression: cw.cron_expression,
             cron_timezone: cw.cron_timezone,

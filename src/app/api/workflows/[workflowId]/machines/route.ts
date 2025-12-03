@@ -55,11 +55,11 @@ export async function GET(
     }
 
     // Import auth helper to check for Mediar org/admin status
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+    const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin, email: userEmail } = await getEffectiveOrgId(null);
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
-    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOwner = isWorkflowOwner(workflow.created_by, authenticatedUserId, userEmail);
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
@@ -329,8 +329,8 @@ export async function POST(
     }
 
     // Import auth helper to check for Mediar org/admin status
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+    const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin, email: userEmail } = await getEffectiveOrgId(null);
 
     // Prevent modification of public workflows (is_public = true) by non-Mediar users
     if (workflow.is_public && !isMediarOrg && !isMediarAdmin) {
@@ -344,7 +344,7 @@ export async function POST(
     }
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership (admin required for modifications)
-    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOwner = isWorkflowOwner(workflow.created_by, authenticatedUserId, userEmail);
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
@@ -545,11 +545,11 @@ export async function PUT(
     }
 
     // Import auth helper to check for Mediar org/admin status
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+    const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin, email: userEmail } = await getEffectiveOrgId(null);
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership (admin required)
-    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOwner = isWorkflowOwner(workflow.created_by, authenticatedUserId, userEmail);
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 
@@ -741,11 +741,11 @@ export async function DELETE(
     }
 
     // Import auth helper to check for Mediar org/admin status
-    const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
+    const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
+    const { isMediarOrg, isMediarAdmin, email: userEmail } = await getEffectiveOrgId(null);
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership (admin required)
-    const isOwner = workflow.created_by === authenticatedUserId;
+    const isOwner = isWorkflowOwner(workflow.created_by, authenticatedUserId, userEmail);
     const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
     const isSameOrg = workflow.organization_id && workflow.organization_id === orgId;
 

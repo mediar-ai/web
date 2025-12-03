@@ -216,6 +216,7 @@ export async function POST(req: Request) {
           .upsert({
             user_id: userId,
             name: userName,
+            email: primaryEmail,
             organization_id: personalOrg.id
           }, { onConflict: 'user_id' });
 
