@@ -243,13 +243,27 @@ export async function POST(request: NextRequest) {
       ],
       config: {
         temperature: 0.1, // Low temperature for consistent detection
-        maxOutputTokens: 8192,
+        maxOutputTokens: 32768, // Vertex AI max for Gemini 3 Pro Preview
         responseMimeType: 'application/json',
         responseSchema: VISION_RESPONSE_SCHEMA,
       },
     });
 
     const duration = Date.now() - startTime;
+
+    // Check finish reason for truncation
+    const finishReason = result.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn(`[Vision API] Response truncated or blocked: finishReason=${finishReason}`);
+      if (finishReason === 'MAX_TOKENS') {
+        console.error('[Vision API] Output exceeded token limit - response truncated');
+      } else if (finishReason === 'SAFETY') {
+        return NextResponse.json(
+          { error: 'Response blocked by safety filters', finishReason },
+          { status: 400 }
+        );
+      }
+    }
 
     // Parse response - SDK returns response directly
     const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
@@ -258,9 +272,13 @@ export async function POST(request: NextRequest) {
     try {
       parsedResponse = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('[Vision API] Failed to parse Gemini response:', responseText);
+      console.error('[Vision API] Failed to parse Gemini response:', responseText?.slice(0, 500));
       return NextResponse.json(
-        { error: 'Failed to parse model response', raw: responseText },
+        {
+          error: 'Failed to parse model response',
+          finishReason: finishReason || 'unknown',
+          hint: finishReason === 'MAX_TOKENS' ? 'Response was truncated due to token limit' : undefined,
+        },
         { status: 500 }
       );
     }
@@ -273,6 +291,7 @@ export async function POST(request: NextRequest) {
       elements,
       duration_ms: duration,
       model_used: modelName,
+      ...(finishReason && finishReason !== 'STOP' && { finishReason, warning: 'Response may be incomplete' }),
     });
 
   } catch (error) {
