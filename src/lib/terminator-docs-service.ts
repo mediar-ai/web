@@ -76,7 +76,7 @@ export function searchTerminatorDocs(
       if (sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
         matches.push({
           section: currentSection,
-          content: sectionContent.join('\n').substring(0, 500), // Limit content length
+          content: sectionContent.join('\n'),
           lineNumber: sectionStartLine
         });
         if (matches.length >= limit) break;
@@ -95,7 +95,7 @@ export function searchTerminatorDocs(
   if (matches.length < limit && sectionContent.join('\n').toLowerCase().includes(searchPattern)) {
     matches.push({
       section: currentSection,
-      content: sectionContent.join('\n').substring(0, 500),
+      content: sectionContent.join('\n'),
       lineNumber: sectionStartLine
     });
   }
