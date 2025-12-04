@@ -1,6 +1,5 @@
 'use client';
 
-import { supabase } from '@/lib/supabase';
 import type { ActivityItem } from '@/types';
 import { useEffect, useState } from 'react';
 
@@ -11,19 +10,21 @@ export default function WebSessionClient({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     const fetchSessionData = async () => {
       setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('user_activity_data')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('client_timestamp', { ascending: false });
 
-      if (error) console.error('Error fetching web recorder data:', error);
-      else setActivity(data?.map(d => d.item_data as ActivityItem) || []);
+      try {
+        const response = await fetch(`/api/sessions/web/${sessionId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch session data');
+        }
+        const { data } = await response.json();
+        setActivity(data?.map((d: { item_data: ActivityItem }) => d.item_data as ActivityItem) || []);
+      } catch (error) {
+        console.error('Error fetching web recorder data:', error);
+      }
 
       setLoading(false);
     };
-    
+
     fetchSessionData();
   }, [sessionId]);
 

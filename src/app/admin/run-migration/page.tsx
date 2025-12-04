@@ -16,111 +16,25 @@ export default function RunMigrationPage() {
     setResult(null);
 
     try {
-      // Execute SQL statements via Supabase client
-      const { createClient } = await import('@supabase/supabase-js');
+      const response = await fetch('/api/admin/run-migration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          migration_file: '20250210000000_add_get_workflow_version_history.sql'
+        }),
+      });
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+      const data = await response.json();
 
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Function 1: get_workflow_version_history
-      const sql1 = `
-        CREATE OR REPLACE FUNCTION get_workflow_version_history(p_workflow_id bigint)
-        RETURNS TABLE (
-            version_id bigint,
-            version_number text,
-            is_active boolean,
-            created_at timestamptz,
-            change_notes text,
-            execution_count bigint
-        ) AS $$
-        BEGIN
-            RETURN QUERY
-            SELECT
-                v.id as version_id,
-                v.version_number,
-                v.is_active,
-                v.created_at,
-                COALESCE(v.change_notes, '') as change_notes,
-                COALESCE(COUNT(e.id), 0) as execution_count
-            FROM
-                deployed_workflow_versions v
-            LEFT JOIN
-                workflow_executions e
-                ON e.workflow_id = v.workflow_id
-                AND e.workflow_version_number = v.version_number
-            WHERE
-                v.workflow_id = p_workflow_id
-            GROUP BY
-                v.id, v.version_number, v.is_active, v.created_at, v.change_notes
-            ORDER BY
-                v.created_at DESC;
-        END;
-        $$ LANGUAGE plpgsql;
-      `;
-
-      // Function 2: activate_workflow_version
-      const sql2 = `
-        CREATE OR REPLACE FUNCTION activate_workflow_version(
-            p_workflow_id bigint,
-            p_version_number text
-        ) RETURNS void AS $$
-        DECLARE
-            v_version_id bigint;
-            v_current_active_version_id bigint;
-        BEGIN
-            SELECT id INTO v_version_id
-            FROM deployed_workflow_versions
-            WHERE workflow_id = p_workflow_id
-              AND version_number = p_version_number;
-
-            IF v_version_id IS NULL THEN
-                RAISE EXCEPTION 'Version % not found for workflow %', p_version_number, p_workflow_id;
-            END IF;
-
-            SELECT id INTO v_current_active_version_id
-            FROM deployed_workflow_versions
-            WHERE workflow_id = p_workflow_id
-              AND is_active = true;
-
-            UPDATE deployed_workflow_versions
-            SET is_active = false,
-                updated_at = NOW()
-            WHERE workflow_id = p_workflow_id
-              AND is_active = true;
-
-            UPDATE deployed_workflow_versions
-            SET is_active = true,
-                updated_at = NOW()
-            WHERE id = v_version_id;
-
-            UPDATE deployed_workflows
-            SET current_version_id = v_version_id,
-                version = p_version_number,
-                updated_at = NOW()
-            WHERE id = p_workflow_id;
-
-            RAISE NOTICE 'Activated version % (ID: %) for workflow %', p_version_number, v_version_id, p_workflow_id;
-        END;
-        $$ LANGUAGE plpgsql;
-      `;
-
-      // Try to execute via RPC
-      console.log('Executing Function 1: get_workflow_version_history');
-      const { data: _data1, error: error1 } = await supabase.rpc('exec_sql', { query: sql1 });
-
-      console.log('Executing Function 2: activate_workflow_version');
-      const { data: _data2, error: error2 } = await supabase.rpc('exec_sql', { query: sql2 });
-
-      if (error1 || error2) {
-        throw new Error(`RPC Error: ${error1?.message || error2?.message}`);
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.details || 'Migration failed');
       }
 
       setResult({
         success: true,
-        message: 'Migration applied successfully!',
-        functions: ['get_workflow_version_history', 'activate_workflow_version']
+        message: data.message || 'Migration applied successfully!',
+        functions: ['get_workflow_version_history', 'activate_workflow_version'],
+        details: data.results
       });
 
     } catch (err) {
