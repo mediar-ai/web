@@ -33,7 +33,7 @@ export async function fetchLabelingData(analysisIds: number[]): Promise<Map<numb
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
     console.warn('[WARN] Supabase environment variables not available for labeling data fetch');
