@@ -254,7 +254,14 @@ export async function POST(request: NextRequest) {
       model: COMPUTER_USE_MODEL,
       contents,
       config: {
-        temperature: 0.1,
+        systemInstruction: `You are a desktop automation agent. After EACH action, examine the screenshot to determine if the goal is achieved.
+
+CRITICAL RULES:
+1. If the goal IS achieved (e.g., search results visible after searching, text successfully typed, expected page loaded), respond with text ONLY explaining success. DO NOT call another function.
+2. If the goal is NOT yet achieved, call the appropriate function to take the next action.
+3. NEVER repeat actions that already succeeded. If you see text was typed correctly, don't retype it.
+4. When you see the expected result in the screenshot, the task is COMPLETE - respond with text only.`,
+        temperature: 1.0,
         maxOutputTokens: 1024,
         tools: [
           {
