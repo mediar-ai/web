@@ -175,7 +175,8 @@ impl WorkflowQueries {
                 results, execution_logs, total_steps,
                 current_step_description, created_at, updated_at,
                 retry_count, max_retries, next_retry_at,
-                is_retryable, error_category
+                is_retryable, error_category,
+                start_from_step, end_at_step, follow_fallback, execute_jumps_at_end
             "#,
         )
         .fetch_optional(pool)
@@ -204,6 +205,10 @@ impl WorkflowQueries {
                 next_retry_at: row.get("next_retry_at"),
                 is_retryable: row.get("is_retryable"),
                 error_category: row.get("error_category"),
+                start_from_step: row.get("start_from_step"),
+                end_at_step: row.get("end_at_step"),
+                follow_fallback: row.get("follow_fallback"),
+                execute_jumps_at_end: row.get("execute_jumps_at_end"),
             }))
         } else {
             Ok(None)
