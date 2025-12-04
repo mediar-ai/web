@@ -16,7 +16,7 @@ export async function GET() {
     vertex_location: process.env.VERTEX_AI_LOCATION || process.env.GOOGLE_VERTEX_LOCATION || 'NOT SET',
     supabase: {
       has_url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      has_service_key: !!process.env.SUPABASE_SERVICE_KEY,
+      has_service_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     }
   };
 

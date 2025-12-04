@@ -14,7 +14,7 @@ const ORG_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for org tokens
 // Initialize Supabase client for querying survey submissions
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 /**

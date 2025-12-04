@@ -138,12 +138,12 @@ export async function POST(request: NextRequest) {
     console.log(`Received ${processedTraces.length} spans from OTLP`);
     
     // Store in Supabase if configured (optional)
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL,
-          process.env.SUPABASE_SERVICE_KEY
+          process.env.SUPABASE_SERVICE_ROLE_KEY
         );
         
         // Store workflow spans

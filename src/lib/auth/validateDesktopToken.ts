@@ -18,7 +18,7 @@ export async function validateDesktopToken(
   token: string
 ): Promise<TokenValidationResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
     return { valid: false, error: 'Supabase configuration missing' };

@@ -89,7 +89,7 @@ async function checkVMHealth(vm: any): Promise<VMStatus> {
 export async function GET() {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     // Get VM endpoints from Supabase remote_machines table
     let vmEndpoints = FALLBACK_ENDPOINTS;
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
   
   // Get VM details from request or fetch from Supabase
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
   let vm: any = null;
   
