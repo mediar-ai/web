@@ -30,6 +30,11 @@ pub struct WorkflowExecution {
     pub next_retry_at: Option<DateTime<Utc>>,
     pub is_retryable: bool,
     pub error_category: Option<String>,
+    // Partial execution support (step-by-step debugging)
+    pub start_from_step: Option<String>,
+    pub end_at_step: Option<String>,
+    pub follow_fallback: Option<bool>,
+    pub execute_jumps_at_end: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

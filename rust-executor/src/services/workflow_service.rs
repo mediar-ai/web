@@ -316,6 +316,10 @@ impl WorkflowService {
                 next_retry_at: None,
                 is_retryable: false,
                 error_category: None,
+                start_from_step: None,
+                end_at_step: None,
+                follow_fallback: None,
+                execute_jumps_at_end: None,
             }))
         } else {
             Ok(None)

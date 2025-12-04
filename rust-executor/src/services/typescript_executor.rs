@@ -259,6 +259,30 @@ impl<'a> TypeScriptExecutor<'a> {
             Value::String(self.execution.id.to_string()),
         );
 
+        // Add partial execution parameters (step-by-step debugging support)
+        if let Some(ref step) = self.execution.start_from_step {
+            args.insert("start_from_step".to_string(), Value::String(step.clone()));
+            info!(
+                execution_id = %self.execution.id,
+                start_from_step = %step,
+                "Partial execution: start_from_step"
+            );
+        }
+        if let Some(ref step) = self.execution.end_at_step {
+            args.insert("end_at_step".to_string(), Value::String(step.clone()));
+            info!(
+                execution_id = %self.execution.id,
+                end_at_step = %step,
+                "Partial execution: end_at_step"
+            );
+        }
+        if let Some(follow) = self.execution.follow_fallback {
+            args.insert("follow_fallback".to_string(), Value::Bool(follow));
+        }
+        if let Some(execute) = self.execution.execute_jumps_at_end {
+            args.insert("execute_jumps_at_end".to_string(), Value::Bool(execute));
+        }
+
         Ok(args)
     }
 
