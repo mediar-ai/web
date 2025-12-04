@@ -22,6 +22,7 @@ export class TypeScriptWorkflowParserTests {
       this.testEmptyWorkflow,
       this.testStepNextChaining,
       this.testStepDescription,
+      this.testArrayStyleStepsWithCreateStep,
     ];
 
     let allPassed = true;
@@ -70,17 +71,23 @@ export default createWorkflow({
     }
 
     if (result.steps[0].id !== 'signOutOneDrive') {
-      TestLogger.error(`Expected step[0].id to be 'signOutOneDrive', got '${result.steps[0].id}'`);
+      TestLogger.error(
+        `Expected step[0].id to be 'signOutOneDrive', got '${result.steps[0].id}'`
+      );
       return false;
     }
 
     if (result.steps[1].id !== 'launchOneDrive') {
-      TestLogger.error(`Expected step[1].id to be 'launchOneDrive', got '${result.steps[1].id}'`);
+      TestLogger.error(
+        `Expected step[1].id to be 'launchOneDrive', got '${result.steps[1].id}'`
+      );
       return false;
     }
 
     if (result.steps[2].id !== 'detectLoginScreen') {
-      TestLogger.error(`Expected step[2].id to be 'detectLoginScreen', got '${result.steps[2].id}'`);
+      TestLogger.error(
+        `Expected step[2].id to be 'detectLoginScreen', got '${result.steps[2].id}'`
+      );
       return false;
     }
 
@@ -116,17 +123,23 @@ export default createWorkflow({
     }
 
     if (result.steps[0].id !== 'scan_unprocessed') {
-      TestLogger.error(`Expected step[0].id to be 'scan_unprocessed', got '${result.steps[0].id}'`);
+      TestLogger.error(
+        `Expected step[0].id to be 'scan_unprocessed', got '${result.steps[0].id}'`
+      );
       return false;
     }
 
     if (result.steps[0].name !== 'Scan Unprocessed Files') {
-      TestLogger.error(`Expected step[0].name to be 'Scan Unprocessed Files', got '${result.steps[0].name}'`);
+      TestLogger.error(
+        `Expected step[0].name to be 'Scan Unprocessed Files', got '${result.steps[0].name}'`
+      );
       return false;
     }
 
     if (result.steps[0].description !== 'Scans folder for unprocessed files') {
-      TestLogger.error(`Expected step[0].description, got '${result.steps[0].description}'`);
+      TestLogger.error(
+        `Expected step[0].description, got '${result.steps[0].description}'`
+      );
       return false;
     }
 
@@ -176,22 +189,30 @@ export default createWorkflow({
     }
 
     if (result.steps[0].id !== 'step_one') {
-      TestLogger.error(`Expected step[0].id to be 'step_one', got '${result.steps[0].id}'`);
+      TestLogger.error(
+        `Expected step[0].id to be 'step_one', got '${result.steps[0].id}'`
+      );
       return false;
     }
 
     if (result.steps[1].id !== 'step_two') {
-      TestLogger.error(`Expected step[1].id to be 'step_two', got '${result.steps[1].id}'`);
+      TestLogger.error(
+        `Expected step[1].id to be 'step_two', got '${result.steps[1].id}'`
+      );
       return false;
     }
 
     if (result.steps[1].description !== 'Does the second thing') {
-      TestLogger.error(`Expected step[1].description, got '${result.steps[1].description}'`);
+      TestLogger.error(
+        `Expected step[1].description, got '${result.steps[1].description}'`
+      );
       return false;
     }
 
     if (result.steps[2].id !== 'step_three') {
-      TestLogger.error(`Expected step[2].id to be 'step_three', got '${result.steps[2].id}'`);
+      TestLogger.error(
+        `Expected step[2].id to be 'step_three', got '${result.steps[2].id}'`
+      );
       return false;
     }
 
@@ -224,12 +245,16 @@ export default createWorkflow({
     }
 
     if (result.steps[0].id !== 'inline_step') {
-      TestLogger.error(`Expected step[0].id to be 'inline_step', got '${result.steps[0].id}'`);
+      TestLogger.error(
+        `Expected step[0].id to be 'inline_step', got '${result.steps[0].id}'`
+      );
       return false;
     }
 
     if (result.steps[0].name !== 'Inline Step') {
-      TestLogger.error(`Expected step[0].name to be 'Inline Step', got '${result.steps[0].name}'`);
+      TestLogger.error(
+        `Expected step[0].name to be 'Inline Step', got '${result.steps[0].name}'`
+      );
       return false;
     }
 
@@ -267,18 +292,24 @@ export default createWorkflow({
 
     // First step is imported (no createStep definition found)
     if (result.steps[0].id !== 'importedStep') {
-      TestLogger.error(`Expected step[0].id to be 'importedStep', got '${result.steps[0].id}'`);
+      TestLogger.error(
+        `Expected step[0].id to be 'importedStep', got '${result.steps[0].id}'`
+      );
       return false;
     }
 
     // Second step is from createStep
     if (result.steps[1].id !== 'local_step') {
-      TestLogger.error(`Expected step[1].id to be 'local_step', got '${result.steps[1].id}'`);
+      TestLogger.error(
+        `Expected step[1].id to be 'local_step', got '${result.steps[1].id}'`
+      );
       return false;
     }
 
     if (result.steps[1].name !== 'Local Step') {
-      TestLogger.error(`Expected step[1].name to be 'Local Step', got '${result.steps[1].name}'`);
+      TestLogger.error(
+        `Expected step[1].name to be 'Local Step', got '${result.steps[1].name}'`
+      );
       return false;
     }
 
@@ -302,12 +333,16 @@ export default createWorkflow({
     const result = parseTypeScriptWorkflow(workflow);
 
     if (result.name !== 'My Test Workflow') {
-      TestLogger.error(`Expected name to be 'My Test Workflow', got '${result.name}'`);
+      TestLogger.error(
+        `Expected name to be 'My Test Workflow', got '${result.name}'`
+      );
       return false;
     }
 
     if (result.version !== '2.5.0') {
-      TestLogger.error(`Expected version to be '2.5.0', got '${result.version}'`);
+      TestLogger.error(
+        `Expected version to be '2.5.0', got '${result.version}'`
+      );
       return false;
     }
 
@@ -347,11 +382,15 @@ export default createWorkflow({
       return false;
     }
     if (emailInput.type !== 'string') {
-      TestLogger.error(`Expected email type to be 'string', got '${emailInput.type}'`);
+      TestLogger.error(
+        `Expected email type to be 'string', got '${emailInput.type}'`
+      );
       return false;
     }
     if (emailInput.description !== 'User email address') {
-      TestLogger.error(`Expected email description, got '${emailInput.description}'`);
+      TestLogger.error(
+        `Expected email description, got '${emailInput.description}'`
+      );
       return false;
     }
 
@@ -398,11 +437,15 @@ export default createWorkflow({
 
     const userInput = result.inputs[0];
     if (userInput.name !== 'user') {
-      TestLogger.error(`Expected input name to be 'user', got '${userInput.name}'`);
+      TestLogger.error(
+        `Expected input name to be 'user', got '${userInput.name}'`
+      );
       return false;
     }
     if (userInput.type !== 'object') {
-      TestLogger.error(`Expected user type to be 'object', got '${userInput.type}'`);
+      TestLogger.error(
+        `Expected user type to be 'object', got '${userInput.type}'`
+      );
       return false;
     }
 
@@ -433,7 +476,9 @@ export default createWorkflow({
     }
 
     if (result.errorHandler.type !== 'global') {
-      TestLogger.error(`Expected errorHandler.type to be 'global', got '${result.errorHandler.type}'`);
+      TestLogger.error(
+        `Expected errorHandler.type to be 'global', got '${result.errorHandler.type}'`
+      );
       return false;
     }
 
@@ -456,7 +501,9 @@ export default createWorkflow({
     const result = parseTypeScriptWorkflow(workflow);
 
     if (result.name !== 'Empty Workflow') {
-      TestLogger.error(`Expected name to be 'Empty Workflow', got '${result.name}'`);
+      TestLogger.error(
+        `Expected name to be 'Empty Workflow', got '${result.name}'`
+      );
       return false;
     }
 
@@ -495,19 +542,25 @@ export default createWorkflow({ name: "Chain Test" })
 
     // First step should point to second
     if (!result.steps[0].next || result.steps[0].next[0] !== 's2') {
-      TestLogger.error(`Expected step[0].next to be ['s2'], got ${JSON.stringify(result.steps[0].next)}`);
+      TestLogger.error(
+        `Expected step[0].next to be ['s2'], got ${JSON.stringify(result.steps[0].next)}`
+      );
       return false;
     }
 
     // Second step should point to third
     if (!result.steps[1].next || result.steps[1].next[0] !== 's3') {
-      TestLogger.error(`Expected step[1].next to be ['s3'], got ${JSON.stringify(result.steps[1].next)}`);
+      TestLogger.error(
+        `Expected step[1].next to be ['s3'], got ${JSON.stringify(result.steps[1].next)}`
+      );
       return false;
     }
 
     // Last step should have no next
     if (result.steps[2].next !== undefined) {
-      TestLogger.error(`Expected step[2].next to be undefined, got ${JSON.stringify(result.steps[2].next)}`);
+      TestLogger.error(
+        `Expected step[2].next to be undefined, got ${JSON.stringify(result.steps[2].next)}`
+      );
       return false;
     }
 
@@ -541,7 +594,116 @@ export default createWorkflow({ name: "Description Test" })
     }
 
     if (result.steps[0].description !== 'This step does something important') {
-      TestLogger.error(`Expected description, got '${result.steps[0].description}'`);
+      TestLogger.error(
+        `Expected description, got '${result.steps[0].description}'`
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Test array-style steps: [step1, step2] with createStep variables
+   * This is the pattern used by the paint workflow:
+   *   createWorkflow({ steps: [cleanup, openPaint, drawMediarText] })
+   */
+  async testArrayStyleStepsWithCreateStep(): Promise<boolean> {
+    const workflow = `
+import { createWorkflow, createStep, z } from "@mediar-ai/workflow";
+
+const inputSchema = z.object({});
+
+const cleanup = createStep({
+  id: "cleanup",
+  name: "Close Paint and Notepad",
+  description: "Close any existing instances",
+  execute: async ({ desktop, logger }) => {},
+});
+
+const openPaint = createStep({
+  id: "open_paint",
+  name: "Open MS Paint",
+  description: "Opens Microsoft Paint",
+  execute: async ({ desktop, logger }) => {},
+});
+
+const drawMediarText = createStep({
+  id: "draw_mediar_text",
+  name: "Draw MEDIAR.AI",
+  description: "Draw the text using mouse strokes",
+  execute: async ({ desktop, logger }) => {},
+});
+
+const msPaintMediarWorkflow = createWorkflow({
+  input: inputSchema,
+  steps: [cleanup, openPaint, drawMediarText],
+  onError: async ({ error, logger }) => {},
+});
+
+export default msPaintMediarWorkflow;
+`;
+
+    const result = parseTypeScriptWorkflow(workflow);
+
+    if (result.steps.length !== 3) {
+      TestLogger.error(`Expected 3 steps, got ${result.steps.length}`);
+      return false;
+    }
+
+    // Check that step IDs are resolved from createStep, not variable names
+    if (result.steps[0].id !== 'cleanup') {
+      TestLogger.error(
+        `Expected step[0].id to be 'cleanup', got '${result.steps[0].id}'`
+      );
+      return false;
+    }
+
+    if (result.steps[1].id !== 'open_paint') {
+      TestLogger.error(
+        `Expected step[1].id to be 'open_paint', got '${result.steps[1].id}'`
+      );
+      return false;
+    }
+
+    if (result.steps[2].id !== 'draw_mediar_text') {
+      TestLogger.error(
+        `Expected step[2].id to be 'draw_mediar_text', got '${result.steps[2].id}'`
+      );
+      return false;
+    }
+
+    // Check names are resolved
+    if (result.steps[1].name !== 'Open MS Paint') {
+      TestLogger.error(
+        `Expected step[1].name to be 'Open MS Paint', got '${result.steps[1].name}'`
+      );
+      return false;
+    }
+
+    // Check descriptions are resolved
+    if (result.steps[1].description !== 'Opens Microsoft Paint') {
+      TestLogger.error(
+        `Expected step[1].description to be 'Opens Microsoft Paint', got '${result.steps[1].description}'`
+      );
+      return false;
+    }
+
+    // Check next chaining uses resolved IDs
+    if (!result.steps[0].next || result.steps[0].next[0] !== 'open_paint') {
+      TestLogger.error(
+        `Expected step[0].next to be ['open_paint'], got ${JSON.stringify(result.steps[0].next)}`
+      );
+      return false;
+    }
+
+    if (
+      !result.steps[1].next ||
+      result.steps[1].next[0] !== 'draw_mediar_text'
+    ) {
+      TestLogger.error(
+        `Expected step[1].next to be ['draw_mediar_text'], got ${JSON.stringify(result.steps[1].next)}`
+      );
       return false;
     }
 
