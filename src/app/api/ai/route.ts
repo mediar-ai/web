@@ -250,14 +250,16 @@ function createSessionId(): string {
 }
 
 /**
- * Truncate tool result content to reduce token consumption in persistent history
- * Anthropic API requires tool_result blocks to exist, but content can be truncated
+ * Wrap tool results for Gemini API compatibility
+ * Gemini API requires function_response.response to be an object (Struct), not a primitive
  *
- * @param result - The tool result to truncate
- * @param maxChars - Maximum characters to keep (default: 500)
- * @returns Truncated result with metadata
+ * NOTE: Previously truncated to 500 chars which caused AI to "autocomplete" incomplete code.
+ * Now returns full results to prevent hallucination from truncation.
+ *
+ * @param result - The tool result to wrap
+ * @returns Wrapped result (object format for Gemini API)
  */
-function truncateToolResult(result: any, maxChars: number = 500): any {
+function wrapToolResult(result: any): any {
   // Gemini API requires function_response.response to be an object (Struct), not a primitive
   // Wrap strings/primitives in an object
   if (result === null || result === undefined) {
@@ -266,16 +268,7 @@ function truncateToolResult(result: any, maxChars: number = 500): any {
 
   // If result is a string, wrap it in an object
   if (typeof result === 'string') {
-    if (result.length <= maxChars) {
-      return { result };
-    }
-    // Truncate long strings
-    return {
-      _truncated: true,
-      _originalLength: result.length,
-      result: result.substring(0, maxChars),
-      summary: `[Result truncated from ${result.length} to ${maxChars} chars]`
-    };
+    return { result };
   }
 
   // If result is a number or boolean, wrap it
@@ -283,23 +276,8 @@ function truncateToolResult(result: any, maxChars: number = 500): any {
     return { result };
   }
 
-  // Result is already an object - check if it needs truncation
-  const resultStr = JSON.stringify(result);
-
-  if (resultStr.length <= maxChars) {
-    return result;
-  }
-
-  // Truncate and add indicator
-  const truncated = resultStr.substring(0, maxChars);
-  const truncatedObj = {
-    _truncated: true,
-    _originalLength: resultStr.length,
-    content: truncated,
-    summary: `[Result truncated from ${resultStr.length} to ${maxChars} chars to save tokens]`
-  };
-
-  return truncatedObj;
+  // Result is already an object - return as-is
+  return result;
 }
 
 // Helper to capture workflow data from tool results
@@ -715,11 +693,11 @@ async function handleVertexChat(params: {
     analyzeToolResults(toolResults, 'VERTEX');
 
     // Format function responses for new SDK
-    // Use truncateToolResult to ensure response is always an object (Gemini API requirement)
+    // Use wrapToolResult to ensure response is always an object (Gemini API requirement)
     const functionResponseParts: Part[] = toolResults.map(tr => ({
       functionResponse: {
         name: tr.name,
-        response: truncateToolResult(tr.result, 500),
+        response: wrapToolResult(tr.result),
       },
     }));
 
@@ -1184,7 +1162,7 @@ export async function POST(request: NextRequest) {
               parts: toolResults.map(tr => ({
                 functionResponse: {
                   name: tr.name,
-                  response: truncateToolResult(tr.result, 500),
+                  response: wrapToolResult(tr.result),
                   ...(tr.id && { id: tr.id }),
                 },
               })),
@@ -1230,7 +1208,7 @@ export async function POST(request: NextRequest) {
             parts: serverToolResults.map(tr => ({
               functionResponse: {
                 name: tr.name,
-                response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
+                response: wrapToolResult(tr.result), // Full result (no truncation)
                 ...(tr.id && { id: tr.id }),
               },
             })),
@@ -1386,7 +1364,7 @@ export async function POST(request: NextRequest) {
               parts: moreServerTools.map(tr => ({
                 functionResponse: {
                   name: tr.name,
-                  response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
+                  response: wrapToolResult(tr.result), // Full result (no truncation)
                   ...(tr.id && { id: tr.id }),
                 },
               })),
@@ -1473,7 +1451,7 @@ export async function POST(request: NextRequest) {
           parts: toolResults.map(tr => ({
             functionResponse: {
               name: tr.name,
-              response: truncateToolResult(tr.result, 500), // Truncate to 500 chars
+              response: wrapToolResult(tr.result), // Full result (no truncation)
               ...(tr.id && { id: tr.id }),
             },
           })),
@@ -1966,7 +1944,7 @@ export async function POST(request: NextRequest) {
         parts: toolResults.map(tr => ({
           functionResponse: {
             name: tr.name,
-            response: truncateToolResult(tr.result, 500), // Truncate to 500 chars to save tokens
+            response: wrapToolResult(tr.result), // Full result (no truncation) to save tokens
           },
         })),
       });
