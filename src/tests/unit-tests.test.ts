@@ -7,6 +7,7 @@
 import { AuthenticationTests } from './authentication.test';
 import { MessageFormatTests } from './message-format.test';
 import { WorkflowRenameSyncTests } from './workflow-rename-sync.test';
+import { TypeScriptWorkflowParserTests } from './typescript-workflow-parser.test';
 // import { SchemaConversionTests } from './schema-conversion.test'; // Commented out missing import
 import { TestLogger } from './utils';
 
@@ -28,7 +29,14 @@ class UnitTestRunner {
       // { name: 'Schema Conversion Tests', runner: new SchemaConversionTests() }, // Commented out missing class
       { name: 'Authentication Tests', runner: new AuthenticationTests() },
       { name: 'Message Format Tests', runner: new MessageFormatTests() },
-      { name: 'Workflow Rename Sync Tests', runner: new WorkflowRenameSyncTests() },
+      {
+        name: 'Workflow Rename Sync Tests',
+        runner: new WorkflowRenameSyncTests(),
+      },
+      {
+        name: 'TypeScript Workflow Parser Tests',
+        runner: new TypeScriptWorkflowParserTests(),
+      },
     ];
 
     for (const suite of testSuites) {
@@ -248,7 +256,7 @@ Unit Test Runner Usage:
 
   npm run test:unit                    # Run all unit tests
   npm run test:unit -- --schema        # Run schema conversion tests only
-  npm run test:unit -- --auth          # Run authentication tests only  
+  npm run test:unit -- --auth          # Run authentication tests only
   npm run test:unit -- --messages      # Run message format tests only
   npm run test:unit -- --verbose       # Enable verbose logging
   npm run test:unit -- --benchmark     # Show performance benchmarks
