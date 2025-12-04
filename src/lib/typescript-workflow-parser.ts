@@ -98,6 +98,14 @@ export function parseTypeScriptWorkflow(
 // Chained Workflow Parsing (for .step().step().build() pattern)
 // ============================================================================
 
+interface StepReference {
+  type: 'identifier' | 'createStep';
+  name: string;
+  resolvedId?: string;
+  resolvedName?: string;
+  resolvedDescription?: string;
+}
+
 function parseChainedWorkflow(
   node: ts.CallExpression,
   metadata: TypeScriptWorkflowMetadata,
@@ -130,11 +138,46 @@ function parseChainedWorkflow(
   }
 
   // Parse chained method calls
-  const stepFunctions: string[] = [];
+  const stepReferences: StepReference[] = [];
   for (const { method, call } of chain) {
     if (method === 'step') {
-      if (call.arguments.length > 0 && ts.isIdentifier(call.arguments[0])) {
-        stepFunctions.push(call.arguments[0].text);
+      if (call.arguments.length > 0) {
+        const arg = call.arguments[0];
+        if (ts.isIdentifier(arg)) {
+          const varName = arg.text;
+          // Try to resolve the variable to a createStep call
+          const createStepConfig = findCreateStepDefinition(
+            sourceFile,
+            varName
+          );
+          if (createStepConfig) {
+            stepReferences.push({
+              type: 'createStep',
+              name: varName,
+              resolvedId: createStepConfig.id,
+              resolvedName: createStepConfig.name,
+              resolvedDescription: createStepConfig.description,
+            });
+          } else {
+            // It's an imported step function
+            stepReferences.push({
+              type: 'identifier',
+              name: varName,
+            });
+          }
+        } else if (ts.isCallExpression(arg)) {
+          // Inline createStep call: .step(createStep({...}))
+          const config = parseCreateStepCall(arg, sourceFile);
+          if (config) {
+            stepReferences.push({
+              type: 'createStep',
+              name: config.id || 'inline_step',
+              resolvedId: config.id,
+              resolvedName: config.name,
+              resolvedDescription: config.description,
+            });
+          }
+        }
       }
     } else if (method === 'onError') {
       if (call.arguments.length > 0) {
@@ -147,17 +190,101 @@ function parseChainedWorkflow(
     // onSuccess is handled as part of the workflow completion, not as metadata
   }
 
-  // Convert step functions to step metadata
-  if (stepFunctions.length > 0 && metadata.steps.length === 0) {
-    metadata.steps = stepFunctions.map((stepName, index) => ({
-      id: stepName,
-      name: toTitleCase(stepName),
+  // Convert step references to step metadata
+  if (stepReferences.length > 0 && metadata.steps.length === 0) {
+    metadata.steps = stepReferences.map((step, index) => ({
+      id: step.resolvedId || step.name,
+      name: step.resolvedName || toTitleCase(step.name),
+      description: step.resolvedDescription,
       type: 'action' as const,
       position: { x: 100, y: 100 + index * 120 },
       next:
-        index < stepFunctions.length - 1 ? [stepFunctions[index + 1]] : undefined,
+        index < stepReferences.length - 1
+          ? [
+              stepReferences[index + 1].resolvedId ||
+                stepReferences[index + 1].name,
+            ]
+          : undefined,
     }));
   }
+}
+
+/**
+ * Find a variable declaration that is assigned a createStep({...}) call
+ * and extract the step configuration from it.
+ */
+function findCreateStepDefinition(
+  sourceFile: ts.SourceFile,
+  variableName: string
+): { id?: string; name?: string; description?: string } | null {
+  let result: { id?: string; name?: string; description?: string } | null =
+    null;
+
+  function visit(node: ts.Node) {
+    if (result) return;
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === variableName &&
+      node.initializer
+    ) {
+      // Check if initializer is createStep({...})
+      if (ts.isCallExpression(node.initializer)) {
+        const config = parseCreateStepCall(node.initializer, sourceFile);
+        if (config) {
+          result = config;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return result;
+}
+
+/**
+ * Parse a createStep({...}) call expression and extract id, name, description
+ */
+function parseCreateStepCall(
+  call: ts.CallExpression,
+  _sourceFile: ts.SourceFile
+): { id?: string; name?: string; description?: string } | null {
+  // Check if this is a createStep call
+  if (
+    !ts.isIdentifier(call.expression) ||
+    call.expression.text !== 'createStep'
+  ) {
+    return null;
+  }
+
+  if (
+    call.arguments.length === 0 ||
+    !ts.isObjectLiteralExpression(call.arguments[0])
+  ) {
+    return null;
+  }
+
+  const config: { id?: string; name?: string; description?: string } = {};
+  const objectLiteral = call.arguments[0];
+
+  objectLiteral.properties.forEach(prop => {
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) return;
+
+    const propName = prop.name.text;
+    const value = prop.initializer;
+
+    if (propName === 'id' && ts.isStringLiteral(value)) {
+      config.id = value.text;
+    } else if (propName === 'name' && ts.isStringLiteral(value)) {
+      config.name = value.text;
+    } else if (propName === 'description' && ts.isStringLiteral(value)) {
+      config.description = value.text;
+    }
+  });
+
+  return config;
 }
 
 // ============================================================================
