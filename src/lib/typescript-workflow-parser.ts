@@ -520,17 +520,36 @@ function parseSteps(
 
   stepsArray.elements.forEach((element, index) => {
     if (ts.isIdentifier(element)) {
-      // Step is imported
-      steps.push({
-        id: element.text,
-        name: toTitleCase(element.text),
-        type: 'action',
-        position: { x: 100, y: 100 + index * 120 },
-        next:
-          index < stepsArray.elements.length - 1
-            ? [stepsArray.elements[index + 1].getText(sourceFile)]
-            : undefined,
-      });
+      const varName = element.text;
+      // Try to resolve the variable to a createStep call
+      const createStepConfig = findCreateStepDefinition(sourceFile, varName);
+
+      if (createStepConfig) {
+        // Variable references a createStep({id, name, description}) call
+        steps.push({
+          id: createStepConfig.id || varName,
+          name: createStepConfig.name || toTitleCase(varName),
+          description: createStepConfig.description,
+          type: 'action',
+          position: { x: 100, y: 100 + index * 120 },
+          next:
+            index < stepsArray.elements.length - 1
+              ? [getNextStepId(stepsArray.elements[index + 1], sourceFile)]
+              : undefined,
+        });
+      } else {
+        // Step is an imported function (no createStep definition found)
+        steps.push({
+          id: varName,
+          name: toTitleCase(varName),
+          type: 'action',
+          position: { x: 100, y: 100 + index * 120 },
+          next:
+            index < stepsArray.elements.length - 1
+              ? [getNextStepId(stepsArray.elements[index + 1], sourceFile)]
+              : undefined,
+        });
+      }
     } else if (ts.isCallExpression(element)) {
       // Inline step
       const step = parseInlineStep(element, index, sourceFile);
@@ -539,6 +558,21 @@ function parseSteps(
   });
 
   return steps;
+}
+
+/**
+ * Get the ID for the next step element (for building the 'next' chain)
+ */
+function getNextStepId(
+  element: ts.Expression,
+  sourceFile: ts.SourceFile
+): string {
+  if (ts.isIdentifier(element)) {
+    const varName = element.text;
+    const createStepConfig = findCreateStepDefinition(sourceFile, varName);
+    return createStepConfig?.id || varName;
+  }
+  return element.getText(sourceFile);
 }
 
 function parseInlineStep(
