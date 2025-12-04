@@ -12,7 +12,6 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { type UserSessionData } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
@@ -526,41 +525,36 @@ function AuthenticatedAdminPage({
   const handleSaveName = async (userId: string) => {
     if (!userNameInput.trim()) return;
 
-    const { error } = await supabase
-      .from('mediar_users')
-      .upsert({ user_id: userId, name: userNameInput.trim() }, { onConflict: 'user_id' });
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, name: userNameInput.trim() }),
+      });
 
-    if (error) {
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error updating user name:', error);
+        return;
+      }
+
+      setEditingUser(null);
+      setUserNameInput('');
+      await fetchSessions(); // Refresh the user list
+    } catch (error) {
       console.error('Error updating user name:', error);
-      return;
     }
-
-    setEditingUser(null);
-    setUserNameInput('');
-    await fetchSessions(); // Refresh the user list
   };
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      // Delete from mediar_users table
-      const { error: mediarUsersError } = await supabase
-        .from('mediar_users')
-        .delete()
-        .eq('user_id', userId);
+      const response = await fetch(`/api/admin/users?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
 
-      if (mediarUsersError) {
-        console.error('Error deleting from mediar_users:', mediarUsersError);
-        return;
-      }
-
-      // Delete from session_metadata table
-      const { error: sessionError } = await supabase
-        .from('session_metadata')
-        .delete()
-        .eq('user_id', userId);
-
-      if (sessionError) {
-        console.error('Error deleting from session_metadata:', sessionError);
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to delete user:', error);
         return;
       }
 
@@ -568,7 +562,6 @@ function AuthenticatedAdminPage({
       await fetchSessions(); // Refresh the user list
     } catch (error) {
       console.error('Failed to delete user:', error);
-      // You might want to show an error notification to the user here
     }
   };
 

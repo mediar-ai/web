@@ -40,7 +40,8 @@ export async function POST(request: Request) {
     }
 
     // Return the signed URL to the client.
-    return NextResponse.json(data, { status: 200 });
+    // data contains { path, token, signedUrl } - we return signedUrl for direct upload
+    return NextResponse.json({ signedUrl: data.signedUrl }, { status: 200 });
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
