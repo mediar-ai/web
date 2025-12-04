@@ -1269,7 +1269,7 @@ Answer the user's question helpfully and thoroughly by using the available tools
             duration: execution.execution_duration_seconds || 0,
             executionParams: execution.execution_params || null,
             orchestratorLogsCount: execution.execution_logs?.length || 0,
-            orchestratorLogs: execution.execution_logs?.slice(0, 20) || [],
+            orchestratorLogs: execution.execution_logs || [],
             screenshotsCount: execution.screenshots?.length || 0,
             workflowAvailable: !!workflowContext.workflow,
             workflowError: workflowContext.workflowError,

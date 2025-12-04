@@ -397,8 +397,8 @@ export function getExecutionSummary(data: any): string {
 
   if (errors.length > 0) {
     summary += `\nErrors found:\n`;
-    errors.slice(0, 3).forEach(e => {
-      summary += `- Step '${e.stepName}': ${e.error.substring(0, 100)}\n`;
+    errors.forEach(e => {
+      summary += `- Step '${e.stepName}': ${e.error}\n`;
     });
   }
 
