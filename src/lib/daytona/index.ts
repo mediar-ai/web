@@ -35,6 +35,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// In-memory cache for active sandboxes (supplement to DB)
+const sandboxCache = new Map<string, SandboxInfo>();
 
 const SERVER_SESSION_ID = 'mediar-server';
 
@@ -110,6 +112,15 @@ async function ensureServerRunning(sandbox: any): Promise<void> {
 export async function getOrCreateSandbox(userId: string): Promise<SandboxInfo> {
   console.log(`[SANDBOX] getOrCreateSandbox called for user: ${userId}`);
 
+  // Check in-memory cache first
+  const cached = sandboxCache.get(userId);
+  if (cached && cached.state === 'running') {
+    // Update last accessed
+    cached.lastAccessedAt = new Date().toISOString();
+    console.log(`[SANDBOX] Found in cache: ${cached.sandboxId}`);
+    return cached;
+  }
+
   // Check database for existing sandbox
   const { data: existing, error: dbError } = await supabase
     .from('user_sandboxes')
@@ -161,6 +172,7 @@ export async function getOrCreateSandbox(userId: string): Promise<SandboxInfo> {
           console.error('[SANDBOX] Failed to update DB:', updateError);
         }
 
+        sandboxCache.set(userId, info);
         return info;
       }
 
@@ -201,6 +213,7 @@ export async function getOrCreateSandbox(userId: string): Promise<SandboxInfo> {
         console.log('[SANDBOX] DB updated with new token');
       }
 
+      sandboxCache.set(userId, info);
       return info;
 
     } catch (error) {
@@ -330,6 +343,7 @@ async function createNewSandbox(userId: string): Promise<SandboxInfo> {
     console.log('[SANDBOX] Sandbox saved to DB successfully');
   }
 
+  sandboxCache.set(userId, info);
   return info;
 }
 
