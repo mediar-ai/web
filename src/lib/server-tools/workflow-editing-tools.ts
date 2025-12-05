@@ -6,7 +6,7 @@
  * while maintaining GitHub sync and avoiding API overhead.
  */
 
-import { Type } from '@google/genai';
+import { Type } from '@/app/api/ai/types/vertex';
 
 // Alias for backward compatibility
 const SchemaType = Type;

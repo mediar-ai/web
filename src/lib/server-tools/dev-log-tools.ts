@@ -3,7 +3,7 @@
  * These tools allow AI to access and query recent workflow execution logs from the desktop app
  */
 
-import { Type } from '@google/genai';
+import { Type } from '@/app/api/ai/types/vertex';
 
 // Alias for backward compatibility
 const SchemaType = Type;
