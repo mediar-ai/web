@@ -4,20 +4,28 @@ import { isMediarAdmin } from '@/lib/mediarAuth';
 const AZURE_TENANT_ID = process.env.AZURE_TENANT_ID;
 const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID;
 const AZURE_CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
-const AZURE_SUBSCRIPTION_ID = '5c0a60d0-92cf-47ca-9430-b462bc2fe194'; // Microsoft Azure Sponsorship
+const AZURE_SUBSCRIPTION_ID = '5c0a60d0-92cf-47ca-9430-b462bc2fe194';
 
-interface CostData {
-  date: string;
-  cost: number;
-  currency: string;
-}
+// Estimated hourly costs for common resource types (USD)
+const ESTIMATED_HOURLY_COSTS: Record<string, number> = {
+  'Microsoft.Compute/virtualMachines': 0.2, // ~D4s_v3
+  'Microsoft.Compute/virtualMachineScaleSets': 0.2,
+  'Microsoft.ContainerInstance/containerGroups': 0.05,
+  'Microsoft.Compute/disks': 0.002, // P10 SSD
+  'Microsoft.Network/publicIPAddresses': 0.004,
+  'Microsoft.Network/loadBalancers': 0.025,
+  'Microsoft.Network/natGateways': 0.045,
+  'Microsoft.Storage/storageAccounts': 0.02,
+  'Microsoft.ContainerRegistry/registries': 0.17,
+  'Microsoft.OperationalInsights/workspaces': 0.01,
+};
 
-interface ResourceCost {
+interface Resource {
+  id: string;
+  name: string;
+  type: string;
+  location: string;
   resourceGroup: string;
-  resourceName: string;
-  resourceType: string;
-  cost: number;
-  currency: string;
 }
 
 async function getAzureAccessToken(): Promise<string> {
@@ -45,100 +53,60 @@ async function getAzureAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function getCostManagementData(
-  accessToken: string,
-  startDate: string,
-  endDate: string
-): Promise<{ daily: CostData[]; byResource: ResourceCost[]; total: number }> {
-  const costUrl = `https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`;
+async function getResources(accessToken: string): Promise<Resource[]> {
+  const url = `https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/resources?api-version=2021-04-01`;
 
-  // Query for daily costs
-  const dailyResponse = await fetch(costUrl, {
-    method: 'POST',
+  const response = await fetch(url, {
     headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      type: 'ActualCost',
-      timeframe: 'Custom',
-      timePeriod: {
-        from: startDate,
-        to: endDate,
-      },
-      dataset: {
-        granularity: 'Daily',
-        aggregation: {
-          totalCost: {
-            name: 'Cost',
-            function: 'Sum',
-          },
-        },
-        grouping: [
-          {
-            type: 'Dimension',
-            name: 'ResourceGroup',
-          },
-        ],
-      },
-    }),
   });
 
-  if (!dailyResponse.ok) {
-    const error = await dailyResponse.text();
-    throw new Error(`Cost Management API error: ${error}`);
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Resources API error: ${error}`);
   }
 
-  const dailyData = await dailyResponse.json();
-
-  // Parse daily costs
-  const daily: CostData[] = [];
-  const byResourceGroup: Record<string, number> = {};
-  let total = 0;
-
-  if (dailyData.properties?.rows) {
-    for (const row of dailyData.properties.rows) {
-      const cost = row[0] || 0;
-      const resourceGroup = row[1] || 'Unknown';
-      const dateNum = row[2];
-
-      // Parse date from number format (20231215)
-      const dateStr = String(dateNum);
-      const date = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
-
-      daily.push({
-        date,
-        cost,
-        currency: 'USD',
-      });
-
-      byResourceGroup[resourceGroup] = (byResourceGroup[resourceGroup] || 0) + cost;
-      total += cost;
+  const data = await response.json();
+  return (data.value || []).map(
+    (r: { id: string; name: string; type: string; location: string }) => {
+      const rgMatch = r.id.match(/resourceGroups\/([^/]+)/i);
+      return {
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        location: r.location,
+        resourceGroup: rgMatch ? rgMatch[1] : 'Unknown',
+      };
     }
+  );
+}
+
+async function getResourceGroups(
+  accessToken: string
+): Promise<{ name: string; location: string }[]> {
+  const url = `https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourcegroups?api-version=2021-04-01`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    return [];
   }
 
-  // Convert resource groups to array
-  const byResource: ResourceCost[] = Object.entries(byResourceGroup)
-    .map(([resourceGroup, cost]) => ({
-      resourceGroup,
-      resourceName: resourceGroup,
-      resourceType: 'Resource Group',
-      cost,
-      currency: 'USD',
-    }))
-    .sort((a, b) => b.cost - a.cost);
+  const data = await response.json();
+  return (data.value || []).map((rg: { name: string; location: string }) => ({
+    name: rg.name,
+    location: rg.location,
+  }));
+}
 
-  // Aggregate daily by date
-  const dailyAggregated: Record<string, number> = {};
-  for (const item of daily) {
-    dailyAggregated[item.date] = (dailyAggregated[item.date] || 0) + item.cost;
-  }
-
-  const sortedDaily = Object.entries(dailyAggregated)
-    .map(([date, cost]) => ({ date, cost, currency: 'USD' }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  return { daily: sortedDaily, byResource, total };
+function extractResourceGroup(resourceId: string): string {
+  const match = resourceId.match(/resourceGroups\/([^/]+)/i);
+  return match ? match[1] : 'Unknown';
 }
 
 export async function GET(request: Request) {
@@ -160,39 +128,101 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || '30'; // days
-
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(period));
-
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
+    const period = parseInt(searchParams.get('period') || '30');
 
     const accessToken = await getAzureAccessToken();
-    const costData = await getCostManagementData(accessToken, startStr, endStr);
+
+    const [resources, resourceGroups] = await Promise.all([
+      getResources(accessToken),
+      getResourceGroups(accessToken),
+    ]);
+
+    // Count by type
+    const byType: Record<
+      string,
+      { count: number; estimatedMonthlyCost: number }
+    > = {};
+    for (const r of resources) {
+      if (!byType[r.type]) {
+        byType[r.type] = { count: 0, estimatedMonthlyCost: 0 };
+      }
+      byType[r.type].count++;
+      const hourlyRate = ESTIMATED_HOURLY_COSTS[r.type] || 0;
+      byType[r.type].estimatedMonthlyCost += hourlyRate * 24 * 30;
+    }
+
+    // Count by resource group
+    const byResourceGroup: Record<
+      string,
+      {
+        count: number;
+        types: Record<string, number>;
+        estimatedMonthlyCost: number;
+      }
+    > = {};
+    for (const r of resources) {
+      const rg = r.resourceGroup;
+      if (!byResourceGroup[rg]) {
+        byResourceGroup[rg] = { count: 0, types: {}, estimatedMonthlyCost: 0 };
+      }
+      byResourceGroup[rg].count++;
+      byResourceGroup[rg].types[r.type] =
+        (byResourceGroup[rg].types[r.type] || 0) + 1;
+      const hourlyRate = ESTIMATED_HOURLY_COSTS[r.type] || 0;
+      byResourceGroup[rg].estimatedMonthlyCost += hourlyRate * 24 * 30;
+    }
+
+    // Calculate totals
+    const totalEstimatedMonthlyCost = Object.values(byType).reduce(
+      (sum, t) => sum + t.estimatedMonthlyCost,
+      0
+    );
+
+    // Format for response
+    const typeBreakdown = Object.entries(byType)
+      .map(([type, data]) => ({
+        type,
+        shortType: type.split('/').pop() || type,
+        count: data.count,
+        estimatedMonthlyCost: Math.round(data.estimatedMonthlyCost * 100) / 100,
+      }))
+      .sort((a, b) => b.estimatedMonthlyCost - a.estimatedMonthlyCost);
+
+    const rgBreakdown = Object.entries(byResourceGroup)
+      .map(([name, data]) => ({
+        name,
+        resourceCount: data.count,
+        estimatedMonthlyCost: Math.round(data.estimatedMonthlyCost * 100) / 100,
+        topTypes: Object.entries(data.types)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([t, c]) => ({ type: t.split('/').pop(), count: c })),
+      }))
+      .sort((a, b) => b.estimatedMonthlyCost - a.estimatedMonthlyCost);
 
     return NextResponse.json({
       success: true,
-      subscription: 'Microsoft Azure Sponsorship',
-      subscriptionId: AZURE_SUBSCRIPTION_ID,
-      period: {
-        start: startStr,
-        end: endStr,
-        days: parseInt(period),
+      subscription: {
+        name: 'Microsoft Azure Sponsorship',
+        id: AZURE_SUBSCRIPTION_ID,
+        type: 'Sponsorship (credits-based)',
+        note: 'Cost data not available via API for sponsorship subscriptions. Showing estimated costs based on resource inventory.',
       },
-      costs: {
-        total: Math.round(costData.total * 100) / 100,
+      summary: {
+        totalResources: resources.length,
+        resourceGroups: resourceGroups.length,
+        estimatedMonthlyCost: Math.round(totalEstimatedMonthlyCost * 100) / 100,
+        estimatedDailyCost:
+          Math.round((totalEstimatedMonthlyCost / 30) * 100) / 100,
+        estimatedPeriodCost:
+          Math.round((totalEstimatedMonthlyCost / 30) * period * 100) / 100,
         currency: 'USD',
-        daily: costData.daily.map(d => ({
-          ...d,
-          cost: Math.round(d.cost * 100) / 100,
-        })),
-        byResourceGroup: costData.byResource.map(r => ({
-          ...r,
-          cost: Math.round(r.cost * 100) / 100,
-        })),
+        period: {
+          days: period,
+        },
       },
+      byResourceType: typeBreakdown,
+      byResourceGroup: rgBreakdown,
     });
   } catch (error) {
     console.error('Azure billing error:', error);
