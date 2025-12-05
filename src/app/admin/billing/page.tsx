@@ -6,26 +6,28 @@ import { useState, useEffect } from 'react';
 import {
   DollarSign,
   TrendingUp,
-  Calendar,
-  Server,
   RefreshCw,
   AlertCircle,
-  Box,
-  Layers,
+  Server,
+  HardDrive,
+  Container,
+  Network,
+  ChevronDown,
+  ChevronRight,
+  Monitor,
 } from 'lucide-react';
 
-interface ResourceTypeBreakdown {
-  type: string;
-  shortType: string;
-  count: number;
-  estimatedMonthlyCost: number;
+interface BreakdownItem {
+  name: string;
+  detail: string;
+  location: string;
+  monthlyCost: number;
 }
 
-interface ResourceGroupBreakdown {
-  name: string;
-  resourceCount: number;
-  estimatedMonthlyCost: number;
-  topTypes: { type: string; count: number }[];
+interface CategoryBreakdown {
+  category: string;
+  items: BreakdownItem[];
+  subtotal: number;
 }
 
 interface BillingData {
@@ -37,26 +39,39 @@ interface BillingData {
     note: string;
   };
   summary: {
-    totalResources: number;
-    resourceGroups: number;
-    estimatedMonthlyCost: number;
-    estimatedDailyCost: number;
-    estimatedPeriodCost: number;
+    estimatedMonthly: number;
+    estimatedDaily: number;
     currency: string;
-    period: {
-      days: number;
+    resourceCounts: {
+      vms: number;
+      vmss: number;
+      vmssInstances: number;
+      containers: number;
+      disks: number;
+      totalDiskGB: number;
+      publicIPs: number;
+      images: number;
     };
   };
-  byResourceType: ResourceTypeBreakdown[];
-  byResourceGroup: ResourceGroupBreakdown[];
+  breakdown: CategoryBreakdown[];
 }
+
+const categoryIcons: Record<string, React.ReactNode> = {
+  'Virtual Machines': <Monitor className="w-5 h-5" />,
+  'Virtual Machine Scale Sets': <Server className="w-5 h-5" />,
+  'Container Instances': <Container className="w-5 h-5" />,
+  'Managed Disks': <HardDrive className="w-5 h-5" />,
+  'Networking & Other': <Network className="w-5 h-5" />,
+};
 
 export default function BillingPage() {
   const { user } = useUser();
   const [billingData, setBillingData] = useState<BillingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState('30');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set()
+  );
 
   const isMediarAdmin = user?.emailAddresses?.some(e =>
     e.emailAddress.toLowerCase().endsWith('@mediar.ai')
@@ -65,25 +80,39 @@ export default function BillingPage() {
   useEffect(() => {
     if (!isMediarAdmin) return;
     fetchBillingData();
-  }, [isMediarAdmin, period]);
+  }, [isMediarAdmin]);
 
   const fetchBillingData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/admin/azure-billing?period=${period}`);
+      const response = await fetch('/api/admin/azure-billing');
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch billing data');
       }
-
       setBillingData(data);
+      // Expand all categories by default
+      setExpandedCategories(
+        new Set(data.breakdown?.map((b: CategoryBreakdown) => b.category) || [])
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
   };
 
   if (!isMediarAdmin) {
@@ -100,15 +129,7 @@ export default function BillingPage() {
     );
   }
 
-  const maxTypeCost = billingData?.byResourceType.length
-    ? Math.max(...billingData.byResourceType.map(t => t.estimatedMonthlyCost))
-    : 0;
-
-  const maxRgCost = billingData?.byResourceGroup.length
-    ? Math.max(
-        ...billingData.byResourceGroup.map(rg => rg.estimatedMonthlyCost)
-      )
-    : 0;
+  const totalMonthly = billingData?.summary.estimatedMonthly || 0;
 
   return (
     <DashboardLayout>
@@ -124,29 +145,14 @@ export default function BillingPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <select
-              value={period}
-              onChange={e => setPeriod(e.target.value)}
-              className="border-2 border-black px-3 py-2 font-mono"
-            >
-              <option value="7">Last 7 days</option>
-              <option value="14">Last 14 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="60">Last 60 days</option>
-              <option value="90">Last 90 days</option>
-            </select>
-            <button
-              onClick={fetchBillingData}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-black text-white font-mono hover:bg-gray-800 disabled:bg-gray-400"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
-              />
-              REFRESH
-            </button>
-          </div>
+          <button
+            onClick={fetchBillingData}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-black text-white font-mono hover:bg-gray-800 disabled:bg-gray-400"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            REFRESH
+          </button>
         </div>
 
         {/* Note about estimates */}
@@ -178,7 +184,7 @@ export default function BillingPage() {
         ) : billingData ? (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
                   <DollarSign className="w-5 h-5" />
@@ -187,7 +193,7 @@ export default function BillingPage() {
                   </span>
                 </div>
                 <div className="text-3xl font-mono font-bold">
-                  ${billingData.summary.estimatedMonthlyCost.toFixed(2)}
+                  ${billingData.summary.estimatedMonthly.toLocaleString()}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
                   {billingData.summary.currency}
@@ -202,7 +208,7 @@ export default function BillingPage() {
                   </span>
                 </div>
                 <div className="text-3xl font-mono font-bold">
-                  ${billingData.summary.estimatedDailyCost.toFixed(2)}
+                  ${billingData.summary.estimatedDaily.toFixed(2)}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
                   per day
@@ -211,137 +217,139 @@ export default function BillingPage() {
 
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
-                  <Calendar className="w-5 h-5" />
-                  <span className="font-mono text-xs uppercase">
-                    Est. {period} Days
-                  </span>
+                  <Server className="w-5 h-5" />
+                  <span className="font-mono text-xs uppercase">Compute</span>
                 </div>
                 <div className="text-3xl font-mono font-bold">
-                  ${billingData.summary.estimatedPeriodCost.toFixed(2)}
+                  {billingData.summary.resourceCounts.vms +
+                    billingData.summary.resourceCounts.vmssInstances +
+                    billingData.summary.resourceCounts.containers}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
-                  projected
+                  {billingData.summary.resourceCounts.vms} VMs +{' '}
+                  {billingData.summary.resourceCounts.vmssInstances} VMSS +{' '}
+                  {billingData.summary.resourceCounts.containers} containers
                 </div>
               </div>
 
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
-                  <Box className="w-5 h-5" />
-                  <span className="font-mono text-xs uppercase">Resources</span>
+                  <HardDrive className="w-5 h-5" />
+                  <span className="font-mono text-xs uppercase">Storage</span>
                 </div>
                 <div className="text-3xl font-mono font-bold">
-                  {billingData.summary.totalResources}
+                  {billingData.summary.resourceCounts.totalDiskGB} GB
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
-                  across {billingData.summary.resourceGroups} groups
+                  across {billingData.summary.resourceCounts.disks} disks +{' '}
+                  {billingData.summary.resourceCounts.images} images
                 </div>
               </div>
             </div>
 
-            {/* Resource Type Breakdown */}
-            <div className="border-2 border-black mb-8">
-              <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold flex items-center gap-2">
-                  <Layers className="w-5 h-5" />
-                  COST BY RESOURCE TYPE
-                </h2>
-              </div>
-              <div className="p-6">
-                {billingData.byResourceType.length > 0 ? (
-                  <div className="space-y-3">
-                    {billingData.byResourceType.map(item => (
-                      <div key={item.type} className="flex items-center gap-4">
-                        <span className="font-mono text-sm w-48 text-gray-600 truncate">
-                          {item.shortType}
-                        </span>
-                        <span className="font-mono text-xs w-12 text-gray-500">
-                          x{item.count}
-                        </span>
-                        <div className="flex-1 h-6 bg-gray-100 relative">
-                          <div
-                            className="h-full bg-black"
-                            style={{
-                              width: `${maxTypeCost > 0 ? (item.estimatedMonthlyCost / maxTypeCost) * 100 : 0}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="font-mono text-sm w-24 text-right">
-                          ${item.estimatedMonthlyCost.toFixed(2)}/mo
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-500 py-8">
-                    No resource data available
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Resource Group Breakdown */}
+            {/* Cost Breakdown */}
             <div className="border-2 border-black">
               <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold flex items-center gap-2">
-                  <Server className="w-5 h-5" />
-                  COST BY RESOURCE GROUP
-                </h2>
+                <h2 className="font-mono font-bold">COST BREAKDOWN</h2>
               </div>
-              <div className="divide-y divide-gray-200">
-                {billingData.byResourceGroup.length > 0 ? (
-                  billingData.byResourceGroup.map(rg => {
-                    const percentage =
-                      billingData.summary.estimatedMonthlyCost > 0
-                        ? (rg.estimatedMonthlyCost /
-                            billingData.summary.estimatedMonthlyCost) *
-                          100
-                        : 0;
-                    return (
-                      <div
-                        key={rg.name}
-                        className="p-4 flex items-center justify-between"
-                      >
-                        <div className="flex-1">
-                          <div className="font-mono font-bold">{rg.name}</div>
-                          <div className="text-gray-600 text-sm flex items-center gap-2">
-                            <span>{rg.resourceCount} resources</span>
-                            <span>•</span>
-                            <span>{percentage.toFixed(1)}% of total</span>
-                          </div>
-                          {rg.topTypes.length > 0 && (
-                            <div className="text-gray-500 text-xs mt-1 font-mono">
-                              {rg.topTypes
-                                .map(t => `${t.type} (${t.count})`)
-                                .join(', ')}
-                            </div>
-                          )}
+
+              {billingData.breakdown.map(category => {
+                const isExpanded = expandedCategories.has(category.category);
+                const percentage =
+                  totalMonthly > 0
+                    ? (category.subtotal / totalMonthly) * 100
+                    : 0;
+
+                return (
+                  <div
+                    key={category.category}
+                    className="border-b border-gray-200 last:border-b-0"
+                  >
+                    {/* Category Header */}
+                    <button
+                      onClick={() => toggleCategory(category.category)}
+                      className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                        {categoryIcons[category.category] || (
+                          <Server className="w-5 h-5" />
+                        )}
+                        <span className="font-mono font-bold">
+                          {category.category}
+                        </span>
+                        <span className="text-gray-500 text-sm">
+                          ({category.items.length} items)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="w-32 h-3 bg-gray-100">
+                          <div
+                            className="h-full bg-black"
+                            style={{ width: `${percentage}%` }}
+                          />
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="w-32 h-4 bg-gray-100">
-                            <div
-                              className="h-full bg-black"
-                              style={{
-                                width: `${maxRgCost > 0 ? (rg.estimatedMonthlyCost / maxRgCost) * 100 : 0}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="text-right w-28">
-                            <div className="font-mono font-bold">
-                              ${rg.estimatedMonthlyCost.toFixed(2)}
-                            </div>
-                            <div className="text-gray-600 text-xs">
-                              /month est.
-                            </div>
-                          </div>
+                        <div className="text-right min-w-[100px]">
+                          <span className="font-mono font-bold">
+                            ${category.subtotal.toLocaleString()}
+                          </span>
+                          <span className="text-gray-500 text-sm ml-1">
+                            /mo
+                          </span>
                         </div>
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    No resource group data available
+                    </button>
+
+                    {/* Category Items */}
+                    {isExpanded && category.items.length > 0 && (
+                      <div className="bg-gray-50 border-t border-gray-200">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="text-left text-xs font-mono text-gray-500 uppercase">
+                              <th className="px-4 py-2 pl-12">Resource</th>
+                              <th className="px-4 py-2">Details</th>
+                              <th className="px-4 py-2">Location</th>
+                              <th className="px-4 py-2 text-right">Monthly</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {category.items.map((item, idx) => (
+                              <tr
+                                key={idx}
+                                className="border-t border-gray-200 hover:bg-gray-100"
+                              >
+                                <td className="px-4 py-2 pl-12 font-mono text-sm">
+                                  {item.name}
+                                </td>
+                                <td className="px-4 py-2 text-gray-600 text-sm">
+                                  {item.detail}
+                                </td>
+                                <td className="px-4 py-2 text-gray-500 text-sm">
+                                  {item.location}
+                                </td>
+                                <td className="px-4 py-2 text-right font-mono">
+                                  ${item.monthlyCost.toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })}
+
+              {/* Total */}
+              <div className="bg-black text-white p-4 flex items-center justify-between">
+                <span className="font-mono font-bold">TOTAL ESTIMATED</span>
+                <span className="font-mono font-bold text-xl">
+                  ${totalMonthly.toLocaleString()}/mo
+                </span>
               </div>
             </div>
 
