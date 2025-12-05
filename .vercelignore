@@ -1,3 +1,38 @@
-rust-executor/target
-node_modules
-.next
+# Build artifacts
+rust-executor/
+modal_apps/
+scripts/
+container/
+sandbox-server/
+tests/
+__tests__/
+
+# Config/tooling
+.claude/
+.cursor/
+.vscode/
+.github/
+supabase/
+
+# Lock files (Vercel uses package-lock.json)
+bun.lock
+uv.lock
+
+# Python
+*.py
+*.pyc
+__pycache__/
+.python-version
+pyproject.toml
+pytest.ini
+requirements.txt
+
+# Misc
+*.md
+*.log
+*.tsbuildinfo
+nul
+test-*.mjs
+check-*.mjs
+cleanup-*.mjs
+run-*.sh
