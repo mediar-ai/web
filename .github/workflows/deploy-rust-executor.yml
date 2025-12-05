@@ -1,4 +1,4 @@
-name: Deploy Rust Executor to Azure
+name: Deploy Rust Executor to GCP
 
 on:
   push:
@@ -8,6 +8,12 @@ on:
       - 'rust-executor/**'
       - '.github/workflows/deploy-rust-executor.yml'
   workflow_dispatch:
+
+env:
+  GCP_PROJECT: mediar-394022
+  GCP_REGION: us-east1
+  SERVICE_NAME: workflow-executor
+  ARTIFACT_REGISTRY: us-east1-docker.pkg.dev/mediar-394022/mediar-containers
 
 jobs:
   # Run tests in parallel
@@ -31,10 +37,25 @@ jobs:
   # Build and deploy
   deploy:
     runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,135 +68,79 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Login to Azure Container Registry
-        run: |
-          ACR_NAME="mediarworkflowacr"
-          az acr login --name $ACR_NAME
-
-      - name: Build and Push Docker Image with Caching
+      - name: Build and Push Docker Image
         env:
-          TIMESTAMP: ${{ github.run_number }}
+          IMAGE_TAG: ${{ github.run_number }}
         run: |
           cd rust-executor
 
-          ACR_NAME="mediarworkflowacr"
-          ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
-          IMAGE_NAME="workflow-executor"
-          ENVIRONMENT="dev"
-          IMAGE_TAG="${ENVIRONMENT}-${TIMESTAMP}"
+          echo "Building ${{ env.ARTIFACT_REGISTRY }}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}"
 
-          echo "Building ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
-
-          # Build with local cache (faster than GHA cache for large Rust builds)
           docker buildx build \
             --cache-from type=local,src=/tmp/.buildx-cache \
             --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
-            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${ENVIRONMENT}-latest" \
+            --tag "${{ env.ARTIFACT_REGISTRY }}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}" \
+            --tag "${{ env.ARTIFACT_REGISTRY }}/${{ env.SERVICE_NAME }}:latest" \
             --push \
             --file Dockerfile \
             .
 
-          # Rotate cache to prevent unbounded growth
+          # Rotate cache
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          echo "ACR_LOGIN_SERVER=${ACR_LOGIN_SERVER}" >> $GITHUB_ENV
-          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
-
-      - name: Deploy to Azure Container Instances
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          APP_URL: ${{ secrets.APP_URL }}
-          MEDIAR_SERVICE_API_KEY: ${{ secrets.MEDIAR_SERVICE_API_KEY }}
-          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
-          MCP_SERVICE_TOKEN: ${{ secrets.MCP_SERVICE_TOKEN }}
+      - name: Deploy to Cloud Run
         run: |
-          cd rust-executor
-
-          RESOURCE_GROUP="mediar-workflow-executor-rg"
-          CONTAINER_NAME="workflow-executor-dev"
-          ACR_NAME="mediarworkflowacr"
-          PORT=8080
-          CONTAINER_CPU=1
-          CONTAINER_MEMORY=2
-
-          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
-          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
-
-          OTEL_FQDN=$(az container list --query "[?contains(name, 'otel')].ipAddress.fqdn" -o tsv | head -n 1)
-          if [ -n "$OTEL_FQDN" ]; then
-            OTEL_ENDPOINT="http://${OTEL_FQDN}:4318"
-          else
-            OTEL_ENDPOINT="http://otel-collector-mcp-vm2-rg.eastus.azurecontainer.io:4318"
-          fi
-
-          ENV_VARS=(
-            "PORT=$PORT"
-            "RUST_LOG=workflow_executor=debug,tower_http=debug,info"
-            "DATABASE_URL=$DATABASE_URL"
-            "MCP_ENDPOINT=http://localhost:3000"
-            "ENVIRONMENT=dev"
-            "OTEL_SDK_ENABLED=true"
-            "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_ENDPOINT"
-            "AZURE_CONTAINER_NAME=$CONTAINER_NAME"
-            "AZURE_RESOURCE_GROUP=$RESOURCE_GROUP"
-          )
-
-          [ -n "$SUPABASE_URL" ] && ENV_VARS+=("SUPABASE_URL=$SUPABASE_URL")
-          [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] && ENV_VARS+=("SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY")
-          [ -n "$APP_URL" ] && ENV_VARS+=("APP_URL=$APP_URL")
-          [ -n "$MEDIAR_SERVICE_API_KEY" ] && ENV_VARS+=("MEDIAR_SERVICE_API_KEY=$MEDIAR_SERVICE_API_KEY")
-          [ -n "$SECRETS_ENCRYPTION_KEY" ] && ENV_VARS+=("SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY")
-          [ -n "$MCP_SERVICE_TOKEN" ] && ENV_VARS+=("MCP_SERVICE_TOKEN=$MCP_SERVICE_TOKEN")
-
-          if az container show --name "$CONTAINER_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null 2>&1; then
-            echo "Deleting existing container..."
-            az container delete \
-              --name "$CONTAINER_NAME" \
-              --resource-group "$RESOURCE_GROUP" \
-              --yes \
-              --output none
-          fi
-
-          echo "Deploying new container with pre-built image..."
-          az container create \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$CONTAINER_NAME" \
-            --image "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
-            --os-type Linux \
-            --cpu "$CONTAINER_CPU" \
-            --memory "$CONTAINER_MEMORY" \
-            --registry-login-server "$ACR_LOGIN_SERVER" \
-            --registry-username "$ACR_USERNAME" \
-            --registry-password "$ACR_PASSWORD" \
-            --dns-name-label "${CONTAINER_NAME}" \
-            --ports "$PORT" \
-            --environment-variables "${ENV_VARS[@]}" \
-            --output none
-
-          echo "Container deployed successfully"
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.SERVICE_NAME }}:latest \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --allow-unauthenticated \
+            --cpu 2 \
+            --memory 2Gi \
+            --min-instances 1 \
+            --max-instances 5 \
+            --timeout 300 \
+            --set-env-vars "RUST_LOG=workflow_executor=debug,tower_http=debug,info" \
+            --set-env-vars "ENVIRONMENT=production" \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --set-env-vars "MCP_ENDPOINT=http://4.227.217.44:8080" \
+            --set-env-vars "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" \
+            --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            --set-env-vars "OTEL_SDK_ENABLED=true" \
+            --set-env-vars "OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector-e4mtrji55a-ue.a.run.app" \
+            --set-env-vars "APP_URL=${{ secrets.APP_URL }}" \
+            --set-env-vars "MEDIAR_SERVICE_API_KEY=${{ secrets.MEDIAR_SERVICE_API_KEY }}" \
+            --set-env-vars "MCP_SERVICE_TOKEN=${{ secrets.MCP_SERVICE_TOKEN }}" \
+            --set-env-vars "SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}" \
+            --set-env-vars "GCP_PROJECT=${{ env.GCP_PROJECT }}" \
+            --set-env-vars "GCP_REGION=${{ env.GCP_REGION }}"
 
       - name: Test Health Endpoint
         run: |
-          cd rust-executor
-          ./scripts/health-check.sh
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          echo "Testing health at ${SERVICE_URL}/api/v1/health"
+
+          for i in {1..10}; do
+            if curl -sf "${SERVICE_URL}/api/v1/health"; then
+              echo ""
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
 
       - name: Deployment Summary
         run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.GCP_REGION }} --format 'value(status.url)')
           echo "🚀 Rust Executor Deployment Complete!"
           echo ""
           echo "📍 Endpoints:"
-          echo "   Health: http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/health"
-          echo "   Queue:  http://workflow-executor-dev.eastus.azurecontainer.io:8080/api/v1/queue/status"
+          echo "   Health: ${SERVICE_URL}/api/v1/health"
+          echo "   Queue:  ${SERVICE_URL}/api/v1/queue/status"
           echo ""
           echo "🔍 View logs:"
-          echo "   az container logs -n workflow-executor-dev -g mediar-workflow-executor-rg"
+          echo "   gcloud run services logs read ${{ env.SERVICE_NAME }} --region ${{ env.GCP_REGION }}"
