@@ -10,35 +10,45 @@ import {
   Server,
   RefreshCw,
   AlertCircle,
+  Box,
+  Layers,
 } from 'lucide-react';
 
-interface DailyCost {
-  date: string;
-  cost: number;
-  currency: string;
+interface ResourceTypeBreakdown {
+  type: string;
+  shortType: string;
+  count: number;
+  estimatedMonthlyCost: number;
 }
 
-interface ResourceGroupCost {
-  resourceGroup: string;
-  cost: number;
-  currency: string;
+interface ResourceGroupBreakdown {
+  name: string;
+  resourceCount: number;
+  estimatedMonthlyCost: number;
+  topTypes: { type: string; count: number }[];
 }
 
 interface BillingData {
   success: boolean;
-  subscription: string;
-  subscriptionId: string;
-  period: {
-    start: string;
-    end: string;
-    days: number;
+  subscription: {
+    name: string;
+    id: string;
+    type: string;
+    note: string;
   };
-  costs: {
-    total: number;
+  summary: {
+    totalResources: number;
+    resourceGroups: number;
+    estimatedMonthlyCost: number;
+    estimatedDailyCost: number;
+    estimatedPeriodCost: number;
     currency: string;
-    daily: DailyCost[];
-    byResourceGroup: ResourceGroupCost[];
+    period: {
+      days: number;
+    };
   };
+  byResourceType: ResourceTypeBreakdown[];
+  byResourceGroup: ResourceGroupBreakdown[];
 }
 
 export default function BillingPage() {
@@ -48,8 +58,8 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState('30');
 
-  const isMediarAdmin = user?.emailAddresses?.some(
-    (e) => e.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  const isMediarAdmin = user?.emailAddresses?.some(e =>
+    e.emailAddress.toLowerCase().endsWith('@mediar.ai')
   );
 
   useEffect(() => {
@@ -90,8 +100,14 @@ export default function BillingPage() {
     );
   }
 
-  const maxDailyCost = billingData?.costs.daily.length
-    ? Math.max(...billingData.costs.daily.map(d => d.cost))
+  const maxTypeCost = billingData?.byResourceType.length
+    ? Math.max(...billingData.byResourceType.map(t => t.estimatedMonthlyCost))
+    : 0;
+
+  const maxRgCost = billingData?.byResourceGroup.length
+    ? Math.max(
+        ...billingData.byResourceGroup.map(rg => rg.estimatedMonthlyCost)
+      )
     : 0;
 
   return (
@@ -103,13 +119,15 @@ export default function BillingPage() {
             <DollarSign className="w-8 h-8" />
             <div>
               <h1 className="text-3xl font-mono font-bold">AZURE BILLING</h1>
-              <p className="text-gray-600">Infrastructure cost tracking</p>
+              <p className="text-gray-600">
+                Infrastructure cost estimates (Sponsorship)
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <select
               value={period}
-              onChange={(e) => setPeriod(e.target.value)}
+              onChange={e => setPeriod(e.target.value)}
               className="border-2 border-black px-3 py-2 font-mono"
             >
               <option value="7">Last 7 days</option>
@@ -123,11 +141,25 @@ export default function BillingPage() {
               disabled={loading}
               className="flex items-center gap-2 px-4 py-2 bg-black text-white font-mono hover:bg-gray-800 disabled:bg-gray-400"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              />
               REFRESH
             </button>
           </div>
         </div>
+
+        {/* Note about estimates */}
+        {billingData?.subscription.note && (
+          <div className="border-2 border-dashed border-gray-400 bg-gray-50 p-4 mb-6">
+            <div className="flex items-start gap-2 text-gray-700">
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <span className="font-mono text-sm">
+                {billingData.subscription.note}
+              </span>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="border-2 border-black bg-gray-100 p-4 mb-6">
@@ -146,27 +178,31 @@ export default function BillingPage() {
         ) : billingData ? (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
                   <DollarSign className="w-5 h-5" />
-                  <span className="font-mono text-xs uppercase">Total Cost</span>
+                  <span className="font-mono text-xs uppercase">
+                    Est. Monthly
+                  </span>
                 </div>
-                <div className="text-4xl font-mono font-bold">
-                  ${billingData.costs.total.toFixed(2)}
+                <div className="text-3xl font-mono font-bold">
+                  ${billingData.summary.estimatedMonthlyCost.toFixed(2)}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
-                  {billingData.costs.currency}
+                  {billingData.summary.currency}
                 </div>
               </div>
 
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
                   <TrendingUp className="w-5 h-5" />
-                  <span className="font-mono text-xs uppercase">Daily Average</span>
+                  <span className="font-mono text-xs uppercase">
+                    Est. Daily
+                  </span>
                 </div>
-                <div className="text-4xl font-mono font-bold">
-                  ${(billingData.costs.total / billingData.period.days).toFixed(2)}
+                <div className="text-3xl font-mono font-bold">
+                  ${billingData.summary.estimatedDailyCost.toFixed(2)}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
                   per day
@@ -176,47 +212,68 @@ export default function BillingPage() {
               <div className="border-2 border-black p-6">
                 <div className="flex items-center gap-2 text-gray-600 mb-2">
                   <Calendar className="w-5 h-5" />
-                  <span className="font-mono text-xs uppercase">Period</span>
+                  <span className="font-mono text-xs uppercase">
+                    Est. {period} Days
+                  </span>
                 </div>
-                <div className="text-xl font-mono font-bold">
-                  {billingData.period.start}
+                <div className="text-3xl font-mono font-bold">
+                  ${billingData.summary.estimatedPeriodCost.toFixed(2)}
                 </div>
                 <div className="text-gray-600 font-mono text-sm mt-1">
-                  to {billingData.period.end}
+                  projected
+                </div>
+              </div>
+
+              <div className="border-2 border-black p-6">
+                <div className="flex items-center gap-2 text-gray-600 mb-2">
+                  <Box className="w-5 h-5" />
+                  <span className="font-mono text-xs uppercase">Resources</span>
+                </div>
+                <div className="text-3xl font-mono font-bold">
+                  {billingData.summary.totalResources}
+                </div>
+                <div className="text-gray-600 font-mono text-sm mt-1">
+                  across {billingData.summary.resourceGroups} groups
                 </div>
               </div>
             </div>
 
-            {/* Daily Cost Chart */}
+            {/* Resource Type Breakdown */}
             <div className="border-2 border-black mb-8">
               <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold">DAILY COSTS</h2>
+                <h2 className="font-mono font-bold flex items-center gap-2">
+                  <Layers className="w-5 h-5" />
+                  COST BY RESOURCE TYPE
+                </h2>
               </div>
               <div className="p-6">
-                {billingData.costs.daily.length > 0 ? (
-                  <div className="space-y-2">
-                    {billingData.costs.daily.map((day) => (
-                      <div key={day.date} className="flex items-center gap-4">
-                        <span className="font-mono text-sm w-24 text-gray-600">
-                          {day.date.slice(5)}
+                {billingData.byResourceType.length > 0 ? (
+                  <div className="space-y-3">
+                    {billingData.byResourceType.map(item => (
+                      <div key={item.type} className="flex items-center gap-4">
+                        <span className="font-mono text-sm w-48 text-gray-600 truncate">
+                          {item.shortType}
+                        </span>
+                        <span className="font-mono text-xs w-12 text-gray-500">
+                          x{item.count}
                         </span>
                         <div className="flex-1 h-6 bg-gray-100 relative">
                           <div
                             className="h-full bg-black"
                             style={{
-                              width: `${maxDailyCost > 0 ? (day.cost / maxDailyCost) * 100 : 0}%`,
+                              width: `${maxTypeCost > 0 ? (item.estimatedMonthlyCost / maxTypeCost) * 100 : 0}%`,
                             }}
                           />
                         </div>
-                        <span className="font-mono text-sm w-20 text-right">
-                          ${day.cost.toFixed(2)}
+                        <span className="font-mono text-sm w-24 text-right">
+                          ${item.estimatedMonthlyCost.toFixed(2)}/mo
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center text-gray-500 py-8">
-                    No cost data available for this period
+                    No resource data available
                   </div>
                 )}
               </div>
@@ -231,24 +288,51 @@ export default function BillingPage() {
                 </h2>
               </div>
               <div className="divide-y divide-gray-200">
-                {billingData.costs.byResourceGroup.length > 0 ? (
-                  billingData.costs.byResourceGroup.map((rg) => {
-                    const percentage = billingData.costs.total > 0
-                      ? (rg.cost / billingData.costs.total) * 100
-                      : 0;
+                {billingData.byResourceGroup.length > 0 ? (
+                  billingData.byResourceGroup.map(rg => {
+                    const percentage =
+                      billingData.summary.estimatedMonthlyCost > 0
+                        ? (rg.estimatedMonthlyCost /
+                            billingData.summary.estimatedMonthlyCost) *
+                          100
+                        : 0;
                     return (
-                      <div key={rg.resourceGroup} className="p-4 flex items-center justify-between">
-                        <div>
-                          <div className="font-mono font-bold">{rg.resourceGroup}</div>
-                          <div className="text-gray-600 text-sm">
-                            {percentage.toFixed(1)}% of total
+                      <div
+                        key={rg.name}
+                        className="p-4 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="font-mono font-bold">{rg.name}</div>
+                          <div className="text-gray-600 text-sm flex items-center gap-2">
+                            <span>{rg.resourceCount} resources</span>
+                            <span>•</span>
+                            <span>{percentage.toFixed(1)}% of total</span>
                           </div>
+                          {rg.topTypes.length > 0 && (
+                            <div className="text-gray-500 text-xs mt-1 font-mono">
+                              {rg.topTypes
+                                .map(t => `${t.type} (${t.count})`)
+                                .join(', ')}
+                            </div>
+                          )}
                         </div>
-                        <div className="text-right">
-                          <div className="font-mono font-bold text-xl">
-                            ${rg.cost.toFixed(2)}
+                        <div className="flex items-center gap-4">
+                          <div className="w-32 h-4 bg-gray-100">
+                            <div
+                              className="h-full bg-black"
+                              style={{
+                                width: `${maxRgCost > 0 ? (rg.estimatedMonthlyCost / maxRgCost) * 100 : 0}%`,
+                              }}
+                            />
                           </div>
-                          <div className="text-gray-600 text-sm">{rg.currency}</div>
+                          <div className="text-right w-28">
+                            <div className="font-mono font-bold">
+                              ${rg.estimatedMonthlyCost.toFixed(2)}
+                            </div>
+                            <div className="text-gray-600 text-xs">
+                              /month est.
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -263,8 +347,9 @@ export default function BillingPage() {
 
             {/* Subscription Info */}
             <div className="mt-6 text-gray-600 font-mono text-sm">
-              <p>Subscription: {billingData.subscription}</p>
-              <p>ID: {billingData.subscriptionId}</p>
+              <p>Subscription: {billingData.subscription.name}</p>
+              <p>Type: {billingData.subscription.type}</p>
+              <p>ID: {billingData.subscription.id}</p>
             </div>
           </>
         ) : null}
