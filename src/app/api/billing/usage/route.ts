@@ -5,20 +5,28 @@ import { createServerClient } from '@/lib/supabase-server';
 // Pricing: $0.50 per minute of execution
 const RATE_PER_MINUTE = 0.5;
 
-export async function GET() {
+// ExampleClient organization ID
+const ExampleClient_ORG = 'org_REDACTED';
+
+export async function GET(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Allow org override via query param for future multi-customer support
+    const { searchParams } = new URL(request.url);
+    const orgId = searchParams.get('org') || ExampleClient_ORG;
+
     const supabase = createServerClient();
 
-    // First, get workflow IDs that have "prod" tag
+    // Get workflow IDs that have "prod" tag AND belong to the org
     const { data: prodWorkflows, error: workflowError } = await supabase
       .from('deployed_workflows')
       .select('id, name, tags')
-      .contains('tags', ['prod']);
+      .contains('tags', ['prod'])
+      .eq('organization_id', orgId);
 
     if (workflowError) {
       console.error('Failed to fetch prod workflows:', workflowError);
