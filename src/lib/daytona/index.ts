@@ -40,7 +40,7 @@ const SERVER_SESSION_ID = 'mediar-server';
 
 // Git repo configuration for sandbox server
 const SANDBOX_REPO_URL = 'https://github.com/mediar-ai/mediar-web-app.git';
-const SANDBOX_REPO_BRANCH = 'daytona'; // Will change to 'main' after PR merge
+const SANDBOX_REPO_BRANCH = 'main';
 const SANDBOX_SERVER_DIR = '/home/daytona/mediar-web-app/sandbox-server';
 
 /**
