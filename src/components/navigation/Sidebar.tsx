@@ -19,7 +19,8 @@ import {
   Users,
   User,
   Key,
-  Monitor
+  Monitor,
+  DollarSign,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,13 +53,13 @@ export function Sidebar() {
 
   const isLoading = !orgLoaded || !userLoaded;
 
-
   // Check if user is a Mediar admin
   useEffect(() => {
     if (user) {
-      const hasMediarEmail = user.emailAddresses?.some(
-        email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
-      ) || false;
+      const hasMediarEmail =
+        user.emailAddresses?.some(email =>
+          email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+        ) || false;
       setIsMediarAdmin(hasMediarEmail);
     }
   }, [user]);
@@ -73,51 +74,77 @@ export function Sidebar() {
     }
   };
 
-  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
-  const _isMediarOrg = organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
+  const isAdmin =
+    membership?.role === 'org:admin' || membership?.role === 'org:owner';
+  const _isMediarOrg =
+    organization?.id && MEDIAR_ORG_IDS.includes(organization.id);
 
-  const navigation: NavItem[] = useMemo(() => [
-    { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-    { label: 'Alerts', href: '/notifications', icon: Bell },
-    {
-      label: 'Settings',
-      href: '/settings',
-      icon: Settings,
-      children: [
-        { label: 'Account', href: '/settings/account', icon: User },
-        { label: 'Secrets', href: '/settings/secrets', icon: Key },
-        { label: 'Team', href: '/settings/team', icon: Users, adminOnly: true },
-      ]
-    },
-    { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
-    { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
-    { label: 'VM Timeline', href: '/internal/debug', icon: Monitor, mediarOnly: true },
-  ], []);
+  const navigation: NavItem[] = useMemo(
+    () => [
+      { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+      { label: 'Alerts', href: '/notifications', icon: Bell },
+      {
+        label: 'Settings',
+        href: '/settings',
+        icon: Settings,
+        children: [
+          { label: 'Account', href: '/settings/account', icon: User },
+          { label: 'Secrets', href: '/settings/secrets', icon: Key },
+          {
+            label: 'Team',
+            href: '/settings/team',
+            icon: Users,
+            adminOnly: true,
+          },
+        ],
+      },
+      { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
+      {
+        label: 'Billing',
+        href: '/admin/billing',
+        icon: DollarSign,
+        mediarOnly: true,
+      },
+      {
+        label: 'Observability',
+        href: '/observability',
+        icon: Database,
+        mediarOnly: true,
+      },
+      {
+        label: 'VM Timeline',
+        href: '/internal/debug',
+        icon: Monitor,
+        mediarOnly: true,
+      },
+    ],
+    []
+  );
 
   const filteredNav = useMemo(() => {
-    return navigation.map(item => {
-      // Filter children if they exist
-      if (item.children) {
-        const filteredChildren = item.children.filter(child => {
-          if (child.adminOnly && !isAdmin) return false;
-          if (child.mediarOnly && !isMediarAdmin) return false;
-          return true;
-        });
-        return { ...item, children: filteredChildren };
-      }
-      return item;
-    }).filter(item => {
-      if (item.adminOnly && !isAdmin) return false;
-      if (item.mediarOnly && !isMediarAdmin) return false;
-      return true;
-    });
+    return navigation
+      .map(item => {
+        // Filter children if they exist
+        if (item.children) {
+          const filteredChildren = item.children.filter(child => {
+            if (child.adminOnly && !isAdmin) return false;
+            if (child.mediarOnly && !isMediarAdmin) return false;
+            return true;
+          });
+          return { ...item, children: filteredChildren };
+        }
+        return item;
+      })
+      .filter(item => {
+        if (item.adminOnly && !isAdmin) return false;
+        if (item.mediarOnly && !isMediarAdmin) return false;
+        return true;
+      });
   }, [navigation, isAdmin, isMediarAdmin]);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems(prev =>
-      prev.includes(label)
-        ? prev.filter(l => l !== label)
-        : [...prev, label]
+      prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
     );
   };
 
@@ -126,8 +153,10 @@ export function Sidebar() {
     filteredNav.forEach(item => {
       if (item.children && item.children.length > 0) {
         // Check if any child is active
-        const hasActiveChild = item.children.some(child =>
-          pathname === child.href || (child.href !== '/' && pathname.startsWith(child.href + '/'))
+        const hasActiveChild = item.children.some(
+          child =>
+            pathname === child.href ||
+            (child.href !== '/' && pathname.startsWith(child.href + '/'))
         );
 
         if (hasActiveChild) {
@@ -144,25 +173,35 @@ export function Sidebar() {
   }, [pathname, filteredNav]);
 
   return (
-    <div className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200 z-50`}>
+    <div
+      className={`fixed left-0 top-0 h-full ${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r-2 border-black flex flex-col transition-all duration-200 z-50`}
+    >
       {/* Toggle Button - Inside sidebar at right edge */}
       <button
         onClick={toggleSidebar}
         className="absolute right-2 top-6 p-1.5 bg-white border border-black hover:bg-black hover:text-white transition-colors z-10"
         aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        {isCollapsed ? (
+          <ChevronRight className="w-4 h-4" />
+        ) : (
+          <ChevronLeft className="w-4 h-4" />
+        )}
       </button>
 
       {/* Logo/Brand */}
       <div className="p-6 border-b-2 border-black">
-        <h1 className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
+        <h1
+          className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
+        >
           MEDIAR
         </h1>
       </div>
 
       {/* Organization Switcher */}
-      <div className={`${isCollapsed ? 'px-2' : 'px-6'} py-4 border-b border-gray-200`}>
+      <div
+        className={`${isCollapsed ? 'px-2' : 'px-6'} py-4 border-b border-gray-200`}
+      >
         {isLoading ? (
           isCollapsed ? (
             <div className="flex items-center justify-center">
@@ -175,18 +214,22 @@ export function Sidebar() {
             </div>
           )
         ) : (
-          <Suspense fallback={
-            organization && !isCollapsed ? (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                <span className="font-mono text-sm truncate">{organization.name}</span>
-              </div>
-            ) : isCollapsed && organization ? (
-              <div className="flex items-center justify-center">
-                <Building2 className="w-4 h-4" />
-              </div>
-            ) : null
-          }>
+          <Suspense
+            fallback={
+              organization && !isCollapsed ? (
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  <span className="font-mono text-sm truncate">
+                    {organization.name}
+                  </span>
+                </div>
+              ) : isCollapsed && organization ? (
+                <div className="flex items-center justify-center">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              ) : null
+            }
+          >
             <MediarOrgSwitcher inSidebar={true} isCollapsed={isCollapsed} />
           </Suspense>
         )}
@@ -198,7 +241,7 @@ export function Sidebar() {
           {isLoading ? (
             // Navigation skeleton
             <>
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3, 4].map(i => (
                 <li key={i} className="px-3 py-2">
                   <div className="flex items-center gap-3">
                     <Skeleton className="w-4 h-4" />
@@ -208,40 +251,130 @@ export function Sidebar() {
               ))}
             </>
           ) : (
-            filteredNav.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href ||
-                           (item.href !== '/' && pathname.startsWith(item.href + '/'));
-            const hasChildren = item.children && item.children.length > 0;
-            const isExpanded = expandedItems.includes(item.label);
+            filteredNav.map(item => {
+              const Icon = item.icon;
+              const isActive =
+                pathname === item.href ||
+                (item.href !== '/' && pathname.startsWith(item.href + '/'));
+              const hasChildren = item.children && item.children.length > 0;
+              const isExpanded = expandedItems.includes(item.label);
 
-            return (
-              <li key={item.href}>
-                {/* Parent item */}
-                {hasChildren ? (
-                  <div>
-                    <div
-                      className={`
+              return (
+                <li key={item.href}>
+                  {/* Parent item */}
+                  {hasChildren ? (
+                    <div>
+                      <div
+                        className={`
                         flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
-                        ${isActive
-                          ? 'bg-gray-100 text-black border-l-4 border-black'
-                          : 'hover:bg-gray-50 text-black'
+                        ${
+                          isActive
+                            ? 'bg-gray-100 text-black border-l-4 border-black'
+                            : 'hover:bg-gray-50 text-black'
                         }
                         ${isCollapsed ? 'justify-center' : ''}
                       `}
-                    >
-                      <Link
-                        href={item.href}
-                        className="flex items-center gap-3 flex-1"
-                        title={isCollapsed ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}` : undefined}
                       >
-                        <div className="relative">
-                          <Icon className="w-4 h-4" />
-                          {isCollapsed && item.mediarOnly && (
-                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+                        <Link
+                          href={item.href}
+                          className="flex items-center gap-3 flex-1"
+                          title={
+                            isCollapsed
+                              ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}`
+                              : undefined
+                          }
+                        >
+                          <div className="relative">
+                            <Icon className="w-4 h-4" />
+                            {isCollapsed && item.mediarOnly && (
+                              <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+                            )}
+                          </div>
+                          {!isCollapsed && (
+                            <span className="flex items-center gap-2">
+                              {item.label}
+                              {item.mediarOnly && (
+                                <span
+                                  className="inline-flex items-center justify-center w-4 h-4 bg-black text-white rounded-sm"
+                                  title="Mediar Admin Only"
+                                >
+                                  <Lock className="w-2.5 h-2.5" />
+                                </span>
+                              )}
+                            </span>
                           )}
-                        </div>
+                        </Link>
                         {!isCollapsed && (
+                          <button
+                            onClick={() => toggleExpanded(item.label)}
+                            className="p-1 hover:opacity-70 transition-opacity"
+                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${item.label}`}
+                          >
+                            <ChevronDown
+                              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Children items */}
+                      {!isCollapsed && isExpanded && (
+                        <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200">
+                          {item.children?.map(child => {
+                            const ChildIcon = child.icon;
+                            const isChildActive =
+                              pathname === child.href ||
+                              (child.href !== '/' &&
+                                pathname.startsWith(child.href + '/'));
+
+                            return (
+                              <li key={child.href}>
+                                <Link
+                                  href={child.href}
+                                  className={`
+                                  flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
+                                  ${
+                                    isChildActive
+                                      ? 'bg-gray-100 text-black border-l-4 border-black'
+                                      : 'hover:bg-gray-50 text-black'
+                                  }
+                                `}
+                                >
+                                  <ChildIcon className="w-4 h-4" />
+                                  <span className="flex-1">{child.label}</span>
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  ) : (
+                    <Link
+                      href={item.href}
+                      className={`
+                      flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
+                      ${
+                        isActive
+                          ? 'bg-gray-100 text-black border-l-4 border-black'
+                          : 'hover:bg-gray-50 text-black'
+                      }
+                      ${isCollapsed ? 'justify-center' : ''}
+                    `}
+                      title={
+                        isCollapsed
+                          ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}`
+                          : undefined
+                      }
+                    >
+                      <div className="relative">
+                        <Icon className="w-4 h-4" />
+                        {isCollapsed && item.mediarOnly && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+                        )}
+                      </div>
+                      {!isCollapsed && (
+                        <>
                           <span className="flex items-center gap-2">
                             {item.label}
                             {item.mediarOnly && (
@@ -253,87 +386,13 @@ export function Sidebar() {
                               </span>
                             )}
                           </span>
-                        )}
-                      </Link>
-                      {!isCollapsed && (
-                        <button
-                          onClick={() => toggleExpanded(item.label)}
-                          className="p-1 hover:opacity-70 transition-opacity"
-                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${item.label}`}
-                        >
-                          <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        </button>
+                        </>
                       )}
-                    </div>
-
-                    {/* Children items */}
-                    {!isCollapsed && isExpanded && (
-                      <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200">
-                        {item.children?.map((child) => {
-                          const ChildIcon = child.icon;
-                          const isChildActive = pathname === child.href ||
-                                              (child.href !== '/' && pathname.startsWith(child.href + '/'));
-
-                          return (
-                            <li key={child.href}>
-                              <Link
-                                href={child.href}
-                                className={`
-                                  flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
-                                  ${isChildActive
-                                    ? 'bg-gray-100 text-black border-l-4 border-black'
-                                    : 'hover:bg-gray-50 text-black'
-                                  }
-                                `}
-                              >
-                                <ChildIcon className="w-4 h-4" />
-                                <span className="flex-1">{child.label}</span>
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                ) : (
-                  <Link
-                    href={item.href}
-                    className={`
-                      flex items-center gap-3 px-3 py-2 font-mono text-sm transition-colors relative
-                      ${isActive
-                        ? 'bg-gray-100 text-black border-l-4 border-black'
-                        : 'hover:bg-gray-50 text-black'
-                      }
-                      ${isCollapsed ? 'justify-center' : ''}
-                    `}
-                    title={isCollapsed ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}` : undefined}
-                  >
-                    <div className="relative">
-                      <Icon className="w-4 h-4" />
-                      {isCollapsed && item.mediarOnly && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
-                      )}
-                    </div>
-                    {!isCollapsed && (
-                      <>
-                        <span className="flex items-center gap-2">
-                          {item.label}
-                          {item.mediarOnly && (
-                            <span
-                              className="inline-flex items-center justify-center w-4 h-4 bg-black text-white rounded-sm"
-                              title="Mediar Admin Only"
-                            >
-                              <Lock className="w-2.5 h-2.5" />
-                            </span>
-                          )}
-                        </span>
-                      </>
-                    )}
-                  </Link>
-                )}
-              </li>
-            );
-          })
+                    </Link>
+                  )}
+                </li>
+              );
+            })
           )}
         </ul>
       </nav>
@@ -343,7 +402,9 @@ export function Sidebar() {
         {isLoading ? (
           <>
             {/* Skeleton */}
-            <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
+            <div
+              className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}
+            >
               <Skeleton className="w-8 h-8 flex-shrink-0" />
               {!isCollapsed && (
                 <div className="flex-1 min-w-0 space-y-2">
@@ -356,16 +417,27 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <div className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}>
-              <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0" suppressHydrationWarning>
+            <div
+              className={`flex items-center gap-3 py-2 ${isCollapsed ? 'justify-center' : 'px-3'}`}
+            >
+              <div
+                className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono text-xs flex-shrink-0"
+                suppressHydrationWarning
+              >
                 {user?.firstName?.[0] || user?.username?.[0] || 'U'}
               </div>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm truncate" suppressHydrationWarning>
+                  <p
+                    className="font-mono text-sm truncate"
+                    suppressHydrationWarning
+                  >
                     {user?.firstName || user?.username || 'User'}
                   </p>
-                  <p className="font-mono text-xs text-gray-500 truncate" suppressHydrationWarning>
+                  <p
+                    className="font-mono text-xs text-gray-500 truncate"
+                    suppressHydrationWarning
+                  >
                     {membership?.role?.replace('org:', '')}
                   </p>
                 </div>
