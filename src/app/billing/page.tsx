@@ -3,6 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { useUser } from '@clerk/nextjs';
 import { useState } from 'react';
+import { jsPDF } from 'jspdf';
 import {
   FileText,
   Download,
@@ -39,14 +40,180 @@ const mockInvoices = [
     period: 'November 2024',
     status: 'paid',
     dueDate: '2024-12-15',
+    paidDate: '2024-12-10',
+    items: [
+      { description: 'Workflow Executions', quantity: 42, rate: 2.0 },
+      { description: 'VM Hours', quantity: 21, rate: 5.0 },
+    ],
   },
   {
     id: 'INV-2024-IT-002',
     period: 'December 2024',
     status: 'pending',
     dueDate: '2025-01-15',
+    items: [
+      { description: 'Workflow Executions', quantity: 52, rate: 2.0 },
+      { description: 'VM Hours', quantity: 25.6, rate: 5.0 },
+    ],
   },
 ];
+
+function generateInvoicePDF(
+  invoice: (typeof mockInvoices)[0],
+  action: 'download' | 'view'
+) {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.text('MEDIAR', 20, 25);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Mediar AI Pte. Ltd.', 20, 35);
+  doc.text('Singapore', 20, 40);
+
+  // Invoice details
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('INVOICE', pageWidth - 20, 25, { align: 'right' });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(invoice.id, pageWidth - 20, 35, { align: 'right' });
+  doc.text(`Period: ${invoice.period}`, pageWidth - 20, 42, { align: 'right' });
+  doc.text(
+    `Due: ${new Date(invoice.dueDate).toLocaleDateString()}`,
+    pageWidth - 20,
+    49,
+    { align: 'right' }
+  );
+
+  // Bill To
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BILL TO', 20, 65);
+  doc.setFont('helvetica', 'normal');
+  doc.text(itWorkflowData.customer, 20, 72);
+
+  // Line
+  doc.setLineWidth(0.5);
+  doc.line(20, 82, pageWidth - 20, 82);
+
+  // Table header
+  let y = 92;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Description', 20, y);
+  doc.text('Qty', 100, y);
+  doc.text('Rate', 130, y);
+  doc.text('Amount', pageWidth - 20, y, { align: 'right' });
+
+  doc.line(20, y + 3, pageWidth - 20, y + 3);
+
+  // Items
+  doc.setFont('helvetica', 'normal');
+  let subtotal = 0;
+  invoice.items.forEach(item => {
+    y += 10;
+    const amount = item.quantity * item.rate;
+    subtotal += amount;
+    doc.text(item.description, 20, y);
+    doc.text(item.quantity.toString(), 100, y);
+    doc.text(`$${item.rate.toFixed(2)}`, 130, y);
+    doc.text(`$${amount.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+  });
+
+  // Totals
+  y += 20;
+  doc.line(120, y - 5, pageWidth - 20, y - 5);
+  doc.text('Subtotal:', 130, y);
+  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+
+  y += 8;
+  doc.text('Tax (0%):', 130, y);
+  doc.text('$0.00', pageWidth - 20, y, { align: 'right' });
+
+  y += 10;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Total:', 130, y);
+  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+
+  // Status
+  y += 20;
+  doc.setFont('helvetica', 'normal');
+  if (invoice.status === 'paid' && invoice.paidDate) {
+    doc.text(
+      `Payment received: ${new Date(invoice.paidDate).toLocaleDateString()}`,
+      20,
+      y
+    );
+  } else {
+    doc.text(`Status: ${invoice.status.toUpperCase()}`, 20, y);
+  }
+
+  // Footer
+  doc.setFontSize(8);
+  doc.text('Thank you for your business.', 20, 270);
+  doc.text('Questions? Contact billing@mediar.ai', 20, 275);
+
+  if (action === 'download') {
+    doc.save(`${invoice.id}.pdf`);
+  } else {
+    window.open(doc.output('bloburl'), '_blank');
+  }
+}
+
+function generateStatementPDF(month: string) {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.text('MEDIAR', 20, 25);
+
+  doc.setFontSize(20);
+  doc.text('STATEMENT', pageWidth - 20, 25, { align: 'right' });
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(month, pageWidth - 20, 35, { align: 'right' });
+
+  // Customer
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ACCOUNT', 20, 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(itWorkflowData.customer, 20, 57);
+
+  // Summary
+  doc.line(20, 67, pageWidth - 20, 67);
+
+  let y = 80;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Activity Summary', 20, y);
+
+  y += 12;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Total Workflow Executions:', 20, y);
+  doc.text('52', pageWidth - 20, y, { align: 'right' });
+
+  y += 8;
+  doc.text('Total VM Hours:', 20, y);
+  doc.text('25.6h', pageWidth - 20, y, { align: 'right' });
+
+  y += 8;
+  doc.text('Active Workflows:', 20, y);
+  doc.text('2', pageWidth - 20, y, { align: 'right' });
+
+  // Footer
+  doc.setFontSize(8);
+  doc.text('Generated by Mediar AI', 20, 275);
+
+  doc.save(`Statement-${month.replace(' ', '-')}.pdf`);
+}
 
 export default function BillingPage() {
   const { user } = useUser();
@@ -114,7 +281,9 @@ export default function BillingPage() {
             {/* Customer Header */}
             <div className="border-2 border-black mb-6">
               <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold">{itWorkflowData.customer}</h2>
+                <h2 className="font-mono font-bold">
+                  {itWorkflowData.customer}
+                </h2>
               </div>
               <div className="p-4">
                 <div className="font-mono text-sm text-gray-600">
@@ -215,11 +384,23 @@ export default function BillingPage() {
                     {isExpanded && (
                       <div className="bg-gray-50 border-t border-gray-200 p-4">
                         <div className="flex gap-2">
-                          <button className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              generateInvoicePDF(invoice, 'view');
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                          >
                             <FileText className="w-3 h-3" />
                             VIEW PDF
                           </button>
-                          <button className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              generateInvoicePDF(invoice, 'download');
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                          >
                             <Download className="w-3 h-3" />
                             DOWNLOAD
                           </button>
@@ -246,7 +427,10 @@ export default function BillingPage() {
                       <Calendar className="w-4 h-4 text-gray-400" />
                       <span className="font-mono text-sm">{month}</span>
                     </div>
-                    <button className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white">
+                    <button
+                      onClick={() => generateStatementPDF(month)}
+                      className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                    >
                       <Download className="w-3 h-3" />
                       PDF
                     </button>
