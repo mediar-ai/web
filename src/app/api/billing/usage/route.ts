@@ -14,9 +14,36 @@ export async function GET() {
 
     const supabase = createServerClient();
 
-    // Get executions from the last 60 days with duration data
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    // First, get workflow IDs that have "prod" tag
+    const { data: prodWorkflows, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('id, name, tags')
+      .contains('tags', ['prod']);
+
+    if (workflowError) {
+      console.error('Failed to fetch prod workflows:', workflowError);
+      return NextResponse.json(
+        { error: 'Failed to fetch workflows' },
+        { status: 500 }
+      );
+    }
+
+    const prodWorkflowIds = prodWorkflows?.map(w => w.id) || [];
+    const workflowNames: Record<number, string> = {};
+    prodWorkflows?.forEach(w => {
+      workflowNames[w.id] = w.name;
+    });
+
+    if (prodWorkflowIds.length === 0) {
+      return NextResponse.json({
+        ratePerMinute: RATE_PER_MINUTE,
+        months: [],
+      });
+    }
+
+    // Get executions from the last 365 days for prod workflows only
+    const oneYearAgo = new Date();
+    oneYearAgo.setDate(oneYearAgo.getDate() - 365);
 
     const { data: executions, error } = await supabase
       .from('workflow_executions')
@@ -27,11 +54,11 @@ export async function GET() {
         status,
         execution_duration_seconds,
         started_at,
-        completed_at,
-        deployed_workflows!inner(id, name, organization_id)
+        completed_at
       `
       )
-      .gte('started_at', sixtyDaysAgo.toISOString())
+      .in('workflow_id', prodWorkflowIds)
+      .gte('started_at', oneYearAgo.toISOString())
       .order('started_at', { ascending: false });
 
     if (error) {
@@ -71,9 +98,7 @@ export async function GET() {
       }
 
       const workflowId = exec.workflow_id;
-      // deployed_workflows is an object from the inner join
-      const deployedWorkflow = exec.deployed_workflows as unknown as { name: string } | null;
-      const workflowName = deployedWorkflow?.name || 'Unknown';
+      const workflowName = workflowNames[workflowId] || 'Unknown';
       const durationMinutes = (exec.execution_duration_seconds || 0) / 60;
 
       if (!monthlyData[monthKey].workflows[workflowId]) {
