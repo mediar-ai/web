@@ -18,14 +18,15 @@ import {
   getDevLogToolDeclarations,
   isDevLogTool,
 } from '@/lib/server-tools/dev-log-tools';
-import { GoogleGenAI, FunctionDeclaration, Content, Part } from '@google/genai';
+import { SignJWT, importPKCS8 } from 'jose';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from 'redis';
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 import { analyzeToolResults, checkTokenLimit, logProviderDiagnostics } from './providers/utils';
-import { getVertexModelName, getVertexGenAI as _getVertexGenAI } from '@/lib/vertexai';
+import { getVertexModelName } from '@/lib/vertexai';
+import type { FunctionDeclaration, Content, Part } from './types/vertex';
 
 // Redis client initialization
 const getRedisClient = async () => {
@@ -64,6 +65,117 @@ async function trackLLMUsage(params: {
   } catch (e) {
     console.error('[LLM Tracking] Failed to track usage:', e);
   }
+}
+
+// Generate 1-hour Google OAuth access token for Vertex AI REST API
+async function generateVertexAccessToken(): Promise<string> {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  let credentials: { client_email: string; private_key: string; token_uri: string };
+
+  if (clientEmail && privateKey) {
+    credentials = {
+      client_email: clientEmail,
+      private_key: privateKey,
+      token_uri: 'https://oauth2.googleapis.com/token',
+    };
+  } else {
+    const credentialsBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
+    if (!credentialsBase64) {
+      throw new Error('Missing Google credentials configuration');
+    }
+    credentials = JSON.parse(Buffer.from(credentialsBase64, 'base64').toString('utf-8'));
+    credentials.token_uri = credentials.token_uri || 'https://oauth2.googleapis.com/token';
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const jwtKey = await importPKCS8(credentials.private_key, 'RS256');
+
+  const assertion = await new SignJWT({
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer(credentials.client_email)
+    .setSubject(credentials.client_email)
+    .setAudience(credentials.token_uri)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(jwtKey);
+
+  const tokenResponse = await fetch(credentials.token_uri, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${assertion}`,
+  });
+
+  if (!tokenResponse.ok) {
+    const error = await tokenResponse.text();
+    throw new Error(`Token exchange failed: ${error}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  return tokenData.access_token;
+}
+
+// Call Vertex AI REST API directly with OAuth token
+async function callVertexAIRest(params: {
+  accessToken: string;
+  project: string;
+  location: string;
+  model: string;
+  contents: Content[];
+  config: {
+    temperature?: number;
+    maxOutputTokens?: number;
+    systemInstruction?: string;
+    tools?: any[];
+    thinkingConfig?: any;
+  };
+}): Promise<any> {
+  const { accessToken, project, location, model, contents, config } = params;
+
+  // Global endpoint uses different URL format (no location prefix on domain)
+  const domain = location === 'global'
+    ? 'aiplatform.googleapis.com'
+    : `${location}-aiplatform.googleapis.com`;
+  const url = `https://${domain}/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+
+  const requestBody: any = {
+    contents,
+    generationConfig: {
+      temperature: config.temperature ?? 0.7,
+      maxOutputTokens: config.maxOutputTokens ?? 1000,
+    },
+  };
+
+  if (config.systemInstruction) {
+    requestBody.systemInstruction = { parts: [{ text: config.systemInstruction }] };
+  }
+
+  if (config.tools && config.tools.length > 0) {
+    requestBody.tools = config.tools;
+  }
+
+  if (config.thinkingConfig) {
+    requestBody.generationConfig.thinkingConfig = config.thinkingConfig;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Vertex AI API error ${response.status}: ${errorText}`);
+  }
+
+  return response.json();
 }
 
 // =================================================================
@@ -659,7 +771,9 @@ async function _sendMessageWithRetry(
 
 // Stateless chat handling with history reconstruction ----
 async function handleVertexChat(params: {
-  genAI: GoogleGenAI;
+  accessToken: string;
+  project: string;
+  location: string;
   model: VertexModel;
   system?: string;
   history: VertexMessage[];
@@ -676,7 +790,9 @@ async function handleVertexChat(params: {
   metrics: { elapsedMs: number; tokens?: any };
 }> {
   const {
-    genAI,
+    accessToken,
+    project,
+    location,
     model,
     system,
     history,
@@ -770,7 +886,7 @@ async function handleVertexChat(params: {
     };
   }
 
-  // Call the API with retry logic
+  // Call the API with retry logic using REST API
   let response;
   let lastError: Error | null = null;
   const maxRetries = 3;
@@ -778,10 +894,19 @@ async function handleVertexChat(params: {
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      response = await genAI.models.generateContent({
+      response = await callVertexAIRest({
+        accessToken,
+        project,
+        location,
         model: mappedModel,
         contents,
-        config,
+        config: {
+          temperature: config.temperature,
+          maxOutputTokens: config.maxOutputTokens,
+          systemInstruction: system,
+          tools: config.tools,
+          thinkingConfig: config.thinkingConfig,
+        },
       });
       break; // Success, exit retry loop
     } catch (error: any) {
@@ -1601,40 +1726,16 @@ export async function POST(request: NextRequest) {
 
     }
 
-    // Initialize Vertex client
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-      emit({
-        type: 'error',
-        error: 'Server misconfiguration: missing GOOGLE_APPLICATION_CREDENTIALS_BASE64',
-      });
-      close();
-      return;
-    }
-
-    const credentialsJson = Buffer.from(
-      process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
-      'base64'
-    ).toString('utf-8');
-    const credentials = JSON.parse(credentialsJson);
+    // Generate OAuth access token for Vertex AI REST API
+    const accessToken = await generateVertexAccessToken();
+    const project = process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022';
 
     // Gemini 3 requires global endpoint
     const mappedModel = getVertexModelName(sessionModel);
     const isGemini3 = mappedModel.includes('gemini-3');
     const location = isGemini3 ? 'global' : (process.env.VERTEX_AI_LOCATION || 'us-central1');
 
-    console.log(`[AI API] Using Vertex AI (location: ${location}) for model: ${mappedModel}`);
-
-    const genAI = new GoogleGenAI({
-      vertexai: true,
-      project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-      location,
-      googleAuthOptions: {
-        credentials: {
-          client_email: credentials.client_email,
-          private_key: credentials.private_key,
-        },
-      },
-    });
+    console.log(`[AI API] Using Vertex AI REST API (location: ${location}) for model: ${mappedModel}`);
 
     // Logs for debugging
     const systemLen = system?.length || 0;
@@ -1656,7 +1757,9 @@ export async function POST(request: NextRequest) {
     });
 
     const result = await handleVertexChat({
-      genAI,
+      accessToken,
+      project,
+      location,
       model: sessionModel as VertexModel,
       system: sessionSystem,
       history,
@@ -1788,7 +1891,9 @@ export async function POST(request: NextRequest) {
 
         // Call Vertex again with tool results
         const continuationResult = await handleVertexChat({
-          genAI,
+          accessToken,
+          project,
+          location,
           model: sessionModel as VertexModel,
           system: sessionSystem,
           history: updatedHistoryWithCalls,
@@ -1869,7 +1974,9 @@ export async function POST(request: NextRequest) {
             `🔄 Auto-continuing with ${moreServerTools.length} more server tool results`
           );
           finalResult = await handleVertexChat({
-            genAI,
+            accessToken,
+            project,
+            location,
             model: sessionModel as VertexModel,
             system: sessionSystem,
             history: finalHistory,
