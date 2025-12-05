@@ -17,13 +17,8 @@ import { createServerClient } from '@/lib/supabase-server';
  *   "commit_sha": "def456..."
  * }
  */
-export async function POST(
-  req: NextRequest,
-  props: { params: Promise<{ uuid: string }> }
-) {
+export async function POST(req: NextRequest) {
   try {
-    const params = await props.params;
-    
     // Verify webhook secret
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.MEDIAR_WEBHOOK_SECRET}`;
@@ -62,18 +57,6 @@ export async function POST(
     if (event !== 'release.published') {
       return NextResponse.json(
         { error: 'Unsupported event type', received: event },
-        { status: 400 }
-      );
-    }
-
-    // Validate UUID matches route param
-    if (uuid !== params.uuid) {
-      return NextResponse.json(
-        {
-          error: 'UUID mismatch',
-          route_uuid: params.uuid,
-          payload_uuid: uuid,
-        },
         { status: 400 }
       );
     }
