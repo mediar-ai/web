@@ -27,8 +27,8 @@ pyproject.toml
 pytest.ini
 requirements.txt
 
-# Misc
-*.md
+# Misc (exclude root md files, keep public/)
+/*.md
 *.log
 *.tsbuildinfo
 nul
