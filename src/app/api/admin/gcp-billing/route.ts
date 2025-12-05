@@ -17,10 +17,10 @@ const GCP_BILLING_DATASET =
 const GCP_BILLING_TABLE =
   process.env.GCP_BILLING_TABLE || 'gcp_billing_export_resource_v1_*';
 
-// Service account credentials - uses GOOGLE_APPLICATION_CREDENTIALS_BASE64 if available
-const GCP_SERVICE_ACCOUNT_KEY =
-  process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64 ||
-  process.env.GCP_SERVICE_ACCOUNT_KEY;
+// Service account credentials - prefer dedicated billing SA, fall back to general SA
+const GCP_BILLING_SERVICE_ACCOUNT_KEY =
+  process.env.GCP_BILLING_SERVICE_ACCOUNT_BASE64 ||
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 
 interface ServiceBreakdown {
   service: string;
@@ -66,13 +66,13 @@ interface GCPBillingData {
 }
 
 function getBigQueryClient(): BigQuery {
-  if (GCP_SERVICE_ACCOUNT_KEY) {
+  if (GCP_BILLING_SERVICE_ACCOUNT_KEY) {
     try {
       // Try to decode as base64 first, then as raw JSON
-      let credentialsJson = GCP_SERVICE_ACCOUNT_KEY;
+      let credentialsJson = GCP_BILLING_SERVICE_ACCOUNT_KEY;
       try {
         credentialsJson = Buffer.from(
-          GCP_SERVICE_ACCOUNT_KEY,
+          GCP_BILLING_SERVICE_ACCOUNT_KEY,
           'base64'
         ).toString('utf-8');
       } catch {
@@ -80,15 +80,15 @@ function getBigQueryClient(): BigQuery {
       }
       const credentials = JSON.parse(credentialsJson);
       return new BigQuery({
-        projectId: GCP_PROJECT_ID,
+        projectId: GCP_BILLING_PROJECT,
         credentials,
       });
     } catch {
       // Fall back to default credentials
-      return new BigQuery({ projectId: GCP_PROJECT_ID });
+      return new BigQuery({ projectId: GCP_BILLING_PROJECT });
     }
   }
-  return new BigQuery({ projectId: GCP_PROJECT_ID });
+  return new BigQuery({ projectId: GCP_BILLING_PROJECT });
 }
 
 export async function GET() {
