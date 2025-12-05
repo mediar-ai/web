@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { useUser } from '@clerk/nextjs';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import {
   FileText,
@@ -10,69 +10,48 @@ import {
   ChevronDown,
   ChevronRight,
   Calendar,
+  Loader2,
 } from 'lucide-react';
-
-// Imperial Treasure production workflow data
-const itWorkflowData = {
-  customer: 'Imperial Treasure',
-  period: 'December 2024',
-  periodStart: '2024-12-01',
-  periodEnd: '2024-12-05',
-  workflows: [
-    {
-      id: 314,
-      name: 'OneDrive to SAP B1 Journal Entry',
-      executions: 47,
-      vmHours: 23.5,
-    },
-    {
-      id: 315,
-      name: 'SAP B1 Daily Backup',
-      executions: 5,
-      vmHours: 2.1,
-    },
-  ],
-};
 
 // Pricing: $0.50 per minute of execution
 const RATE_PER_MINUTE = 0.5;
 
-const mockInvoices = [
-  {
-    id: 'INV-2024-IT-001',
-    period: 'November 2024',
-    status: 'paid',
-    dueDate: '2024-12-15',
-    paidDate: '2024-12-10',
-    items: [
-      {
-        description: 'Workflow Execution Time',
-        quantity: 1260, // minutes (21 hours)
-        unit: 'minutes',
-        rate: RATE_PER_MINUTE,
-      },
-    ],
-  },
-  {
-    id: 'INV-2024-IT-002',
-    period: 'December 2024',
-    status: 'pending',
-    dueDate: '2025-01-15',
-    items: [
-      {
-        description: 'Workflow Execution Time',
-        quantity: 1536, // minutes (25.6 hours)
-        unit: 'minutes',
-        rate: RATE_PER_MINUTE,
-      },
-    ],
-  },
-];
+interface WorkflowUsage {
+  id: number;
+  name: string;
+  executions: number;
+  totalMinutes: number;
+  cost: number;
+}
 
-function generateInvoicePDF(
-  invoice: (typeof mockInvoices)[0],
-  action: 'download' | 'view'
-) {
+interface MonthlyData {
+  key: string;
+  name: string;
+  workflows: WorkflowUsage[];
+  totalMinutes: number;
+  totalCost: number;
+}
+
+interface UsageData {
+  ratePerMinute: number;
+  months: MonthlyData[];
+}
+
+interface Invoice {
+  id: string;
+  period: string;
+  status: 'paid' | 'pending';
+  dueDate: string;
+  paidDate?: string;
+  items: {
+    description: string;
+    quantity: number;
+    unit: string;
+    rate: number;
+  }[];
+}
+
+function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -107,7 +86,7 @@ function generateInvoicePDF(
   doc.setFont('helvetica', 'bold');
   doc.text('BILL TO', 20, 65);
   doc.setFont('helvetica', 'normal');
-  doc.text(itWorkflowData.customer, 20, 72);
+  doc.text('Imperial Treasure', 20, 72);
 
   // Line
   doc.setLineWidth(0.5);
@@ -135,7 +114,12 @@ function generateInvoicePDF(
     doc.text(item.quantity.toLocaleString(), 90, y);
     doc.text(item.unit, 115, y);
     doc.text(`$${item.rate.toFixed(2)}/min`, 140, y);
-    doc.text(`$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - 20, y, { align: 'right' });
+    doc.text(
+      `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      pageWidth - 20,
+      y,
+      { align: 'right' }
+    );
   });
 
   // Totals
@@ -181,7 +165,7 @@ function generateInvoicePDF(
   }
 }
 
-function generateStatementPDF(month: string) {
+function generateStatementPDF(monthData: MonthlyData) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -195,14 +179,14 @@ function generateStatementPDF(month: string) {
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(month, pageWidth - 20, 35, { align: 'right' });
+  doc.text(monthData.name, pageWidth - 20, 35, { align: 'right' });
 
   // Customer
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text('ACCOUNT', 20, 50);
   doc.setFont('helvetica', 'normal');
-  doc.text(itWorkflowData.customer, 20, 57);
+  doc.text('Imperial Treasure', 20, 57);
 
   // Summary
   doc.line(20, 67, pageWidth - 20, 67);
@@ -213,35 +197,93 @@ function generateStatementPDF(month: string) {
 
   y += 12;
   doc.setFont('helvetica', 'normal');
+
+  const totalExecutions = monthData.workflows.reduce(
+    (sum, wf) => sum + wf.executions,
+    0
+  );
   doc.text('Total Workflow Executions:', 20, y);
-  doc.text('52', pageWidth - 20, y, { align: 'right' });
+  doc.text(totalExecutions.toString(), pageWidth - 20, y, { align: 'right' });
 
   y += 8;
-  doc.text('Total VM Hours:', 20, y);
-  doc.text('25.6h', pageWidth - 20, y, { align: 'right' });
+  const hours = monthData.totalMinutes / 60;
+  doc.text('Total Execution Time:', 20, y);
+  doc.text(`${hours.toFixed(1)}h`, pageWidth - 20, y, { align: 'right' });
 
   y += 8;
   doc.text('Active Workflows:', 20, y);
-  doc.text('2', pageWidth - 20, y, { align: 'right' });
+  doc.text(monthData.workflows.length.toString(), pageWidth - 20, y, {
+    align: 'right',
+  });
+
+  y += 8;
+  doc.text('Total Cost:', 20, y);
+  doc.text(
+    `$${monthData.totalCost.toFixed(2)}`,
+    pageWidth - 20,
+    y,
+    { align: 'right' }
+  );
+
+  // Workflow breakdown
+  y += 20;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Workflow Breakdown', 20, y);
+
+  y += 10;
+  doc.setFont('helvetica', 'normal');
+  monthData.workflows.forEach(wf => {
+    doc.text(`#${wf.id} ${wf.name}`, 20, y);
+    y += 6;
+    doc.text(
+      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${wf.cost.toFixed(2)}`,
+      20,
+      y
+    );
+    y += 8;
+  });
 
   // Footer
   doc.setFontSize(8);
   doc.text('Generated by Mediar AI', 20, 275);
 
-  doc.save(`Statement-${month.replace(' ', '-')}.pdf`);
+  doc.save(`Statement-${monthData.name.replace(' ', '-')}.pdf`);
 }
 
 export default function BillingPage() {
   const { user } = useUser();
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(
     new Set()
   );
   const [activeTab, setActiveTab] = useState<'usage' | 'invoices'>('usage');
+  const [usageData, setUsageData] = useState<UsageData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Private page - mediar only for now
   const isMediarAdmin = user?.emailAddresses?.some(e =>
     e.emailAddress.toLowerCase().endsWith('@mediar.ai')
   );
+
+  useEffect(() => {
+    if (!isMediarAdmin) return;
+
+    async function fetchUsage() {
+      try {
+        const res = await fetch('/api/billing/usage');
+        if (!res.ok) throw new Error('Failed to fetch usage data');
+        const data = await res.json();
+        setUsageData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUsage();
+  }, [isMediarAdmin]);
 
   if (!isMediarAdmin) {
     return (
@@ -257,6 +299,15 @@ export default function BillingPage() {
     );
   }
 
+  const toggleMonth = (key: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const toggleInvoice = (id: string) => {
     setExpandedInvoices(prev => {
       const next = new Set(prev);
@@ -265,6 +316,35 @@ export default function BillingPage() {
       return next;
     });
   };
+
+  // Generate invoices from usage data
+  const invoices: Invoice[] =
+    usageData?.months.map((month, idx) => ({
+      id: `INV-${month.key}-${String(idx + 1).padStart(3, '0')}`,
+      period: month.name,
+      status: idx === 0 ? 'pending' : 'paid',
+      dueDate: new Date(
+        parseInt(month.key.split('-')[0]),
+        parseInt(month.key.split('-')[1]),
+        15
+      ).toISOString(),
+      paidDate:
+        idx > 0
+          ? new Date(
+              parseInt(month.key.split('-')[0]),
+              parseInt(month.key.split('-')[1]),
+              10
+            ).toISOString()
+          : undefined,
+      items: [
+        {
+          description: 'Workflow Execution Time',
+          quantity: Math.round(month.totalMinutes),
+          unit: 'minutes',
+          rate: RATE_PER_MINUTE,
+        },
+      ],
+    })) || [];
 
   return (
     <DashboardLayout>
@@ -292,63 +372,127 @@ export default function BillingPage() {
           ))}
         </div>
 
-        {activeTab === 'usage' && (
+        {loading && (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        )}
+
+        {error && (
+          <div className="border-2 border-black p-4 bg-gray-50">
+            <p className="font-mono text-sm text-gray-600">Error: {error}</p>
+          </div>
+        )}
+
+        {!loading && !error && activeTab === 'usage' && (
           <div>
             {/* Customer Header */}
             <div className="border-2 border-black mb-6">
               <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold">
-                  {itWorkflowData.customer}
-                </h2>
+                <h2 className="font-mono font-bold">Imperial Treasure</h2>
               </div>
               <div className="p-4">
                 <div className="font-mono text-sm text-gray-600">
-                  {itWorkflowData.period} (
-                  {new Date(itWorkflowData.periodStart).toLocaleDateString()} -{' '}
-                  {new Date(itWorkflowData.periodEnd).toLocaleDateString()})
+                  Last 60 days of execution data
                 </div>
               </div>
             </div>
 
-            {/* Workflow Usage */}
-            <div className="border-2 border-black">
-              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 grid grid-cols-4 gap-4 font-mono text-xs text-gray-600 uppercase">
-                <div>Workflow</div>
-                <div className="text-right">Executions</div>
-                <div className="text-right">VM Hours</div>
-                <div className="text-right">Status</div>
-              </div>
+            {/* Monthly Usage */}
+            {usageData?.months.map(month => {
+              const isExpanded = expandedMonths.has(month.key);
+              return (
+                <div key={month.key} className="border-2 border-black mb-4">
+                  <div
+                    className="bg-gray-50 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                    onClick={() => toggleMonth(month.key)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                      <span className="font-mono font-bold">{month.name}</span>
+                    </div>
+                    <div className="font-mono text-sm text-gray-600">
+                      {month.workflows.reduce((s, w) => s + w.executions, 0)}{' '}
+                      executions &middot; {month.totalMinutes.toFixed(1)} min
+                    </div>
+                  </div>
 
-              {itWorkflowData.workflows.map(wf => (
-                <div
-                  key={wf.id}
-                  className="grid grid-cols-4 gap-4 px-4 py-3 border-b border-gray-200 last:border-b-0"
-                >
-                  <div className="font-mono text-sm">
-                    <span className="text-gray-500">#{wf.id}</span> {wf.name}
-                  </div>
-                  <div className="text-right font-mono text-sm">
-                    {wf.executions}
-                  </div>
-                  <div className="text-right font-mono text-sm">
-                    {wf.vmHours.toFixed(1)}h
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase bg-white border-2 border-black">
-                      active
-                    </span>
-                  </div>
+                  {isExpanded && (
+                    <div>
+                      <div className="bg-white px-4 py-2 border-t border-gray-200 grid grid-cols-5 gap-4 font-mono text-xs text-gray-600 uppercase">
+                        <div>Workflow</div>
+                        <div className="text-right">Executions</div>
+                        <div className="text-right">Minutes</div>
+                        <div className="text-right">Cost</div>
+                        <div className="text-right">Status</div>
+                      </div>
+
+                      {month.workflows.map(wf => (
+                        <div
+                          key={wf.id}
+                          className="grid grid-cols-5 gap-4 px-4 py-3 border-t border-gray-200"
+                        >
+                          <div className="font-mono text-sm">
+                            <span className="text-gray-500">#{wf.id}</span>{' '}
+                            {wf.name}
+                          </div>
+                          <div className="text-right font-mono text-sm">
+                            {wf.executions}
+                          </div>
+                          <div className="text-right font-mono text-sm">
+                            {wf.totalMinutes.toFixed(1)}
+                          </div>
+                          <div className="text-right font-mono text-sm">
+                            ${wf.cost.toFixed(2)}
+                          </div>
+                          <div className="text-right">
+                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase bg-white border-2 border-black">
+                              active
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="border-t border-gray-200 px-4 py-3 flex justify-between items-center bg-gray-50">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            generateStatementPDF(month);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                        >
+                          <Download className="w-3 h-3" />
+                          STATEMENT PDF
+                        </button>
+                        <div className="font-mono text-sm font-bold">
+                          Total: ${month.totalCost.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+
+            {usageData?.months.length === 0 && (
+              <div className="border-2 border-black p-8 text-center">
+                <p className="font-mono text-gray-600">
+                  No execution data found
+                </p>
+              </div>
+            )}
 
             <div className="mt-4 text-xs font-mono text-gray-500">
-              Usage data updated periodically
+              Rate: ${RATE_PER_MINUTE}/minute of execution time
             </div>
           </div>
         )}
 
-        {activeTab === 'invoices' && (
+        {!loading && !error && activeTab === 'invoices' && (
           <div>
             <div className="border-2 border-black">
               <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 grid grid-cols-4 gap-4 font-mono text-xs text-gray-600 uppercase">
@@ -358,7 +502,7 @@ export default function BillingPage() {
                 <div>Status</div>
               </div>
 
-              {mockInvoices.map(invoice => {
+              {invoices.map(invoice => {
                 const isExpanded = expandedInvoices.has(invoice.id);
 
                 return (
@@ -426,34 +570,42 @@ export default function BillingPage() {
                   </div>
                 );
               })}
+
+              {invoices.length === 0 && (
+                <div className="p-8 text-center">
+                  <p className="font-mono text-gray-600">No invoices yet</p>
+                </div>
+              )}
             </div>
 
             {/* Statements */}
-            <div className="mt-6 border-2 border-black">
-              <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold text-sm">STATEMENTS</h2>
-              </div>
-              <div className="divide-y divide-gray-200">
-                {['November 2024', 'October 2024'].map(month => (
-                  <div
-                    key={month}
-                    className="flex items-center justify-between p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="font-mono text-sm">{month}</span>
-                    </div>
-                    <button
-                      onClick={() => generateStatementPDF(month)}
-                      className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+            {usageData && usageData.months.length > 0 && (
+              <div className="mt-6 border-2 border-black">
+                <div className="bg-black text-white p-4">
+                  <h2 className="font-mono font-bold text-sm">STATEMENTS</h2>
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {usageData.months.map(month => (
+                    <div
+                      key={month.key}
+                      className="flex items-center justify-between p-4 hover:bg-gray-50"
                     >
-                      <Download className="w-3 h-3" />
-                      PDF
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="font-mono text-sm">{month.name}</span>
+                      </div>
+                      <button
+                        onClick={() => generateStatementPDF(month)}
+                        className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                      >
+                        <Download className="w-3 h-3" />
+                        PDF
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

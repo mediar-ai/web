@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePlaygroundAccess } from '@/hooks/usePlaygroundAccess';
 
 interface NavItem {
   label: string;
@@ -33,6 +34,7 @@ interface NavItem {
   icon: React.ElementType;
   adminOnly?: boolean;
   mediarOnly?: boolean;
+  playgroundAccess?: boolean; // Special flag for playground - checks PostHog feature flag
   children?: NavItem[];
 }
 
@@ -43,6 +45,7 @@ export function Sidebar() {
   const { organization, membership, isLoaded: orgLoaded } = useOrganization();
   const { user, isLoaded: userLoaded } = useUser();
   const { signOut } = useClerk();
+  const { hasAccess: hasPlaygroundAccess } = usePlaygroundAccess();
   // Initialize with correct state from localStorage to prevent flicker
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -100,7 +103,7 @@ export function Sidebar() {
           },
         ],
       },
-      { label: 'Playground', href: '/playground', icon: Zap, mediarOnly: true },
+      { label: 'Playground', href: '/playground', icon: Zap, playgroundAccess: true },
       { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
       {
         label: 'Billing',
@@ -138,6 +141,7 @@ export function Sidebar() {
           const filteredChildren = item.children.filter(child => {
             if (child.adminOnly && !isAdmin) return false;
             if (child.mediarOnly && !isMediarAdmin) return false;
+            if (child.playgroundAccess && !hasPlaygroundAccess) return false;
             return true;
           });
           return { ...item, children: filteredChildren };
@@ -147,9 +151,10 @@ export function Sidebar() {
       .filter(item => {
         if (item.adminOnly && !isAdmin) return false;
         if (item.mediarOnly && !isMediarAdmin) return false;
+        if (item.playgroundAccess && !hasPlaygroundAccess) return false;
         return true;
       });
-  }, [navigation, isAdmin, isMediarAdmin]);
+  }, [navigation, isAdmin, isMediarAdmin, hasPlaygroundAccess]);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems(prev =>
@@ -372,7 +377,7 @@ export function Sidebar() {
                     `}
                       title={
                         isCollapsed
-                          ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}`
+                          ? `${item.label}${item.mediarOnly ? ' (Mediar Admin Only)' : ''}${item.playgroundAccess ? ' (Beta)' : ''}`
                           : undefined
                       }
                     >
@@ -380,6 +385,9 @@ export function Sidebar() {
                         <Icon className="w-4 h-4" />
                         {isCollapsed && item.mediarOnly && (
                           <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+                        )}
+                        {isCollapsed && item.playgroundAccess && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-gray-400 rounded-full" />
                         )}
                       </div>
                       {!isCollapsed && (
@@ -392,6 +400,14 @@ export function Sidebar() {
                                 title="Mediar Admin Only"
                               >
                                 <Lock className="w-2.5 h-2.5" />
+                              </span>
+                            )}
+                            {item.playgroundAccess && (
+                              <span
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[9px] font-bold"
+                                title="Beta Access"
+                              >
+                                BETA
                               </span>
                             )}
                           </span>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Loader2,
   Monitor,
@@ -8,43 +8,39 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
-  Settings2,
-  Zap,
-  AlertCircle,
   ChevronDown,
+  Radio,
+  Keyboard,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
-import { useUser } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { usePlaygroundAccess } from '@/hooks/usePlaygroundAccess';
 
 interface Machine {
   id: number;
   name: string;
   status: string;
   health_status: string;
-  vnc_machine_type?: string;
+  tags?: string[];
 }
 
 interface ConnectionState {
   status: 'idle' | 'connecting' | 'connected' | 'error';
   url?: string;
+  terraformKey?: string;
   error?: string;
 }
 
 export default function PlaygroundPage() {
-  const { user, isLoaded } = useUser();
+  const { hasAccess, isLoaded } = usePlaygroundAccess();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [connection, setConnection] = useState<ConnectionState>({ status: 'idle' });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMachineDropdown, setShowMachineDropdown] = useState(false);
   const [loadingMachines, setLoadingMachines] = useState(true);
-
-  // Check if user is mediar admin
-  const isMediarAdmin = user?.emailAddresses?.some(e =>
-    e.emailAddress.toLowerCase().endsWith('@mediar.ai')
-  );
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Fetch machines
   useEffect(() => {
@@ -58,9 +54,10 @@ export default function PlaygroundPage() {
             (m: Machine) => m.status === 'active' && m.health_status === 'healthy'
           );
           setMachines(activeMachines);
-          // Auto-select first machine if available
+          // Auto-select machine 22 if available, otherwise first
           if (activeMachines.length > 0 && !selectedMachine) {
-            setSelectedMachine(activeMachines[0]);
+            const machine22 = activeMachines.find((m: Machine) => m.id === 22);
+            setSelectedMachine(machine22 || activeMachines[0]);
           }
         }
       } catch (err) {
@@ -70,31 +67,33 @@ export default function PlaygroundPage() {
       }
     };
 
-    if (isLoaded && user) {
+    if (isLoaded && hasAccess) {
       fetchMachines();
     }
-  }, [isLoaded, user]);
+  }, [isLoaded, hasAccess, selectedMachine]);
 
-  // Connect to VM via Guacamole
+  // Connect to VM via noVNC (like LiveVncView)
   const connectToVM = useCallback(async () => {
     if (!selectedMachine) return;
 
     setConnection({ status: 'connecting' });
 
     try {
-      const response = await fetch('/api/playground/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ machineId: selectedMachine.id }),
-      });
-
+      // Fetch machine details to get terraform key
+      const response = await fetch(`/api/machines/${selectedMachine.id}`);
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to connect');
+        throw new Error('Failed to load machine details');
       }
-
       const data = await response.json();
-      setConnection({ status: 'connected', url: data.url });
+      const machine = data.machine;
+      const tfTag = machine.tags?.find((t: string) => t.startsWith('terraform:'));
+      const key = tfTag?.split(':')[1] || machine.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+      setConnection({
+        status: 'connected',
+        terraformKey: key,
+        url: `https://agent.mediar.ai/vnc/${key}`,
+      });
     } catch (err) {
       setConnection({
         status: 'error',
@@ -108,6 +107,14 @@ export default function PlaygroundPage() {
     setConnection({ status: 'idle' });
   }, []);
 
+  // Auto-connect when machine selected
+  useEffect(() => {
+    if (selectedMachine && connection.status === 'idle') {
+      connectToVM();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMachine]);
+
   // Loading state
   if (!isLoaded) {
     return (
@@ -119,8 +126,8 @@ export default function PlaygroundPage() {
     );
   }
 
-  // Access control
-  if (!isMediarAdmin) {
+  // Access control - requires mediar admin OR playground-access feature flag
+  if (!hasAccess) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center h-96 space-y-4">
@@ -128,6 +135,7 @@ export default function PlaygroundPage() {
             <Monitor className="w-8 h-8 text-gray-400" />
           </div>
           <p className="text-gray-600 font-mono">Coming soon</p>
+          <p className="text-gray-400 font-mono text-xs">Request access from your admin</p>
         </div>
       </DashboardLayout>
     );
@@ -137,234 +145,200 @@ export default function PlaygroundPage() {
     <DashboardLayout>
       <div className={cn(
         'flex flex-col h-[calc(100vh-2rem)]',
-        isFullscreen && 'fixed inset-0 z-50 bg-white'
+        isFullscreen && 'fixed inset-0 z-50 bg-black'
       )}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b-2 border-black bg-white">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5" />
-              <h1 className="font-mono font-bold text-lg">PLAYGROUND</h1>
-            </div>
-
-            {/* Machine Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowMachineDropdown(!showMachineDropdown)}
-                disabled={loadingMachines}
-                className="flex items-center gap-2 px-3 py-1.5 border-2 border-black font-mono text-sm hover:bg-gray-50 transition-colors min-w-[200px]"
-              >
-                {loadingMachines ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+        {/* Agent Screen Style Container */}
+        <div className="flex flex-col h-full bg-white border-2 border-black rounded-lg overflow-hidden shadow-sm">
+          {/* Black Header - matches LiveVncView/AgentScreenTab */}
+          <div className="flex items-center justify-between px-4 py-3 bg-black text-white border-b border-black">
+            <div className="flex items-center space-x-4">
+              {/* Status indicator */}
+              <div className="flex items-center space-x-2">
+                {connection.status === 'connected' ? (
+                  <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                ) : connection.status === 'connecting' ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
                 ) : (
-                  <Monitor className="w-4 h-4" />
+                  <span className="h-2 w-2 bg-gray-600 rounded-full" />
                 )}
-                <span className="flex-1 text-left truncate">
-                  {selectedMachine?.name || 'Select VM...'}
-                </span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
+                <h3 className="font-mono font-bold text-sm tracking-wide uppercase">
+                  {connection.status === 'connected' && connection.terraformKey
+                    ? `LIVE // ${connection.terraformKey}`
+                    : 'PLAYGROUND'}
+                </h3>
+              </div>
 
-              {showMachineDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-full bg-white border-2 border-black shadow-lg z-50 max-h-64 overflow-auto">
-                  {machines.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-gray-500 font-mono">
-                      No machines available
-                    </div>
+              <div className="h-4 w-px bg-gray-700" />
+
+              {/* Machine Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMachineDropdown(!showMachineDropdown)}
+                  disabled={loadingMachines}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 font-mono text-xs transition-colors min-w-[180px] rounded"
+                >
+                  {loadingMachines ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    machines.map(machine => (
-                      <button
-                        key={machine.id}
-                        onClick={() => {
-                          setSelectedMachine(machine);
-                          setShowMachineDropdown(false);
-                          if (connection.status === 'connected') {
-                            disconnect();
-                          }
-                        }}
-                        className={cn(
-                          'w-full px-3 py-2 text-left font-mono text-sm hover:bg-gray-100 transition-colors flex items-center justify-between',
-                          selectedMachine?.id === machine.id && 'bg-gray-100'
-                        )}
-                      >
-                        <span className="truncate">{machine.name}</span>
-                        <span className={cn(
-                          'w-2 h-2 rounded-full',
-                          machine.health_status === 'healthy' ? 'bg-black' : 'bg-gray-400'
-                        )} />
-                      </button>
-                    ))
+                    <Monitor className="w-3 h-3" />
                   )}
-                </div>
-              )}
+                  <span className="flex-1 text-left truncate">
+                    {selectedMachine?.name || 'Select VM...'}
+                  </span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {showMachineDropdown && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-white text-black border-2 border-black shadow-lg z-50 max-h-64 overflow-auto">
+                    {machines.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-500 font-mono">
+                        No machines available
+                      </div>
+                    ) : (
+                      machines.map(machine => (
+                        <button
+                          key={machine.id}
+                          onClick={() => {
+                            setSelectedMachine(machine);
+                            setShowMachineDropdown(false);
+                            setConnection({ status: 'idle' });
+                          }}
+                          className={cn(
+                            'w-full px-3 py-2 text-left font-mono text-xs hover:bg-gray-100 transition-colors flex items-center justify-between',
+                            selectedMachine?.id === machine.id && 'bg-gray-100'
+                          )}
+                        >
+                          <span className="truncate">{machine.name}</span>
+                          <span className={cn(
+                            'w-2 h-2 rounded-full shrink-0',
+                            machine.health_status === 'healthy' ? 'bg-black' : 'bg-gray-400'
+                          )} />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Connection Status */}
-            <div className="flex items-center gap-2">
+            {/* Right side controls */}
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 text-xs text-gray-400 font-mono mr-4">
+                <Radio className="w-3 h-3" />
+                <span>INTERACTIVE</span>
+              </div>
+
               {connection.status === 'connected' && (
-                <span className="flex items-center gap-1.5 px-2 py-1 bg-black text-white text-xs font-mono">
-                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                  LIVE
-                </span>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={connectToVM}
+                    className="h-8 text-white hover:bg-gray-800 hover:text-white font-mono text-xs"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    REFRESH
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={disconnect}
+                    className="h-8 text-white hover:bg-gray-800 hover:text-white font-mono text-xs"
+                  >
+                    DISCONNECT
+                  </Button>
+                </>
               )}
-              {connection.status === 'connecting' && (
-                <span className="flex items-center gap-1.5 px-2 py-1 bg-gray-200 text-black text-xs font-mono">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  CONNECTING
-                </span>
-              )}
-              {connection.status === 'error' && (
-                <span className="flex items-center gap-1.5 px-2 py-1 border-2 border-black bg-white text-black text-xs font-mono">
-                  <AlertCircle className="w-3 h-3" />
-                  ERROR
-                </span>
-              )}
+
+              <button
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                className="p-2 hover:bg-gray-800 transition-colors rounded"
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4" />
+                ) : (
+                  <Maximize2 className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {connection.status === 'idle' || connection.status === 'error' ? (
-              <Button
-                onClick={connectToVM}
-                disabled={!selectedMachine}
-                className="bg-black text-white hover:bg-gray-800 font-mono text-sm"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                CONNECT
-              </Button>
-            ) : connection.status === 'connecting' ? (
-              <Button disabled className="bg-gray-400 text-white font-mono text-sm">
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                CONNECTING
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={disconnect}
-                  className="border-2 border-black hover:bg-black hover:text-white font-mono text-sm"
-                >
-                  DISCONNECT
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={connectToVM}
-                  className="border-2 border-black hover:bg-black hover:text-white font-mono text-sm"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
-              </>
-            )}
-
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
-            >
-              {isFullscreen ? (
-                <Minimize2 className="w-4 h-4" />
-              ) : (
-                <Maximize2 className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* VM Screen */}
+          {/* Main Screen Area */}
           <div className="flex-1 bg-black relative">
             {connection.status === 'idle' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white space-y-4">
-                <Monitor className="w-16 h-16 text-gray-600" />
-                <p className="font-mono text-gray-500 text-sm">
-                  Select a VM and click CONNECT to start
-                </p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6">
+                <div className="bg-white p-4 rounded-full border-2 border-gray-700 shadow-sm">
+                  <Monitor className="w-8 h-8 text-gray-400" />
+                </div>
+                <div className="text-center">
+                  <p className="font-mono text-gray-500 text-sm mb-4">
+                    Select a VM to connect
+                  </p>
+                  <Button
+                    onClick={connectToVM}
+                    disabled={!selectedMachine}
+                    className="bg-white text-black hover:bg-gray-100 font-mono text-sm"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    CONNECT
+                  </Button>
+                </div>
               </div>
             )}
 
             {connection.status === 'connecting' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white space-y-4">
-                <Loader2 className="w-12 h-12 animate-spin text-gray-400" />
-                <p className="font-mono text-gray-500 text-sm">
-                  Establishing connection...
+              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <p className="text-sm text-gray-500 font-mono uppercase tracking-widest">
+                  Connecting to agent...
                 </p>
               </div>
             )}
 
             {connection.status === 'error' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white space-y-4">
-                <AlertCircle className="w-12 h-12 text-gray-500" />
-                <p className="font-mono text-gray-400 text-sm">{connection.error}</p>
-                <Button
-                  onClick={connectToVM}
-                  variant="outline"
-                  className="border-gray-600 text-gray-400 hover:bg-gray-800 hover:text-white font-mono text-sm"
-                >
-                  RETRY
-                </Button>
+              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6 p-8">
+                <div className="bg-white p-4 rounded-full border-2 border-gray-700 shadow-sm">
+                  <Monitor className="w-8 h-8 text-gray-400" />
+                </div>
+                <div className="text-center max-w-md">
+                  <h3 className="font-bold text-gray-300 mb-2 font-mono uppercase">
+                    Connection Failed
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    {connection.error || 'Could not connect to agent screen.'}
+                  </p>
+                  <Button
+                    onClick={connectToVM}
+                    variant="outline"
+                    className="border-gray-600 text-gray-400 hover:bg-gray-800 hover:text-white font-mono text-sm"
+                  >
+                    RETRY
+                  </Button>
+                </div>
               </div>
             )}
 
             {connection.status === 'connected' && connection.url && (
               <iframe
+                ref={iframeRef}
                 src={connection.url}
                 className="w-full h-full border-0"
                 allow="clipboard-read; clipboard-write"
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
               />
             )}
           </div>
 
-          {/* Side Panel (for future workflow controls) */}
-          {!isFullscreen && (
-            <div className="w-80 border-l-2 border-black bg-white flex flex-col">
-              <div className="px-4 py-3 border-b-2 border-black bg-gray-50">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="w-4 h-4" />
-                  <h2 className="font-mono font-bold text-sm">CONTROLS</h2>
-                </div>
+          {/* Bottom status bar */}
+          {connection.status === 'connected' && (
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-900 text-gray-400 text-xs font-mono border-t border-gray-800">
+              <div className="flex items-center space-x-4">
+                <span className="flex items-center gap-1.5">
+                  <Keyboard className="w-3 h-3" />
+                  Full keyboard/mouse support
+                </span>
               </div>
-
-              <div className="flex-1 p-4 overflow-auto">
-                {selectedMachine ? (
-                  <div className="space-y-4">
-                    {/* Machine Info */}
-                    <div className="border-2 border-black p-3">
-                      <div className="font-mono text-xs text-gray-500 uppercase mb-1">
-                        CONNECTED TO
-                      </div>
-                      <div className="font-mono font-bold text-sm">
-                        {selectedMachine.name}
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className={cn(
-                          'w-2 h-2 rounded-full',
-                          selectedMachine.health_status === 'healthy' ? 'bg-black' : 'bg-gray-400'
-                        )} />
-                        <span className="font-mono text-xs text-gray-600">
-                          {selectedMachine.health_status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Quick Actions */}
-                    <div className="space-y-2">
-                      <div className="font-mono text-xs text-gray-500 uppercase">
-                        QUICK ACTIONS
-                      </div>
-                      <div className="text-sm text-gray-500 font-mono">
-                        Workflow recording coming soon...
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <Monitor className="w-8 h-8 text-gray-300 mb-2" />
-                    <p className="font-mono text-sm text-gray-500">
-                      Select a VM to get started
-                    </p>
-                  </div>
-                )}
+              <div className="flex items-center space-x-2">
+                <span className="text-gray-600">VM ID: {selectedMachine?.id}</span>
               </div>
             </div>
           )}
