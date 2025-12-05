@@ -21,6 +21,7 @@ import {
   Key,
   Monitor,
   DollarSign,
+  FileText,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -103,6 +104,12 @@ export function Sidebar() {
         label: 'Billing',
         href: '/admin/billing',
         icon: DollarSign,
+        mediarOnly: true,
+      },
+      {
+        label: 'Customer Billing',
+        href: '/billing',
+        icon: FileText,
         mediarOnly: true,
       },
       {

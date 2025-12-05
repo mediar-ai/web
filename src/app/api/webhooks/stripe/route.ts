@@ -3,11 +3,14 @@ import Stripe from 'stripe';
 import { createServerClient } from '@/lib/supabase-server';
 import { getPostHogClient } from '@/lib/posthog-server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
-});
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-11-17.clover',
+  });
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -18,6 +21,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'missing signature' }, { status: 400 });
   }
 
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('stripe webhook: STRIPE_WEBHOOK_SECRET not configured');
+    return NextResponse.json({ error: 'server configuration error' }, { status: 500 });
+  }
+
+  const stripe = getStripe();
   let event: Stripe.Event;
 
   try {
