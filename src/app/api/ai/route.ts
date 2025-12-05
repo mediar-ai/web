@@ -1,5 +1,6 @@
 // Force Vercel rebuild - clear cache issue
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
   executeServerTool as executeKnowledgeTool,
   getServerToolDeclarations as getKnowledgeToolDeclarations,
@@ -38,6 +39,32 @@ const getRedisClient = async () => {
 
   return client;
 };
+
+// LLM usage tracking - insert into mediar_llm_traces table
+async function trackLLMUsage(params: {
+  userId: string;
+  orgId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseServiceKey) return;
+
+    const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey);
+    await supabase.from('mediar_llm_traces').insert({
+      user_id: params.userId,
+      org_id: params.orgId,
+      model: params.model,
+      input_tokens: params.inputTokens,
+      output_tokens: params.outputTokens,
+    });
+  } catch (e) {
+    console.error('[LLM Tracking] Failed to track usage:', e);
+  }
+}
 
 // =================================================================
 // Multi-Provider AI endpoint (Vertex AI + Anthropic)
@@ -1418,6 +1445,16 @@ export async function POST(request: NextRequest) {
           if (clientToolCalls.length > 0) {
             emit({ type: 'client_tools', toolCalls: clientToolCalls });
           }
+          // Track LLM usage
+          if (finalResult.metrics?.tokens && authenticatedUserId && orgId) {
+            trackLLMUsage({
+              userId: authenticatedUserId,
+              orgId,
+              model: sessionModel,
+              inputTokens: finalResult.metrics.tokens.promptTokenCount || 0,
+              outputTokens: finalResult.metrics.tokens.candidatesTokenCount || 0,
+            });
+          }
           // Emit done and close
           emit({
             type: 'done',
@@ -1507,6 +1544,16 @@ export async function POST(request: NextRequest) {
       // Emit client tools if any
       if (result.toolCalls && result.toolCalls.length > 0) {
         emit({ type: 'client_tools', toolCalls: result.toolCalls });
+      }
+      // Track LLM usage
+      if (result.metrics?.tokens && authenticatedUserId && orgId) {
+        trackLLMUsage({
+          userId: authenticatedUserId,
+          orgId,
+          model: sessionModel,
+          inputTokens: result.metrics.tokens.promptTokenCount || 0,
+          outputTokens: result.metrics.tokens.candidatesTokenCount || 0,
+        });
       }
       // Emit done and close
       emit({
@@ -1907,6 +1954,16 @@ export async function POST(request: NextRequest) {
         if (clientToolCalls.length > 0) {
           emit({ type: 'client_tools', toolCalls: clientToolCalls });
         }
+        // Track LLM usage
+        if (finalResult.metrics?.tokens && authenticatedUserId && orgId) {
+          trackLLMUsage({
+            userId: authenticatedUserId,
+            orgId,
+            model: sessionModel,
+            inputTokens: finalResult.metrics.tokens.promptTokenCount || 0,
+            outputTokens: finalResult.metrics.tokens.candidatesTokenCount || 0,
+          });
+        }
         // Emit done and close
         emit({
           type: 'done',
@@ -2005,6 +2062,17 @@ export async function POST(request: NextRequest) {
     // Emit client tools if any (for client-only tool calls with no server tools)
     if (result.toolCalls && result.toolCalls.length > 0) {
       emit({ type: 'client_tools', toolCalls: result.toolCalls });
+    }
+
+    // Track LLM usage
+    if (result.metrics?.tokens && authenticatedUserId && orgId) {
+      trackLLMUsage({
+        userId: authenticatedUserId,
+        orgId,
+        model: sessionModel,
+        inputTokens: result.metrics.tokens.promptTokenCount || 0,
+        outputTokens: result.metrics.tokens.candidatesTokenCount || 0,
+      });
     }
 
     // Emit final done event with all data
