@@ -393,7 +393,7 @@ export default function BillingPage() {
               </div>
               <div className="p-4">
                 <div className="font-mono text-sm text-gray-600">
-                  Last 60 days of execution data
+                  Last 12 months of execution data (prod workflows only)
                 </div>
               </div>
             </div>

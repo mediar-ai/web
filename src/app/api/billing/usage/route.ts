@@ -6,7 +6,7 @@ import { createServerClient } from '@/lib/supabase-server';
 const RATE_PER_MINUTE = 0.5;
 
 // Imperial Treasure organization ID
-const IMPERIAL_TREASURE_ORG = 'org_2yynzGa53bNM1GTPLp5mc2lYRyD';
+const IMPERIAL_TREASURE_ORG = 'org_33DH72nPyAInVAh5t8TyIKVdYNw';
 
 export async function GET(request: Request) {
   try {
