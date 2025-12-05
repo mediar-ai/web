@@ -101,7 +101,7 @@ jobs:
             --min-instances 1 \
             --max-instances 5 \
             --timeout 300 \
-            --set-env-vars "RUST_LOG=workflow_executor=debug,tower_http=debug,info" \
+            --set-env-vars "^::^RUST_LOG=workflow_executor=debug,tower_http=debug,info" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
             --set-env-vars "MCP_ENDPOINT=http://4.227.217.44:8080" \
