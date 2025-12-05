@@ -7,12 +7,7 @@ import {
   isServerSideTool as isKnowledgeTool,
   serverSideTools as knowledgeTools,
 } from '@/lib/server-tools/knowledge-tools';
-// DEPRECATED: workflow-editing-tools removed - TypeScript workflows use file-based editing on desktop
-import {
-  executeDevLogTool,
-  getDevLogToolDeclarations,
-  isDevLogTool,
-} from '@/lib/server-tools/dev-log-tools';
+// DEPRECATED: workflow-editing-tools and dev-log-tools removed - TypeScript workflows use file-based editing on desktop
 import { SignJWT, importPKCS8 } from 'jose';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
@@ -450,19 +445,15 @@ async function executeServerTool(
   id?: string;
   workflowData?: any;
 } | null> {
-  const isKnowledge = isKnowledgeTool(toolCall.name);
-  const isDevLog = isDevLogTool(toolCall.name);
-
-  // Not a server-side tool (workflow editing tools deprecated)
-  if (!isKnowledge && !isDevLog) {
+  // Only knowledge tools remain (workflow-editing-tools and dev-log-tools deprecated)
+  if (!isKnowledgeTool(toolCall.name)) {
     return null;
   }
 
-  const toolType = isDevLog ? 'dev-log' : 'knowledge';
   const prefix = options.isAdditional
     ? 'additional server-side'
     : 'server-side';
-  console.log(`🔧 Executing ${prefix} ${toolType} tool: ${toolCall.name}`);
+  console.log(`🔧 Executing ${prefix} knowledge tool: ${toolCall.name}`);
 
   try {
     // All server-side tools require authenticated user context
@@ -472,30 +463,10 @@ async function executeServerTool(
       );
     }
 
-    // SECURITY: Always override workflow_id from request context (never trust AI-provided ID)
-    let toolArgs = toolCall.args;
-    if (isDevLog) {
-      if (!context.workflowId) {
-        throw new Error(
-          'workflowId is required in request body for dev log tools'
-        );
-      }
-      toolArgs = { ...toolArgs, workflow_id: context.workflowId };
-      console.log(
-        `[SECURITY] Overriding workflow_id with authenticated context: ${context.workflowId}`
-      );
-    }
-
     // Execute the tool
-    const toolResult = isDevLog
-      ? await executeDevLogTool(toolCall.name, toolArgs, {
-          userId: context.authenticatedUserId!,
-          orgId: context.orgId || null,
-          ...(context.email && { email: context.email }),
-        })
-      : await executeKnowledgeTool(toolCall.name, toolArgs, {
-          clientTools: context.clientTools,
-        });
+    const toolResult = await executeKnowledgeTool(toolCall.name, toolCall.args, {
+      clientTools: context.clientTools,
+    });
 
     const logPrefix = options.isAdditional ? 'Additional server' : 'Server';
     console.log(`✅ ${logPrefix} tool ${toolCall.name} executed successfully`);
@@ -567,7 +538,7 @@ async function processRawPartsInOrder(
         continue; // Skip this tool call
       }
 
-      const isServerTool = isKnowledgeTool(toolCall.name) || isDevLogTool(toolCall.name);
+      const isServerTool = isKnowledgeTool(toolCall.name);
 
       if (isServerTool) {
         // Emit start event
@@ -602,7 +573,7 @@ async function processRawPartsInOrder(
         if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
           const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
           const invalidTools = steps
-            .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isDevLogTool(s.tool_name)))
+            .filter(s => s.tool_name && isKnowledgeTool(s.tool_name))
             .map(s => s.tool_name);
 
           if (invalidTools.length > 0) {
@@ -1123,14 +1094,9 @@ export async function POST(request: NextRequest) {
         allTools = cachedTools as any;
         console.log(`🔄 Using ${cachedTools.length} cached tools from session`);
       } else {
-        // Turn 1: Merge client tools with server-side tools
+        // Turn 1: Merge client tools with server-side knowledge tools
         const clientTools = tools || [];
-        const knowledgeToolDecls = getKnowledgeToolDeclarations();
-        const devLogToolDecls = getDevLogToolDeclarations();
-        const serverToolDeclarations = [
-          ...knowledgeToolDecls,
-          ...devLogToolDecls,
-        ];
+        const serverToolDeclarations = getKnowledgeToolDeclarations();
         allTools = [...clientTools, ...serverToolDeclarations];
         // Debug: Show description lengths
         const clientDescLen = clientTools.reduce((sum, t) => sum + (t.description?.length || 0), 0);
@@ -1206,7 +1172,7 @@ export async function POST(request: NextRequest) {
         // Separate server and client tools
         for (const toolCall of result.toolCalls) {
           // Check if this is a server-side tool and emit start event
-          const isServerTool = isKnowledgeTool(toolCall.name) || isDevLogTool(toolCall.name);
+          const isServerTool = isKnowledgeTool(toolCall.name);
           if (isServerTool) {
             emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
           }
@@ -1247,7 +1213,7 @@ export async function POST(request: NextRequest) {
             if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
               const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
               const invalidTools = steps
-                .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isDevLogTool(s.tool_name)))
+                .filter(s => s.tool_name && isKnowledgeTool(s.tool_name))
                 .map(s => s.tool_name);
 
               if (invalidTools.length > 0) {
@@ -1366,7 +1332,7 @@ export async function POST(request: NextRequest) {
               }
 
               // Check if this is a server-side tool and emit start event
-              const isServerTool = isKnowledgeTool(toolCall.name) || isDevLogTool(toolCall.name);
+              const isServerTool = isKnowledgeTool(toolCall.name);
               if (isServerTool) {
                 emit({ type: 'server_tool_start', name: toolCall.name, args: toolCall.args || {} });
               }
@@ -1407,7 +1373,7 @@ export async function POST(request: NextRequest) {
                 if (toolCall.name === 'execute_sequence' && toolCall.args?.steps) {
                   const steps = toolCall.args.steps as Array<{ tool_name?: string }>;
                   const invalidTools = steps
-                    .filter(s => s.tool_name && (isKnowledgeTool(s.tool_name) || isDevLogTool(s.tool_name)))
+                    .filter(s => s.tool_name && isKnowledgeTool(s.tool_name))
                     .map(s => s.tool_name);
 
                   if (invalidTools.length > 0) {
@@ -1683,14 +1649,9 @@ export async function POST(request: NextRequest) {
       functionDeclarations = cachedTools;
       console.log(`🔄 Using ${cachedTools.length} cached tools from session`);
     } else {
-      // Turn 1: Merge client tools with server-side tools
+      // Turn 1: Merge client tools with server-side knowledge tools
       const clientFunctionDeclarations = toFunctionDeclarations(tools);
-      const knowledgeToolDecls = getKnowledgeToolDeclarations();
-      const devLogToolDecls = getDevLogToolDeclarations();
-      const serverFunctionDeclarations = [
-        ...knowledgeToolDecls,
-        ...devLogToolDecls,
-      ];
+      const serverFunctionDeclarations = getKnowledgeToolDeclarations();
       functionDeclarations = [
         ...clientFunctionDeclarations,
         ...serverFunctionDeclarations,
