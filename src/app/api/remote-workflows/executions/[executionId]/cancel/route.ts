@@ -122,7 +122,7 @@ export async function POST(
       // Check if this is a Rust executor execution
       if (execution.executor_type === 'rust') {
         // Call Rust executor cancel endpoint
-        const rustExecutorUrl = process.env.RUST_EXECUTOR_URL || 'http://workflow-executor-dev.eastus.azurecontainer.io:8080';
+        const rustExecutorUrl = process.env.RUST_EXECUTOR_URL || 'https://workflow-executor-e4mtrji55a-ue.a.run.app';
         try {
           const cancelResponse = await fetch(`${rustExecutorUrl}/api/v1/executions/${executionId}/cancel`, {
             method: 'POST',
