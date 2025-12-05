@@ -5,7 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { generateQueryEmbedding } from '@/lib/vertex-embeddings';
-import { Type } from '@google/genai';
+import { Type } from '@/app/api/ai/types/vertex';
 
 // Alias for backward compatibility
 const SchemaType = Type;
