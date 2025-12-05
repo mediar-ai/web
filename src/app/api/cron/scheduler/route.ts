@@ -481,3 +481,4 @@ export async function GET(request: NextRequest) {
   // Vercel cron uses GET, so we trigger workflows on GET too
   return POST(request);
 }
+// Trigger redeploy Thu, Dec  4, 2025  5:41:23 PM
