@@ -34,6 +34,9 @@ const itWorkflowData = {
   ],
 };
 
+// Pricing: $0.50 per minute of execution
+const RATE_PER_MINUTE = 0.5;
+
 const mockInvoices = [
   {
     id: 'INV-2024-IT-001',
@@ -42,8 +45,12 @@ const mockInvoices = [
     dueDate: '2024-12-15',
     paidDate: '2024-12-10',
     items: [
-      { description: 'Workflow Executions', quantity: 42, rate: 2.0 },
-      { description: 'VM Hours', quantity: 21, rate: 5.0 },
+      {
+        description: 'Workflow Execution Time',
+        quantity: 1260, // minutes (21 hours)
+        unit: 'minutes',
+        rate: RATE_PER_MINUTE,
+      },
     ],
   },
   {
@@ -52,8 +59,12 @@ const mockInvoices = [
     status: 'pending',
     dueDate: '2025-01-15',
     items: [
-      { description: 'Workflow Executions', quantity: 52, rate: 2.0 },
-      { description: 'VM Hours', quantity: 25.6, rate: 5.0 },
+      {
+        description: 'Workflow Execution Time',
+        quantity: 1536, // minutes (25.6 hours)
+        unit: 'minutes',
+        rate: RATE_PER_MINUTE,
+      },
     ],
   },
 ];
@@ -106,8 +117,9 @@ function generateInvoicePDF(
   let y = 92;
   doc.setFont('helvetica', 'bold');
   doc.text('Description', 20, y);
-  doc.text('Qty', 100, y);
-  doc.text('Rate', 130, y);
+  doc.text('Qty', 90, y);
+  doc.text('Unit', 115, y);
+  doc.text('Rate', 140, y);
   doc.text('Amount', pageWidth - 20, y, { align: 'right' });
 
   doc.line(20, y + 3, pageWidth - 20, y + 3);
@@ -120,25 +132,29 @@ function generateInvoicePDF(
     const amount = item.quantity * item.rate;
     subtotal += amount;
     doc.text(item.description, 20, y);
-    doc.text(item.quantity.toString(), 100, y);
-    doc.text(`$${item.rate.toFixed(2)}`, 130, y);
-    doc.text(`$${amount.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+    doc.text(item.quantity.toLocaleString(), 90, y);
+    doc.text(item.unit, 115, y);
+    doc.text(`$${item.rate.toFixed(2)}/min`, 140, y);
+    doc.text(`$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - 20, y, { align: 'right' });
   });
 
   // Totals
+  const formatCurrency = (n: number) =>
+    `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   y += 20;
   doc.line(120, y - 5, pageWidth - 20, y - 5);
-  doc.text('Subtotal:', 130, y);
-  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+  doc.text('Subtotal:', 140, y);
+  doc.text(formatCurrency(subtotal), pageWidth - 20, y, { align: 'right' });
 
   y += 8;
-  doc.text('Tax (0%):', 130, y);
+  doc.text('Tax (0%):', 140, y);
   doc.text('$0.00', pageWidth - 20, y, { align: 'right' });
 
   y += 10;
   doc.setFont('helvetica', 'bold');
-  doc.text('Total:', 130, y);
-  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+  doc.text('Total:', 140, y);
+  doc.text(formatCurrency(subtotal), pageWidth - 20, y, { align: 'right' });
 
   // Status
   y += 20;
