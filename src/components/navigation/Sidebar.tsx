@@ -22,6 +22,7 @@ import {
   Monitor,
   DollarSign,
   FileText,
+  Zap,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -99,6 +100,7 @@ export function Sidebar() {
           },
         ],
       },
+      { label: 'Playground', href: '/playground', icon: Zap, mediarOnly: true },
       { label: 'Admin', href: '/admin', icon: Shield, mediarOnly: true },
       {
         label: 'Billing',
