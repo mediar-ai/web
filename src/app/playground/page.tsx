@@ -86,13 +86,10 @@ export default function PlaygroundPage() {
       }
       const data = await response.json();
       const machine = data.machine;
-      const tfTag = machine.tags?.find((t: string) => t.startsWith('terraform:'));
-      const key = tfTag?.split(':')[1] || machine.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-
       setConnection({
         status: 'connected',
-        terraformKey: key,
-        url: `https://agent.mediar.ai/vnc/${key}`,
+        terraformKey: 'vm2',
+        url: 'https://vnc-gateway-e4mtrji55a-ue.a.run.app/vnc/vm2',
       });
     } catch (err) {
       setConnection({
