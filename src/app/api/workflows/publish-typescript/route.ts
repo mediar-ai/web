@@ -84,12 +84,13 @@ export async function POST(request: NextRequest) {
       workflowId = existingWorkflow.id;
       console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
 
-      // Update workflow metadata
+      // Update workflow metadata including step_count from typescript metadata
       await supabase
         .from('deployed_workflows')
         .update({
           name,
           description: description || metadata.description,
+          step_count: metadata.steps?.length || 0,
           updated_at: new Date().toISOString(),
         })
         .eq('id', workflowId);
@@ -107,7 +108,8 @@ export async function POST(request: NextRequest) {
           created_by: userIdentifier,
           github_folder: folder_id, // UUID - canonical identifier
           workflow_type: 'execution',
-          is_active: true,
+          status: 'draft',
+          step_count: metadata.steps?.length || 0,
         })
         .select('id')
         .single();
@@ -164,17 +166,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Activate the new version
-    const { error: activateError } = await supabase.rpc('activate_workflow_version', {
-      p_workflow_id: workflowId,
-      p_version_number: newVersionNumber,
-    });
-
-    if (activateError) {
-      console.error('⚠️ Failed to activate version:', activateError.message);
-    }
-
-    console.log(`✅ Published TypeScript workflow: ID=${workflowId}, version=${newVersionNumber}`);
+    console.log(`✅ Published TypeScript workflow: ID=${workflowId}, version=${newVersionNumber} (draft - activate from dashboard)`);
 
     return NextResponse.json({
       success: true,
