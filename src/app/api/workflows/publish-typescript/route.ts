@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
           workflow_type: 'execution',
           status: 'draft',
           step_count: metadata.steps?.length || 0,
+          automation_sequence: {}, // Empty object for TypeScript workflows (loaded from GitHub)
         })
         .select('id')
         .single();
