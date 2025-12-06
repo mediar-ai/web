@@ -192,11 +192,11 @@ const LiveAnalysesPanel: React.FC<LiveAnalysesPanelProps> = ({ runningAnalyses }
                 </TableCell>
                 <TableCell>{getDuration(analysis)}</TableCell>
                 <TableCell>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    analysis.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                    analysis.status === 'failed' ? 'bg-red-100 text-red-800' :
-                    analysis.status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
+                  <span className={`px-2 py-1 rounded text-xs font-medium border-2 ${
+                    analysis.status === 'running' ? 'bg-black text-white border-black animate-pulse' :
+                    analysis.status === 'failed' ? 'bg-black text-white border-black font-bold' :
+                    analysis.status === 'queued' ? 'bg-gray-100 text-gray-800 border-dashed border-gray-400' :
+                    'bg-white text-black border-black'
                   }`}>
                     {analysis.status}
                   </span>
