@@ -2,11 +2,7 @@
  * API Route: POST /api/workflows/publish-typescript
  *
  * Publishes a TypeScript workflow from the desktop app to the cloud.
- * This endpoint:
- * 1. Receives TypeScript workflow files from desktop app
- * 2. Parses the terminator.ts to extract metadata
- * 3. Creates or updates the workflow in the database
- * 4. Returns the workflow ID for future syncs
+ * Uses folder_id (UUID) as the canonical identifier via github_folder column.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,12 +17,11 @@ const supabase = createClient(
 );
 
 interface PublishRequest {
-  folder_id: string; // Local folder ID (e.g., "ExampleClient-sap-164")
+  folder_id: string; // UUID - used as github_folder in database
   name: string;
   description?: string;
   terminator_ts: string; // Content of src/terminator.ts
   files: { path: string; content: string }[]; // All TS files
-  cloud_workflow_id?: number; // If updating existing cloud workflow
 }
 
 export async function POST(request: NextRequest) {
@@ -43,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: PublishRequest = await request.json();
-    const { folder_id, name, description, terminator_ts, files, cloud_workflow_id } = body;
+    const { folder_id, name, description, terminator_ts } = body;
 
     if (!folder_id || !name || !terminator_ts) {
       return NextResponse.json(
@@ -53,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userIdentifier = email || userId || 'desktop-user';
-    console.log(`📤 Publishing TypeScript workflow "${name}" for org: ${effectiveOrgId} (user: ${userIdentifier})`);
+    console.log(`📤 Publishing TypeScript workflow "${name}" (folder: ${folder_id}) for org: ${effectiveOrgId}`);
 
     // Parse the TypeScript workflow
     let metadata;
@@ -68,32 +63,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let workflowId = cloud_workflow_id;
+    // Look up existing workflow by github_folder (UUID)
+    const { data: existingWorkflow } = await supabase
+      .from('deployed_workflows')
+      .select('id, organization_id')
+      .eq('github_folder', folder_id)
+      .single();
 
-    if (workflowId) {
-      // Update existing workflow
-      console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
+    let workflowId: number;
 
+    if (existingWorkflow) {
       // Verify ownership
-      const { data: existingWorkflow, error: fetchError } = await supabase
-        .from('deployed_workflows')
-        .select('id, organization_id')
-        .eq('id', workflowId)
-        .single();
-
-      if (fetchError || !existingWorkflow) {
-        return NextResponse.json(
-          { success: false, error: 'Workflow not found' },
-          { status: 404 }
-        );
-      }
-
       if (existingWorkflow.organization_id !== effectiveOrgId) {
         return NextResponse.json(
           { success: false, error: 'Not authorized to update this workflow' },
           { status: 403 }
         );
       }
+
+      workflowId = existingWorkflow.id;
+      console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
 
       // Update workflow metadata
       await supabase
@@ -107,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     } else {
       // Create new workflow
-      console.log(`🆕 Creating new workflow: "${name}"`);
+      console.log(`🆕 Creating new workflow: "${name}" with github_folder: ${folder_id}`);
 
       const { data: newWorkflow, error: createError } = await supabase
         .from('deployed_workflows')
@@ -116,7 +105,7 @@ export async function POST(request: NextRequest) {
           description: description || metadata.description,
           organization_id: effectiveOrgId,
           created_by: userIdentifier,
-          github_folder: folder_id, // Store local folder ID for mapping
+          github_folder: folder_id, // UUID - canonical identifier
           workflow_type: 'execution',
           is_active: true,
         })
@@ -154,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📝 Creating version ${newVersionNumber} for workflow ${workflowId}`);
 
-    const { data: newVersion, error: versionError } = await supabase
+    const { error: versionError } = await supabase
       .from('deployed_workflow_versions')
       .insert({
         workflow_id: workflowId,
@@ -165,9 +154,7 @@ export async function POST(request: NextRequest) {
         typescript_metadata: metadata,
         is_active: false,
         change_notes: 'Published from desktop app',
-      })
-      .select()
-      .single();
+      });
 
     if (versionError) {
       console.error('❌ Version creation failed:', versionError);
