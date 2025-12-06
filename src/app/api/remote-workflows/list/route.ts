@@ -248,7 +248,8 @@ export async function GET(request: NextRequest) {
           last_failure_message,
           preferred_format,
           typescript_metadata,
-          tags
+          tags,
+          github_folder
         `
         )
         .in('id', workflowIds);
@@ -314,6 +315,7 @@ export async function GET(request: NextRequest) {
             preferred_format: cw.preferred_format,
             typescript_metadata: cw.typescript_metadata,
             tags: cw.tags || [],
+            github_folder: cw.github_folder,
           };
         });
         console.log(
@@ -539,6 +541,8 @@ export async function GET(request: NextRequest) {
           preferred_format: automationSequences[workflow.id]?.preferred_format,
           typescript_metadata:
             automationSequences[workflow.id]?.typescript_metadata,
+          // UUID folder name for TypeScript workflows - used to identify cloud-only workflows
+          github_folder: automationSequences[workflow.id]?.github_folder,
           // Add version-specific statistics as additional fields
           current_version_stats: {
             successful_runs: workflow.current_version_successful_runs,
