@@ -26,13 +26,15 @@ export interface ScreenshotPreviewPaneProps {
   activityItems: ActivityItem[];
   onActivitySelect: (item: ActivityItem) => void;
   dataProvider: DataProvider;
+  className?: string;
 }
 
-const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({ 
-  selectedActivity, 
-  activityItems, 
+const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
+  selectedActivity,
+  activityItems,
   onActivitySelect,
   dataProvider,
+  className,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -167,7 +169,7 @@ const ScreenshotPreviewPane: React.FC<ScreenshotPreviewPaneProps> = ({
 
   return (
     <>
-      <Card className="w-full mt-4 overflow-hidden h-[400px] relative">
+      <Card className={`w-full overflow-hidden relative ${className || 'h-[400px]'}`}>
         <CardContent className="p-1 h-full">
           {renderContent()}
         </CardContent>
