@@ -166,11 +166,6 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
             Stop Recording
           </Button>
         )}
-        <Button asChild variant="outline">
-          <Link href="https://app.mediar.ai" target="_blank" rel="noopener noreferrer">
-            <Wand2 className="mr-2 h-4 w-4" /> Turn recording into automation
-          </Link>
-        </Button>
         {isInIframe ? (
           <Button
             onClick={() => window.open('https://app.mediar.ai/web', '_blank')}
