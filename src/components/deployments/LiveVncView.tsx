@@ -23,13 +23,7 @@ export function LiveVncView({ machineId }: LiveVncViewProps) {
         }
         const data = await response.json();
         const machine = data.machine;
-        const tfTag = machine.tags?.find((t: string) =>
-          t.startsWith('terraform:')
-        );
-        const key =
-          tfTag?.split(':')[1] ||
-          machine.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        setTerraformKey(key);
+        setTerraformKey('vm2');
       } catch (err) {
         console.error('Error fetching machine:', err);
         setError('Failed to load machine details');
@@ -90,7 +84,7 @@ export function LiveVncView({ machineId }: LiveVncViewProps) {
       </div>
       <div className="flex-1 bg-black">
         <iframe
-          src={`https://agent.mediar.ai/vnc/${terraformKey}`}
+          src="https://vnc-gateway-e4mtrji55a-ue.a.run.app/vnc/vm2"
           className="w-full h-full border-0"
           allow="clipboard-read; clipboard-write"
         />
