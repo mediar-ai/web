@@ -11,6 +11,13 @@ import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -19,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EVENTS_PROMPT, TEXT_EXTRACTION_PROMPT } from '@/lib/prompts';
 import { uploadScreenshot } from '@/lib/screenshotUploader';
-import { Bug, MoreHorizontal, Settings } from 'lucide-react';
+import { Bug, MoreHorizontal, Settings, Zap } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { usePostHog } from 'posthog-js/react';
@@ -86,6 +93,7 @@ function HomeComponent() {
   const [showScrollHint, setShowScrollHint] = useState<boolean>(false);
   const [hasTriggeredScrollHint, setHasTriggeredScrollHint] = useState<boolean>(false);
   const [isHoveringScrollableArea, setIsHoveringScrollableArea] = useState<boolean>(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
 
   const initialFrameCapturedRef = useRef<boolean>(false);
   const streamActiveBeforeSleep = useRef<boolean>(false);
@@ -286,6 +294,14 @@ function HomeComponent() {
     logToUI(`[Init] Loading data for user ${storedUserId}`);
     loadData(provider);
   }, [logToUI, loadData]);
+
+  // Show welcome modal on first visit
+  useEffect(() => {
+    const hasVisited = localStorage.getItem('mediar-web-visited');
+    if (!hasVisited) {
+      setShowWelcomeModal(true);
+    }
+  }, []);
 
   // Stream new activity items as they're created
   useEffect(() => {
@@ -745,6 +761,12 @@ function HomeComponent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream, logToUI, logError, captureSessionId]); // Intentionally omit posthog - stable ref
 
+  const handleWelcomeStartRecording = useCallback(() => {
+    localStorage.setItem('mediar-web-visited', 'true');
+    setShowWelcomeModal(false);
+    handleStartScreenShare();
+  }, [handleStartScreenShare]);
+
   useEffect(() => {
     if (selectedActivity) {
       const parentEvent = events.find(e => e.activity_ids?.includes(selectedActivity.id));
@@ -1098,6 +1120,27 @@ function HomeComponent() {
   return (
     <div className='bg-background stable-container px-4 py-2 flex flex-col items-center min-h-screen antialiased'>
       <ExportStatusDialog exportInProgress={false} />
+
+      {/* Welcome Modal for first-time visitors */}
+      <Dialog open={showWelcomeModal} onOpenChange={setShowWelcomeModal}>
+        <DialogContent size="sm" hideClose>
+          <DialogHeader className="text-center">
+            <DialogTitle className="text-xl font-mono">Screen Recording</DialogTitle>
+            <DialogDescription className="text-base mt-2">
+              Record your screen to capture workflows. We&apos;ll analyze your actions and help you turn them into automations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center mt-4">
+            <Button
+              onClick={handleWelcomeStartRecording}
+              className="bg-black text-white hover:bg-gray-800 font-mono"
+              size="lg"
+            >
+              <Zap className="mr-2 h-4 w-4" /> Try Recording
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <PageHeaderControls
         stream={stream}
