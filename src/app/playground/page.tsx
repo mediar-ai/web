@@ -165,57 +165,6 @@ export default function PlaygroundPage() {
                 </h3>
               </div>
 
-              <div className="h-4 w-px bg-gray-700" />
-
-              {/* Machine Selector */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowMachineDropdown(!showMachineDropdown)}
-                  disabled={loadingMachines}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 font-mono text-xs transition-colors min-w-[180px] rounded"
-                >
-                  {loadingMachines ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Monitor className="w-3 h-3" />
-                  )}
-                  <span className="flex-1 text-left truncate">
-                    {selectedMachine?.name || 'Select VM...'}
-                  </span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-
-                {showMachineDropdown && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-white text-black border-2 border-black shadow-lg z-50 max-h-64 overflow-auto">
-                    {machines.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-gray-500 font-mono">
-                        No machines available
-                      </div>
-                    ) : (
-                      machines.map(machine => (
-                        <button
-                          key={machine.id}
-                          onClick={() => {
-                            setSelectedMachine(machine);
-                            setShowMachineDropdown(false);
-                            setConnection({ status: 'idle' });
-                          }}
-                          className={cn(
-                            'w-full px-3 py-2 text-left font-mono text-xs hover:bg-gray-100 transition-colors flex items-center justify-between',
-                            selectedMachine?.id === machine.id && 'bg-gray-100'
-                          )}
-                        >
-                          <span className="truncate">{machine.name}</span>
-                          <span className={cn(
-                            'w-2 h-2 rounded-full shrink-0',
-                            machine.health_status === 'healthy' ? 'bg-black' : 'bg-gray-400'
-                          )} />
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Right side controls */}
