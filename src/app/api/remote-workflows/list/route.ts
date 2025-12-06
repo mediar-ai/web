@@ -727,7 +727,8 @@ export async function GET(request: NextRequest) {
           automation_sequence,
           workflow_type,
           parent_workflow_id,
-          display_order
+          display_order,
+          latest_version_number
         `
         )
         .in('id', workflowIds);
