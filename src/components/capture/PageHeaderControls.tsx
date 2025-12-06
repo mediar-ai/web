@@ -111,7 +111,7 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   };
 
   return (
-    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-row items-center justify-between mt-4 p-3 mb-4">
+    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-row items-center justify-between mt-4 p-3 pb-4 mb-4 border-b-2 border-black">
       {/* Title + Status */}
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-mono font-bold">Screen Capture</h1>

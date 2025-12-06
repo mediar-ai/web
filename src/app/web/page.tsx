@@ -87,6 +87,7 @@ function HomeComponent() {
   const [frontendLogs, setFrontendLogs] = useState<string[]>([]);
   const [reconnectRequired, setReconnectRequired] = useState(false);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const [timelineHeight, setTimelineHeight] = useState(450);
   const [analysesPanelCollapsed, setAnalysesPanelCollapsed] = useState(false);
   const [selectedMoreOption, setSelectedMoreOption] = useState<string | null>(null);
   const [selectedMainTab, setSelectedMainTab] = useState<string>('recent');
@@ -1242,20 +1243,27 @@ function HomeComponent() {
           </Button>
         </div>
         {!detailsCollapsed && (
-          <div className="border-2 border-black rounded-lg p-4">
+          <div className="border-2 border-black rounded-lg overflow-hidden">
             {activityItems.length > 0 && dataProvider ? (
-              <div className="space-y-4">
-                <ScreenshotPreviewPane
-                  selectedActivity={selectedActivity}
-                  activityItems={activityItems}
-                  onActivitySelect={setSelectedActivity}
-                  dataProvider={dataProvider}
-                />
-                <TimelineSlider
-                  activityItems={activityItems}
-                  selectedActivity={selectedActivity}
-                  onActivitySelect={setSelectedActivity}
-                />
+              <div className="overflow-auto p-4" style={{ height: `${timelineHeight}px`, minHeight: '200px', maxHeight: '800px' }}>
+                <div className="space-y-4 h-full flex flex-col">
+                  <div className="flex-1 min-h-0">
+                    <ScreenshotPreviewPane
+                      selectedActivity={selectedActivity}
+                      activityItems={activityItems}
+                      onActivitySelect={setSelectedActivity}
+                      dataProvider={dataProvider}
+                      className="h-full"
+                    />
+                  </div>
+                  <div className="flex-shrink-0">
+                    <TimelineSlider
+                      activityItems={activityItems}
+                      selectedActivity={selectedActivity}
+                      onActivitySelect={setSelectedActivity}
+                    />
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="text-center text-gray-500 py-8">
@@ -1263,6 +1271,28 @@ function HomeComponent() {
                 <p className="text-sm mt-1">Start recording to see timeline preview here.</p>
               </div>
             )}
+            {/* Draggable resize handle */}
+            <div
+              className="h-3 bg-gray-100 border-t-2 border-black cursor-row-resize flex items-center justify-center hover:bg-gray-200 active:bg-gray-300 select-none"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const startY = e.clientY;
+                const startHeight = timelineHeight;
+                const onMouseMove = (moveEvent: MouseEvent) => {
+                  const delta = moveEvent.clientY - startY;
+                  const newHeight = Math.min(800, Math.max(200, startHeight + delta));
+                  setTimelineHeight(newHeight);
+                };
+                const onMouseUp = () => {
+                  document.removeEventListener('mousemove', onMouseMove);
+                  document.removeEventListener('mouseup', onMouseUp);
+                };
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+              }}
+            >
+              <div className="w-16 h-1 bg-black rounded-full" />
+            </div>
           </div>
         )}
       </div>
@@ -1284,17 +1314,21 @@ function HomeComponent() {
               setSelectedMainTab(value);
             }
           }}>
-            <div className='flex items-center justify-between mb-1'>
-              <TabsList className='grid grid-cols-3 flex-1 mr-2'>
-                <TabsTrigger value='recent' onClick={() => {
+            <div className='flex items-center justify-between mb-1 min-w-0'>
+              <TabsList className='flex overflow-x-auto min-w-0 flex-1 mr-2 scrollbar-hide'>
+                <TabsTrigger value='recent' className='flex-shrink-0' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('recent');
-                }}>Recent Activity ({activityItems.length})</TabsTrigger>
-                <TabsTrigger value='events' onClick={() => {
+                }}>
+                  <span className='hidden sm:inline'>Recent Activity</span>
+                  <span className='sm:hidden'>Activity</span>
+                  <span> ({activityItems.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value='events' className='flex-shrink-0' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('events');
-                }}>Events ({events.length}){avgTimeBetweenEvents !== null && ` • ~${avgTimeBetweenEvents}s`}</TabsTrigger>
-                <TabsTrigger value='workflow' onClick={() => {
+                }}>Events ({events.length})</TabsTrigger>
+                <TabsTrigger value='workflow' className='flex-shrink-0' onClick={() => {
                   setSelectedMoreOption(null);
                   setSelectedMainTab('workflow');
                 }}>Workflow</TabsTrigger>
