@@ -32,15 +32,21 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
 }) => {
   if (reconnectRequired) {
     return (
-      <div className='bg-yellow-500 text-white rounded py-1.5 px-2 text-xs flex items-center'>
-        <RefreshCw className='mr-2 h-4 w-4' /> Reconnect needed
+      <div className='bg-gray-100 text-gray-800 border-2 border-dashed border-gray-400 rounded py-1.5 px-2 text-xs flex items-center'>
+        <RefreshCw className='mr-2 h-4 w-4 animate-spin' /> Reconnect needed
       </div>
     );
   }
 
+  // Don't show anything when idle (not recording)
+  const isRecording = streamRef.current && mainStatus.startsWith('Recording');
+  if (!error && !isRecording) {
+    return null;
+  }
+
   return (
     <div className='flex items-center gap-2 text-xs'>
-      <div className={`transition-all duration-300 ease-in-out text-center min-w-[180px] py-1.5 px-2 ${error ? 'bg-red-600 text-white rounded' : (streamRef.current && mainStatus.startsWith('Recording') ? 'bg-blue-500 text-white rounded' : 'text-gray-600 dark:text-gray-300')}`}>
+      <div className={`transition-all duration-300 ease-in-out text-center py-1.5 px-3 rounded border-2 ${error ? 'bg-black text-white border-black font-bold' : 'bg-black text-white border-black animate-pulse'}`}>
         {error ? <><AlertTriangle className='inline mr-1 h-3 w-3' /> {mainStatus}</> : mainStatus}
       </div>
     </div>
@@ -105,60 +111,50 @@ const PageHeaderControls: React.FC<PageHeaderControlsProps> = ({
   };
 
   return (
-    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-between mt-4 p-3 border rounded-lg shadow-sm gap-3">
-      {/* Status indicator - hidden on mobile since training won't work anyway */}
-      <div className="hidden sm:flex items-center gap-4 text-sm font-mono w-full sm:w-auto">
-        <StatusIndicator
-          mainStatus={mainStatus}
-          autoDetectionEnabled={autoDetectionEnabled}
-          isMonitoring={isMonitoring}
-          displayChangePercent={displayChangePercent}
-          activeAnalysesCount={activeAnalysesCount}
-          error={error}
-          streamRef={streamRef}
-          MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
-          reconnectRequired={reconnectRequired}
-        />
+    <div className="w-full sticky top-0 z-50 bg-background/95 backdrop-blur-sm flex flex-row items-center justify-between mt-4 p-3 mb-4">
+      {/* Title + Status */}
+      <div className="flex items-center gap-4">
+        <h1 className="text-lg font-mono font-bold">Screen Capture</h1>
+        <div className="hidden sm:block">
+          <StatusIndicator
+            mainStatus={mainStatus}
+            autoDetectionEnabled={autoDetectionEnabled}
+            isMonitoring={isMonitoring}
+            displayChangePercent={displayChangePercent}
+            activeAnalysesCount={activeAnalysesCount}
+            error={error}
+            streamRef={streamRef}
+            MAX_PARALLEL_ANALYSES={MAX_PARALLEL_ANALYSES}
+            reconnectRequired={reconnectRequired}
+          />
+        </div>
       </div>
 
       {/* Mobile: simplified layout */}
-      <div className="flex sm:hidden flex-col w-full gap-2">
+      <div className="flex sm:hidden items-center gap-2">
         {!stream ? (
-          <Button onClick={handleStartClick} variant="outline" className="w-full">
-            <Zap className="mr-2 h-4 w-4" /> Start Recording
+          <Button onClick={handleStartClick} size="sm" className="bg-black text-white hover:bg-gray-800">
+            <Zap className="mr-1 h-3 w-3" /> Record
           </Button>
         ) : (
-          <Button onClick={handleStopScreenShare} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
-            Stop Recording
+          <Button onClick={handleStopScreenShare} size="sm" variant="outline" className="border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950">
+            Stop
           </Button>
         )}
-        <div className="flex items-center justify-between gap-2">
-          <Button asChild variant="outline" className="flex-1">
-            <Link href="https://mediar.ai/turnkey" target="_blank" rel="noopener noreferrer">
-              <Wand2 className="mr-2 h-4 w-4" /> Get Automation
-            </Link>
+        <SignedIn>
+          <UserButton appearance={{ elements: { avatarBox: "w-7 h-7" } }} />
+        </SignedIn>
+        <SignedOut>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/sign-in">Sign In</Link>
           </Button>
-          <SignedIn>
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-8 h-8"
-                }
-              }}
-            />
-          </SignedIn>
-          <SignedOut>
-            <Button asChild size="sm">
-              <Link href="/sign-in">Sign In</Link>
-            </Button>
-          </SignedOut>
-        </div>
+        </SignedOut>
       </div>
 
       {/* Desktop: full layout */}
       <div className="hidden sm:flex items-center justify-end gap-2">
         {!stream ? (
-          <Button onClick={handleStartClick} variant="outline">
+          <Button onClick={handleStartClick} className="bg-black text-white hover:bg-gray-800">
             <Zap className="mr-2 h-4 w-4" /> Start Recording
           </Button>
         ) : (
