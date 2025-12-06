@@ -94,6 +94,7 @@ function HomeComponent() {
   const [hasTriggeredScrollHint, setHasTriggeredScrollHint] = useState<boolean>(false);
   const [isHoveringScrollableArea, setIsHoveringScrollableArea] = useState<boolean>(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
+  const [resolutionWarning, setResolutionWarning] = useState<string | null>(null);
 
   const initialFrameCapturedRef = useRef<boolean>(false);
   const streamActiveBeforeSleep = useRef<boolean>(false);
@@ -849,12 +850,24 @@ function HomeComponent() {
     const currentVideoElement = videoRef.current;
     const onMetadataLoadedHandler = () => {
       if (!currentVideoElement) return;
+      const width = currentVideoElement.videoWidth;
+      const height = currentVideoElement.videoHeight;
       logToUI("[useEffect stream] 'loadedmetadata' - Dimensions:", {
-        w: currentVideoElement.videoWidth,
-        h: currentVideoElement.videoHeight,
+        w: width,
+        h: height,
       });
-      if (currentVideoElement.videoWidth > 0) {
+      if (width > 0) {
         setMainStatus('Recording (Preview Active)');
+        // Check for high resolution (> Full HD 1920x1080)
+        const FULL_HD_WIDTH = 1920;
+        const FULL_HD_HEIGHT = 1080;
+        if (width > FULL_HD_WIDTH || height > FULL_HD_HEIGHT) {
+          const warningMsg = `High resolution detected (${width}x${height}). For best AI recognition quality, consider sharing a smaller window or reducing display resolution. Resolutions above 1920x1080 may result in lower content recognition accuracy.`;
+          setResolutionWarning(warningMsg);
+          logToUI('[Resolution Warning]', warningMsg);
+        } else {
+          setResolutionWarning(null);
+        }
       } else {
         setError('Video has no width after metadata loaded.');
         setMainStatus('Error: Video dimensions');
@@ -1163,6 +1176,25 @@ function HomeComponent() {
       />
 
       <ErrorNotification error={error} showError={showError} dismissError={dismissError} />
+
+      {/* Resolution Warning Banner */}
+      {resolutionWarning && (
+        <div className="fixed top-16 left-1/2 transform -translate-x-1/2 z-40 transition-all duration-300">
+          <Card className="bg-yellow-500/90 border-yellow-600 text-black p-3 shadow-lg backdrop-blur-sm max-w-lg">
+            <div className="flex items-start gap-2">
+              <div className="text-sm font-medium">⚠️ {resolutionWarning}</div>
+              <Button
+                onClick={() => setResolutionWarning(null)}
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0 text-black hover:bg-black/20 ml-auto flex-shrink-0"
+              >
+                ✕
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
               <Card className="w-full mt-4 hidden">
         <CardHeader>
