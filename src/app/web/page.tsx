@@ -108,6 +108,17 @@ function HomeComponent() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [appSessionId, setAppSessionId] = useState<string>(() => {
+    // Load from localStorage or generate a new one
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('app_session_id');
+      if (stored) return stored;
+      const newId = crypto.randomUUID();
+      localStorage.setItem('app_session_id', newId);
+      return newId;
+    }
+    return '';
+  });
 
   // Screenshot sequence tracking
   const [captureSessionId, setCaptureSessionId] = useState(() => {
@@ -557,6 +568,8 @@ function HomeComponent() {
     logError,
     setMainStatus,
     MAX_PARALLEL_ANALYSES,
+    userId,
+    sessionId: appSessionId,
   });
 
   useEventGenerator({
@@ -708,6 +721,7 @@ function HomeComponent() {
     // Generate a new, unique session ID for this recording session
     const newAppSessionId = crypto.randomUUID();
     localStorage.setItem('app_session_id', newAppSessionId);
+    setAppSessionId(newAppSessionId);
     logToUI(`[handleStartScreenShare] New session started with ID: ${newAppSessionId}`);
 
     const currentSessionId = captureSessionId;

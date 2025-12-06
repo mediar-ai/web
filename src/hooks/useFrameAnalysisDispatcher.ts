@@ -13,6 +13,8 @@ interface UseFrameAnalysisDispatcherProps {
   logError: (...args: unknown[]) => void;
   setMainStatus: (status: string) => void;
   MAX_PARALLEL_ANALYSES: number;
+  userId: string | null;
+  sessionId: string;
 }
 
 export const useFrameAnalysisDispatcher = ({
@@ -27,6 +29,8 @@ export const useFrameAnalysisDispatcher = ({
   logError,
   setMainStatus,
   MAX_PARALLEL_ANALYSES,
+  userId,
+  sessionId,
 }: UseFrameAnalysisDispatcherProps): void => {
   const [baselineFrameForDiff, setBaselineFrameForDiff] = useState<BufferedFrame | null>(null);
   const [pendingFrameForDiff, setPendingFrameForDiff] = useState<BufferedFrame | null>(null);
@@ -100,6 +104,8 @@ export const useFrameAnalysisDispatcher = ({
           raw_content: rawContent,
           image_id: frameToDump.id,
           sequenceId: frameToDump.sequenceId,
+          user_id: userId || undefined,
+          session_id: sessionId || undefined,
         };
         setActivityItems((prev) =>
           [newActivityItem, ...prev].sort(
@@ -144,6 +150,8 @@ export const useFrameAnalysisDispatcher = ({
       setBaselineFrameForDiff,
       setRunningAnalyses,
       setCompletedAnalyses,
+      userId,
+      sessionId,
     ],
   );
 
@@ -210,6 +218,8 @@ export const useFrameAnalysisDispatcher = ({
             image1_id: frame1.id,
             image2_id: frame2.id,
             sequenceId: frame2.sequenceId,
+            user_id: userId || undefined,
+            session_id: sessionId || undefined,
           };
 
           setActivityItems((prevItems) =>
@@ -265,6 +275,8 @@ export const useFrameAnalysisDispatcher = ({
       setBaselineFrameForDiff,
       setRunningAnalyses,
       setCompletedAnalyses,
+      userId,
+      sessionId,
     ],
   );
 
