@@ -1225,20 +1225,25 @@ function HomeComponent() {
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       <canvas ref={monitoringCanvasRef} style={{ display: 'none' }} />
 
-      <div 
-        className="w-full mt-4 space-y-4"
+      <div
+        className="w-full my-6"
         onMouseEnter={() => setIsHoveringScrollableArea(true)}
         onMouseLeave={() => setIsHoveringScrollableArea(false)}
       >
-        {activityItems.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Timeline & Screenshot Preview ({screenshotCount})</h2>
-              <Button variant="ghost" size="sm" onClick={toggleDetailsPanel}>
-                {detailsCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!detailsCollapsed && dataProvider && (
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-mono font-bold">Timeline Preview {screenshotCount > 0 && `(${screenshotCount})`}</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleDetailsPanel}
+            className="border-black hover:bg-black hover:text-white"
+          >
+            {detailsCollapsed ? 'Show' : 'Hide'}
+          </Button>
+        </div>
+        {!detailsCollapsed && (
+          <div className="border-2 border-black rounded-lg p-4">
+            {activityItems.length > 0 && dataProvider ? (
               <div className="space-y-4">
                 <ScreenshotPreviewPane
                   selectedActivity={selectedActivity}
@@ -1252,14 +1257,23 @@ function HomeComponent() {
                   onActivitySelect={setSelectedActivity}
                 />
               </div>
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                <p>No screenshots captured yet.</p>
+                <p className="text-sm mt-1">Start recording to see timeline preview here.</p>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="w-full grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          <Tabs defaultValue='recent' className='w-full -mt-2' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
+      {/* Analysis Tabs Section */}
+      <div className="w-full my-6">
+        <h2 className="text-lg font-mono font-bold mb-2">Analysis</h2>
+        <div className="border-2 border-black rounded-lg p-4">
+          <div className="w-full grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="lg:col-span-2 flex flex-col gap-4">
+            <Tabs defaultValue='recent' className='w-full' value={selectedMoreOption || selectedMainTab} onValueChange={(value) => {
             posthog?.capture('web_app_tab_change', {
               tab: value,
               timestamp: new Date().toISOString(),
@@ -1387,22 +1401,29 @@ function HomeComponent() {
               />
             </TabsContent>
           </Tabs>
+          </div>
+        </div>
         </div>
       </div>
-      
+
       {(selectedMainTab === 'recent' || selectedMainTab === 'events') && !selectedMoreOption && (
-        <div className="w-full mt-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">LLM traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
-              <Button variant="ghost" size="sm" onClick={toggleAnalysesPanel}>
-                {analysesPanelCollapsed ? 'Show' : 'Hide'}
-              </Button>
-            </div>
-            {!analysesPanelCollapsed && (
-              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
-            )}
+        <div className="w-full my-6">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-lg font-mono font-bold">LLM Traces {allAnalyses.length > 0 && `(${allAnalyses.length})`}</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleAnalysesPanel}
+              className="border-black hover:bg-black hover:text-white"
+            >
+              {analysesPanelCollapsed ? 'Show' : 'Hide'}
+            </Button>
           </div>
+          {!analysesPanelCollapsed && (
+            <div className="border-2 border-black rounded-lg p-4">
+              <LiveAnalysesPanel runningAnalyses={allAnalyses} />
+            </div>
+          )}
         </div>
       )}
       <ScrollHint show={showScrollHint} onDismiss={handleDismissScrollHint} />
