@@ -215,6 +215,15 @@ body {
 
 /* Black Border Design System */
 @layer utilities {
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Ensure consistent black borders across all elements */
   .border-default {
     @apply border-border;

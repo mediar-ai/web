@@ -2,7 +2,7 @@
 
 import { useUser } from '@clerk/nextjs';
 import Script from 'next/script';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 declare global {
   interface Window {
@@ -17,6 +17,17 @@ declare global {
 export function CrispChat() {
   const { user } = useUser();
   const websiteId = process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID;
+  const [isInIframe, setIsInIframe] = useState(false);
+
+  // Detect if we're inside an iframe
+  useEffect(() => {
+    try {
+      setIsInIframe(window.self !== window.top);
+    } catch {
+      // If accessing window.top throws (cross-origin), we're in an iframe
+      setIsInIframe(true);
+    }
+  }, []);
 
   // Suppress Crisp errors globally
   useEffect(() => {
@@ -70,8 +81,13 @@ export function CrispChat() {
     }
   }, [user, websiteId]);
 
+  // Don't load Crisp if not configured or if we're in an iframe
   if (!websiteId) {
     console.warn('NEXT_PUBLIC_CRISP_WEBSITE_ID is not set');
+    return null;
+  }
+
+  if (isInIframe) {
     return null;
   }
 
