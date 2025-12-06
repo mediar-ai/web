@@ -718,13 +718,12 @@ export async function GET(request: NextRequest) {
         console.error('[API] Error fetching cron data:', cronError);
       }
 
-      // Then fetch automation sequences
+      // Fetch workflow metadata (no automation_sequence - too large, fetched on-demand via /overview or /schema)
       const { data: sequences, error: sequencesError } = await supabase
         .from(viewName)
         .select(
           `
           id,
-          automation_sequence,
           workflow_type,
           parent_workflow_id,
           display_order,
@@ -776,8 +775,9 @@ export async function GET(request: NextRequest) {
     let settingsWorkflows: any[] = [];
 
     if (workflowIds.length > 0) {
+      // NOTE: automation_sequence removed - not needed for list view
       const { data: settings, error: settingsError } = await supabase
-        .from(viewName) // Use the same view as for execution workflows
+        .from(viewName)
         .select(
           `
           id,
@@ -794,7 +794,6 @@ export async function GET(request: NextRequest) {
           failed_runs,
           cancelled_runs,
           total_executions,
-          automation_sequence,
           cron_expression,
           cron_timezone,
           cron_enabled,
@@ -918,14 +917,8 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    // Process settings workflows using the existing logic
-    const processedSettingsWorkflows = settingsWorkflows.map(
-      processWorkflowSchema
-    );
-
-    // Group processed settings workflows by parent_workflow_id
-
-    const settingsByParent = processedSettingsWorkflows.reduce(
+    // Group settings workflows by parent_workflow_id (no processing needed for list)
+    const settingsByParent = settingsWorkflows.reduce(
       (acc: Record<number, any[]>, settings) => {
         const parentId = settings.parent_workflow_id;
         if (parentId && !acc[parentId]) {
@@ -976,9 +969,7 @@ export async function GET(request: NextRequest) {
           // Add config fields
           estimated_duration_seconds:
             automationSequences[workflow.id]?.estimated_duration_seconds,
-          // Add automation sequence from separate query
-          automation_sequence:
-            automationSequences[workflow.id]?.automation_sequence,
+          // NOTE: automation_sequence removed - too large for list, fetched on-demand via /overview or /schema
           workflow_type:
             automationSequences[workflow.id]?.workflow_type || 'execution',
           parent_workflow_id:
@@ -1042,9 +1033,10 @@ export async function GET(request: NextRequest) {
           }),
         };
 
+        // NOTE: processWorkflowSchema removed - input_parameters/sample_inputs fetched on-demand via /schema
         return {
-          ...processWorkflowSchema(workflowWithSequence),
-          settings_workflows: settingsByParent[workflow.id] || [], // Add nested settings workflows
+          ...workflowWithSequence,
+          settings_workflows: settingsByParent[workflow.id] || [],
         };
       });
 
