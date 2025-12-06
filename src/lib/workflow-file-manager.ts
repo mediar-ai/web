@@ -339,6 +339,103 @@ export class WorkflowFileManager {
     };
     return contentTypes[ext] || 'application/octet-stream';
   }
+
+  /**
+   * Download all files for a workflow from storage
+   */
+  async downloadWorkflowFiles(
+    workflowId: number
+  ): Promise<{ success: boolean; files?: Array<{ path: string; content: string }>; error?: string }> {
+    try {
+      // Get organization for this workflow
+      const { data: workflowData, error: workflowError } = await this.supabase
+        .from('deployed_workflows')
+        .select('organization_id')
+        .eq('id', workflowId)
+        .single();
+
+      if (workflowError || !workflowData?.organization_id) {
+        return { success: false, error: `Workflow not found: ${workflowError?.message}` };
+      }
+
+      const clerkOrgId = workflowData.organization_id;
+      const prefix = `org-${clerkOrgId}/workflows/${workflowId}/`;
+
+      // List all files in the workflow directory
+      const { data: fileList, error: listError } = await this.supabase.storage
+        .from(this.bucketName)
+        .list(prefix.slice(0, -1), { limit: 1000 }); // Remove trailing slash for list
+
+      if (listError) {
+        return { success: false, error: `Failed to list files: ${listError.message}` };
+      }
+
+      if (!fileList || fileList.length === 0) {
+        return { success: true, files: [] };
+      }
+
+      // Download each file
+      const files: Array<{ path: string; content: string }> = [];
+
+      for (const file of fileList) {
+        if (file.name === '.emptyFolderPlaceholder') continue;
+
+        const filePath = `${prefix}${file.name}`;
+        const { data, error: downloadError } = await this.supabase.storage
+          .from(this.bucketName)
+          .download(filePath);
+
+        if (downloadError) {
+          console.error(`Failed to download ${filePath}:`, downloadError);
+          continue;
+        }
+
+        const content = await data.text();
+        files.push({
+          path: file.name, // Relative path within workflow
+          content,
+        });
+      }
+
+      // Also check for subdirectories (src/, src/steps/, etc.)
+      const subdirs = ['src', 'src/steps'];
+      for (const subdir of subdirs) {
+        const subdirPrefix = `${prefix}${subdir}`;
+        const { data: subdirFiles } = await this.supabase.storage
+          .from(this.bucketName)
+          .list(subdirPrefix, { limit: 1000 });
+
+        if (subdirFiles) {
+          for (const file of subdirFiles) {
+            if (file.name === '.emptyFolderPlaceholder') continue;
+
+            const filePath = `${subdirPrefix}/${file.name}`;
+            const { data, error: downloadError } = await this.supabase.storage
+              .from(this.bucketName)
+              .download(filePath);
+
+            if (downloadError) {
+              console.error(`Failed to download ${filePath}:`, downloadError);
+              continue;
+            }
+
+            const content = await data.text();
+            files.push({
+              path: `${subdir}/${file.name}`,
+              content,
+            });
+          }
+        }
+      }
+
+      console.log(`[WorkflowFileManager] Downloaded ${files.length} files for workflow ${workflowId}`);
+      return { success: true, files };
+
+    } catch (error) {
+      console.error('[WorkflowFileManager] Download error:', error);
+      return { success: false, error: String(error) };
+    }
+  }
 }
 
 // Export singleton instance
