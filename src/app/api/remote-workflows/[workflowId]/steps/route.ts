@@ -151,11 +151,12 @@ export async function GET(
               const metadata = parseTypeScriptWorkflow(content);
 
               if (metadata.steps.length > 0) {
-                // Cache the metadata
+                // Cache the metadata and update step_count
                 await supabase
                   .from('deployed_workflows')
                   .update({
                     typescript_metadata: metadata,
+                    step_count: metadata.steps.length,
                     updated_at: new Date().toISOString(),
                   })
                   .eq('id', workflowIdNum);
