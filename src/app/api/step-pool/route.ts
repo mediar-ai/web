@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (workflowId) {
-      query = query.eq('workflow_id', parseInt(workflowId));
+      query = query.eq('workflow_id', workflowId);
     }
 
     const { data, error } = await query;
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         .from('user_step_pool')
         .select('succeeded, duration_ms, tool_name, app_name, is_selected')
         .eq('user_id', authenticatedUserId)
-        .eq('workflow_id', parseInt(workflowId))
+        .eq('workflow_id', workflowId)
         .eq('status', 'active');
 
       if (!statsError && statsData) {
@@ -400,7 +400,7 @@ export async function DELETE(request: NextRequest) {
     if (stepId) {
       query = query.eq('id', stepId);
     } else if (workflowId) {
-      query = query.eq('workflow_id', parseInt(workflowId));
+      query = query.eq('workflow_id', workflowId);
     }
     // If clearAll is true, we already have the base query
 
