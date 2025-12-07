@@ -17,6 +17,10 @@ interface Machine {
   last_health_check?: string;
   mcp_version?: string;
   tags?: string[];
+  // Reliability metrics
+  total_checks?: number;
+  successful_checks?: number;
+  uptime_percentage?: number;
 }
 
 export default function AdminMachinesPage() {

@@ -30,6 +30,10 @@ interface MachineCardProps {
     last_health_check?: string;
     mcp_version?: string;
     tags?: string[];
+    // Reliability metrics
+    total_checks?: number;
+    successful_checks?: number;
+    uptime_percentage?: number;
   };
   onRefresh: () => void;
   compact?: boolean;
@@ -329,6 +333,47 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
       {/* Expanded Details */}
       {isExpanded && (
         <div className="border-t border-gray-200 p-3 bg-gray-50">
+          {/* Uptime Stats */}
+          {(machine.total_checks ?? 0) > 0 && (
+            <div className="mb-4 p-3 border border-gray-300 bg-white">
+              <div className="text-xs text-gray-500 font-mono uppercase mb-2">HEALTH RELIABILITY</div>
+              <div className="flex items-center gap-4">
+                {/* Success rate bar */}
+                <div className="flex-1">
+                  <div className="flex justify-between text-xs font-mono mb-1">
+                    <span>Success Rate</span>
+                    <span className="font-bold">
+                      {machine.total_checks && machine.total_checks > 0
+                        ? `${Math.round((machine.successful_checks || 0) / machine.total_checks * 100)}%`
+                        : '-'}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-gray-200 w-full">
+                    <div
+                      className="h-full bg-black transition-all"
+                      style={{
+                        width: machine.total_checks && machine.total_checks > 0
+                          ? `${Math.round((machine.successful_checks || 0) / machine.total_checks * 100)}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+                {/* Stats */}
+                <div className="text-right text-xs font-mono">
+                  <div className="text-gray-500">{machine.successful_checks || 0} / {machine.total_checks || 0}</div>
+                  <div className="text-gray-400">checks</div>
+                </div>
+              </div>
+              {machine.uptime_percentage !== undefined && machine.uptime_percentage !== null && (
+                <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between text-xs font-mono">
+                  <span className="text-gray-500">Uptime</span>
+                  <span className="font-bold">{machine.uptime_percentage.toFixed(1)}%</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <div className="text-xs text-gray-500 font-mono uppercase mb-1">Azure Resource ID</div>
