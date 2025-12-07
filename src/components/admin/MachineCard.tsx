@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  FileText,
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -357,16 +356,6 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             )}
           </div>
 
-          {/* Quick Links */}
-          <div className="mt-3 flex gap-2">
-            <a
-              href="/observability"
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
-            >
-              <FileText className="w-3 h-3" />
-              LOGS
-            </a>
-          </div>
         </div>
       )}
     </div>
