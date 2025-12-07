@@ -116,7 +116,7 @@ export function Sidebar() {
           { label: 'Machines', href: '/admin/machines', icon: Monitor, mediarOnly: true },
           { label: 'Billing', href: '/admin/billing', icon: DollarSign, mediarOnly: true },
           { label: 'Customer Billing', href: '/admin/customer-billing', icon: FileText, mediarOnly: true },
-          { label: 'Observability', href: '/admin/observability', icon: Database, mediarOnly: true },
+          { label: 'Observability', href: '/observability', icon: Database, mediarOnly: true },
           { label: 'VM Timeline', href: '/admin/vm-timeline', icon: Monitor, mediarOnly: true },
         ],
       },
