@@ -277,9 +277,25 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
+              title="Open in browser"
             >
               <ExternalLink className="w-3 h-3" />
             </a>
+            {machine.mcp_endpoint && (
+              <button
+                onClick={() => {
+                  const ip = extractIpFromEndpoint(machine.mcp_endpoint);
+                  if (ip && ip !== '-') {
+                    copyToClipboard(`${ip}:5900`, 'VNC address');
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
+                title="Copy VNC address for TightVNC/TigerVNC"
+              >
+                <Copy className="w-3 h-3" />
+                VNC
+              </button>
+            )}
           </>
         )}
 
