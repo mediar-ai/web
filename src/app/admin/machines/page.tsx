@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Server, RefreshCw, Plus, Activity } from 'lucide-react';
+import { Server, RefreshCw, Plus, Activity, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { MachineCard } from '@/components/admin/MachineCard';
 
@@ -22,6 +22,7 @@ interface Machine {
 export default function AdminMachinesPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
   const [showAddMachine, setShowAddMachine] = useState(false);
   const [newMachine, setNewMachine] = useState({
     name: '',
@@ -37,14 +38,30 @@ export default function AdminMachinesPage() {
       const res = await fetch('/api/machines?status=all&show_all=true&include_load=true');
       if (res.ok) {
         const data = await res.json();
-        // Sort by health (healthy first)
+        // Sort: healthy+active first, then by recent health check
         const sorted = (data.machines || []).sort((a: Machine, b: Machine) => {
+          // Primary: health status
           const healthOrder: Record<string, number> = {
             healthy: 0,
             unhealthy: 1,
             unknown: 2,
           };
-          return (healthOrder[a.health_status] || 2) - (healthOrder[b.health_status] || 2);
+          const healthDiff = (healthOrder[a.health_status] ?? 2) - (healthOrder[b.health_status] ?? 2);
+          if (healthDiff !== 0) return healthDiff;
+
+          // Secondary: status (active > inactive > maintenance)
+          const statusOrder: Record<string, number> = {
+            active: 0,
+            inactive: 1,
+            maintenance: 2,
+          };
+          const statusDiff = (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1);
+          if (statusDiff !== 0) return statusDiff;
+
+          // Tertiary: last health check (most recent first)
+          const aTime = a.last_health_check ? new Date(a.last_health_check).getTime() : 0;
+          const bTime = b.last_health_check ? new Date(b.last_health_check).getTime() : 0;
+          return bTime - aTime;
         });
         setMachines(sorted);
       }
@@ -96,7 +113,7 @@ export default function AdminMachinesPage() {
         const data = await res.json();
         toast.error(data.error || 'Failed to add machine');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to add machine');
     } finally {
       setAdding(false);
@@ -104,6 +121,13 @@ export default function AdminMachinesPage() {
   };
 
   const healthyCount = machines.filter(m => m.health_status === 'healthy').length;
+  const activeCount = machines.filter(m => m.status === 'active').length;
+  const inactiveCount = machines.filter(m => m.status !== 'active').length;
+
+  // Filter machines based on showInactive toggle
+  const displayedMachines = showInactive
+    ? machines
+    : machines.filter(m => m.status === 'active' || m.health_status === 'healthy');
 
   return (
     <div className="p-6">
@@ -115,14 +139,23 @@ export default function AdminMachinesPage() {
             MACHINES
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
-            VM infrastructure management and monitoring
+            VM infrastructure management
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-2 border-2 border-black font-mono text-sm">
             <Activity className="w-4 h-4" />
-            {healthyCount}/{machines.length} healthy
+            {healthyCount}/{activeCount} healthy
           </div>
+          <button
+            onClick={() => setShowInactive(!showInactive)}
+            className={`p-2 border-2 border-black transition-colors ${
+              showInactive ? 'bg-black text-white' : 'hover:bg-black hover:text-white'
+            }`}
+            title={showInactive ? 'Hide inactive' : 'Show inactive'}
+          >
+            {showInactive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
           <button
             onClick={() => setShowAddMachine(!showAddMachine)}
             className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
@@ -130,11 +163,34 @@ export default function AdminMachinesPage() {
             <Plus className="w-4 h-4" />
           </button>
           <button
-            onClick={fetchMachines}
+            onClick={() => {
+              setLoading(true);
+              fetchMachines();
+            }}
             className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="border-2 border-black p-3">
+          <div className="font-mono text-xs text-gray-600 uppercase">Total</div>
+          <div className="font-mono font-bold text-xl">{machines.length}</div>
+        </div>
+        <div className="border-2 border-black p-3">
+          <div className="font-mono text-xs text-gray-600 uppercase">Active</div>
+          <div className="font-mono font-bold text-xl">{activeCount}</div>
+        </div>
+        <div className="border-2 border-black p-3">
+          <div className="font-mono text-xs text-gray-600 uppercase">Healthy</div>
+          <div className="font-mono font-bold text-xl">{healthyCount}</div>
+        </div>
+        <div className="border-2 border-black p-3">
+          <div className="font-mono text-xs text-gray-600 uppercase">Inactive</div>
+          <div className="font-mono font-bold text-xl">{inactiveCount}</div>
         </div>
       </div>
 
@@ -230,15 +286,29 @@ export default function AdminMachinesPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {machines.map(machine => (
-            <MachineCard
-              key={machine.id}
-              machine={machine}
-              onRefresh={fetchMachines}
-            />
-          ))}
-        </div>
+        <>
+          {!showInactive && inactiveCount > 0 && (
+            <div className="mb-4 text-sm font-mono text-gray-500">
+              Showing {displayedMachines.length} active/healthy machines.{' '}
+              <button
+                onClick={() => setShowInactive(true)}
+                className="underline hover:text-black"
+              >
+                Show {inactiveCount} inactive
+              </button>
+            </div>
+          )}
+          <div className="space-y-3">
+            {displayedMachines.map(machine => (
+              <MachineCard
+                key={machine.id}
+                machine={machine}
+                onRefresh={fetchMachines}
+                compact={machine.status !== 'active' && machine.health_status !== 'healthy'}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
