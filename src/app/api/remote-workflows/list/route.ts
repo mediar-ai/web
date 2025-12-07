@@ -250,6 +250,7 @@ export async function GET(request: NextRequest) {
           typescript_metadata,
           tags,
           github_folder,
+          uuid,
           step_count
         `
         )
@@ -317,6 +318,7 @@ export async function GET(request: NextRequest) {
             typescript_metadata: cw.typescript_metadata,
             tags: cw.tags || [],
             github_folder: cw.github_folder,
+            uuid: cw.uuid,
             step_count: cw.step_count || 0,
           };
         });
@@ -545,6 +547,8 @@ export async function GET(request: NextRequest) {
             automationSequences[workflow.id]?.typescript_metadata,
           // UUID folder name for TypeScript workflows - used to identify cloud-only workflows
           github_folder: automationSequences[workflow.id]?.github_folder,
+          // Workflow UUID for zip download endpoint
+          uuid: automationSequences[workflow.id]?.uuid,
           // Step count from database (computed from automation_sequence or typescript_metadata)
           step_count: automationSequences[workflow.id]?.step_count || 0,
           // Add version-specific statistics as additional fields
