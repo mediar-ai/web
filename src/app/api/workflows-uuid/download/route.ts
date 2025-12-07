@@ -1,5 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { mapClerkIdToDbId } from '@/lib/orgIdMapping';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -7,28 +9,25 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Secure workflow download route
- * 
- * Supports two authentication methods:
- * 1. Clerk session (user-triggered workflows from dashboard)
- * 2. Machine service token (scheduled/API-triggered workflows)
- * 
+ *
+ * Supports three authentication methods:
+ * 1. Desktop token (desktop app - Bearer token from mediar_desktop_sessions)
+ * 2. Clerk session (user-triggered workflows from dashboard)
+ * 3. Machine service token (scheduled/API-triggered workflows)
+ *
  * Authentication flow:
- * - Try Clerk auth first (check for user session)
- * - If no session, check for service token in Authorization header
- * - Service token requires X-Organization-ID header to specify which org
- * 
- * Called by: MCP agent run_command tool (curl)
- * Example: 
- *   curl -H "Authorization: Bearer {service_token}" \
- *        -H "X-Organization-ID: org_abc123" \
- *        https://app.mediar.ai/api/workflows-uuid/download?uuid={uuid}
+ * - Try desktop token first (check mediar_desktop_sessions)
+ * - If not desktop token, try machine service token
+ * - If neither, try Clerk session auth
+ *
+ * Called by: Desktop app, MCP agent
  */
 export async function GET(req: NextRequest) {
   try {
     // Get UUID from query parameter
     const { searchParams } = new URL(req.url);
     const workflowUuid = searchParams.get('uuid');
-    
+
     if (!workflowUuid) {
       return NextResponse.json(
         { error: 'Missing uuid query parameter' },
@@ -37,31 +36,41 @@ export async function GET(req: NextRequest) {
     }
     const authHeader = req.headers.get('authorization');
     let authenticatedOrgId: string | null = null;
-    let authMethod: 'clerk' | 'service_token' = 'clerk';
+    let authMethod: 'clerk' | 'service_token' | 'desktop_token' = 'clerk';
 
-    // Check for Bearer token (service token OR could be Clerk)
+    // Check for Bearer token (desktop token, service token, or Clerk)
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const supabase = createServerClient();
 
-      // Try service token verification first
-      const { data: machines } = await supabase.rpc(
-        'verify_machine_service_token',
-        { p_service_token: token }
-      );
+      // Try desktop token validation first
+      const desktopValidation = await validateDesktopToken(token);
+      if (desktopValidation.valid && desktopValidation.orgId) {
+        authenticatedOrgId = desktopValidation.orgId;
+        authMethod = 'desktop_token';
+        console.log('Desktop token auth:', { email: desktopValidation.email, org_id: authenticatedOrgId });
+      }
 
-      if (machines && machines.length > 0) {
-        // Valid service token
-        const orgIdHeader = req.headers.get('x-organization-id');
-        if (!orgIdHeader) {
-          return NextResponse.json(
-            { error: 'Missing X-Organization-ID header', hint: 'Service token auth requires org ID' },
-            { status: 400 }
-          );
+      // If not desktop token, try service token verification
+      if (!authenticatedOrgId) {
+        const { data: machines } = await supabase.rpc(
+          'verify_machine_service_token',
+          { p_service_token: token }
+        );
+
+        if (machines && machines.length > 0) {
+          // Valid service token
+          const orgIdHeader = req.headers.get('x-organization-id');
+          if (!orgIdHeader) {
+            return NextResponse.json(
+              { error: 'Missing X-Organization-ID header', hint: 'Service token auth requires org ID' },
+              { status: 400 }
+            );
+          }
+          authenticatedOrgId = orgIdHeader;
+          authMethod = 'service_token';
+          console.log('Service token auth:', { machine: machines[0].machine_name, org_id: authenticatedOrgId });
         }
-        authenticatedOrgId = orgIdHeader;
-        authMethod = 'service_token';
-        console.log('Service token auth:', { machine: machines[0].machine_name, org_id: authenticatedOrgId });
       }
     }
 
@@ -96,12 +105,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Map Clerk org ID to database org ID (needed for dev environment)
+    const dbOrgId = mapClerkIdToDbId(authenticatedOrgId);
+
     // Check org has access to this workflow
     const supabase = createServerClient();
     const { data: hasAccess, error: accessError } = await supabase.rpc(
       'check_org_workflow_access',
       {
-        p_org_id: authenticatedOrgId,
+        p_org_id: dbOrgId,
         p_workflow_uuid: workflowUuid,
       }
     );
