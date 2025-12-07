@@ -607,18 +607,6 @@ export async function DELETE(
 
     const { workflowId } = await params;
     console.log('🚨 Workflow ID from params:', workflowId);
-    const workflowIdNum = parseInt(workflowId);
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
-
-    console.log(
-      `🔐 Delete request for workflow ${workflowIdNum} from user: ${authenticatedUserId}`
-    );
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -632,21 +620,61 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
-    const { data: workflow, error: fetchError } = await supabase
-      .from('deployed_workflows')
-      .select(
-        'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
-      )
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Get workflow info - support both numeric ID and UUID (github_folder)
+    const workflowIdNum = parseInt(workflowId);
+    let workflow: {
+      id: number;
+      name: string;
+      status: string;
+      created_by: string;
+      created_at: string;
+      github_folder: string | null;
+      github_path: string | null;
+      organization_id: string | null;
+      is_public: boolean | null;
+    } | null = null;
 
-    if (fetchError || !workflow) {
-      return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
-        { status: 404 }
-      );
+    if (isNaN(workflowIdNum)) {
+      // UUID - look up by github_folder (TypeScript workflow)
+      console.log(`🔍 Looking up workflow by github_folder: ${workflowId}`);
+      const { data, error } = await supabase
+        .from('deployed_workflows')
+        .select(
+          'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
+        )
+        .eq('github_folder', workflowId)
+        .single();
+
+      if (error || !data) {
+        return NextResponse.json(
+          { success: false, error: `Workflow with folder ${workflowId} not found` },
+          { status: 404 }
+        );
+      }
+      workflow = data;
+    } else {
+      // Numeric - look up by id
+      console.log(`🔍 Looking up workflow by numeric ID: ${workflowIdNum}`);
+      const { data, error } = await supabase
+        .from('deployed_workflows')
+        .select(
+          'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
+        )
+        .eq('id', workflowIdNum)
+        .single();
+
+      if (error || !data) {
+        return NextResponse.json(
+          { success: false, error: `Workflow ${workflowIdNum} not found` },
+          { status: 404 }
+        );
+      }
+      workflow = data;
     }
+
+    console.log(
+      `🔐 Delete request for workflow ${workflow.id} (${workflow.name}) from user: ${authenticatedUserId}`
+    );
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -668,7 +696,7 @@ export async function DELETE(
       const { data: orgAccess } = await supabase
         .from('workflow_organization_access')
         .select('access_level')
-        .eq('workflow_id', workflowIdNum)
+        .eq('workflow_id', workflow.id)
         .eq('organization_id', orgId)
         .single();
 
@@ -679,7 +707,7 @@ export async function DELETE(
     // Prevent deletion of public workflows (is_public = true) by non-Mediar users
     if (workflow.is_public && !isMediarOrgDelete && !isMediarAdminDelete) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} attempted to delete public workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} attempted to delete public workflow ${workflow.id}`
       );
       return NextResponse.json(
         {
@@ -703,7 +731,7 @@ export async function DELETE(
       !hasOrgAccess
     ) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized deletion for workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized deletion for workflow ${workflow.id}`
       );
       return NextResponse.json(
         {
@@ -715,14 +743,14 @@ export async function DELETE(
     }
 
     console.log(
-      `🔐 Authorization check passed - User ${authenticatedUserId} can delete workflow ${workflowIdNum}`
+      `🔐 Authorization check passed - User ${authenticatedUserId} can delete workflow ${workflow.id}`
     );
 
     // Check for any running or queued executions
     const { data: activeExecutions, error: executionsError } = await supabase
       .from('workflow_executions')
       .select('id, status')
-      .eq('workflow_id', workflowIdNum)
+      .eq('workflow_id', workflow.id)
       .in('status', ['running', 'queued']);
 
     if (executionsError) {
@@ -748,10 +776,10 @@ export async function DELETE(
     const { count: executionCount } = await supabase
       .from('workflow_executions')
       .select('*', { count: 'exact', head: true })
-      .eq('workflow_id', workflowIdNum);
+      .eq('workflow_id', workflow.id);
 
     console.log(
-      `🗑️ User ${authenticatedUserId} (${userEmail || 'unknown'}) deleting workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} historical executions`
+      `🗑️ User ${authenticatedUserId} (${userEmail || 'unknown'}) deleting workflow ${workflow.id} (${workflow.name}) with ${executionCount || 0} historical executions`
     );
 
     // Step 1: Delete from GitHub if workflow has github_path (fire-and-forget for faster response)
@@ -843,7 +871,7 @@ export async function DELETE(
       const { data: files } = await supabase
         .from('workflow_files')
         .select('storage_path')
-        .eq('workflow_id', workflowIdNum);
+        .eq('workflow_id', workflow.id);
 
       if (files && files.length > 0) {
         const storagePaths = files.map(f => f.storage_path);
@@ -878,7 +906,7 @@ export async function DELETE(
     // - Set workflow_id = NULL in workflow_executions (preserve execution history)
     // - Delete workflow from deployed_workflows (CASCADE cleans up other tables)
     console.log(
-      `📦 Archiving workflow ${workflowIdNum} (${workflow.name}) with ${executionCount || 0} executions`
+      `📦 Archiving workflow ${workflow.id} (${workflow.name}) with ${executionCount || 0} executions`
     );
 
     // Build archived_by string with user context (no email)
@@ -889,7 +917,7 @@ export async function DELETE(
     const { data: archiveResult, error: archiveError } = await supabase.rpc(
       'archive_workflow',
       {
-        p_workflow_id: workflowIdNum,
+        p_workflow_id: workflow.id,
         p_archived_by: archivedByStr,
         p_deletion_reason: `Manual deletion from UI (Danger Zone)`,
       }
@@ -908,7 +936,7 @@ export async function DELETE(
     }
 
     console.log(
-      `✅ Successfully archived workflow ${workflowIdNum} (${workflow.name})`
+      `✅ Successfully archived workflow ${workflow.id} (${workflow.name})`
     );
     console.log(`   Archive summary:`, archiveResult);
 
