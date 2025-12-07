@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
-import { restartVm, isAzureConfigured } from '@/lib/azure';
+import { stopVm, isAzureConfigured } from '@/lib/azure';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -15,8 +15,11 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
-  // Check authentication (optional - admin routes may have different auth)
+  // Check authentication
   const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   if (!supabase) {
     return NextResponse.json(
@@ -54,16 +57,16 @@ export async function POST(
       );
     }
 
-    // Restart the VM using the new Azure service
-    const result = await restartVm(machine.azure_resource_id);
+    // Stop the VM
+    const result = await stopVm(machine.azure_resource_id);
 
     // Record operation in database
     await supabase.from('machine_operations').insert({
       machine_id: machineId,
-      operation_type: 'restart',
+      operation_type: 'stop',
       operation_id: result.operationId,
       status: result.success ? 'running' : 'failed',
-      initiated_by: userId || 'admin',
+      initiated_by: userId,
       error_message: result.error,
       details: {
         vmName: result.vmName,
@@ -71,16 +74,13 @@ export async function POST(
       },
     });
 
-    // Update machine status and power state
+    // Update machine power state
     if (result.success) {
       await supabase
         .from('remote_machines')
         .update({
-          status: 'restarting',
-          power_state: 'starting',
+          power_state: 'stopping',
           power_state_updated_at: new Date().toISOString(),
-          update_status: null,
-          update_error: null,
         })
         .eq('id', machineId);
     }
@@ -88,7 +88,7 @@ export async function POST(
     if (!result.success) {
       return NextResponse.json(
         {
-          error: result.error || 'Restart failed',
+          error: result.error || 'Stop failed',
           operationId: result.operationId,
         },
         { status: 500 }
@@ -103,9 +103,8 @@ export async function POST(
       resourceGroup: result.resourceGroup,
     });
   } catch (error: unknown) {
-    console.error('[Restart VM] Error:', error);
-    const errorMessage =
-      error instanceof Error ? error.message : 'Restart failed';
+    console.error('[Stop VM] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Stop failed';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
