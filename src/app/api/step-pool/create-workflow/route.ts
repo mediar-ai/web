@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
       total_executions: 0,
       successful_executions: 0,
       failed_executions: 0,
+      step_count: steps.length, // Computed step count for list display
       average_duration_seconds: Math.round(
         steps.reduce((sum, s) => sum + (s.duration_ms || 0), 0) / 1000
       )
