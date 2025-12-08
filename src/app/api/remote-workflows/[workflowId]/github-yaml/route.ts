@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 // GET /api/remote-workflows/[workflowId]/github-yaml - Fetch YAML from GitHub
 export async function GET(
@@ -21,13 +22,10 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     // Get version from query params
     const { searchParams } = new URL(request.url);
     const versionNumber = searchParams.get('version');
-
-    console.log(`📄 Fetching GitHub YAML for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ''}`);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,6 +35,18 @@ export async function GET(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
+
+    console.log(`📄 Fetching GitHub YAML for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ''}`);
 
     // STEP 2: Get workflow info and verify authorization
     const { data: workflow, error: workflowError } = await supabase
