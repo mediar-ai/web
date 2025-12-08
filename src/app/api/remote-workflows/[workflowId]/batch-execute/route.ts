@@ -3,6 +3,7 @@ import fs from 'fs';
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 type JsonValue =
   | string
@@ -355,7 +356,6 @@ export async function POST(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
 
     const {
@@ -419,6 +419,16 @@ export async function POST(
       throw new Error('Supabase environment variables are not set');
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
 
     // Generate all unique parameter combinations
     // Fetch checkbox-list fields by analyzing automation sequence
