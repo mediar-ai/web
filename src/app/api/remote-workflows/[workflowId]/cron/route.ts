@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 /**
  * PATCH /api/remote-workflows/[workflowId]/cron - Toggle cron schedule
@@ -22,15 +23,6 @@ export async function PATCH(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
-
     const body = await request.json();
     const { enabled } = body;
 
@@ -40,8 +32,6 @@ export async function PATCH(
         { status: 400 }
       );
     }
-
-    console.log(`🔄 ${enabled ? 'Enabling' : 'Disabling'} cron schedule for workflow ${workflowIdNum}`);
 
     // Get environment variables and check them
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,19 +48,24 @@ export async function PATCH(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership (including auto-pause status)
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures'
+    );
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
+
+    console.log(`🔄 ${enabled ? 'Enabling' : 'Disabling'} cron schedule for workflow ${workflowIdNum}`);
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
@@ -219,15 +214,6 @@ export async function PUT(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
-
     const body = await request.json();
     const {
       cron_expression,
@@ -254,8 +240,6 @@ export async function PUT(
       );
     }
 
-    console.log(`📝 Updating cron configuration for workflow ${workflowIdNum}`);
-
     // Get environment variables and check them
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -271,19 +255,24 @@ export async function PUT(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership (including auto-pause status)
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures')
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, created_by, organization_id, is_public, cron_auto_paused, auto_paused_at, auto_pause_reason, consecutive_failures'
+    );
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
+
+    console.log(`📝 Updating cron configuration for workflow ${workflowIdNum}`);
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
@@ -421,14 +410,6 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
 
     // Get environment variables and check them
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -445,33 +426,22 @@ export async function GET(
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
-    const { data: workflow, error } = await supabase
-      .from('deployed_workflows')
-      .select(`
-        id,
-        name,
-        created_by,
-        organization_id,
-        cron_expression,
-        cron_timezone,
-        cron_enabled,
-        cron_executor_type,
-        last_scheduled_execution,
-        next_scheduled_execution,
-        cron_max_concurrent,
-        cron_retry_on_failure,
-        cron_retry_count
-      `)
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, created_by, organization_id, cron_expression, cron_timezone, cron_enabled, cron_executor_type, last_scheduled_execution, next_scheduled_execution, cron_max_concurrent, cron_retry_on_failure, cron_retry_count'
+    );
 
-    if (error || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: 'Workflow not found' },
+        { success: false, error: resolveResult.error || 'Workflow not found' },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
