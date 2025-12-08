@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,13 +30,6 @@ export async function PATCH(
     }
 
     const { workflowId: workflowIdStr } = await params;
-    const workflowId = parseInt(workflowIdStr);
-    if (isNaN(workflowId)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
 
     const body = await request.json();
     const { name, description } = body;
@@ -47,19 +41,22 @@ export async function PATCH(
       );
     }
 
-    // STEP 2: Get workflow ownership and verify authorization
-    const { data: workflowOwnership, error: ownershipError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, is_public')
-      .eq('id', workflowId)
-      .single();
+    // STEP 2: Resolve workflow ID and get ownership (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowIdStr,
+      'id, name, created_by, organization_id, is_public'
+    );
 
-    if (ownershipError || !workflowOwnership) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowId} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowIdStr} not found` },
         { status: 404 }
       );
     }
+
+    const workflowOwnership = resolveResult.workflow;
+    const workflowId = workflowOwnership.id;
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId, isWorkflowOwner } = await import('@/lib/mediarAuth');
