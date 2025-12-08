@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -231,8 +232,17 @@ export async function GET(
   }
 
   const { workflowId } = await params;
-  const workflowIdNum = parseInt(workflowId);
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Resolve workflow ID (supports both numeric ID and UUID)
+  const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+  if (resolveError || workflowIdNum === null) {
+    return NextResponse.json(
+      { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+      { status: 404 }
+    );
+  }
 
   const { data: workflow, error } = await supabase
     .from('workflow_statistics_summary')
