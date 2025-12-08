@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Server, RefreshCw, Plus, Activity, Eye, EyeOff } from 'lucide-react';
+import { Server, RefreshCw, Plus, Activity, Eye, EyeOff, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { MachineCard } from '@/components/admin/MachineCard';
+import { ProvisionVmDialog } from '@/components/admin/ProvisionVmDialog';
 
 interface Machine {
   id: number;
@@ -36,6 +37,7 @@ export default function AdminMachinesPage() {
     terraform_key: '',
   });
   const [adding, setAdding] = useState(false);
+  const [showProvisionDialog, setShowProvisionDialog] = useState(false);
 
   const fetchMachines = useCallback(async () => {
     try {
@@ -161,8 +163,17 @@ export default function AdminMachinesPage() {
             {showInactive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
           <button
+            onClick={() => setShowProvisionDialog(true)}
+            className="flex items-center gap-2 px-3 py-2 border-2 border-black bg-black text-white font-mono text-sm hover:bg-white hover:text-black transition-colors"
+            title="Provision new Azure VM"
+          >
+            <Zap className="w-4 h-4" />
+            PROVISION
+          </button>
+          <button
             onClick={() => setShowAddMachine(!showAddMachine)}
             className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
+            title="Register existing machine"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -314,6 +325,13 @@ export default function AdminMachinesPage() {
           </div>
         </>
       )}
+
+      {/* Provision VM Dialog */}
+      <ProvisionVmDialog
+        isOpen={showProvisionDialog}
+        onClose={() => setShowProvisionDialog(false)}
+        onSuccess={fetchMachines}
+      />
     </div>
   );
 }
