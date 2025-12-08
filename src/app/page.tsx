@@ -13,6 +13,8 @@ import Link from 'next/link';
 // Homepage components
 import PricingSection from '@/components/homepage/PricingSection';
 import { FreeEligibilitySurveyModal } from '@/components/homepage/FreeEligibilitySurveyModal';
+import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { useOnboarding } from '@/hooks/useOnboarding';
 
 // Mediar icon SVG component
 const MediarIcon = ({ className = 'w-16 h-16' }: { className?: string }) => (
@@ -70,6 +72,10 @@ function HomePageContent() {
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showFreeEligibilityModal, setShowFreeEligibilityModal] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+
+  // Onboarding state
+  const { shouldShowOnboarding, isLoading: isOnboardingLoading } = useOnboarding();
 
   // Get token from Stripe redirect for validation
   const purchaseToken = searchParams.get('token');
@@ -86,6 +92,17 @@ function HomePageContent() {
     const answered = localStorage.getItem('referral_source_answered');
     setHasAnsweredSource(!!answered);
   }, []);
+
+  // Show onboarding modal when appropriate
+  useEffect(() => {
+    if (!isOnboardingLoading && shouldShowOnboarding && !checkingPurchase) {
+      // Small delay to let the page render first
+      const timer = setTimeout(() => {
+        setShowOnboardingModal(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isOnboardingLoading, shouldShowOnboarding, checkingPurchase]);
 
   // Auto-set the first organization if user has no active org
   useEffect(() => {
@@ -225,6 +242,17 @@ function HomePageContent() {
             <h1 className="text-4xl font-bold text-black mb-8 font-mono">
               Welcome to Mediar Beta!
             </h1>
+            {/* DEV ONLY: Force show onboarding */}
+            {process.env.NODE_ENV === 'development' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowOnboardingModal(true)}
+                className="mb-4 text-xs"
+              >
+                [DEV] Show Onboarding
+              </Button>
+            )}
           </div>
 
           {/* Pricing section for unpaid users */}
@@ -425,6 +453,12 @@ function HomePageContent() {
         isOpen={showFreeEligibilityModal}
         onOpenChange={setShowFreeEligibilityModal}
         onSurveyComplete={handleFreeEligibilitySurveyComplete}
+      />
+
+      {/* Onboarding Modal */}
+      <OnboardingModal
+        isOpen={showOnboardingModal}
+        onOpenChange={setShowOnboardingModal}
       />
     </div>
   );
