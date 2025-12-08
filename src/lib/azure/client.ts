@@ -5,12 +5,12 @@
 
 import { ComputeManagementClient } from '@azure/arm-compute';
 import { NetworkManagementClient } from '@azure/arm-network';
-import { DefaultAzureCredential } from '@azure/identity';
+import { ClientSecretCredential, DefaultAzureCredential, type TokenCredential } from '@azure/identity';
 
 // Singleton instances
 let computeClient: ComputeManagementClient | null = null;
 let networkClient: NetworkManagementClient | null = null;
-let credential: DefaultAzureCredential | null = null;
+let credential: TokenCredential | null = null;
 
 /**
  * Get the Azure subscription ID from environment
@@ -27,16 +27,26 @@ export function getSubscriptionId(): string {
 }
 
 /**
- * Get or create the DefaultAzureCredential
+ * Get or create the Azure credential
  *
- * Uses DefaultAzureCredential which supports:
- * - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
- * - Managed Identity (when running in Azure)
- * - Azure CLI credentials (for local development)
+ * Uses ClientSecretCredential if environment variables are set,
+ * otherwise falls back to DefaultAzureCredential for local development.
  */
-export function getAzureCredential(): DefaultAzureCredential {
+export function getAzureCredential(): TokenCredential {
   if (!credential) {
-    credential = new DefaultAzureCredential();
+    const clientId = process.env.AZURE_CLIENT_ID;
+    const clientSecret = process.env.AZURE_CLIENT_SECRET;
+    const tenantId = process.env.AZURE_TENANT_ID;
+
+    if (clientId && clientSecret && tenantId) {
+      // Use explicit ClientSecretCredential for reliability on Vercel
+      console.log('[Azure] Using ClientSecretCredential (service principal)');
+      credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+    } else {
+      // Fall back to DefaultAzureCredential for local dev (Azure CLI)
+      console.log('[Azure] Using DefaultAzureCredential (local dev mode)');
+      credential = new DefaultAzureCredential();
+    }
   }
   return credential;
 }
