@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,10 +69,20 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
 
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
     const { data: sessions, error } = await supabase
       .from('workflow_chat_sessions')
       .select('id, redis_session_id, title, message_count, created_at, updated_at')
-      .eq('workflow_id', parseInt(workflowId))
+      .eq('workflow_id', workflowIdNum)
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
 
@@ -121,6 +132,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
 
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, String(workflowId));
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
     // Check if session already exists
     const { data: existing } = await supabase
       .from('workflow_chat_sessions')
@@ -151,7 +172,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('workflow_chat_sessions')
         .insert({
-          workflow_id: parseInt(workflowId),
+          workflow_id: workflowIdNum,
           user_id: userId,
           redis_session_id: redisSessionId,
           messages: messages || [],
