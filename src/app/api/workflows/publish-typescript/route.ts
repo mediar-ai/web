@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     let workflowId: number;
+    const updatedAt = new Date().toISOString();
 
     if (existingWorkflow) {
       // Verify ownership
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
           name,
           description: description || metadata.description,
           step_count: metadata.steps?.length || 0,
-          updated_at: new Date().toISOString(),
+          updated_at: updatedAt,
         })
         .eq('id', workflowId);
 
@@ -175,6 +176,7 @@ export async function POST(request: NextRequest) {
       workflow_id: workflowId,
       version: newVersionNumber,
       step_count: metadata.steps?.length || 0,
+      updated_at: updatedAt,
     });
 
   } catch (error) {
