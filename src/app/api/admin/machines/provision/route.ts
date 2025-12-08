@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import {
   provisionVm,
@@ -8,15 +8,6 @@ import {
   getAvailableRegions,
 } from '@/lib/azure/vm-provisioning';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Supabase environment variables are not set');
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Default Mediar organization ID for new VMs
 const DEFAULT_ORG_ID = MEDIAR_ORG_IDS[0];
@@ -46,11 +37,29 @@ export async function GET() {
       );
     }
 
-    // Get organizations for the dropdown
-    const { data: organizations } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .order('name');
+    // Get all organizations from Clerk (paginated)
+    const clerk = await clerkClient();
+    const allOrganizations = [];
+    let hasMore = true;
+    let offset = 0;
+    const limit = 100;
+
+    while (hasMore) {
+      const clerkOrganizations = await clerk.organizations.getOrganizationList({
+        limit,
+        offset,
+      });
+
+      allOrganizations.push(...clerkOrganizations.data);
+      hasMore = clerkOrganizations.data.length === limit;
+      offset += limit;
+    }
+
+    // Transform Clerk organizations
+    const organizations = allOrganizations.map(org => ({
+      id: org.id,
+      name: org.name,
+    }));
 
     return NextResponse.json({
       success: true,
@@ -61,7 +70,7 @@ export async function GET() {
         defaultRegion: 'eastus',
         defaultOrganizationId: DEFAULT_ORG_ID,
       },
-      organizations: organizations || [],
+      organizations,
       costEstimate: getEstimatedMonthlyCost('Standard_D4s_v3'),
     });
   } catch (error) {
@@ -104,12 +113,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Validate required fields
-    if (!body.name || !body.customer) {
+    // Validate required fields - only name is required now
+    if (!body.name) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields: name and customer are required',
+          error: 'Missing required field: name',
         },
         { status: 400 }
       );
@@ -126,7 +135,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Provision API] Starting VM provision: ${body.name} for ${body.customer}`);
+    // Use organization name as customer if provided, otherwise use 'mediar'
+    let customerName = 'mediar';
+    if (body.organizationId) {
+      try {
+        const clerk = await clerkClient();
+        const org = await clerk.organizations.getOrganization({ organizationId: body.organizationId });
+        customerName = org.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+      } catch {
+        // Use default if org lookup fails
+      }
+    }
+
+    console.log(`[Provision API] Starting VM provision: ${body.name} for ${customerName}`);
 
     // Get cost estimate for confirmation
     const costEstimate = getEstimatedMonthlyCost(body.vmSize || 'Standard_D4s_v3');
@@ -134,7 +155,7 @@ export async function POST(request: NextRequest) {
     // Provision the VM
     const result = await provisionVm({
       name: body.name,
-      customer: body.customer,
+      customer: customerName,
       organizationId: body.organizationId || DEFAULT_ORG_ID,
       location: body.location,
       vmSize: body.vmSize,
@@ -153,6 +174,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Register the VM in Supabase
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     console.log(`[Provision API] Registering VM in Supabase: ${result.vmId}`);
 
     const { data: machine, error: dbError } = await supabase.rpc(

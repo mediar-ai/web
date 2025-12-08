@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Server, DollarSign, AlertTriangle, Check, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Server, DollarSign, AlertTriangle, Check, Loader2, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ProvisionOptions {
   vmSizes: { id: string; name: string; monthlyCost: number }[];
@@ -45,10 +52,10 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [provisioning, setProvisioning] = useState(false);
   const [progress, setProgress] = useState<ProvisioningStep[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
-    customer: '',
     vmSize: 'Standard_D4s_v3',
     location: 'eastus',
     organizationId: '',
@@ -67,6 +74,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       // Reset state when dialog closes
       setProgress([]);
       setProvisioning(false);
+      setSearchTerm('');
     }
   }, [isOpen]);
 
@@ -89,7 +97,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
         toast.error('Failed to load provisioning options');
         onClose();
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load provisioning options');
       onClose();
     } finally {
@@ -115,8 +123,8 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
   const handleProvision = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.customer) {
-      toast.error('VM name and customer are required');
+    if (!formData.name) {
+      toast.error('VM name is required');
       return;
     }
 
@@ -161,35 +169,47 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
         setProvisioning(false);
         setProgress([]);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to provision VM');
       setProvisioning(false);
       setProgress([]);
     }
   };
 
-  if (!isOpen) return null;
+  // Filter and sort organizations
+  const filteredOrganizations = useMemo(() => {
+    return organizations
+      .filter(org => {
+        const searchLower = searchTerm.toLowerCase().trim();
+        if (!searchLower) return true;
+        return (
+          org.name.toLowerCase().includes(searchLower) ||
+          org.id.toLowerCase().includes(searchLower)
+        );
+      })
+      .sort((a, b) => {
+        // Selected first, then alphabetically
+        const aSelected = a.id === formData.organizationId;
+        const bSelected = b.id === formData.organizationId;
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [organizations, searchTerm, formData.organizationId]);
+
+  const selectedOrgName = organizations.find(o => o.id === formData.organizationId)?.name || 'None';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white border-2 border-black w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-black text-white px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && !provisioning && onClose()}>
+      <DialogContent className="max-w-lg border-2 border-black">
+        <DialogHeader className="border-b border-gray-200 pb-4">
+          <DialogTitle className="text-xl font-mono font-bold flex items-center gap-2">
             <Server className="w-5 h-5" />
-            <span className="font-mono font-bold">PROVISION NEW VM</span>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={provisioning}
-            className="p-1 hover:bg-white hover:text-black transition-colors disabled:opacity-50"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+            PROVISION NEW VM
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="p-4">
+        <div className="py-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -205,7 +225,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
               </div>
 
               <div className="space-y-2">
-                {progress.map((step, i) => (
+                {progress.map((step) => (
                   <div
                     key={step.step}
                     className={`flex items-center gap-3 p-2 border ${
@@ -260,21 +280,6 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
                 </p>
               </div>
 
-              {/* Customer */}
-              <div>
-                <label className="block font-mono text-xs text-gray-600 uppercase mb-1">
-                  Customer *
-                </label>
-                <input
-                  type="text"
-                  value={formData.customer}
-                  onChange={e => setFormData({ ...formData, customer: e.target.value })}
-                  className="w-full px-3 py-2 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                  placeholder="e.g., ExampleClient"
-                  required
-                />
-              </div>
-
               {/* VM Size */}
               <div>
                 <label className="block font-mono text-xs text-gray-600 uppercase mb-1">
@@ -311,23 +316,61 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
                 </select>
               </div>
 
-              {/* Organization */}
+              {/* Organization with Search */}
               <div>
                 <label className="block font-mono text-xs text-gray-600 uppercase mb-1">
                   Organization (for access)
                 </label>
-                <select
-                  value={formData.organizationId}
-                  onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
-                  className="w-full px-3 py-2 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                >
-                  <option value="">No organization</option>
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="border-2 border-black">
+                  {/* Search Input */}
+                  <div className="relative border-b border-gray-200">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search organizations..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2 font-mono text-sm focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Selected org display */}
+                  <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 font-mono text-sm flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    <span>Selected: <strong>{selectedOrgName}</strong></span>
+                  </div>
+
+                  {/* Organization List */}
+                  <ScrollArea className="h-[150px]">
+                    <div className="p-2 space-y-1">
+                      {filteredOrganizations.map(org => (
+                        <button
+                          key={org.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, organizationId: org.id })}
+                          className={`w-full text-left px-3 py-2 font-mono text-sm transition-colors ${
+                            formData.organizationId === org.id
+                              ? 'bg-black text-white'
+                              : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>{org.name}</span>
+                            {formData.organizationId === org.id && (
+                              <Check className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div className="text-xs opacity-60 truncate">{org.id}</div>
+                        </button>
+                      ))}
+                      {filteredOrganizations.length === 0 && (
+                        <div className="text-center py-4 text-gray-500 font-mono text-sm">
+                          No organizations found
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
               </div>
 
               {/* Cost Estimate */}
@@ -380,7 +423,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
             </form>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
