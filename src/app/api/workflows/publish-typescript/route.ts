@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     let workflowId: number;
-    const updatedAt = new Date().toISOString();
+    let actualUpdatedAt: string;
 
     if (existingWorkflow) {
       // Verify ownership
@@ -86,20 +86,34 @@ export async function POST(request: NextRequest) {
       console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
 
       // Update workflow metadata including step_count from typescript metadata
-      await supabase
+      // Select back updated_at to get the actual DB timestamp
+      const { data: updatedWorkflow, error: updateError } = await supabase
         .from('deployed_workflows')
         .update({
           name,
           description: description || metadata.description,
           step_count: metadata.steps?.length || 0,
-          updated_at: updatedAt,
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', workflowId);
+        .eq('id', workflowId)
+        .select('updated_at')
+        .single();
+
+      if (updateError || !updatedWorkflow) {
+        console.error('❌ Failed to update workflow:', updateError);
+        return NextResponse.json(
+          { success: false, error: `Failed to update workflow: ${updateError?.message}` },
+          { status: 500 }
+        );
+      }
+
+      actualUpdatedAt = updatedWorkflow.updated_at;
 
     } else {
       // Create new workflow
       console.log(`🆕 Creating new workflow: "${name}" with github_folder: ${folder_id}`);
 
+      const now = new Date().toISOString();
       const { data: newWorkflow, error: createError } = await supabase
         .from('deployed_workflows')
         .insert({
@@ -113,8 +127,9 @@ export async function POST(request: NextRequest) {
           status: 'draft',
           step_count: metadata.steps?.length || 0,
           automation_sequence: {}, // Empty object for TypeScript workflows (loaded from GitHub)
+          updated_at: now, // Explicitly set updated_at for new workflows
         })
-        .select('id')
+        .select('id, updated_at')
         .single();
 
       if (createError || !newWorkflow) {
@@ -126,6 +141,7 @@ export async function POST(request: NextRequest) {
       }
 
       workflowId = newWorkflow.id;
+      actualUpdatedAt = newWorkflow.updated_at;
       console.log(`✅ Created workflow with ID: ${workflowId}`);
     }
 
@@ -176,7 +192,7 @@ export async function POST(request: NextRequest) {
       workflow_id: workflowId,
       version: newVersionNumber,
       step_count: metadata.steps?.length || 0,
-      updated_at: updatedAt,
+      updated_at: actualUpdatedAt,
     });
 
   } catch (error) {
