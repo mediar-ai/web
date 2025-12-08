@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 export async function POST(
   request: NextRequest,
@@ -19,16 +20,6 @@ export async function POST(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
-    console.log('Resume API called with workflowId:', workflowId, 'parsed:', workflowIdNum);
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
 
     // Initialize Supabase with service key to bypass RLS
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -39,6 +30,18 @@ export async function POST(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
+
+    console.log('Resume API called with workflowId:', workflowId, 'resolved to:', workflowIdNum);
 
     // STEP 2: Get workflow info and verify ownership
     console.log('Querying database for workflow ID:', workflowIdNum);
