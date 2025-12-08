@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import yaml from 'js-yaml';
 import { parseTypeScriptWorkflow } from '@/lib/typescript-workflow-parser';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 // GET /api/remote-workflows/[workflowId]/steps - Extract step IDs from workflow (YAML or JSONB)
 export async function GET(
@@ -22,15 +23,10 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     // Get version from query params
     const { searchParams } = new URL(request.url);
     const versionNumber = searchParams.get('version');
-
-    console.log(
-      `🔍 Extracting steps for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ''}`
-    );
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -41,21 +37,26 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow ownership data and verify authorization
-    const { data: workflowOwnership, error: ownershipError } = await supabase
-      .from('deployed_workflows')
-      .select(
-        'id, name, created_by, organization_id, preferred_format, typescript_metadata, github_folder'
-      )
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, created_by, organization_id, preferred_format, typescript_metadata, github_folder'
+    );
 
-    if (ownershipError || !workflowOwnership) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: 'Workflow not found' },
+        { success: false, error: resolveResult.error || 'Workflow not found' },
         { status: 404 }
       );
     }
+
+    const workflowOwnership = resolveResult.workflow;
+    const workflowIdNum = workflowOwnership.id;
+
+    console.log(
+      `🔍 Extracting steps for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ''}`
+    );
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -108,9 +109,11 @@ export async function GET(
       console.log(`[TypeScript] Handling TypeScript workflow ${workflowIdNum}`);
 
       // Check for cached metadata first
-      if (workflowOwnership.typescript_metadata?.steps?.length > 0) {
-        const steps = workflowOwnership.typescript_metadata.steps.map(
-          (step: any, index: number) => ({
+      const tsMetadata = workflowOwnership.typescript_metadata;
+      const tsSteps = tsMetadata?.steps;
+      if (tsSteps && tsSteps.length > 0) {
+        const steps = tsSteps.map(
+          (step: { id?: string; name?: string; description?: string; type?: string }, index: number) => ({
             id: step.id || `step_${index}`,
             name: step.name || `Step ${index + 1}`,
             description: step.description,
