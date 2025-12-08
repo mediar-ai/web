@@ -52,17 +52,17 @@ export function SocialFollowCard({
       onClick={handleClick}
       disabled={completed}
       className={cn(
-        'w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200',
+        'w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all duration-200',
         completed
-          ? 'border-white/20 bg-white/10 cursor-default'
-          : 'border-white/10 hover:border-white/30 hover:bg-white/5 cursor-pointer'
+          ? 'border-black bg-gray-50 cursor-default'
+          : 'border-gray-200 hover:border-black hover:bg-gray-50 cursor-pointer'
       )}
     >
       <div className="flex items-center gap-3">
         <div
           className={cn(
             'w-10 h-10 rounded-lg flex items-center justify-center',
-            completed ? 'bg-white text-black' : 'bg-white/10 text-white'
+            completed ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'
           )}
         >
           {completed ? <Check className="w-5 h-5" /> : icon}
@@ -70,7 +70,7 @@ export function SocialFollowCard({
         <span
           className={cn(
             'font-mono text-sm',
-            completed ? 'text-gray-400 line-through' : 'text-white'
+            completed ? 'text-gray-500 line-through' : 'text-black'
           )}
         >
           {label}
@@ -80,7 +80,7 @@ export function SocialFollowCard({
       <span
         className={cn(
           'font-mono text-sm font-medium transition-all duration-300',
-          completed ? 'text-green-400' : 'text-white',
+          completed ? 'text-green-600' : 'text-black',
           showCredits && 'animate-pulse scale-110'
         )}
       >

@@ -68,7 +68,6 @@ function HomePageContent() {
   const posthog = usePostHog();
   const [hasPurchased, setHasPurchased] = useState<boolean | null>(null);
   const [checkingPurchase, setCheckingPurchase] = useState(true);
-  const [hasAnsweredSource, setHasAnsweredSource] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showFreeEligibilityModal, setShowFreeEligibilityModal] = useState(false);
@@ -86,12 +85,6 @@ function HomePageContent() {
       router.push('/sign-in');
     }
   }, [isLoaded, userId, router]);
-
-  // Check if user has already answered referral source
-  useEffect(() => {
-    const answered = localStorage.getItem('referral_source_answered');
-    setHasAnsweredSource(!!answered);
-  }, []);
 
   // Show onboarding modal when appropriate
   useEffect(() => {
@@ -407,44 +400,6 @@ function HomePageContent() {
             </Card>
           </div>
 
-          {/* How did you hear about us */}
-          {!hasAnsweredSource && (
-            <div className="mt-8 text-center relative z-50">
-              <label className="text-xs font-mono text-gray-600 uppercase block mb-2">
-                How did you hear about us?
-              </label>
-              <select
-                className="w-64 mx-auto block border-2 border-black p-2 font-mono text-sm relative z-50"
-                onChange={e => {
-                  if (e.target.value) {
-                    localStorage.setItem(
-                      'referral_source_answered',
-                      e.target.value
-                    );
-                    localStorage.setItem(
-                      'referral_source_date',
-                      new Date().toISOString()
-                    );
-                    posthog?.capture('referral_source_selected', {
-                      source: e.target.value,
-                      user_id: userId,
-                      timestamp: new Date().toISOString(),
-                    });
-                    setHasAnsweredSource(true);
-                  }
-                }}
-              >
-                <option value="">Select...</option>
-                <option value="twitter">Twitter/X</option>
-                <option value="linkedin">LinkedIn</option>
-                <option value="hackernews">Hacker News</option>
-                <option value="producthunt">Product Hunt</option>
-                <option value="friend">Friend/Colleague</option>
-                <option value="google">Google Search</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          )}
         </div>
       </div>
 
