@@ -6,6 +6,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 // Validation helper functions
 interface ValidationResult {
@@ -221,8 +222,31 @@ export async function POST(
 
     const startTime = Date.now();
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
+
+    // Early Supabase setup for ID resolution
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: resolveError || `Workflow ${workflowId} not found`,
+          execution_id: null,
+        },
+        { status: 404 }
+      );
+    }
 
     // Extract detailed response preference from URL query params or request body
     const { searchParams } = new URL(request.url);
@@ -287,16 +311,6 @@ export async function POST(
       `🔍 Full detailed response requested: ${full_detailed_response}`
     );
     console.log(`🚀 Executor type: ${executor_type}`);
-
-    // Initialize Supabase client
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase environment variables are not set');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // STEP 2: Check if workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
