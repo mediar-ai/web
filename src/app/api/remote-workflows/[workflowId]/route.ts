@@ -4,6 +4,7 @@ import { cacheResponse } from '@/lib/responseCache';
 import { auth } from '@clerk/nextjs/server';
 import { workflowLoader } from '@/lib/workflow-loader';
 import { Octokit } from '@octokit/rest';
+import { getNumericWorkflowId, resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 // Simple test endpoint
 export async function POST(
@@ -66,7 +67,33 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
+
+    // Get status from Supabase (metadata is always in Supabase)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      const errorResponse = {
+        success: false,
+        error: resolveError || `Workflow ${workflowId} not found`,
+        timestamp: new Date().toISOString(),
+      };
+
+      await cacheResponse({
+        endpointPath: '/api/remote-workflows/[workflowId]',
+        httpMethod: 'GET',
+        statusCode: 404,
+        responseBody: errorResponse,
+        requestParams: { workflowId },
+        executionTimeMs: 25,
+      });
+
+      return NextResponse.json(errorResponse, { status: 404 });
+    }
 
     // Use the new workflow loader with GitHub priority
     const loadedWorkflow = await workflowLoader.loadWorkflow(workflowIdNum);
@@ -78,7 +105,6 @@ export async function GET(
         timestamp: new Date().toISOString(),
       };
 
-      // Cache the error response for documentation
       await cacheResponse({
         endpointPath: '/api/remote-workflows/[workflowId]',
         httpMethod: 'GET',
@@ -90,11 +116,6 @@ export async function GET(
 
       return NextResponse.json(errorResponse, { status: 404 });
     }
-
-    // Get status from Supabase (metadata is always in Supabase)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
 
     // STEP 2: Get workflow ownership data and verify authorization
     const { data: workflowOwnership, error: ownershipError } = await supabase
@@ -329,15 +350,7 @@ export async function PATCH(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
-
-    if (isNaN(workflowIdNum)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
-      );
-    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -351,19 +364,22 @@ export async function PATCH(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, created_by, organization_id, is_public, github_path')
-      .eq('id', workflowIdNum)
-      .single();
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, created_by, organization_id, is_public, github_path'
+    );
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -620,22 +636,21 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info by UUID (github_folder)
-    console.log(`🔍 Looking up workflow by UUID (github_folder): ${workflowId}`);
-    const { data: workflow, error } = await supabase
-      .from('deployed_workflows')
-      .select(
-        'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
-      )
-      .eq('github_folder', workflowId)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
+    );
 
-    if (error || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow with UUID ${workflowId} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
 
     console.log(
       `🔐 Delete request for workflow ${workflow.id} (${workflow.name}) from user: ${authenticatedUserId}`
