@@ -6,6 +6,7 @@ import {
   getEstimatedMonthlyCost,
   getAvailableVmSizes,
   getAvailableRegions,
+  testImageListing,
 } from '@/lib/azure/vm-provisioning';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
@@ -61,6 +62,9 @@ export async function GET() {
       name: org.name,
     }));
 
+    // Run Azure diagnostic
+    const azureDiagnostic = await testImageListing();
+
     return NextResponse.json({
       success: true,
       options: {
@@ -72,6 +76,7 @@ export async function GET() {
       },
       organizations,
       costEstimate: getEstimatedMonthlyCost('Standard_D4s_v3'),
+      azureDiagnostic,
     });
   } catch (error) {
     console.error('[Provision API] GET failed:', error);

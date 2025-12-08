@@ -71,36 +71,35 @@ async function getLatestPackerImage(
   const imageRg = DEFAULT_VM_CONFIG.imageResourceGroup;
   const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
 
-  console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg} (subscription: ${subscriptionId})`);
+  console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg}`);
+  console.log(`[VM Provision] Subscription ID: ${subscriptionId}`);
 
   try {
-    // Use array to collect all images first
-    const allImages = [];
-    const iterator = computeClient.images.listByResourceGroup(imageRg);
+    // Use byPage() for more reliable pagination in serverless environments
+    const allImages: Array<{ name?: string }> = [];
+    const paginator = computeClient.images.listByResourceGroup(imageRg).byPage();
 
-    // Manually iterate to catch any errors
-    try {
-      let result = await iterator.next();
-      while (!result.done) {
-        allImages.push(result.value);
-        result = await iterator.next();
-      }
-    } catch (iterError) {
-      console.error('[VM Provision] Iterator error:', iterError);
-      throw iterError;
+    console.log('[VM Provision] Starting paginated image list...');
+
+    for await (const page of paginator) {
+      console.log(`[VM Provision] Got page with ${page.length} images`);
+      allImages.push(...page);
     }
 
-    console.log(`[VM Provision] Found ${allImages.length} total images in ${imageRg}`);
+    console.log(`[VM Provision] Total images found: ${allImages.length}`);
 
-    // Filter and process matching images
-    const images: { name: string; id: string; timestamp: Date }[] = [];
+    if (allImages.length === 0) {
+      console.error('[VM Provision] No images returned from Azure API');
+      console.error('[VM Provision] This may indicate a permissions issue');
+      return null;
+    }
+
+    // Filter for matching prefix
+    const matchingImages: { name: string; id: string; timestamp: Date }[] = [];
 
     for (const image of allImages) {
-      console.log(`[VM Provision] Checking image: ${image.name}`);
       if (image.name?.startsWith(prefix)) {
-        // Extract timestamp from image name (e.g., mcp-full-20251207-050456)
         const timestampStr = image.name.replace(prefix, '');
-        // Handle format: 20251207-050456 (date-time with dash separator)
         const timestamp = new Date(
           timestampStr.replace(
             /(\d{4})(\d{2})(\d{2})-?(\d{2})(\d{2})(\d{2})/,
@@ -108,7 +107,7 @@ async function getLatestPackerImage(
           )
         );
 
-        images.push({
+        matchingImages.push({
           name: image.name,
           id: `/subscriptions/${subscriptionId}/resourceGroups/${imageRg}/providers/Microsoft.Compute/images/${image.name}`,
           timestamp: isNaN(timestamp.getTime()) ? new Date(0) : timestamp,
@@ -116,28 +115,28 @@ async function getLatestPackerImage(
       }
     }
 
-    console.log(`[VM Provision] Matching images: ${images.length}`);
+    console.log(`[VM Provision] Matching images with prefix '${prefix}': ${matchingImages.length}`);
 
-    if (images.length === 0) {
-      console.error(`[VM Provision] No images found with prefix '${prefix}' out of ${allImages.length} total`);
-      // Log first few image names for debugging
-      console.error(`[VM Provision] Sample images: ${allImages.slice(0, 5).map(i => i.name).join(', ')}`);
+    if (matchingImages.length === 0) {
+      console.error(`[VM Provision] No images with prefix '${prefix}' found`);
+      console.error(`[VM Provision] Sample image names: ${allImages.slice(0, 5).map(i => i.name).join(', ')}`);
       return null;
     }
 
-    // Sort by timestamp descending and get the latest
-    images.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    const latest = images[0];
+    // Sort by timestamp descending
+    matchingImages.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    const latest = matchingImages[0];
 
-    console.log(`[VM Provision] Using image: ${latest.name}`);
+    console.log(`[VM Provision] Selected latest image: ${latest.name}`);
     return { id: latest.id, name: latest.name };
   } catch (error) {
-    console.error('[VM Provision] Failed to list images:', error);
-    // Log more details
+    console.error('[VM Provision] Error listing images:', error);
     if (error instanceof Error) {
-      console.error('[VM Provision] Error name:', error.name);
-      console.error('[VM Provision] Error message:', error.message);
-      console.error('[VM Provision] Error stack:', error.stack);
+      console.error('[VM Provision] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+      });
     }
     return null;
   }
@@ -421,6 +420,63 @@ export async function provisionVm(
         location,
         vmSize,
       },
+    };
+  }
+}
+
+/**
+ * Test Azure image listing (diagnostic)
+ */
+export async function testImageListing(): Promise<{
+  success: boolean;
+  subscriptionId: string;
+  resourceGroup: string;
+  totalImages: number;
+  matchingImages: number;
+  sampleImages: string[];
+  latestImage: string | null;
+  error?: string;
+}> {
+  const subscriptionId = getSubscriptionId();
+  const credential = getAzureCredential();
+  const computeClient = new ComputeManagementClient(credential, subscriptionId);
+  const imageRg = DEFAULT_VM_CONFIG.imageResourceGroup;
+  const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
+
+  try {
+    const allImages: Array<{ name?: string }> = [];
+    const paginator = computeClient.images.listByResourceGroup(imageRg).byPage();
+
+    for await (const page of paginator) {
+      allImages.push(...page);
+    }
+
+    const matchingImages = allImages.filter(img => img.name?.startsWith(prefix));
+
+    // Sort to get latest
+    const sorted = matchingImages
+      .filter((img): img is { name: string } => !!img.name)
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    return {
+      success: true,
+      subscriptionId,
+      resourceGroup: imageRg,
+      totalImages: allImages.length,
+      matchingImages: matchingImages.length,
+      sampleImages: allImages.slice(0, 5).map(i => i.name || '(no name)'),
+      latestImage: sorted[0]?.name || null,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      subscriptionId,
+      resourceGroup: imageRg,
+      totalImages: 0,
+      matchingImages: 0,
+      sampleImages: [],
+      latestImage: null,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
