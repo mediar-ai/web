@@ -71,18 +71,22 @@ async function getLatestPackerImage(
   const imageRg = DEFAULT_VM_CONFIG.imageResourceGroup;
   const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
 
-  console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg}`);
+  console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg} (subscription: ${subscriptionId})`);
 
   try {
     const images: { name: string; id: string; timestamp: Date }[] = [];
+    let totalImages = 0;
 
     for await (const image of computeClient.images.listByResourceGroup(imageRg)) {
+      totalImages++;
+      console.log(`[VM Provision] Found image: ${image.name}`);
       if (image.name?.startsWith(prefix)) {
-        // Extract timestamp from image name (e.g., mcp-full-20241201123456)
+        // Extract timestamp from image name (e.g., mcp-full-20241201-123456)
         const timestampStr = image.name.replace(prefix, '');
+        // Handle format: 20251207-050456 (date-time with dash separator)
         const timestamp = new Date(
           timestampStr.replace(
-            /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/,
+            /(\d{4})(\d{2})(\d{2})-?(\d{2})(\d{2})(\d{2})/,
             '$1-$2-$3T$4:$5:$6Z'
           )
         );
@@ -95,8 +99,10 @@ async function getLatestPackerImage(
       }
     }
 
+    console.log(`[VM Provision] Total images in RG: ${totalImages}, matching prefix: ${images.length}`);
+
     if (images.length === 0) {
-      console.error(`[VM Provision] No images found with prefix '${prefix}'`);
+      console.error(`[VM Provision] No images found with prefix '${prefix}' out of ${totalImages} total images`);
       return null;
     }
 
