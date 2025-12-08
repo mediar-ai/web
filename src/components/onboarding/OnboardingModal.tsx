@@ -54,7 +54,18 @@ interface OnboardingModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const REFERRAL_OPTIONS = [
+  { value: 'twitter', label: 'Twitter/X' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'hackernews', label: 'Hacker News' },
+  { value: 'producthunt', label: 'Product Hunt' },
+  { value: 'friend', label: 'Friend/Colleague' },
+  { value: 'google', label: 'Google Search' },
+  { value: 'other', label: 'Other' },
+];
+
 export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) {
+  const posthog = usePostHog();
   const {
     onboarding,
     currentStep,
@@ -64,6 +75,31 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
     dismissOnboarding,
     completeOnboarding,
   } = useOnboarding();
+
+  const [referralSource, setReferralSource] = useState<string>('');
+  const [hasAnsweredReferral, setHasAnsweredReferral] = useState(false);
+
+  // Check if user already answered
+  useEffect(() => {
+    const answered = localStorage.getItem('referral_source_answered');
+    if (answered) {
+      setHasAnsweredReferral(true);
+      setReferralSource(answered);
+    }
+  }, []);
+
+  const handleReferralChange = (value: string) => {
+    setReferralSource(value);
+    if (value) {
+      localStorage.setItem('referral_source_answered', value);
+      localStorage.setItem('referral_source_date', new Date().toISOString());
+      posthog?.capture('referral_source_selected', {
+        source: value,
+        timestamp: new Date().toISOString(),
+      });
+      setHasAnsweredReferral(true);
+    }
+  };
 
   const handleNext = useCallback(() => {
     if (currentStep < 2) {
@@ -89,10 +125,10 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-0 border-2 border-white/20 overflow-hidden bg-black text-white">
+      <DialogContent className="max-w-4xl p-0 border-2 border-black overflow-hidden bg-white">
         <div className="flex flex-col md:flex-row min-h-[500px]">
           {/* Left Panel - Main Content */}
-          <div className="flex-1 p-6 flex flex-col bg-gradient-to-br from-gray-900 to-black">
+          <div className="flex-1 p-6 flex flex-col bg-white">
             {/* Progress Indicator */}
             <OnboardingProgress
               currentStep={currentStep}
@@ -101,16 +137,16 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             />
 
             {/* Credit Tip */}
-            <div className="mt-4 mb-6 p-3 bg-white/5 border border-white/10 rounded-lg">
+            <div className="mt-4 mb-6 p-3 bg-gray-50 border-2 border-black rounded-lg">
               <div className="flex items-center gap-2 text-sm">
-                <Gift className="w-4 h-4 text-white" />
-                <span className="font-mono text-gray-300">
-                  TIP: You can get <strong className="text-white">10 free credits</strong> by completing onboarding
+                <Gift className="w-4 h-4 text-black" />
+                <span className="font-mono text-gray-700">
+                  TIP: You can get <strong className="text-black">10 free credits</strong> by completing onboarding
                 </span>
               </div>
               {totalCredits > 0 && (
-                <div className="mt-1 text-xs font-mono text-gray-400">
-                  You&apos;ve earned: <strong className="text-white">{totalCredits} credits</strong> so far
+                <div className="mt-1 text-xs font-mono text-gray-600">
+                  You&apos;ve earned: <strong className="text-black">{totalCredits} credits</strong> so far
                 </div>
               )}
             </div>
@@ -119,8 +155,8 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             <div className="flex-1">
               {currentStep === 1 && (
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-mono font-bold text-white">Welcome!</h2>
-                  <p className="text-gray-400">
+                  <h2 className="text-2xl font-mono font-bold text-black">Welcome!</h2>
+                  <p className="text-gray-600">
                     You can earn free credits by following us on social media!
                   </p>
 
@@ -162,13 +198,34 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
                       onComplete={() => followSocial('discord')}
                     />
                   </div>
+
+                  {/* How did you hear about us */}
+                  {!hasAnsweredReferral && (
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <label className="text-xs font-mono text-gray-600 uppercase block mb-2">
+                        How did you hear about us?
+                      </label>
+                      <select
+                        value={referralSource}
+                        onChange={(e) => handleReferralChange(e.target.value)}
+                        className="w-full bg-white border-2 border-black rounded-lg p-3 font-mono text-sm text-black focus:outline-none focus:ring-2 focus:ring-black"
+                      >
+                        <option value="">Select...</option>
+                        {REFERRAL_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
               {currentStep === 2 && (
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-mono font-bold text-white">Watch & Learn</h2>
-                  <p className="text-gray-400">
+                  <h2 className="text-2xl font-mono font-bold text-black">Watch & Learn</h2>
+                  <p className="text-gray-600">
                     See Mediar in action! Watch this quick intro to get started.
                   </p>
 
@@ -184,13 +241,13 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             </div>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200 mt-4">
               <div className="flex items-center gap-2">
                 {currentStep > 1 && (
                   <Button
                     variant="outline"
                     onClick={handleBack}
-                    className="border border-white/20 bg-transparent text-white hover:bg-white hover:text-black"
+                    className="border-2 border-black bg-white text-black hover:bg-black hover:text-white"
                   >
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Back
@@ -199,7 +256,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
                 <Button
                   variant="ghost"
                   onClick={handleDismiss}
-                  className="text-gray-500 hover:text-white hover:bg-white/10"
+                  className="text-gray-500 hover:text-black"
                 >
                   Maybe later
                 </Button>
@@ -207,7 +264,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
 
               <Button
                 onClick={handleNext}
-                className="bg-white text-black hover:bg-gray-200"
+                className="bg-black text-white hover:bg-gray-800"
               >
                 {currentStep === 2 ? 'Finish' : 'Next'}
                 {currentStep !== 2 && <ArrowRight className="w-4 h-4 ml-2" />}
@@ -216,7 +273,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
           </div>
 
           {/* Right Panel - Illustration */}
-          <div className="hidden md:flex w-80 bg-gradient-to-br from-gray-800 to-gray-900 p-8 flex-col items-center justify-center text-white border-l border-white/10">
+          <div className="hidden md:flex w-80 bg-black p-8 flex-col items-center justify-center text-white">
             <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
               {currentStep === 1 ? (
                 <Share2 className="w-10 h-10 text-white" />
@@ -224,7 +281,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
                 <Play className="w-10 h-10 text-white" />
               )}
             </div>
-            <h3 className="text-xl font-bold text-center mb-2 text-white">
+            <h3 className="text-xl font-bold text-center mb-2 text-white font-mono">
               {currentStep === 1
                 ? 'Connect with us on social media!'
                 : 'See Mediar in action!'}

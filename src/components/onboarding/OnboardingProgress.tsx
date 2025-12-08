@@ -27,9 +27,9 @@ export function OnboardingProgress({
               <div
                 className={cn(
                   'w-8 h-8 rounded-full flex items-center justify-center text-sm font-mono font-bold transition-all duration-300',
-                  isActive && 'bg-white text-black ring-2 ring-white ring-offset-2 ring-offset-black',
-                  isCompleted && 'bg-white text-black',
-                  !isActive && !isCompleted && 'border-2 border-gray-600 text-gray-500'
+                  isActive && 'bg-black text-white ring-2 ring-black ring-offset-2',
+                  isCompleted && 'bg-black text-white',
+                  !isActive && !isCompleted && 'border-2 border-gray-300 text-gray-400'
                 )}
               >
                 {stepNumber}
@@ -37,9 +37,9 @@ export function OnboardingProgress({
               <span
                 className={cn(
                   'text-xs font-mono mt-1 whitespace-nowrap',
-                  isActive && 'text-white font-bold',
-                  isCompleted && 'text-white',
-                  !isActive && !isCompleted && 'text-gray-500'
+                  isActive && 'text-black font-bold',
+                  isCompleted && 'text-black',
+                  !isActive && !isCompleted && 'text-gray-400'
                 )}
               >
                 {stepLabels[index]}
@@ -51,7 +51,7 @@ export function OnboardingProgress({
               <div
                 className={cn(
                   'w-16 h-0.5 mx-2',
-                  isCompleted ? 'bg-white' : 'bg-gray-700'
+                  isCompleted ? 'bg-black' : 'bg-gray-200'
                 )}
               />
             )}

@@ -74,14 +74,31 @@ async function getLatestPackerImage(
   console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg} (subscription: ${subscriptionId})`);
 
   try {
-    const images: { name: string; id: string; timestamp: Date }[] = [];
-    let totalImages = 0;
+    // Use array to collect all images first
+    const allImages = [];
+    const iterator = computeClient.images.listByResourceGroup(imageRg);
 
-    for await (const image of computeClient.images.listByResourceGroup(imageRg)) {
-      totalImages++;
-      console.log(`[VM Provision] Found image: ${image.name}`);
+    // Manually iterate to catch any errors
+    try {
+      let result = await iterator.next();
+      while (!result.done) {
+        allImages.push(result.value);
+        result = await iterator.next();
+      }
+    } catch (iterError) {
+      console.error('[VM Provision] Iterator error:', iterError);
+      throw iterError;
+    }
+
+    console.log(`[VM Provision] Found ${allImages.length} total images in ${imageRg}`);
+
+    // Filter and process matching images
+    const images: { name: string; id: string; timestamp: Date }[] = [];
+
+    for (const image of allImages) {
+      console.log(`[VM Provision] Checking image: ${image.name}`);
       if (image.name?.startsWith(prefix)) {
-        // Extract timestamp from image name (e.g., mcp-full-20241201-123456)
+        // Extract timestamp from image name (e.g., mcp-full-20251207-050456)
         const timestampStr = image.name.replace(prefix, '');
         // Handle format: 20251207-050456 (date-time with dash separator)
         const timestamp = new Date(
@@ -99,10 +116,12 @@ async function getLatestPackerImage(
       }
     }
 
-    console.log(`[VM Provision] Total images in RG: ${totalImages}, matching prefix: ${images.length}`);
+    console.log(`[VM Provision] Matching images: ${images.length}`);
 
     if (images.length === 0) {
-      console.error(`[VM Provision] No images found with prefix '${prefix}' out of ${totalImages} total images`);
+      console.error(`[VM Provision] No images found with prefix '${prefix}' out of ${allImages.length} total`);
+      // Log first few image names for debugging
+      console.error(`[VM Provision] Sample images: ${allImages.slice(0, 5).map(i => i.name).join(', ')}`);
       return null;
     }
 
@@ -114,6 +133,12 @@ async function getLatestPackerImage(
     return { id: latest.id, name: latest.name };
   } catch (error) {
     console.error('[VM Provision] Failed to list images:', error);
+    // Log more details
+    if (error instanceof Error) {
+      console.error('[VM Provision] Error name:', error.name);
+      console.error('[VM Provision] Error message:', error.message);
+      console.error('[VM Provision] Error stack:', error.stack);
+    }
     return null;
   }
 }
