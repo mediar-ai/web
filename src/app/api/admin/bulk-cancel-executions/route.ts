@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,7 +118,12 @@ export async function GET(request: NextRequest) {
     if (executionIds && executionIds.length > 0) {
       query = query.in('id', executionIds);
     } else if (workflowId) {
-      query = query.eq('workflow_id', parseInt(workflowId));
+      // Resolve workflow ID (supports both numeric ID and UUID)
+      const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+      if (resolveError || workflowIdNum === null) {
+        return NextResponse.json({ error: resolveError || `Workflow ${workflowId} not found` }, { status: 404 });
+      }
+      query = query.eq('workflow_id', workflowIdNum);
     }
 
     if (statusFilter) {
