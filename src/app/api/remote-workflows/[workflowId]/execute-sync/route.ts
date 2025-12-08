@@ -6,6 +6,7 @@ import {
 import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 // Types for execution and workflow data
 interface ExecutionResults {
@@ -281,11 +282,6 @@ export async function POST(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
-    console.log(
-      `🔄 Synchronous execution request for workflow ${workflowIdNum} (full_detailed_response: ${full_detailed_response})...`
-    );
 
     // Parse request body
     const body = await request.json();
@@ -310,6 +306,20 @@ export async function POST(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
+
+    console.log(
+      `🔄 Synchronous execution request for workflow ${workflowIdNum} (full_detailed_response: ${full_detailed_response})...`
+    );
 
     // STEP 2: Get workflow details and verify authorization
     const { data: workflow, error: workflowError } = await supabase
