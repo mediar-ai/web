@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 // Import the required types
 type JSONValue =
@@ -459,16 +460,11 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     // Check for version parameter in query string
     const { searchParams } = new URL(request.url);
     const versionNumber = searchParams.get('version');
     const useLocalFile = searchParams.get('local') === 'true';
-
-    console.log(
-      `📋 Generating dynamic schema for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ' (active version)'}${useLocalFile ? ' (LOCAL FILE MODE)' : ''}...`
-    );
 
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -479,6 +475,20 @@ export async function GET(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
+
+    console.log(
+      `📋 Generating dynamic schema for workflow ${workflowIdNum}${versionNumber ? ` version ${versionNumber}` : ' (active version)'}${useLocalFile ? ' (LOCAL FILE MODE)' : ''}...`
+    );
 
     let workflow;
 
