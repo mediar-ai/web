@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import { OnboardingProgress } from './OnboardingProgress';
 import { SocialFollowCard } from './SocialFollowCard';
 import { VideoStep } from './VideoStep';
 import { useOnboarding } from '@/hooks/useOnboarding';
+import { usePostHog } from 'posthog-js/react';
 import { ArrowLeft, ArrowRight, Share2, Play, Gift } from 'lucide-react';
 
 // Social platform icons

@@ -36,7 +36,7 @@ export function VideoStep({ videoUrl, isCompleted, onComplete }: VideoStepProps)
   return (
     <div className="space-y-4">
       {/* YouTube Embed */}
-      <div className="relative w-full aspect-video rounded-lg overflow-hidden border-2 border-black">
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/20">
         <iframe
           src={getEmbedUrl(videoUrl)}
           title="Mediar Introduction"
@@ -51,25 +51,25 @@ export function VideoStep({ videoUrl, isCompleted, onComplete }: VideoStepProps)
         onClick={handleMarkWatched}
         disabled={hasWatched}
         className={cn(
-          'w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all duration-200',
+          'w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200',
           hasWatched
-            ? 'border-black bg-gray-50 cursor-default'
-            : 'border-gray-200 hover:border-black hover:bg-gray-50 cursor-pointer'
+            ? 'border-white/20 bg-white/10 cursor-default'
+            : 'border-white/10 hover:border-white/30 hover:bg-white/5 cursor-pointer'
         )}
       >
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              'w-6 h-6 rounded border-2 flex items-center justify-center transition-all',
-              hasWatched ? 'bg-black border-black' : 'border-gray-300'
+              'w-6 h-6 rounded border flex items-center justify-center transition-all',
+              hasWatched ? 'bg-white border-white' : 'border-white/30'
             )}
           >
-            {hasWatched && <Check className="w-4 h-4 text-white" />}
+            {hasWatched && <Check className="w-4 h-4 text-black" />}
           </div>
           <span
             className={cn(
               'font-mono text-sm',
-              hasWatched ? 'text-gray-500' : 'text-black'
+              hasWatched ? 'text-gray-400' : 'text-white'
             )}
           >
             I watched the video
@@ -79,7 +79,7 @@ export function VideoStep({ videoUrl, isCompleted, onComplete }: VideoStepProps)
         <span
           className={cn(
             'font-mono text-sm font-medium transition-all duration-300',
-            hasWatched ? 'text-green-600' : 'text-amber-500',
+            hasWatched ? 'text-green-400' : 'text-white',
             showCredits && 'animate-pulse scale-110'
           )}
         >
