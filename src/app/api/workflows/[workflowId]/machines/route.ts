@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,12 +30,14 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-    
-    if (isNaN(workflowIdNum)) {
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
       return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
       );
     }
 
@@ -280,13 +283,15 @@ export async function POST(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
-    
-    if (isNaN(workflowIdNum)) {
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
       return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
       );
     }
 
@@ -510,13 +515,15 @@ export async function PUT(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
     const body = await request.json();
-    
-    if (isNaN(workflowIdNum)) {
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
       return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
       );
     }
 
@@ -697,12 +704,14 @@ export async function DELETE(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-    
-    if (isNaN(workflowIdNum)) {
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
       return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
       );
     }
 
