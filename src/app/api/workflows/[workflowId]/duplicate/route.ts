@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,11 +39,13 @@ export async function POST(
     }
 
     const { workflowId: workflowIdStr } = await params;
-    const workflowId = parseInt(workflowIdStr);
-    if (isNaN(workflowId)) {
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowId, error: resolveError } = await getNumericWorkflowId(supabase, workflowIdStr);
+    if (resolveError || workflowId === null) {
       return NextResponse.json(
-        { success: false, error: 'Invalid workflow ID' },
-        { status: 400 }
+        { success: false, error: resolveError || `Workflow ${workflowIdStr} not found` },
+        { status: 404 }
       );
     }
 
