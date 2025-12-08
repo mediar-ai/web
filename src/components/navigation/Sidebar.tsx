@@ -325,9 +325,11 @@ export function Sidebar() {
                         <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200">
                           {item.children?.map(child => {
                             const ChildIcon = child.icon;
+                            // For items with same href as parent (like Overview), use exact match only
                             const isChildActive =
                               pathname === child.href ||
                               (child.href !== '/' &&
+                                child.href !== item.href &&
                                 pathname.startsWith(child.href + '/'));
 
                             return (
