@@ -620,56 +620,21 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info - support both numeric ID and UUID (github_folder)
-    const workflowIdNum = parseInt(workflowId);
-    let workflow: {
-      id: number;
-      name: string;
-      status: string;
-      created_by: string;
-      created_at: string;
-      github_folder: string | null;
-      github_path: string | null;
-      organization_id: string | null;
-      is_public: boolean | null;
-    } | null = null;
+    // STEP 2: Get workflow info by UUID (github_folder)
+    console.log(`🔍 Looking up workflow by UUID (github_folder): ${workflowId}`);
+    const { data: workflow, error } = await supabase
+      .from('deployed_workflows')
+      .select(
+        'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
+      )
+      .eq('github_folder', workflowId)
+      .single();
 
-    if (isNaN(workflowIdNum)) {
-      // UUID - look up by github_folder (TypeScript workflow)
-      console.log(`🔍 Looking up workflow by github_folder: ${workflowId}`);
-      const { data, error } = await supabase
-        .from('deployed_workflows')
-        .select(
-          'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
-        )
-        .eq('github_folder', workflowId)
-        .single();
-
-      if (error || !data) {
-        return NextResponse.json(
-          { success: false, error: `Workflow with folder ${workflowId} not found` },
-          { status: 404 }
-        );
-      }
-      workflow = data;
-    } else {
-      // Numeric - look up by id
-      console.log(`🔍 Looking up workflow by numeric ID: ${workflowIdNum}`);
-      const { data, error } = await supabase
-        .from('deployed_workflows')
-        .select(
-          'id, name, status, created_by, created_at, github_folder, github_path, organization_id, is_public'
-        )
-        .eq('id', workflowIdNum)
-        .single();
-
-      if (error || !data) {
-        return NextResponse.json(
-          { success: false, error: `Workflow ${workflowIdNum} not found` },
-          { status: 404 }
-        );
-      }
-      workflow = data;
+    if (error || !workflow) {
+      return NextResponse.json(
+        { success: false, error: `Workflow with UUID ${workflowId} not found` },
+        { status: 404 }
+      );
     }
 
     console.log(
