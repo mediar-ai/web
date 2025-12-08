@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 /**
  * DELETE /api/remote-workflows/[workflowId]/versions/latest
@@ -57,7 +58,6 @@ export async function DELETE(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,19 +68,18 @@ export async function DELETE(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('*')
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(supabase, workflowId);
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { error: `Workflow ${workflowIdNum} not found` },
+        { error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
 
     // STEP 3: AUTHORIZATION - Require admin-level access (same as DELETE workflow)
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -211,10 +210,11 @@ export async function DELETE(
     }
 
     // STEP 6: Update workflow's total_versions count
+    const currentTotalVersions = (workflow.total_versions as number) || 0;
     const { error: updateError } = await supabase
       .from('deployed_workflows')
       .update({
-        total_versions: workflow.total_versions - 1,
+        total_versions: Math.max(0, currentTotalVersions - 1),
         updated_at: new Date().toISOString()
       })
       .eq('id', workflowIdNum);
