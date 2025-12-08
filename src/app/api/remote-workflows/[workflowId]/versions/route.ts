@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 // Security validation removed - workflows are trusted content uploaded by authenticated users
 
@@ -32,7 +33,6 @@ export async function GET(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -43,19 +43,22 @@ export async function GET(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Get workflow info and verify ownership
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, description, total_versions, current_version_id, created_by, organization_id')
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, description, total_versions, current_version_id, created_by, organization_id'
+    );
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -215,8 +218,6 @@ export async function POST(
     }
 
     const { workflowId } = await params;
-    const workflowIdNum = parseInt(workflowId);
-
     const body = await request.json();
     const { automation_sequence, version_number, change_notes, set_as_active = false } = body;
 
@@ -355,19 +356,22 @@ export async function POST(
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // STEP 2: Verify workflow exists and check ownership
-    const { data: workflow, error: workflowError } = await supabase
-      .from('deployed_workflows')
-      .select('id, name, version, total_versions, created_by, organization_id, is_public')
-      .eq('id', workflowIdNum)
-      .single();
+    // STEP 2: Resolve workflow ID (supports both numeric ID and UUID)
+    const resolveResult = await resolveWorkflowId(
+      supabase,
+      workflowId,
+      'id, name, version, total_versions, created_by, organization_id, is_public'
+    );
 
-    if (workflowError || !workflow) {
+    if (resolveResult.error || !resolveResult.workflow) {
       return NextResponse.json(
-        { success: false, error: `Workflow ${workflowIdNum} not found` },
+        { success: false, error: resolveResult.error || `Workflow ${workflowId} not found` },
         { status: 404 }
       );
     }
+
+    const workflow = resolveResult.workflow;
+    const workflowIdNum = workflow.id;
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -481,8 +485,9 @@ export async function POST(
     };
 
     // Update parent workflow with cron configuration if present
+    const currentTotalVersions = (workflow.total_versions as number) || 0;
     const workflowUpdateData: any = {
-      total_versions: workflow.total_versions + 1,
+      total_versions: currentTotalVersions + 1,
       updated_at: new Date().toISOString()
     };
 
@@ -578,7 +583,7 @@ export async function POST(
       workflow: {
         id: workflowIdNum,
         name: workflow.name,
-        total_versions: workflow.total_versions + 1,
+        total_versions: currentTotalVersions + 1,
         current_version: set_as_active ? newVersionNumber : workflow.version
       },
       github_sync: 'async' // GitHub sync is fire-and-forget for faster response
