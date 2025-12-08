@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
           organization_id: effectiveOrgId,
           created_by: userIdentifier,
           github_folder: folder_id, // UUID - canonical identifier
+          uuid: folder_id, // Align uuid with github_folder so download creates matching local folder
           workflow_type: 'execution',
           status: 'draft',
           step_count: metadata.steps?.length || 0,
