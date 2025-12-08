@@ -13,7 +13,6 @@ import {
   Building2,
   Shield,
   LogOut,
-  Database,
   Lock,
   Bell,
   Users,
@@ -194,11 +193,57 @@ export function Sidebar() {
 
       {/* Logo/Brand */}
       <div className="p-6 border-b-2 border-black">
-        <h1
-          className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
+        <Link
+          href="/"
+          className={`flex items-center gap-2 hover:opacity-80 transition-opacity ${isCollapsed ? 'justify-center' : ''}`}
+          title="Go to homepage"
         >
-          MEDIAR
-        </h1>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="w-8 h-8 flex-shrink-0"
+          >
+            <rect width="24" height="24" rx="10" fill="#000" />
+            <g transform="translate(12 12) scale(0.65) translate(-12 -12)">
+              <rect
+                x="3"
+                y="3"
+                width="8"
+                height="8"
+                rx="2"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+              <path
+                d="M7 11v4a2 2 0 0 0 2 2h4"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              <rect
+                x="13"
+                y="13"
+                width="8"
+                height="8"
+                rx="2"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          </svg>
+          <h1
+            className={`font-mono font-bold text-xl transition-opacity ${isCollapsed ? 'hidden' : 'block'}`}
+          >
+            MEDIAR
+          </h1>
+        </Link>
       </div>
 
       {/* Organization Switcher */}
