@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEffectiveOrgId } from '@/lib/mediarAuth';
 import { clerkClient, currentUser } from '@clerk/nextjs/server';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 export async function GET(
   request: NextRequest,
@@ -9,10 +10,6 @@ export async function GET(
 ) {
   try {
     const { workflowId: workflowIdParam } = await params;
-    const workflowId = parseInt(workflowIdParam);
-    if (isNaN(workflowId)) {
-      return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
-    }
 
     const { isMediarOrg } = await getEffectiveOrgId();
 
@@ -37,6 +34,15 @@ export async function GET(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowId, error: resolveError } = await getNumericWorkflowId(supabase, workflowIdParam);
+    if (resolveError || workflowId === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowIdParam} not found` },
+        { status: 404 }
+      );
+    }
 
     // Get current organization access for this workflow
     const { data: accessList, error } = await supabase
@@ -98,10 +104,6 @@ export async function PUT(
 ) {
   try {
     const { workflowId: workflowIdParam } = await params;
-    const workflowId = parseInt(workflowIdParam);
-    if (isNaN(workflowId)) {
-      return NextResponse.json({ success: false, error: 'Invalid workflow ID' }, { status: 400 });
-    }
 
     const { isMediarOrg } = await getEffectiveOrgId();
 
@@ -135,6 +137,15 @@ export async function PUT(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowId, error: resolveError } = await getNumericWorkflowId(supabase, workflowIdParam);
+    if (resolveError || workflowId === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowIdParam} not found` },
+        { status: 404 }
+      );
+    }
 
     // First, remove all existing access for this workflow
     const { error: deleteError } = await supabase
