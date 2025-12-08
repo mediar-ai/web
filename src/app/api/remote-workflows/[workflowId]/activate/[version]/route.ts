@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
 
 // POST /api/remote-workflows/[workflowId]/activate/[version] - Activate specific version
 export async function POST(
@@ -20,7 +21,6 @@ export async function POST(
     }
 
     const { workflowId, version } = await params;
-    const workflowIdNum = parseInt(workflowId);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,6 +30,16 @@ export async function POST(
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Resolve workflow ID (supports both numeric ID and UUID)
+    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+
+    if (resolveError || workflowIdNum === null) {
+      return NextResponse.json(
+        { success: false, error: resolveError || `Workflow ${workflowId} not found` },
+        { status: 404 }
+      );
+    }
 
     // STEP 2: Get workflow info and verify ownership
     const { data: workflow, error: workflowError } = await supabase
