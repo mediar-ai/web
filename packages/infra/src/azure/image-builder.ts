@@ -23,7 +23,7 @@ const IMAGE_CONFIG = {
 
 // User-assigned managed identity for Image Builder
 // This identity needs contributor access to the image RG
-const IMAGE_BUILDER_IDENTITY = '/subscriptions/{subscriptionId}/resourceGroups/UI-AUTOMATION-IMAGES-RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/image-builder-identity';
+const IMAGE_BUILDER_IDENTITY = '/subscriptions/{subscriptionId}/resourcegroups/UI-AUTOMATION-IMAGES-RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/image-builder-identity';
 
 export interface ImageBuildOptions {
   vmPassword: string;
