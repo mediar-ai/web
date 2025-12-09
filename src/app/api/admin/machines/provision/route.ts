@@ -184,7 +184,7 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
         health_endpoint: `http://${placeholderIp}:8080/health`,
         management_endpoint: `http://${placeholderIp}:8080/management`,
         terraform_key: `dashboard-${body.name}`,
-        status: 'provisioning', // Key: starts as provisioning
+        status: 'inactive', // Starts as inactive, will be set to 'active' when provisioning completes
         health_status: 'unknown',
         machine_type: 'windows_vm',
         region: body.location || 'eastus',
@@ -248,11 +248,11 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
             console.log(`[Provision API] VM ${body.name} provisioned successfully: ${result.vmId}`);
           }
         } else {
-          // Update DB record with failure
+          // Update DB record with failure (keep status 'inactive', mark as unhealthy)
           await supabase
             .from('remote_machines')
             .update({
-              status: 'failed',
+              status: 'inactive',
               health_status: 'unhealthy',
               updated_at: new Date().toISOString(),
             })
@@ -262,11 +262,11 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
         }
       } catch (error) {
         console.error(`[Provision API] Background provisioning error:`, error);
-        // Update DB record with failure
+        // Update DB record with failure (keep status 'inactive', mark as unhealthy)
         await supabase
           .from('remote_machines')
           .update({
-            status: 'failed',
+            status: 'inactive',
             health_status: 'unhealthy',
             updated_at: new Date().toISOString(),
           })

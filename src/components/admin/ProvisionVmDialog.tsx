@@ -192,6 +192,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
           return;
         }
 
+        // Check if provisioning is complete (status='active' means Azure provisioning succeeded)
         if (machine.status === 'active') {
           // Provisioning complete!
           stopProgressSimulation();
@@ -205,7 +206,9 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
           return;
         }
 
-        if (machine.status === 'failed') {
+        // Check if provisioning failed (status='inactive' + health_status='unhealthy' + still has placeholder endpoint)
+        const isStillProvisioning = machine.mcp_endpoint?.includes('provisioning.local');
+        if (machine.health_status === 'unhealthy' && isStillProvisioning) {
           // Provisioning failed
           stopProgressSimulation();
           toast.error('VM provisioning failed. Check the machines list for details.');
@@ -213,7 +216,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
           return;
         }
 
-        // Still provisioning, continue polling
+        // Still provisioning (status='inactive', health_status='unknown', has placeholder endpoint), continue polling
         setTimeout(poll, pollInterval);
       } catch {
         // Network error, retry
