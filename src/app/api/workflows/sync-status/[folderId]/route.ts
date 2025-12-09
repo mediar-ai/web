@@ -1,8 +1,12 @@
 /**
  * API Route: GET /api/workflows/sync-status/[folderId]
  *
- * Returns the updated_at timestamp for a workflow by its github_folder (UUID).
- * Used by desktop app to check if remote has changed since last sync.
+ * Returns the content_updated_at timestamp for a workflow by its github_folder (UUID).
+ * Used by desktop app to check if remote CONTENT has changed since last sync.
+ *
+ * Note: Returns content_updated_at as "updated_at" for backward compatibility.
+ * This field only changes when workflow content changes, NOT for metadata changes
+ * like visibility, cron settings, etc.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Look up workflow by github_folder (UUID)
     const { data: workflow, error } = await supabase
       .from('deployed_workflows')
-      .select('id, updated_at, organization_id')
+      .select('id, content_updated_at, organization_id')
       .eq('github_folder', folderId)
       .single();
 
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     return NextResponse.json({
-      updated_at: workflow.updated_at,
+      updated_at: workflow.content_updated_at,
       workflow_id: workflow.id,
     });
 
