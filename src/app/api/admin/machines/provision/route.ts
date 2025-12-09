@@ -184,6 +184,7 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
         health_endpoint: `http://${placeholderIp}:8080/health`,
         management_endpoint: `http://${placeholderIp}:8080/management`,
         terraform_key: `dashboard-${body.name}`,
+        tags: [`terraform:${body.name}`], // Tag for VNC gateway lookup
         status: 'inactive', // Starts as inactive, will be set to 'active' when provisioning completes
         health_status: 'unknown',
         machine_type: 'windows_vm',
