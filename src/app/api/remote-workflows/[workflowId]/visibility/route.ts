@@ -43,9 +43,11 @@ export async function POST(
     } else {
       // Try Clerk auth
       const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+      const { currentUser } = await import('@clerk/nextjs/server');
       const authResult = await getEffectiveOrgId();
       orgId = authResult.orgId;
-      userEmail = authResult.email;
+      const user = await currentUser();
+      userEmail = user?.primaryEmailAddress?.emailAddress || null;
     }
 
     if (!orgId && !userEmail) {
