@@ -6,7 +6,6 @@ import {
   getEstimatedMonthlyCost,
   getAvailableVmSizes,
   getAvailableRegions,
-  testImageListing,
 } from '@/lib/azure/vm-provisioning';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
@@ -62,9 +61,6 @@ export async function GET() {
       name: org.name,
     }));
 
-    // Run Azure diagnostic
-    const azureDiagnostic = await testImageListing();
-
     return NextResponse.json({
       success: true,
       options: {
@@ -76,7 +72,6 @@ export async function GET() {
       },
       organizations,
       costEstimate: getEstimatedMonthlyCost('Standard_D4s_v3'),
-      azureDiagnostic,
     });
   } catch (error) {
     console.error('[Provision API] GET failed:', error);
@@ -188,15 +183,24 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Provision API] Registering VM in Supabase: ${result.vmId}`);
 
-    const { data: machine, error: dbError } = await supabase.rpc(
-      'upsert_remote_machine_by_azure_id',
-      {
-        p_azure_resource_id: result.vmId,
-        p_name: body.name,
-        p_mcp_endpoint: result.mcpEndpoint,
-        p_terraform_key: `dashboard-${body.name}`,
-      }
-    );
+    // Direct INSERT instead of RPC (RPC has constraint issues)
+    const { data: machine, error: dbError } = await supabase
+      .from('remote_machines')
+      .insert({
+        name: body.name,
+        mcp_endpoint: result.mcpEndpoint,
+        health_endpoint: `http://${result.publicIp}:8080/health`,
+        management_endpoint: `http://${result.publicIp}:8080/management`,
+        azure_resource_id: result.vmId,
+        terraform_key: `dashboard-${body.name}`,
+        status: 'active',
+        health_status: 'unknown',
+        machine_type: 'windows_vm',
+        region: result.details?.location || 'eastus',
+        is_global: false,
+      })
+      .select()
+      .single();
 
     if (dbError) {
       console.error('[Provision API] Failed to register in Supabase:', dbError);
@@ -214,7 +218,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const machineId = Array.isArray(machine) ? machine[0]?.id : machine?.id;
+    const machineId = machine?.id;
 
     // Grant organization access if specified
     const targetOrgId = body.organizationId || DEFAULT_ORG_ID;
