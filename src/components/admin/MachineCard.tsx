@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Loader2,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { VNC_GATEWAY_URL } from '@/lib/azure';
@@ -34,6 +35,9 @@ interface MachineCardProps {
     total_checks?: number;
     successful_checks?: number;
     uptime_percentage?: number;
+    // Boot time metrics
+    provisioned_at?: string;
+    first_healthy_at?: string;
   };
   onRefresh: () => void;
   compact?: boolean;
@@ -45,6 +49,7 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
   const [isExpanded, setIsExpanded] = useState(false);
   const [loadingOperation, setLoadingOperation] = useState<OperationType | null>(null);
   const [showVnc, setShowVnc] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const powerState = machine.power_state || 'unknown';
   const isRunning = powerState === 'running';
@@ -84,6 +89,18 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
     }
   };
 
+  const getBootTime = () => {
+    if (!machine.provisioned_at || !machine.first_healthy_at) return null;
+    const provisioned = new Date(machine.provisioned_at).getTime();
+    const firstHealthy = new Date(machine.first_healthy_at).getTime();
+    const bootTimeSeconds = Math.round((firstHealthy - provisioned) / 1000);
+    const minutes = Math.floor(bootTimeSeconds / 60);
+    const seconds = bootTimeSeconds % 60;
+    return { seconds: bootTimeSeconds, formatted: `${minutes}m ${seconds}s` };
+  };
+
+  const bootTime = getBootTime();
+
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -121,13 +138,67 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
     }
   };
 
+  const handleDelete = async () => {
+    // Double confirm for destructive action
+    const confirmed = confirm(
+      `Are you sure you want to DELETE "${machine.name}"?\n\n` +
+      `This will:\n` +
+      `- Delete the Azure VM and ALL associated resources (disk, NIC, IP, NSG, VNet)\n` +
+      `- Remove the machine from the database\n\n` +
+      `This action CANNOT be undone.`
+    );
+
+    if (!confirmed) return;
+
+    // Second confirmation with machine name
+    const confirmName = prompt(
+      `To confirm deletion, type the machine name: ${machine.name}`
+    );
+
+    if (confirmName !== machine.name) {
+      toast.error('Machine name did not match. Deletion cancelled.');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/admin/machines/${machine.id}/delete`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Machine deleted successfully');
+        onRefresh();
+      } else {
+        toast.error(data.error || 'Delete failed');
+      }
+    } catch {
+      toast.error('Failed to delete machine');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getVncUrl = () => {
+    // For VNC gateway, only use terraform keys that the gateway knows about (e.g., vm1, vm2, etc.)
+    // Auto-provisioned VMs (dashboard-*) aren't registered with the gateway
     const key = machine.terraform_key || machine.tags?.find(t => t.startsWith('terraform:'))?.replace('terraform:', '');
     if (!key) return null;
+    // Skip gateway for dashboard-provisioned VMs
+    if (key.startsWith('dashboard-')) return null;
     return `${VNC_GATEWAY_URL}/vnc/${key}`;
   };
 
+  // Get direct VNC address (IP:5900) for any VM with an endpoint
+  const getDirectVncAddress = () => {
+    const ip = extractIpFromEndpoint(machine.mcp_endpoint);
+    if (!ip || ip === '-') return null;
+    return `${ip}:5900`;
+  };
+
   const vncUrl = getVncUrl();
+  const directVncAddress = getDirectVncAddress();
   const indicator = getHealthIndicator();
   const hasAzure = !!machine.azure_resource_id;
 
@@ -211,7 +282,26 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
         </div>
         <div>
           <div className="text-xs text-gray-500 font-mono uppercase">MCP</div>
-          <div className="font-mono text-xs">{machine.mcp_version || '-'}</div>
+          <div className="font-mono text-xs flex items-center gap-1">
+            {machine.mcp_version ? (
+              <span className="text-green-600">v{machine.mcp_version}</span>
+            ) : machine.mcp_endpoint ? (
+              <span className="text-gray-400" title={machine.mcp_endpoint}>Not responding</span>
+            ) : (
+              <span className="text-gray-400">No endpoint</span>
+            )}
+            {machine.mcp_endpoint && (
+              <a
+                href={machine.mcp_endpoint.replace('/mcp', '/health')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-0.5 hover:bg-gray-100 rounded"
+                title="Open health endpoint"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
         </div>
         <div>
           <div className="text-xs text-gray-500 font-mono uppercase">Azure</div>
@@ -266,41 +356,55 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
 
         <div className="border-l border-gray-300 mx-1" />
 
-        {/* VNC */}
-        {vncUrl && (
+        {/* VNC - Show if gateway URL or direct address available */}
+        {(vncUrl || directVncAddress) && (
           <>
-            <button
-              onClick={() => setShowVnc(!showVnc)}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black transition-colors ${showVnc ? 'bg-black text-white' : 'bg-white hover:bg-black hover:text-white'}`}
-            >
-              <Monitor className="w-3 h-3" />
-              VNC
-            </button>
-            <a
-              href={vncUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
-              title="Open in browser"
-            >
-              <ExternalLink className="w-3 h-3" />
-            </a>
-            {machine.mcp_endpoint && (
+            {/* VNC via gateway (if available) */}
+            {vncUrl && (
+              <>
+                <button
+                  onClick={() => setShowVnc(!showVnc)}
+                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black transition-colors ${showVnc ? 'bg-black text-white' : 'bg-white hover:bg-black hover:text-white'}`}
+                >
+                  <Monitor className="w-3 h-3" />
+                  VNC
+                </button>
+                <a
+                  href={vncUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
+                  title="Open in browser"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </>
+            )}
+            {/* Direct VNC address (always available if we have an IP) */}
+            {directVncAddress && (
               <button
-                onClick={() => {
-                  const ip = extractIpFromEndpoint(machine.mcp_endpoint);
-                  if (ip && ip !== '-') {
-                    copyToClipboard(`${ip}:5900`, 'VNC address');
-                  }
-                }}
+                onClick={() => copyToClipboard(directVncAddress, 'VNC address')}
                 className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors"
-                title="Copy VNC address for TightVNC/TigerVNC"
+                title={`Copy VNC address: ${directVncAddress} (use TightVNC/TigerVNC)`}
               >
                 <Copy className="w-3 h-3" />
-                VNC
+                {directVncAddress}
               </button>
             )}
           </>
+        )}
+
+        {/* Delete button - more visible */}
+        {hasAzure && (
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting || loadingOperation !== null}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Delete VM and all Azure resources"
+          >
+            {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            DELETE
+          </button>
         )}
 
         {/* Expand for more */}
@@ -374,6 +478,33 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             </div>
           )}
 
+          {/* Boot Time (for auto-provisioned VMs) */}
+          {(bootTime || machine.provisioned_at) && (
+            <div className="mb-4 p-3 border border-gray-300 bg-white">
+              <div className="text-xs text-gray-500 font-mono uppercase mb-2">BOOT METRICS</div>
+              <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                {bootTime && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Boot Time</span>
+                    <span className="font-bold">{bootTime.formatted}</span>
+                  </div>
+                )}
+                {machine.provisioned_at && !machine.first_healthy_at && (
+                  <div className="flex justify-between col-span-2">
+                    <span className="text-gray-500">Provisioned</span>
+                    <span className="text-gray-400">Waiting for first healthy check...</span>
+                  </div>
+                )}
+                {machine.provisioned_at && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Provisioned At</span>
+                    <span>{new Date(machine.provisioned_at).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <div className="text-xs text-gray-500 font-mono uppercase mb-1">Azure Resource ID</div>
@@ -417,6 +548,24 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             )}
           </div>
 
+          {/* Delete Button */}
+          <div className="mt-4 pt-4 border-t border-gray-300">
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting || loadingOperation !== null}
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-mono border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              DELETE VM & ALL RESOURCES
+            </button>
+            <p className="mt-2 text-xs font-mono text-gray-500">
+              Permanently deletes the VM, disk, network interface, public IP, NSG, and resource group from Azure.
+            </p>
+          </div>
         </div>
       )}
     </div>

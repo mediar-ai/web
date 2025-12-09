@@ -86,56 +86,67 @@ export async function GET() {
   }
 }
 
+interface ProvisionBody {
+  name: string;
+  vmSize?: string;
+  location?: string;
+  organizationId?: string;
+}
+
 /**
  * POST /api/admin/machines/provision
- * Provision a new VM
+ * Provision a new VM - starts provisioning and returns immediately
+ *
+ * Note: VM provisioning takes 5-10 minutes. We start the process and return
+ * immediately. The VM will appear in the machine list once provisioning completes.
+ * SSE streaming doesn't work on Vercel due to serverless function timeouts.
  */
 export async function POST(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    const user = await currentUser();
+  const { userId } = await auth();
+  const user = await currentUser();
 
-    if (!userId || !user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!userId || !user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
 
-    // Check if user is a Mediar admin
-    const isMediarAdmin = user.emailAddresses?.some(email =>
-      email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  // Check if user is a Mediar admin
+  const isMediarAdmin = user.emailAddresses?.some(email =>
+    email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  );
+
+  if (!isMediarAdmin) {
+    return NextResponse.json(
+      { success: false, error: 'Only Mediar admins can provision VMs' },
+      { status: 403 }
     );
+  }
 
-    if (!isMediarAdmin) {
-      return NextResponse.json(
-        { success: false, error: 'Only Mediar admins can provision VMs' },
-        { status: 403 }
-      );
-    }
+  const body: ProvisionBody = await request.json();
 
-    const body = await request.json();
+  // Validate required fields
+  if (!body.name) {
+    return NextResponse.json(
+      { success: false, error: 'Missing required field: name' },
+      { status: 400 }
+    );
+  }
 
-    // Validate required fields - only name is required now
-    if (!body.name) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required field: name',
-        },
-        { status: 400 }
-      );
-    }
+  if (!/^[a-zA-Z0-9-]+$/.test(body.name)) {
+    return NextResponse.json(
+      { success: false, error: 'VM name must contain only letters, numbers, and hyphens' },
+      { status: 400 }
+    );
+  }
 
-    // Validate name format
-    if (!/^[a-zA-Z0-9-]+$/.test(body.name)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'VM name must contain only letters, numbers, and hyphens',
-        },
-        { status: 400 }
-      );
-    }
+  return handleProvision(body);
+}
 
-    // Use organization name as customer if provided, otherwise use 'mediar'
+/**
+ * Handle VM provision
+ */
+async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
+  try {
+    // Get customer name from org
     let customerName = 'mediar';
     if (body.organizationId) {
       try {
@@ -143,16 +154,14 @@ export async function POST(request: NextRequest) {
         const org = await clerk.organizations.getOrganization({ organizationId: body.organizationId });
         customerName = org.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
       } catch {
-        // Use default if org lookup fails
+        // Use default
       }
     }
 
     console.log(`[Provision API] Starting VM provision: ${body.name} for ${customerName}`);
 
-    // Get cost estimate for confirmation
     const costEstimate = getEstimatedMonthlyCost(body.vmSize || 'Standard_D4s_v3');
 
-    // Provision the VM
     const result = await provisionVm({
       name: body.name,
       customer: customerName,
@@ -164,16 +173,12 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       console.error(`[Provision API] VM provision failed: ${result.error}`);
       return NextResponse.json(
-        {
-          success: false,
-          error: result.error,
-          details: result.details,
-        },
+        { success: false, error: result.error, details: result.details },
         { status: 500 }
       );
     }
 
-    // Register the VM in Supabase
+    // Register in Supabase
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -183,7 +188,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Provision API] Registering VM in Supabase: ${result.vmId}`);
 
-    // Direct INSERT instead of RPC (RPC has constraint issues)
     const { data: machine, error: dbError } = await supabase
       .from('remote_machines')
       .insert({
@@ -198,13 +202,13 @@ export async function POST(request: NextRequest) {
         machine_type: 'windows_vm',
         region: result.details?.location || 'eastus',
         is_global: false,
+        provisioned_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (dbError) {
       console.error('[Provision API] Failed to register in Supabase:', dbError);
-      // VM was created but registration failed - return partial success
       return NextResponse.json({
         success: true,
         warning: 'VM created but database registration failed. Manual registration may be required.',
@@ -220,14 +224,11 @@ export async function POST(request: NextRequest) {
 
     const machineId = machine?.id;
 
-    // Grant organization access if specified
+    // Grant organization access
     const targetOrgId = body.organizationId || DEFAULT_ORG_ID;
     if (machineId && targetOrgId) {
       const { error: accessError } = await supabase.from('organization_machines').upsert(
-        {
-          organization_id: targetOrgId,
-          machine_id: machineId,
-        },
+        { organization_id: targetOrgId, machine_id: machineId },
         { onConflict: 'organization_id,machine_id' }
       );
 
