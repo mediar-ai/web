@@ -130,12 +130,16 @@ export async function GET(request: NextRequest) {
       is_global: machine.is_global, // Include global flag for UI display
       azure_resource_id: machine.azure_resource_id, // Azure unique identifier
 
-      // Connection details
+      // Connection details (nested format)
       endpoints: {
         mcp: machine.mcp_endpoint,
         management: machine.management_endpoint,
         health: machine.health_endpoint,
       },
+      // Connection details (flat format for MachineCard compatibility)
+      mcp_endpoint: machine.mcp_endpoint,
+      health_endpoint: machine.health_endpoint,
+      management_endpoint: machine.management_endpoint,
 
       // Capabilities and limits
       capabilities: machine.capabilities,

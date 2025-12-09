@@ -177,8 +177,8 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       }
 
       try {
-        // Fetch machine status from the admin machines API
-        const res = await fetch('/api/admin/machines');
+        // Fetch machine status from the machines API
+        const res = await fetch('/api/machines?status=all&show_all=true');
         if (!res.ok) {
           setTimeout(poll, pollInterval);
           return;
