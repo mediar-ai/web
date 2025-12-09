@@ -23,7 +23,6 @@ import {
   FileText,
   Zap,
   BarChart3,
-  Database,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -118,8 +117,6 @@ export function Sidebar() {
           { label: 'Billing', href: '/admin/billing', icon: DollarSign, mediarOnly: true },
           { label: 'Customer Billing', href: '/admin/customer-billing', icon: FileText, mediarOnly: true },
           { label: 'Analytics', href: '/analytics', icon: BarChart3, mediarOnly: true },
-          { label: 'Observability', href: '/admin/observability', icon: Database, mediarOnly: true },
-          { label: 'VM Timeline', href: '/admin/vm-timeline', icon: Monitor, mediarOnly: true },
         ],
       },
     ],
