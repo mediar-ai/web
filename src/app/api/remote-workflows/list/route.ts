@@ -185,7 +185,9 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         last_activity_at,
-        last_modified_at
+        last_modified_at,
+        is_public,
+        organization_id
       `
       )
       .in('id', accessibleWorkflowIds)
