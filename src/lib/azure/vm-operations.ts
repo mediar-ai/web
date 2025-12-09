@@ -363,13 +363,18 @@ export async function isVmReady(
 }
 
 /**
- * Get the public IP address of a VM
+ * Get the public IP address of a VM by querying Azure
  */
 export async function getVmPublicIp(
   azureResourceId: string
 ): Promise<string | null> {
+  const { NetworkManagementClient } = await import('@azure/arm-network');
+  const { getAzureCredential } = await import('./client');
+
   const parsed = parseAzureVmResourceId(azureResourceId);
   const client = getComputeClientForSubscription(parsed.subscriptionId);
+  const credential = getAzureCredential();
+  const networkClient = new NetworkManagementClient(credential, parsed.subscriptionId);
 
   try {
     const vm = await client.virtualMachines.get(
@@ -381,12 +386,38 @@ export async function getVmPublicIp(
     // Get the primary NIC
     const primaryNic = vm.networkProfile?.networkInterfaces?.find(
       nic => nic.primary
-    );
-    if (!primaryNic?.id) return null;
+    ) || vm.networkProfile?.networkInterfaces?.[0];
 
-    // We'd need NetworkManagementClient to get IP details
-    // For now, return null and let the caller use the stored IP
-    return null;
+    if (!primaryNic?.id) {
+      console.log(`[Azure VM] No NIC found for ${parsed.resourceName}`);
+      return null;
+    }
+
+    // Parse NIC ID to get resource group and name
+    const nicIdParts = primaryNic.id.split('/');
+    const nicResourceGroup = nicIdParts[nicIdParts.indexOf('resourceGroups') + 1];
+    const nicName = nicIdParts[nicIdParts.length - 1];
+
+    // Get the NIC details
+    const nic = await networkClient.networkInterfaces.get(nicResourceGroup, nicName);
+
+    // Find the public IP from IP configurations
+    const publicIpId = nic.ipConfigurations?.[0]?.publicIPAddress?.id;
+    if (!publicIpId) {
+      console.log(`[Azure VM] No public IP associated with NIC ${nicName}`);
+      return null;
+    }
+
+    // Parse public IP ID
+    const ipIdParts = publicIpId.split('/');
+    const ipResourceGroup = ipIdParts[ipIdParts.indexOf('resourceGroups') + 1];
+    const ipName = ipIdParts[ipIdParts.length - 1];
+
+    // Get the public IP
+    const publicIp = await networkClient.publicIPAddresses.get(ipResourceGroup, ipName);
+
+    console.log(`[Azure VM] Found public IP for ${parsed.resourceName}: ${publicIp.ipAddress}`);
+    return publicIp.ipAddress || null;
   } catch (error) {
     console.error(`[Azure VM] Failed to get public IP:`, error);
     return null;

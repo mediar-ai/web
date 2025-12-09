@@ -14,6 +14,7 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { VNC_GATEWAY_URL } from '@/lib/azure';
@@ -52,6 +53,7 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
   const [loadingOperation, setLoadingOperation] = useState<OperationType | null>(null);
   const [showVnc, setShowVnc] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const powerState = machine.power_state || 'unknown';
   const isRunning = powerState === 'running';
@@ -189,6 +191,27 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
       toast.error('Failed to delete machine');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`/api/admin/machines/${machine.id}/sync`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Synced from Azure');
+        onRefresh();
+      } else {
+        toast.error(data.error || 'Sync failed');
+      }
+    } catch {
+      toast.error('Failed to sync from Azure');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -367,6 +390,17 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             >
               {loadingOperation === 'deallocate' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
               DEALLOCATE
+            </button>
+
+            {/* Sync from Azure - useful when endpoints are missing */}
+            <button
+              onClick={handleSync}
+              disabled={isSyncing || loadingOperation !== null}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Fetch public IP from Azure and update endpoints"
+            >
+              {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              SYNC
             </button>
           </>
         ) : (
