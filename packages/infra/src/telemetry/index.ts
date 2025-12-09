@@ -6,7 +6,7 @@
 import { trace, context, SpanKind, SpanStatusCode, Span, Tracer } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
@@ -82,7 +82,7 @@ export function initTelemetry(options?: {
   });
 
   sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: options?.serviceName || 'mediar-infra',
       [ATTR_SERVICE_VERSION]: options?.serviceVersion || '0.1.0',
       'deployment.environment': process.env.NODE_ENV || 'development',
