@@ -1,21 +1,25 @@
 {
+  "buildCommand": "cd apps/web && npm run build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
   "functions": {
-    "src/app/api/ingest/route.ts": {
+    "apps/web/src/app/api/ingest/route.ts": {
       "maxDuration": 800
     },
-    "src/app/api/suggest-workflow-labels/route.ts": {
+    "apps/web/src/app/api/suggest-workflow-labels/route.ts": {
       "maxDuration": 300
     },
-    "src/app/api/cron/scheduler/route.ts": {
+    "apps/web/src/app/api/cron/scheduler/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/cron/health-check-supabase/route.ts": {
+    "apps/web/src/app/api/cron/health-check-supabase/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/cron/process-pending-notifications/route.ts": {
+    "apps/web/src/app/api/cron/process-pending-notifications/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/cron/llm-usage-reconciliation/route.ts": {
+    "apps/web/src/app/api/cron/llm-usage-reconciliation/route.ts": {
       "maxDuration": 60
     }
   },

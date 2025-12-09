@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'rust-executor/**'
+      - 'crates/executor/**'
       - '.github/workflows/deploy-rust-executor.yml'
   workflow_dispatch:
 
@@ -28,10 +28,10 @@ jobs:
         with:
           toolchain: stable
           cache: true
-          cache-workspaces: rust-executor
+          cache-workspaces: crates/executor
 
       - name: Run Tests
-        working-directory: rust-executor
+        working-directory: crates/executor
         run: cargo test --lib --tests --verbose
 
   # Build and deploy
@@ -64,7 +64,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ hashFiles('rust-executor/Cargo.lock') }}
+          key: ${{ runner.os }}-buildx-${{ hashFiles('crates/executor/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-buildx-
 
@@ -72,7 +72,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.run_number }}
         run: |
-          cd rust-executor
+          cd crates/executor
 
           echo "Building ${{ env.ARTIFACT_REGISTRY }}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}"
 

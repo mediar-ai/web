@@ -1,8 +1,7 @@
 # Build artifacts
-rust-executor/
+crates/
 modal_apps/
 scripts/
-container/
 sandbox-server/
 tests/
 __tests__/
