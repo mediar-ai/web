@@ -297,7 +297,7 @@ export async function GET(request: NextRequest) {
           }
           // Resolve author email: if created_by is a user_id, look up email
           const authorEmail = cw.created_by?.startsWith('user_')
-            ? userIdToEmail[cw.created_by] || cw.created_by
+            ? userIdToEmail[cw.created_by] || 'Deleted User'
             : cw.created_by;
           cronData[cw.id] = {
             organization_id: cw.organization_id,

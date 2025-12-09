@@ -185,19 +185,38 @@ export async function POST(req: Request) {
       console.error(`[Clerk Webhook] Error checking invitations:`, err);
     }
 
+
     // Check if user is Mediar admin
     const isMediarAdmin = primaryEmail.toLowerCase().endsWith('@mediar.ai');
+
+    // Always insert user into mediar_users table (needed for author name lookup)
+    // This must happen regardless of invitation status
+    const userName = [first_name, last_name].filter(Boolean).join(' ') || primaryEmail;
+    const { error: userInsertError } = await supabase
+      .from('mediar_users')
+      .upsert({
+        user_id: userId,
+        name: userName,
+        email: primaryEmail,
+        // organization_id will be set when personal workspace is created or when they join an org
+      }, { onConflict: 'user_id' });
+
+    if (userInsertError) {
+      console.error('[Clerk Webhook] Failed to insert user into mediar_users:', userInsertError);
+    } else {
+      console.log('[Clerk Webhook] Inserted user into mediar_users table');
+    }
 
     // Determine if we should create personal workspace
     const shouldCreatePersonalWorkspace = !hasInvitations || isMediarAdmin;
 
     if (shouldCreatePersonalWorkspace) {
-      console.log(`[Clerk Webhook] Creating personal workspace for ${primaryEmail} (organic signup)`);
+      console.log('[Clerk Webhook] Creating personal workspace for ' + primaryEmail + ' (organic signup)');
 
       try {
         // Generate personal workspace name
         const workspaceName = first_name
-          ? `${first_name}'s Workspace`
+          ? first_name + "'s Workspace"
           : primaryEmail.split('@')[0] + '-workspace';
 
         // Create personal organization
@@ -206,24 +225,17 @@ export async function POST(req: Request) {
           createdBy: userId,
         });
 
-        console.log(`[Clerk Webhook] ✓ Created personal workspace: ${workspaceName} (${personalOrg.id})`);
+        console.log('[Clerk Webhook] Created personal workspace: ' + workspaceName + ' (' + personalOrg.id + ')');
         // Note: createdBy automatically adds user as admin, no need for createOrganizationMembership
 
-        // Insert user into mediar_users table
-        const userName = [first_name, last_name].filter(Boolean).join(' ') || primaryEmail;
-        const { error: userInsertError } = await supabase
+        // Update mediar_users with organization_id now that we have it
+        const { error: userUpdateError } = await supabase
           .from('mediar_users')
-          .upsert({
-            user_id: userId,
-            name: userName,
-            email: primaryEmail,
-            organization_id: personalOrg.id
-          }, { onConflict: 'user_id' });
+          .update({ organization_id: personalOrg.id })
+          .eq('user_id', userId);
 
-        if (userInsertError) {
-          console.error(`[Clerk Webhook] ✗ Failed to insert user into mediar_users:`, userInsertError);
-        } else {
-          console.log(`[Clerk Webhook] ✓ Inserted user into mediar_users table`);
+        if (userUpdateError) {
+          console.error('[Clerk Webhook] Failed to update mediar_users organization_id:', userUpdateError);
         }
 
         // Insert organization into organization_data_access table

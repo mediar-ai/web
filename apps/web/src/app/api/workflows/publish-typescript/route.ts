@@ -3,11 +3,18 @@
  *
  * Publishes a TypeScript workflow from the desktop app to the cloud.
  * Uses folder_id (UUID) as the canonical identifier via github_folder column.
+ *
+ * Flow:
+ * 1. Create/update workflow in database
+ * 2. Push files to GitHub (mediar-ai/workflows repo)
+ * 3. GitHub Actions creates a release (triggered by push)
+ * 4. Release webhook updates github_release_url (for download)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseTypeScriptWorkflow } from '@/lib/typescript-workflow-parser';
+import { Octokit } from '@octokit/rest';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +22,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const GITHUB_OWNER = 'mediar-ai';
+const GITHUB_REPO = 'workflows';
+const GITHUB_BRANCH = 'main';
 
 interface PublishRequest {
   folder_id: string; // UUID - used as github_folder in database
@@ -188,7 +199,170 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`✅ Published TypeScript workflow: ID=${workflowId}, version=${newVersionNumber} (draft - activate from dashboard)`);
+    // Push files to GitHub
+    const githubToken = process.env.GITHUB_WORKFLOW_TOKEN || process.env.GITHUB_TOKEN;
+    if (!githubToken) {
+      console.warn('⚠️ GitHub token not configured - skipping GitHub sync');
+    } else {
+      try {
+        console.log(`📤 Pushing ${body.files?.length || 0} files to GitHub...`);
+        const octokit = new Octokit({ auth: githubToken });
+
+        // Generate package.json for the workflow
+        const packageJson = {
+          name: name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+          version: newVersionNumber,
+          description: description || metadata.description || '',
+          main: 'src/terminator.ts',
+          scripts: {
+            build: 'tsc',
+            start: 'ts-node src/terminator.ts'
+          },
+          dependencies: {
+            '@anthropic-ai/sdk': '^0.27.0',
+            'zod': '^3.23.8'
+          },
+          devDependencies: {
+            'typescript': '^5.0.0',
+            '@types/node': '^20.0.0',
+            'ts-node': '^10.9.0'
+          }
+        };
+
+        // Collect all files to push
+        const filesToPush: { path: string; content: string }[] = [
+          { path: `${folder_id}/package.json`, content: JSON.stringify(packageJson, null, 2) },
+        ];
+
+        // Add terminator.ts
+        filesToPush.push({ path: `${folder_id}/src/terminator.ts`, content: terminator_ts });
+
+        // Add other TS files from the files array
+        if (body.files && Array.isArray(body.files)) {
+          for (const file of body.files) {
+            // Skip terminator.ts if already in files array (avoid duplicate)
+            if (file.path === 'src/terminator.ts') continue;
+            filesToPush.push({ path: `${folder_id}/${file.path}`, content: file.content });
+          }
+        }
+
+        let lastCommitSha: string | undefined;
+
+        // Push each file to GitHub
+        for (const file of filesToPush) {
+          try {
+            // Check if file exists to get its SHA
+            let existingSha: string | undefined;
+            try {
+              const { data: existingFile } = await octokit.repos.getContent({
+                owner: GITHUB_OWNER,
+                repo: GITHUB_REPO,
+                path: file.path,
+                ref: GITHUB_BRANCH,
+              });
+              if ('sha' in existingFile) {
+                existingSha = existingFile.sha;
+              }
+            } catch {
+              // File doesn't exist - that's OK
+            }
+
+            // Create or update the file
+            const { data } = await octokit.repos.createOrUpdateFileContents({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              path: file.path,
+              message: `Publish TypeScript workflow: ${name} v${newVersionNumber}`,
+              content: Buffer.from(file.content).toString('base64'),
+              branch: GITHUB_BRANCH,
+              ...(existingSha && { sha: existingSha }),
+            });
+
+            lastCommitSha = data.commit.sha;
+            console.log(`  ✅ Pushed: ${file.path}`);
+          } catch (fileError) {
+            console.error(`  ❌ Failed to push ${file.path}:`, fileError);
+            // Continue with other files
+          }
+        }
+
+        // Update workflow with GitHub sync status
+        if (lastCommitSha) {
+          // Create a GitHub release with the workflow files as a ZIP
+          const tagName = `${folder_id}-v${newVersionNumber.replace(/\./g, '-')}`;
+          let releaseUrl: string | undefined;
+
+          try {
+            // Create the release
+            const { data: release } = await octokit.repos.createRelease({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              tag_name: tagName,
+              name: `${name} v${newVersionNumber}`,
+              body: `TypeScript workflow published from desktop app.\n\nUUID: ${folder_id}\nVersion: ${newVersionNumber}`,
+              target_commitish: lastCommitSha,
+            });
+
+            console.log(`  ✅ Created release: ${release.html_url}`);
+
+            // Create ZIP content for the release asset
+            const JSZipModule = await import('jszip');
+            const zip = new JSZipModule.default();
+
+            // Add all files to the ZIP
+            for (const file of filesToPush) {
+              // Remove the UUID prefix from path for cleaner ZIP structure
+              const zipPath = file.path.replace(`${folder_id}/`, '');
+              zip.file(zipPath, file.content);
+            }
+
+            const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+            // Upload ZIP as release asset
+            const { data: asset } = await octokit.repos.uploadReleaseAsset({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              release_id: release.id,
+              name: `workflow-${folder_id}.zip`,
+              data: zipBuffer as unknown as string, // Buffer works but types expect string
+              headers: {
+                'content-type': 'application/zip',
+                'content-length': zipBuffer.length,
+              },
+            });
+
+            releaseUrl = asset.url; // API URL for downloading
+            console.log(`  ✅ Uploaded release asset: ${asset.name}`);
+
+          } catch (releaseError) {
+            console.error('  ⚠️ Release creation failed (files still pushed):', releaseError);
+            // Continue - files are on GitHub, just no release
+          }
+
+          // Update DB with sync status and release URL
+          await supabase
+            .from('deployed_workflows')
+            .update({
+              github_path: `${folder_id}/src/terminator.ts`,
+              github_sha: lastCommitSha,
+              github_ref: GITHUB_BRANCH,
+              github_sync_status: 'synced',
+              status: 'deployed', // Change from draft to deployed since it's now on GitHub
+              ...(releaseUrl && { github_release_url: releaseUrl }),
+              package_json_version: newVersionNumber,
+            })
+            .eq('id', workflowId);
+
+          console.log(`✅ GitHub sync complete - commit: ${lastCommitSha.substring(0, 7)}${releaseUrl ? ', release created' : ''}`);
+        }
+      } catch (githubError) {
+        console.error('❌ GitHub sync failed:', githubError);
+        // Don't fail the whole request - DB is already updated
+        // The workflow can still be manually synced later
+      }
+    }
+
+    console.log(`✅ Published TypeScript workflow: ID=${workflowId}, version=${newVersionNumber}`);
 
     return NextResponse.json({
       success: true,
