@@ -201,4 +201,81 @@ declare function isVmReady(resourceId: string): Promise<boolean>;
  */
 declare function getVmPublicIp(resourceId: string): Promise<string | null>;
 
-export { AuditContext, type AzureResourceId, AzureResourceParseError, type AzureVmResourceId, type MachineWithAzure, POWER_STATE_MAP, type RunCommandOptions, type RunCommandResult, VNC_GATEWAY_URL, type VmOperation, type VmOperationResult, type VmOperationStatus, type VmOperationType, type VmPowerState, type VmProvisioningState, type VmState, buildAzureResourceId, buildAzureVmResourceId, deallocateVm, extractHostFromEndpoint, getAzureCredential, getComputeClient, getComputeClientForSubscription, getNetworkClient, getSubscriptionId, getVmPublicIp, getVmState, isAzureConfigured, isValidAzureResourceId, isValidAzureVmResourceId, isVmReady, parseAzureResourceId, parseAzureVmResourceId, resetClients, restartVm, runCommand, startVm, stopVm };
+/**
+ * Azure Image Builder
+ * Replaces Packer for building VM images with full TypeScript control.
+ * Supports specialized images (no sysprep) for faster VM boot times.
+ */
+interface ImageBuildOptions {
+    vmPassword: string;
+    vncPassword: string;
+    s3AccessKey?: string;
+    s3SecretKey?: string;
+    s3Endpoint?: string;
+}
+interface ImageBuildResult {
+    success: boolean;
+    imageId?: string;
+    versionName?: string;
+    templateName?: string;
+    error?: string;
+    runOutputId?: string;
+}
+interface ImageBuildProgress {
+    step: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    message: string;
+    runState?: string;
+}
+/**
+ * Create an Image Builder template for the MCP image
+ */
+declare function createImageTemplate(templateName: string, options: ImageBuildOptions, onProgress?: (progress: ImageBuildProgress) => void): Promise<ImageBuildResult>;
+/**
+ * Start building an image from a template
+ */
+declare function runImageBuild(templateName: string, onProgress?: (progress: ImageBuildProgress) => void): Promise<ImageBuildResult>;
+/**
+ * Full image build workflow: create template + run build
+ */
+declare function buildImage(options: ImageBuildOptions, onProgress?: (progress: ImageBuildProgress) => void): Promise<ImageBuildResult>;
+/**
+ * Delete an image template
+ */
+declare function deleteImageTemplate(templateName: string): Promise<{
+    success: boolean;
+    error?: string;
+}>;
+/**
+ * List all image templates
+ */
+declare function listImageTemplates(): Promise<{
+    success: boolean;
+    templates?: Array<{
+        name: string;
+        location: string;
+        lastRunState?: string;
+        lastRunTime?: Date;
+    }>;
+    error?: string;
+}>;
+/**
+ * Get latest gallery image version
+ */
+declare function getLatestGalleryImageVersion(): Promise<{
+    success: boolean;
+    version?: string;
+    imageId?: string;
+    error?: string;
+}>;
+/**
+ * Check if the Image Builder managed identity exists
+ * If not, provides instructions to create it
+ */
+declare function checkImageBuilderPrerequisites(): Promise<{
+    ready: boolean;
+    missing: string[];
+    instructions: string[];
+}>;
+
+export { AuditContext, type AzureResourceId, AzureResourceParseError, type AzureVmResourceId, type ImageBuildOptions, type ImageBuildProgress, type ImageBuildResult, type MachineWithAzure, POWER_STATE_MAP, type RunCommandOptions, type RunCommandResult, VNC_GATEWAY_URL, type VmOperation, type VmOperationResult, type VmOperationStatus, type VmOperationType, type VmPowerState, type VmProvisioningState, type VmState, buildAzureResourceId, buildAzureVmResourceId, buildImage, checkImageBuilderPrerequisites, createImageTemplate, deallocateVm, deleteImageTemplate, extractHostFromEndpoint, getAzureCredential, getComputeClient, getComputeClientForSubscription, getLatestGalleryImageVersion, getNetworkClient, getSubscriptionId, getVmPublicIp, getVmState, isAzureConfigured, isValidAzureResourceId, isValidAzureVmResourceId, isVmReady, listImageTemplates, parseAzureResourceId, parseAzureVmResourceId, resetClients, restartVm, runCommand, runImageBuild, startVm, stopVm };

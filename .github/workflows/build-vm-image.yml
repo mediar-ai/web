@@ -1,0 +1,65 @@
+name: Build Azure VM Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/infra/src/azure/image-builder.ts"
+      - ".github/workflows/build-vm-image.yml"
+
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Force build even without changes"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd packages/infra
+          npm install
+
+      - name: Build infra package
+        run: |
+          cd packages/infra
+          npm run build
+
+      - name: Build VM image
+        run: |
+          cd packages/infra
+          npx tsx src/cli/build-image.ts
+        env:
+          VM_PASSWORD: ${{ secrets.VM_PASSWORD }}
+          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+          S3_ACCESS_KEY: ${{ secrets.SUPABASE_S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.SUPABASE_S3_SECRET_KEY }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Azure Image Builder Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** `${{ github.sha }}`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

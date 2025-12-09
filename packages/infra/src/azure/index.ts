@@ -57,3 +57,17 @@ export {
   type AuditContext,
   type ActorType,
 } from './vm-operations.js';
+
+// Image Builder
+export {
+  buildImage,
+  createImageTemplate,
+  runImageBuild,
+  deleteImageTemplate,
+  listImageTemplates,
+  getLatestGalleryImageVersion,
+  checkImageBuilderPrerequisites,
+  type ImageBuildOptions,
+  type ImageBuildResult,
+  type ImageBuildProgress,
+} from './image-builder.js';
