@@ -74,15 +74,3 @@ export {
 
 // VM provisioning
 export { deleteVmResources } from './vm-provisioning';
-
-// Image Builder (replaces Packer)
-export type { ImageBuildOptions, ImageBuildResult, ImageBuildProgress } from './image-builder';
-export {
-  createImageTemplate,
-  runImageBuild,
-  buildImage,
-  deleteImageTemplate,
-  listImageTemplates,
-  getLatestGalleryImageVersion,
-  checkImageBuilderPrerequisites,
-} from './image-builder';
