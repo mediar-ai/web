@@ -22,6 +22,7 @@ export async function POST(
 
     // Authenticate - support desktop Bearer tokens
     let orgId: string | null = null;
+    let userEmail: string | null = null;
 
     const authHeader = request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -37,17 +38,20 @@ export async function POST(
       }
 
       orgId = validation.orgId || null;
-      console.log(`[Visibility] Desktop auth for user: ${validation.email}, org: ${orgId}`);
+      userEmail = validation.email || null;
+      console.log(`[Visibility] Desktop auth for user: ${userEmail}, org: ${orgId}`);
     } else {
       // Try Clerk auth
-      const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
+      const { getEffectiveOrgId, getAuthenticatedUser } = await import('@/lib/mediarAuth');
       const authResult = await getEffectiveOrgId();
       orgId = authResult.orgId;
+      const user = await getAuthenticatedUser();
+      userEmail = user?.primaryEmailAddress?.emailAddress || null;
     }
 
-    if (!orgId) {
+    if (!orgId && !userEmail) {
       return NextResponse.json(
-        { success: false, error: 'No organization context' },
+        { success: false, error: 'No authentication context' },
         { status: 401 }
       );
     }
@@ -69,10 +73,10 @@ export async function POST(
       );
     }
 
-    // Check if user's org owns this workflow
+    // Check if user owns this workflow (by org or by created_by)
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select('id, organization_id, is_public')
+      .select('id, organization_id, created_by, is_public')
       .eq('id', workflowId)
       .single();
 
@@ -83,13 +87,19 @@ export async function POST(
       );
     }
 
-    // Only the owning organization can change visibility
-    if (workflow.organization_id !== orgId) {
+    // Allow if: org matches OR user is the creator
+    const isOrgOwner = orgId && workflow.organization_id === orgId;
+    const isCreator = userEmail && workflow.created_by === userEmail;
+
+    if (!isOrgOwner && !isCreator) {
+      console.log(`[Visibility] Access denied: orgId=${orgId}, workflow.org=${workflow.organization_id}, email=${userEmail}, created_by=${workflow.created_by}`);
       return NextResponse.json(
         { success: false, error: 'Only the workflow owner can change visibility' },
         { status: 403 }
       );
     }
+
+    console.log(`[Visibility] Access granted: isOrgOwner=${isOrgOwner}, isCreator=${isCreator}`);
 
     // Update visibility
     const { error: updateError } = await supabase
