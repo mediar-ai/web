@@ -83,6 +83,8 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
 
   const extractIpFromEndpoint = (endpoint: string | undefined) => {
     if (!endpoint) return '-';
+    // Skip placeholder endpoints used during provisioning
+    if (endpoint.includes('provisioning.local')) return '-';
     try {
       const url = new URL(endpoint);
       return url.hostname;

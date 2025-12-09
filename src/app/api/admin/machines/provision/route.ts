@@ -174,10 +174,13 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
     const costEstimate = getEstimatedMonthlyCost(body.vmSize || 'Standard_D4s_v3');
 
     // Step 1: Create DB record FIRST with status="provisioning"
+    // Use placeholder for mcp_endpoint (NOT NULL constraint) - will be updated after Azure provisioning
+    const placeholderEndpoint = `http://provisioning.local:8080/mcp`;
     const { data: machine, error: dbError } = await supabase
       .from('remote_machines')
       .insert({
         name: body.name,
+        mcp_endpoint: placeholderEndpoint, // Placeholder - updated after Azure provisioning
         terraform_key: `dashboard-${body.name}`,
         status: 'provisioning', // Key: starts as provisioning
         health_status: 'unknown',
