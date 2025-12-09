@@ -523,6 +523,10 @@ async function getVmPublicIp(resourceId) {
   return publicIp.ipAddress || null;
 }
 
+// src/azure/image-builder.ts
+var import_arm_imagebuilder = require("@azure/arm-imagebuilder");
+var import_arm_compute2 = require("@azure/arm-compute");
+
 // src/cli/index.ts
 (0, import_dotenv.config)();
 var program = new import_commander.Command();
