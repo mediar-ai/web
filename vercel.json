@@ -3,26 +3,6 @@
   "outputDirectory": "apps/web/.next",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "functions": {
-    "api/ingest/route": {
-      "maxDuration": 800
-    },
-    "api/suggest-workflow-labels/route": {
-      "maxDuration": 300
-    },
-    "api/cron/scheduler/route": {
-      "maxDuration": 60
-    },
-    "api/cron/health-check-supabase/route": {
-      "maxDuration": 60
-    },
-    "api/cron/process-pending-notifications/route": {
-      "maxDuration": 60
-    },
-    "api/cron/llm-usage-reconciliation/route": {
-      "maxDuration": 60
-    }
-  },
   "crons": [
     {
       "path": "/api/cron/scheduler",
