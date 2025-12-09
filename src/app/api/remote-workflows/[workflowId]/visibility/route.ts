@@ -42,11 +42,10 @@ export async function POST(
       console.log(`[Visibility] Desktop auth for user: ${userEmail}, org: ${orgId}`);
     } else {
       // Try Clerk auth
-      const { getEffectiveOrgId, getAuthenticatedUser } = await import('@/lib/mediarAuth');
+      const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
       const authResult = await getEffectiveOrgId();
       orgId = authResult.orgId;
-      const user = await getAuthenticatedUser();
-      userEmail = user?.primaryEmailAddress?.emailAddress || null;
+      userEmail = authResult.email;
     }
 
     if (!orgId && !userEmail) {
