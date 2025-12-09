@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Server, DollarSign, AlertTriangle, Check, Loader2, Search, Building2 } from 'lucide-react';
+import { Server, DollarSign, AlertTriangle, Check, Loader2, Search, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -24,26 +24,21 @@ interface Organization {
   name: string;
 }
 
-interface ProvisioningStep {
-  step: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  message: string;
-}
-
 interface ProvisionVmDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const PROVISIONING_STEPS = [
-  { step: 'image', label: 'Finding Packer image' },
-  { step: 'resource_group', label: 'Creating resource group' },
-  { step: 'network', label: 'Creating virtual network' },
-  { step: 'public_ip', label: 'Creating public IP' },
-  { step: 'nsg', label: 'Creating network security group' },
-  { step: 'nic', label: 'Creating network interface' },
-  { step: 'vm', label: 'Creating virtual machine' },
+// Provisioning steps for display (informational only - no real-time updates due to Vercel timeout)
+const PROVISIONING_INFO = [
+  'Finding latest Packer image',
+  'Creating Azure resource group',
+  'Setting up virtual network',
+  'Configuring network security',
+  'Creating Windows VM',
+  'Starting MCP agent',
+  'Registering in database',
 ];
 
 export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDialogProps) {
@@ -51,7 +46,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
   const [options, setOptions] = useState<ProvisionOptions | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [provisioning, setProvisioning] = useState(false);
-  const [progress, setProgress] = useState<ProvisioningStep[]>([]);
+  const [provisioningMessage, setProvisioningMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
@@ -72,8 +67,8 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       fetchOptions();
     } else {
       // Reset state when dialog closes
-      setProgress([]);
       setProvisioning(false);
+      setProvisioningMessage('');
       setSearchTerm('');
     }
   }, [isOpen]);
@@ -134,45 +129,43 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
     }
 
     setProvisioning(true);
-    setProgress(PROVISIONING_STEPS.map(s => ({ step: s.step, status: 'pending', message: s.label })));
+    setProvisioningMessage('Starting VM provisioning...');
 
     try {
       const res = await fetch('/api/admin/machines/provision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(formData),
       });
 
       const data = await res.json();
 
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to provision VM');
+        setProvisioning(false);
+        setProvisioningMessage('');
+        return;
+      }
+
       if (data.success) {
-        // Mark all steps as completed
-        setProgress(PROVISIONING_STEPS.map(s => ({
-          step: s.step,
-          status: 'completed',
-          message: s.label,
-        })));
-
+        setProvisioningMessage('VM provisioned successfully!');
         toast.success(data.message || 'VM provisioned successfully');
-
-        // Show details
-        if (data.machine) {
-          console.log('Provisioned VM:', data.machine);
-        }
-
         setTimeout(() => {
           onSuccess();
           onClose();
-        }, 1500);
+        }, 2000);
       } else {
         toast.error(data.error || 'Failed to provision VM');
         setProvisioning(false);
-        setProgress([]);
+        setProvisioningMessage('');
       }
-    } catch {
+    } catch (err) {
+      console.error('Provision error:', err);
       toast.error('Failed to provision VM');
       setProvisioning(false);
-      setProgress([]);
+      setProvisioningMessage('');
     }
   };
 
@@ -215,47 +208,36 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
           ) : provisioning ? (
-            /* Provisioning Progress */
+            /* Provisioning in Progress */
             <div className="space-y-4">
               <div className="text-center mb-6">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                <p className="font-mono text-sm">
-                  Provisioning VM... This may take 5-10 minutes.
+                <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4" />
+                <p className="font-mono text-lg font-bold mb-2">
+                  {provisioningMessage || 'Provisioning VM...'}
+                </p>
+                <p className="font-mono text-sm text-gray-600">
+                  This takes 5-10 minutes. Please wait...
                 </p>
               </div>
 
-              <div className="space-y-2">
-                {progress.map((step) => (
-                  <div
-                    key={step.step}
-                    className={`flex items-center gap-3 p-2 border ${
-                      step.status === 'completed'
-                        ? 'border-black bg-gray-50'
-                        : step.status === 'in_progress'
-                          ? 'border-black bg-gray-100'
-                          : step.status === 'failed'
-                            ? 'border-black bg-gray-100'
-                            : 'border-gray-300'
-                    }`}
-                  >
-                    <div className="w-5 h-5 flex items-center justify-center">
-                      {step.status === 'completed' ? (
-                        <Check className="w-4 h-4" />
-                      ) : step.status === 'in_progress' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : step.status === 'failed' ? (
-                        <X className="w-4 h-4" />
-                      ) : (
-                        <span className="w-2 h-2 bg-gray-300 rounded-full" />
-                      )}
-                    </div>
-                    <span className={`font-mono text-sm ${
-                      step.status === 'pending' ? 'text-gray-400' : 'text-black'
-                    }`}>
-                      {step.message}
-                    </span>
-                  </div>
-                ))}
+              {/* Informational steps - shows what's happening */}
+              <div className="border-2 border-black p-3 bg-gray-50">
+                <p className="font-mono text-xs text-gray-600 uppercase mb-2">What&apos;s happening:</p>
+                <ul className="space-y-1">
+                  {PROVISIONING_INFO.map((step, i) => (
+                    <li key={i} className="font-mono text-sm text-gray-600 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" />
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex items-start gap-2 p-3 border-2 border-black bg-gray-100">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div className="font-mono text-xs">
+                  <p>Do not close this dialog. The VM will be ready in 10-15 minutes after creation completes.</p>
+                </div>
               </div>
             </div>
           ) : (

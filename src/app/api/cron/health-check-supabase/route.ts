@@ -224,6 +224,14 @@ export async function GET(request: Request) {
             updateData.last_healthy_at = currentTime;
           }
 
+          // Track first healthy timestamp for boot time metrics (only set once)
+          let bootTimeSeconds: number | null = null;
+          if (isHealthy && !machine.first_healthy_at && machine.provisioned_at) {
+            updateData.first_healthy_at = currentTime;
+            bootTimeSeconds = Math.round((Date.now() - new Date(machine.provisioned_at).getTime()) / 1000);
+            console.log(`[${machine.name}] First healthy! Boot time: ${bootTimeSeconds}s (${Math.round(bootTimeSeconds / 60)}min)`);
+          }
+
           if ('last_unhealthy_at' in machine && !isHealthy) {
             updateData.last_unhealthy_at = currentTime;
           }
@@ -268,7 +276,8 @@ export async function GET(request: Request) {
             healthDetails,
             changed: machine.health_status !== newStatus,
             responseTime,
-            hasTaskbar
+            hasTaskbar,
+            bootTimeSeconds
           };
 
         } catch (error: any) {
@@ -417,6 +426,7 @@ export async function GET(request: Request) {
             response_time_ms: result.responseTime || result.healthDetails?.responseTime,
             has_taskbar: result.hasTaskbar,
             error: result.error || null,
+            boot_time_seconds: result.bootTimeSeconds || null,
           },
         });
       }

@@ -15,6 +15,10 @@ const DEFAULT_VM_CONFIG = {
   osDiskSizeGb: 128,
   osDiskType: 'Premium_LRS',
   imageResourceGroup: 'UI-AUTOMATION-IMAGES-RG',
+  // Azure Compute Gallery for specialized images (no sysprep = faster boot!)
+  galleryName: 'mcpimages',
+  galleryImageName: 'mcp-full',
+  // Legacy prefix for fallback to managed images
   imageNamePrefix: 'mcp-full-',
   ports: [
     { name: 'MCP', port: 8080, priority: 100 },
@@ -62,35 +66,69 @@ export interface ProvisioningProgress {
 }
 
 /**
- * Get the latest Packer image from the UI-AUTOMATION-IMAGES-RG
+ * Get the latest image from Azure Compute Gallery (specialized, no sysprep)
+ * Falls back to legacy managed images if gallery not available
  */
 async function getLatestPackerImage(
   computeClient: ComputeManagementClient
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; specialized: boolean } | null> {
   const subscriptionId = getSubscriptionId();
   const imageRg = DEFAULT_VM_CONFIG.imageResourceGroup;
-  const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
+  const galleryName = DEFAULT_VM_CONFIG.galleryName;
+  const imageName = DEFAULT_VM_CONFIG.galleryImageName;
 
-  console.log(`[VM Provision] Looking for images with prefix '${prefix}' in ${imageRg}`);
-  console.log(`[VM Provision] Subscription ID: ${subscriptionId}`);
+  // Try Azure Compute Gallery first (specialized images = faster boot)
+  try {
+    console.log(`[VM Provision] Looking for gallery image: ${galleryName}/${imageName}`);
+
+    // List all versions of the image
+    const versions: Array<{ name?: string }> = [];
+    const paginator = computeClient.galleryImageVersions
+      .listByGalleryImage(imageRg, galleryName, imageName)
+      .byPage();
+
+    for await (const page of paginator) {
+      versions.push(...page);
+    }
+
+    console.log(`[VM Provision] Found ${versions.length} gallery image versions`);
+
+    if (versions.length > 0) {
+      // Sort by version name (format: YYYY.MMDD.HHmm) descending
+      const sortedVersions = versions
+        .filter((v): v is { name: string } => !!v.name)
+        .sort((a, b) => b.name.localeCompare(a.name));
+
+      const latestVersion = sortedVersions[0].name;
+      const imageId = `/subscriptions/${subscriptionId}/resourceGroups/${imageRg}/providers/Microsoft.Compute/galleries/${galleryName}/images/${imageName}/versions/${latestVersion}`;
+
+      console.log(`[VM Provision] Using gallery image: ${imageName}/${latestVersion} (specialized)`);
+      return {
+        id: imageId,
+        name: `${imageName}/${latestVersion}`,
+        specialized: true,
+      };
+    }
+  } catch (error) {
+    console.log(`[VM Provision] Gallery not available, falling back to managed images:`, error);
+  }
+
+  // Fallback to legacy managed images (generalized, slower boot)
+  const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
+  console.log(`[VM Provision] Falling back to managed images with prefix '${prefix}'`);
 
   try {
-    // Use byPage() for more reliable pagination in serverless environments
     const allImages: Array<{ name?: string }> = [];
     const paginator = computeClient.images.listByResourceGroup(imageRg).byPage();
 
-    console.log('[VM Provision] Starting paginated image list...');
-
     for await (const page of paginator) {
-      console.log(`[VM Provision] Got page with ${page.length} images`);
       allImages.push(...page);
     }
 
-    console.log(`[VM Provision] Total images found: ${allImages.length}`);
+    console.log(`[VM Provision] Total managed images found: ${allImages.length}`);
 
     if (allImages.length === 0) {
-      console.error('[VM Provision] No images returned from Azure API');
-      console.error('[VM Provision] This may indicate a permissions issue');
+      console.error('[VM Provision] No images found');
       return null;
     }
 
@@ -115,11 +153,8 @@ async function getLatestPackerImage(
       }
     }
 
-    console.log(`[VM Provision] Matching images with prefix '${prefix}': ${matchingImages.length}`);
-
     if (matchingImages.length === 0) {
       console.error(`[VM Provision] No images with prefix '${prefix}' found`);
-      console.error(`[VM Provision] Sample image names: ${allImages.slice(0, 5).map(i => i.name).join(', ')}`);
       return null;
     }
 
@@ -127,17 +162,14 @@ async function getLatestPackerImage(
     matchingImages.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     const latest = matchingImages[0];
 
-    console.log(`[VM Provision] Selected latest image: ${latest.name}`);
-    return { id: latest.id, name: latest.name };
+    console.log(`[VM Provision] Using managed image: ${latest.name} (generalized - slower boot)`);
+    return {
+      id: latest.id,
+      name: latest.name,
+      specialized: false,
+    };
   } catch (error) {
     console.error('[VM Provision] Error listing images:', error);
-    if (error instanceof Error) {
-      console.error('[VM Provision] Error details:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack?.split('\n').slice(0, 3).join('\n'),
-      });
-    }
     return null;
   }
 }
@@ -194,13 +226,16 @@ export function getAvailableVmSizes(): { id: string; name: string; monthlyCost: 
 
 /**
  * Available Azure regions for provisioning
+ * Note: Currently limited to eastus because Packer images are regional
+ * To add more regions, images need to be copied or use Azure Compute Gallery
  */
 export function getAvailableRegions(): { id: string; name: string }[] {
   return [
-    { id: 'eastus', name: 'East US' },
-    { id: 'westus2', name: 'West US 2' },
-    { id: 'westeurope', name: 'West Europe' },
-    { id: 'southeastasia', name: 'Southeast Asia' },
+    { id: 'eastus', name: 'East US (image available)' },
+    // Other regions require image replication:
+    // { id: 'westus2', name: 'West US 2' },
+    // { id: 'westeurope', name: 'West Europe' },
+    // { id: 'southeastasia', name: 'Southeast Asia' },
   ];
 }
 
@@ -228,16 +263,17 @@ export async function provisionVm(
   };
 
   try {
-    // Step 1: Get the latest Packer image
-    progress('image', 'in_progress', 'Finding latest Packer image...');
+    // Step 1: Get the latest Packer image (prefer gallery for specialized/faster boot)
+    progress('image', 'in_progress', 'Finding latest image...');
     const image = await getLatestPackerImage(computeClient);
     if (!image) {
       return {
         success: false,
-        error: 'No Packer image found. Please ensure images exist in UI-AUTOMATION-IMAGES-RG.',
+        error: 'No image found. Please ensure gallery or managed images exist in UI-AUTOMATION-IMAGES-RG.',
       };
     }
-    progress('image', 'completed', `Using image: ${image.name}`);
+    const imageType = image.specialized ? 'specialized (fast boot)' : 'generalized (slower boot)';
+    progress('image', 'completed', `Using ${imageType}: ${image.name}`);
 
     // Step 2: Create Resource Group
     progress('resource_group', 'in_progress', `Creating resource group: ${names.resourceGroup}`);
@@ -385,6 +421,56 @@ export async function provisionVm(
     // Calculate MCP endpoint
     const mcpEndpoint = `http://${publicIp.ipAddress}:8080/mcp`;
 
+    // Step 8: Configure VM and start MCP agent
+    progress('configure', 'in_progress', 'Configuring VM and starting MCP agent...');
+    try {
+      // Run command to set auto-login and start MCP
+      const configScript = `
+        # Set auto-login registry keys
+        \$winlogonPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'
+        Set-ItemProperty -Path \$winlogonPath -Name 'AutoAdminLogon' -Value '1' -Type String
+        Set-ItemProperty -Path \$winlogonPath -Name 'DefaultUsername' -Value '${vmAdminUsername}' -Type String
+        Set-ItemProperty -Path \$winlogonPath -Name 'DefaultPassword' -Value '${vmAdminPassword}' -Type String
+        Set-ItemProperty -Path \$winlogonPath -Name 'DefaultDomainName' -Value '.' -Type String
+        Set-ItemProperty -Path \$winlogonPath -Name 'ForceAutoLogon' -Value '1' -Type String
+
+        # Disable Ctrl+Alt+Del requirement
+        Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'DisableCAD' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+
+        # Start MCP agent if not already running
+        \$mcpProcess = Get-Process -Name 'terminator-mcp-agent' -ErrorAction SilentlyContinue
+        if (-not \$mcpProcess) {
+          Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList '-t http --host 0.0.0.0 -p 8080 --auth-token ***REMOVED***' -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+        }
+
+        # Verify MCP is listening
+        \$listening = netstat -an | Select-String ':8080.*LISTENING'
+        if (\$listening) { 'MCP_STARTED' } else { 'MCP_NOT_LISTENING' }
+      `;
+
+      const runCommandPoller = await computeClient.virtualMachines.beginRunCommand(
+        names.resourceGroup,
+        names.vm,
+        {
+          commandId: 'RunPowerShellScript',
+          script: [configScript],
+        }
+      );
+      const runResult = await runCommandPoller.pollUntilDone();
+      const output = runResult.value?.[0]?.message || '';
+
+      if (output.includes('MCP_STARTED')) {
+        progress('configure', 'completed', 'MCP agent started successfully');
+      } else {
+        console.warn('[VM Provision] MCP may not have started correctly:', output);
+        progress('configure', 'completed', 'VM configured (MCP may need manual start)');
+      }
+    } catch (configError) {
+      console.error('[VM Provision] Configure step failed:', configError);
+      progress('configure', 'completed', 'VM created (configure step failed - MCP may need manual start)');
+    }
+
     return {
       success: true,
       vmId: azureResourceId,
@@ -431,19 +517,51 @@ export async function testImageListing(): Promise<{
   success: boolean;
   subscriptionId: string;
   resourceGroup: string;
-  totalImages: number;
-  matchingImages: number;
-  sampleImages: string[];
-  latestImage: string | null;
+  // Gallery info
+  galleryName: string;
+  galleryImageVersions: number;
+  latestGalleryVersion: string | null;
+  // Legacy managed images
+  totalManagedImages: number;
+  matchingManagedImages: number;
+  latestManagedImage: string | null;
+  // Which will be used
+  selectedImage: string | null;
+  imageType: 'gallery' | 'managed' | null;
   error?: string;
 }> {
   const subscriptionId = getSubscriptionId();
   const credential = getAzureCredential();
   const computeClient = new ComputeManagementClient(credential, subscriptionId);
   const imageRg = DEFAULT_VM_CONFIG.imageResourceGroup;
+  const galleryName = DEFAULT_VM_CONFIG.galleryName;
+  const imageName = DEFAULT_VM_CONFIG.galleryImageName;
   const prefix = DEFAULT_VM_CONFIG.imageNamePrefix;
 
+  let galleryVersions: string[] = [];
+  let managedImages: string[] = [];
+
   try {
+    // Check gallery
+    try {
+      const versions: Array<{ name?: string }> = [];
+      const paginator = computeClient.galleryImageVersions
+        .listByGalleryImage(imageRg, galleryName, imageName)
+        .byPage();
+
+      for await (const page of paginator) {
+        versions.push(...page);
+      }
+
+      galleryVersions = versions
+        .filter((v): v is { name: string } => !!v.name)
+        .map(v => v.name)
+        .sort((a, b) => b.localeCompare(a));
+    } catch {
+      // Gallery not available
+    }
+
+    // Check managed images
     const allImages: Array<{ name?: string }> = [];
     const paginator = computeClient.images.listByResourceGroup(imageRg).byPage();
 
@@ -451,31 +569,42 @@ export async function testImageListing(): Promise<{
       allImages.push(...page);
     }
 
-    const matchingImages = allImages.filter(img => img.name?.startsWith(prefix));
+    managedImages = allImages
+      .filter((img): img is { name: string } => !!img.name && img.name.startsWith(prefix))
+      .map(img => img.name)
+      .sort((a, b) => b.localeCompare(a));
 
-    // Sort to get latest
-    const sorted = matchingImages
-      .filter((img): img is { name: string } => !!img.name)
-      .sort((a, b) => b.name.localeCompare(a.name));
+    // Determine which will be used
+    const useGallery = galleryVersions.length > 0;
 
     return {
       success: true,
       subscriptionId,
       resourceGroup: imageRg,
-      totalImages: allImages.length,
-      matchingImages: matchingImages.length,
-      sampleImages: allImages.slice(0, 5).map(i => i.name || '(no name)'),
-      latestImage: sorted[0]?.name || null,
+      galleryName,
+      galleryImageVersions: galleryVersions.length,
+      latestGalleryVersion: galleryVersions[0] || null,
+      totalManagedImages: allImages.length,
+      matchingManagedImages: managedImages.length,
+      latestManagedImage: managedImages[0] || null,
+      selectedImage: useGallery
+        ? `${imageName}/${galleryVersions[0]}`
+        : managedImages[0] || null,
+      imageType: useGallery ? 'gallery' : managedImages.length > 0 ? 'managed' : null,
     };
   } catch (error) {
     return {
       success: false,
       subscriptionId,
       resourceGroup: imageRg,
-      totalImages: 0,
-      matchingImages: 0,
-      sampleImages: [],
-      latestImage: null,
+      galleryName,
+      galleryImageVersions: 0,
+      latestGalleryVersion: null,
+      totalManagedImages: 0,
+      matchingManagedImages: 0,
+      latestManagedImage: null,
+      selectedImage: null,
+      imageType: null,
       error: error instanceof Error ? error.message : String(error),
     };
   }

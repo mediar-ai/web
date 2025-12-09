@@ -71,3 +71,6 @@ export {
   isVmReady,
   getVmPublicIp,
 } from './vm-operations';
+
+// VM provisioning
+export { deleteVmResources } from './vm-provisioning';
