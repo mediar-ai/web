@@ -306,7 +306,7 @@ function initTelemetry(options) {
     url: `${otlpEndpoint}/v1/traces`
   });
   sdk = new import_sdk_node.NodeSDK({
-    resource: new import_resources.Resource({
+    resource: (0, import_resources.resourceFromAttributes)({
       [import_semantic_conventions.ATTR_SERVICE_NAME]: options?.serviceName || "mediar-infra",
       [import_semantic_conventions.ATTR_SERVICE_VERSION]: options?.serviceVersion || "0.1.0",
       "deployment.environment": process.env.NODE_ENV || "development"
