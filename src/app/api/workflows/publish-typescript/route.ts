@@ -86,17 +86,19 @@ export async function POST(request: NextRequest) {
       console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
 
       // Update workflow metadata including step_count from typescript metadata
-      // Select back updated_at to get the actual DB timestamp
+      // Select back content_updated_at to get the actual DB timestamp (used for sync comparison)
+      const now = new Date().toISOString();
       const { data: updatedWorkflow, error: updateError } = await supabase
         .from('deployed_workflows')
         .update({
           name,
           description: description || metadata.description,
           step_count: metadata.steps?.length || 0,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
+          content_updated_at: now, // Track content changes separately from metadata changes
         })
         .eq('id', workflowId)
-        .select('updated_at')
+        .select('content_updated_at')
         .single();
 
       if (updateError || !updatedWorkflow) {
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      actualUpdatedAt = updatedWorkflow.updated_at;
+      actualUpdatedAt = updatedWorkflow.content_updated_at;
 
     } else {
       // Create new workflow
@@ -128,8 +130,9 @@ export async function POST(request: NextRequest) {
           step_count: metadata.steps?.length || 0,
           automation_sequence: {}, // Empty object for TypeScript workflows (loaded from GitHub)
           updated_at: now, // Explicitly set updated_at for new workflows
+          content_updated_at: now, // Track content changes separately from metadata changes
         })
-        .select('id, updated_at')
+        .select('id, content_updated_at')
         .single();
 
       if (createError || !newWorkflow) {
@@ -141,7 +144,7 @@ export async function POST(request: NextRequest) {
       }
 
       workflowId = newWorkflow.id;
-      actualUpdatedAt = newWorkflow.updated_at;
+      actualUpdatedAt = newWorkflow.content_updated_at;
       console.log(`✅ Created workflow with ID: ${workflowId}`);
     }
 
