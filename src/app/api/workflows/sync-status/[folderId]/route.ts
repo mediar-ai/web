@@ -69,9 +69,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Get latest version from versions table
+    const { data: latestVersion } = await supabase
+      .from('deployed_workflow_versions')
+      .select('version_number')
+      .eq('workflow_id', workflow.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
     return NextResponse.json({
       updated_at: workflow.content_updated_at,
       workflow_id: workflow.id,
+      latest_version: latestVersion?.version_number || null,
     });
 
   } catch (error) {
