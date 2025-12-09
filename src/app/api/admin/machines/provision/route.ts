@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -142,9 +143,19 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Handle VM provision
+ * Handle VM provision - creates DB record immediately, runs Azure provisioning in background
  */
 async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json(
+      { success: false, error: 'Supabase environment variables are not set' },
+      { status: 500 }
+    );
+  }
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
   try {
     // Get customer name from org
     let customerName = 'mediar';
@@ -158,49 +169,20 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
       }
     }
 
-    console.log(`[Provision API] Starting VM provision: ${body.name} for ${customerName}`);
+    console.log(`[Provision API] Creating provisioning record for: ${body.name}`);
 
     const costEstimate = getEstimatedMonthlyCost(body.vmSize || 'Standard_D4s_v3');
 
-    const result = await provisionVm({
-      name: body.name,
-      customer: customerName,
-      organizationId: body.organizationId || DEFAULT_ORG_ID,
-      location: body.location,
-      vmSize: body.vmSize,
-    });
-
-    if (!result.success) {
-      console.error(`[Provision API] VM provision failed: ${result.error}`);
-      return NextResponse.json(
-        { success: false, error: result.error, details: result.details },
-        { status: 500 }
-      );
-    }
-
-    // Register in Supabase
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase environment variables are not set');
-    }
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    console.log(`[Provision API] Registering VM in Supabase: ${result.vmId}`);
-
+    // Step 1: Create DB record FIRST with status="provisioning"
     const { data: machine, error: dbError } = await supabase
       .from('remote_machines')
       .insert({
         name: body.name,
-        mcp_endpoint: result.mcpEndpoint,
-        health_endpoint: `http://${result.publicIp}:8080/health`,
-        management_endpoint: `http://${result.publicIp}:8080/management`,
-        azure_resource_id: result.vmId,
         terraform_key: `dashboard-${body.name}`,
-        status: 'active',
+        status: 'provisioning', // Key: starts as provisioning
         health_status: 'unknown',
         machine_type: 'windows_vm',
-        region: result.details?.location || 'eastus',
+        region: body.location || 'eastus',
         is_global: false,
         provisioned_at: new Date().toISOString(),
       })
@@ -208,18 +190,11 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
       .single();
 
     if (dbError) {
-      console.error('[Provision API] Failed to register in Supabase:', dbError);
-      return NextResponse.json({
-        success: true,
-        warning: 'VM created but database registration failed. Manual registration may be required.',
-        machine: {
-          azureResourceId: result.vmId,
-          publicIp: result.publicIp,
-          mcpEndpoint: result.mcpEndpoint,
-          details: result.details,
-        },
-        dbError: dbError.message,
-      });
+      console.error('[Provision API] Failed to create provisioning record:', dbError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create provisioning record', details: dbError.message },
+        { status: 500 }
+      );
     }
 
     const machineId = machine?.id;
@@ -227,38 +202,87 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
     // Grant organization access
     const targetOrgId = body.organizationId || DEFAULT_ORG_ID;
     if (machineId && targetOrgId) {
-      const { error: accessError } = await supabase.from('organization_machines').upsert(
+      await supabase.from('organization_machines').upsert(
         { organization_id: targetOrgId, machine_id: machineId },
         { onConflict: 'organization_id,machine_id' }
       );
-
-      if (accessError) {
-        console.warn('[Provision API] Failed to grant org access:', accessError);
-      } else {
-        console.log(`[Provision API] Granted access to org ${targetOrgId}`);
-      }
     }
 
-    console.log(`[Provision API] VM provisioned successfully: ${result.vmId}`);
+    console.log(`[Provision API] Created provisioning record with ID: ${machineId}`);
 
+    // Step 2: Schedule Azure provisioning to run after response using Next.js after()
+    after(async () => {
+      console.log(`[Provision API] Starting background Azure provisioning for: ${body.name}`);
+
+      try {
+        const result = await provisionVm({
+          name: body.name,
+          customer: customerName,
+          organizationId: body.organizationId || DEFAULT_ORG_ID,
+          location: body.location,
+          vmSize: body.vmSize,
+        });
+
+        if (result.success) {
+          // Update DB record with Azure details
+          const { error: updateError } = await supabase
+            .from('remote_machines')
+            .update({
+              mcp_endpoint: result.mcpEndpoint,
+              health_endpoint: `http://${result.publicIp}:8080/health`,
+              management_endpoint: `http://${result.publicIp}:8080/management`,
+              azure_resource_id: result.vmId,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', machineId);
+
+          if (updateError) {
+            console.error(`[Provision API] Failed to update machine ${machineId}:`, updateError);
+          } else {
+            console.log(`[Provision API] VM ${body.name} provisioned successfully: ${result.vmId}`);
+          }
+        } else {
+          // Update DB record with failure
+          await supabase
+            .from('remote_machines')
+            .update({
+              status: 'failed',
+              health_status: 'unhealthy',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', machineId);
+
+          console.error(`[Provision API] VM provision failed: ${result.error}`);
+        }
+      } catch (error) {
+        console.error(`[Provision API] Background provisioning error:`, error);
+        // Update DB record with failure
+        await supabase
+          .from('remote_machines')
+          .update({
+            status: 'failed',
+            health_status: 'unhealthy',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', machineId);
+      }
+    });
+
+    // Step 3: Return immediately with the machine ID (UI will poll for status)
     return NextResponse.json({
       success: true,
       machine: {
         id: machineId,
         name: body.name,
-        azureResourceId: result.vmId,
-        publicIp: result.publicIp,
-        mcpEndpoint: result.mcpEndpoint,
-        resourceGroup: result.details?.resourceGroup,
-        location: result.details?.location,
-        vmSize: result.details?.vmSize,
+        status: 'provisioning',
       },
       estimatedCost: {
         monthly: costEstimate.monthly,
         currency: 'USD',
         breakdown: costEstimate.breakdown,
       },
-      message: `VM ${body.name} provisioned successfully. It will be ready in 10-15 minutes.`,
+      message: `VM ${body.name} is being provisioned. This will take 5-10 minutes.`,
     });
   } catch (error) {
     console.error('[Provision API] POST failed:', error);
