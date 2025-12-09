@@ -216,12 +216,14 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
   };
 
   const getVncUrl = () => {
-    // For VNC gateway, only use terraform keys that the gateway knows about (e.g., vm1, vm2, etc.)
-    // Auto-provisioned VMs (dashboard-*) aren't registered with the gateway
-    const key = machine.terraform_key || machine.tags?.find(t => t.startsWith('terraform:'))?.replace('terraform:', '');
+    // VNC gateway looks up VMs by terraform:{key} tag in the database
+    // First check tags (preferred), then fall back to terraform_key (if not dashboard-*)
+    const tagKey = machine.tags?.find(t => t.startsWith('terraform:'))?.replace('terraform:', '');
+    const terraformKey = machine.terraform_key && !machine.terraform_key.startsWith('dashboard-')
+      ? machine.terraform_key
+      : null;
+    const key = tagKey || terraformKey;
     if (!key) return null;
-    // Skip gateway for dashboard-provisioned VMs
-    if (key.startsWith('dashboard-')) return null;
     return `${VNC_GATEWAY_URL}/vnc/${key}`;
   };
 
