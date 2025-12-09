@@ -23,6 +23,7 @@ import {
   FileText,
   Zap,
   BarChart3,
+  Database,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
