@@ -108,33 +108,40 @@ export async function GET(req: NextRequest) {
     // Map Clerk org ID to database org ID (needed for dev environment)
     const dbOrgId = mapClerkIdToDbId(authenticatedOrgId);
 
-    // Check org has access to this workflow
+    // Check if user is a Mediar super admin (has @mediar.ai email)
+    const { isMediarAdmin } = await import('@/lib/mediarAuth');
+    const isSuperAdmin = await isMediarAdmin();
+
+    // Check org has access to this workflow (skip for super admins)
     const supabase = createServerClient();
-    const { data: hasAccess, error: accessError } = await supabase.rpc(
-      'check_org_workflow_access',
-      {
-        p_org_id: dbOrgId,
-        p_workflow_uuid: workflowUuid,
-      }
-    );
 
-    if (accessError) {
-      console.error('Access check error:', accessError);
-      return NextResponse.json(
-        { error: 'Failed to verify access', details: accessError.message },
-        { status: 500 }
-      );
-    }
-
-    if (!hasAccess) {
-      return NextResponse.json(
+    if (!isSuperAdmin) {
+      const { data: hasAccess, error: accessError } = await supabase.rpc(
+        'check_org_workflow_access',
         {
-          error: 'Workflow not found or access denied',
-          org_id: authenticatedOrgId,
-          workflow_uuid: workflowUuid,
-        },
-        { status: 403 }
+          p_org_id: dbOrgId,
+          p_workflow_uuid: workflowUuid,
+        }
       );
+
+      if (accessError) {
+        console.error('Access check error:', accessError);
+        return NextResponse.json(
+          { error: 'Failed to verify access', details: accessError.message },
+          { status: 500 }
+        );
+      }
+
+      if (!hasAccess) {
+        return NextResponse.json(
+          {
+            error: 'Workflow not found or access denied',
+            org_id: authenticatedOrgId,
+            workflow_uuid: workflowUuid,
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // Get workflow metadata
