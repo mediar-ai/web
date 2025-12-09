@@ -4,22 +4,22 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "functions": {
-    "apps/web/src/app/api/ingest/route.ts": {
+    "api/ingest/route": {
       "maxDuration": 800
     },
-    "apps/web/src/app/api/suggest-workflow-labels/route.ts": {
+    "api/suggest-workflow-labels/route": {
       "maxDuration": 300
     },
-    "apps/web/src/app/api/cron/scheduler/route.ts": {
+    "api/cron/scheduler/route": {
       "maxDuration": 60
     },
-    "apps/web/src/app/api/cron/health-check-supabase/route.ts": {
+    "api/cron/health-check-supabase/route": {
       "maxDuration": 60
     },
-    "apps/web/src/app/api/cron/process-pending-notifications/route.ts": {
+    "api/cron/process-pending-notifications/route": {
       "maxDuration": 60
     },
-    "apps/web/src/app/api/cron/llm-usage-reconciliation/route.ts": {
+    "api/cron/llm-usage-reconciliation/route": {
       "maxDuration": 60
     }
   },
