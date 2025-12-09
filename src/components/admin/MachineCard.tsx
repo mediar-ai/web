@@ -26,6 +26,8 @@ interface MachineCardProps {
     health_status: string;
     power_state?: string;
     mcp_endpoint?: string;
+    health_endpoint?: string;
+    management_endpoint?: string;
     azure_resource_id?: string;
     terraform_key?: string;
     last_health_check?: string;
@@ -87,6 +89,14 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
     } catch {
       return '-';
     }
+  };
+
+  // Get the best available IP from any endpoint
+  const getBestIp = () => {
+    let ip = extractIpFromEndpoint(machine.mcp_endpoint);
+    if (ip === '-') ip = extractIpFromEndpoint(machine.health_endpoint);
+    if (ip === '-') ip = extractIpFromEndpoint(machine.management_endpoint);
+    return ip;
   };
 
   const getBootTime = () => {
@@ -191,8 +201,15 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
   };
 
   // Get direct VNC address (IP:5900) for any VM with an endpoint
+  // Try mcp_endpoint first, then health_endpoint, then management_endpoint
   const getDirectVncAddress = () => {
-    const ip = extractIpFromEndpoint(machine.mcp_endpoint);
+    let ip = extractIpFromEndpoint(machine.mcp_endpoint);
+    if (!ip || ip === '-') {
+      ip = extractIpFromEndpoint(machine.health_endpoint);
+    }
+    if (!ip || ip === '-') {
+      ip = extractIpFromEndpoint(machine.management_endpoint);
+    }
     if (!ip || ip === '-') return null;
     return `${ip}:5900`;
   };
@@ -265,10 +282,10 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
         <div>
           <div className="text-xs text-gray-500 font-mono uppercase">IP</div>
           <div className="font-mono flex items-center gap-1">
-            {extractIpFromEndpoint(machine.mcp_endpoint)}
-            {machine.mcp_endpoint && (
+            {getBestIp()}
+            {getBestIp() !== '-' && (
               <button
-                onClick={() => copyToClipboard(extractIpFromEndpoint(machine.mcp_endpoint), 'IP')}
+                onClick={() => copyToClipboard(getBestIp(), 'IP')}
                 className="p-0.5 hover:bg-gray-100 rounded"
               >
                 <Copy className="w-3 h-3" />
@@ -548,24 +565,6 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             )}
           </div>
 
-          {/* Delete Button */}
-          <div className="mt-4 pt-4 border-t border-gray-300">
-            <button
-              onClick={handleDelete}
-              disabled={isDeleting || loadingOperation !== null}
-              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-mono border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {isDeleting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-              DELETE VM & ALL RESOURCES
-            </button>
-            <p className="mt-2 text-xs font-mono text-gray-500">
-              Permanently deletes the VM, disk, network interface, public IP, NSG, and resource group from Azure.
-            </p>
-          </div>
         </div>
       )}
     </div>
