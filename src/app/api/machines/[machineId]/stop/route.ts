@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
-import { stopVm, isAzureConfigured } from '@/lib/azure';
+import { stopVm, isAzureConfigured, createAuditContext, initTelemetry } from '@mediar/infra';
+
+// Initialize telemetry on first import
+initTelemetry({ serviceName: 'mediar-web-app' });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,7 +61,7 @@ export async function POST(
     }
 
     // Stop the VM
-    const result = await stopVm(machine.azure_resource_id);
+    const result = await stopVm(machine.azure_resource_id, createAuditContext(userId, 'api'));
 
     // Record operation in database
     await supabase.from('machine_operations').insert({
