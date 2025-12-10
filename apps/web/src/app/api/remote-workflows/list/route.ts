@@ -461,6 +461,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Fetch access levels for current user's org (for all workflows, not just Mediar)
+    // This is used to show read-only badges in the desktop app
+    const userAccessLevels: Record<number, string> = {};
+    if (workflowIds.length > 0 && orgId) {
+      const { data: userAccessData } = await supabase
+        .from('workflow_organization_access')
+        .select('workflow_id, access_level')
+        .eq('organization_id', orgId)
+        .in('workflow_id', workflowIds);
+
+      if (userAccessData) {
+        userAccessData.forEach(access => {
+          userAccessLevels[access.workflow_id] = access.access_level;
+        });
+      }
+    }
+
     // Group settings workflows by parent_workflow_id (no processing needed for list)
     const settingsByParent = settingsWorkflows.reduce(
       (acc: Record<number, any[]>, settings) => {
@@ -577,6 +594,11 @@ export async function GET(request: NextRequest) {
           },
           // Add tags for filtering
           tags: automationSequences[workflow.id]?.tags || [],
+          // User's access level for this workflow (for read-only badges in desktop app)
+          // 'owner' = org owns this workflow, 'admin'/'write'/'read' = shared access, 'public_read' = public
+          user_access_level: workflow.organization_id === orgId
+            ? 'owner'
+            : userAccessLevels[workflow.id] || (workflow.is_public ? 'public_read' : null),
           // Add access info for Mediar admins
           ...((isMediarOrg || isMediarAdmin) && {
             shared_with_orgs: workflowAccessInfo[workflow.id] || [],

@@ -77,7 +77,7 @@ export async function POST(
     // Check if user owns this workflow (by org or by created_by)
     const { data: workflow, error: fetchError } = await supabase
       .from('deployed_workflows')
-      .select('id, organization_id, created_by, is_public')
+      .select('id, organization_id, created_by, is_public, uuid')
       .eq('id', workflowId)
       .single();
 
@@ -88,19 +88,23 @@ export async function POST(
       );
     }
 
-    // Allow if: org matches OR user is the creator
-    const isOrgOwner = orgId && workflow.organization_id === orgId;
+    // Check admin permission using centralized helper (visibility requires admin access)
+    const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+    const access = orgId ? await checkWorkflowAccess(orgId, workflow.uuid) : null;
+
+    // Allow if: has admin access OR user is the creator (fallback for legacy)
+    const hasAdminAccess = access?.canAdmin ?? false;
     const isCreator = userEmail && workflow.created_by === userEmail;
 
-    if (!isOrgOwner && !isCreator) {
-      console.log(`[Visibility] Access denied: orgId=${orgId}, workflow.org=${workflow.organization_id}, email=${userEmail}, created_by=${workflow.created_by}`);
+    if (!hasAdminAccess && !isCreator) {
+      console.log(`[Visibility] Access denied: orgId=${orgId}, level=${access?.accessLevel}, email=${userEmail}, created_by=${workflow.created_by}`);
       return NextResponse.json(
-        { success: false, error: 'Only the workflow owner can change visibility' },
+        { success: false, error: 'Only workflow owners or admins can change visibility' },
         { status: 403 }
       );
     }
 
-    console.log(`[Visibility] Access granted: isOrgOwner=${isOrgOwner}, isCreator=${isCreator}`);
+    console.log(`[Visibility] Access granted: level=${access?.accessLevel}, isCreator=${isCreator}`);
 
     // Update visibility
     const { error: updateError } = await supabase
