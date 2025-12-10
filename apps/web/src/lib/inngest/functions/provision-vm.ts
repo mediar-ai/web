@@ -258,42 +258,50 @@ export const provisionVmFunction = inngest.createFunction(
       const vmAdminUsername = process.env.AZURE_VM_ADMIN_USERNAME || 'vmuser';
       const vmAdminPassword = process.env.AZURE_VM_ADMIN_PASSWORD;
 
-      if (!vmAdminPassword) {
-        throw new Error('AZURE_VM_ADMIN_PASSWORD not set');
+      // For specialized images, osProfile must NOT be provided (already baked in).
+      // For generalized images, osProfile is required.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vmParameters: any = {
+        location: location || VM_CONFIG.location,
+        hardwareProfile: { vmSize: vmSize || VM_CONFIG.vmSize },
+        storageProfile: {
+          imageReference: { id: image.id },
+          osDisk: {
+            createOption: 'FromImage',
+            managedDisk: { storageAccountType: VM_CONFIG.osDiskType },
+            diskSizeGB: VM_CONFIG.osDiskSizeGb,
+          },
+        },
+        networkProfile: {
+          networkInterfaces: [{ id: nic.id }],
+        },
+        tags: {
+          customer,
+          'managed-by': 'mediar-dashboard',
+          'organization-id': organizationId,
+        },
+      };
+
+      // Only add osProfile for generalized images (not specialized)
+      if (!image.specialized) {
+        if (!vmAdminPassword) {
+          throw new Error('AZURE_VM_ADMIN_PASSWORD not set (required for generalized images)');
+        }
+        vmParameters.osProfile = {
+          computerName: names.vm,
+          adminUsername: vmAdminUsername,
+          adminPassword: vmAdminPassword,
+          windowsConfiguration: {
+            provisionVMAgent: true,
+            enableAutomaticUpdates: false,
+          },
+        };
       }
 
       const vmPoller = await computeClient.virtualMachines.beginCreateOrUpdate(
         names.resourceGroup,
         names.vm,
-        {
-          location: location || VM_CONFIG.location,
-          hardwareProfile: { vmSize: vmSize || VM_CONFIG.vmSize },
-          storageProfile: {
-            imageReference: { id: image.id },
-            osDisk: {
-              createOption: 'FromImage',
-              managedDisk: { storageAccountType: VM_CONFIG.osDiskType },
-              diskSizeGB: VM_CONFIG.osDiskSizeGb,
-            },
-          },
-          osProfile: {
-            computerName: names.vm,
-            adminUsername: vmAdminUsername,
-            adminPassword: vmAdminPassword,
-            windowsConfiguration: {
-              provisionVMAgent: true,
-              enableAutomaticUpdates: false,
-            },
-          },
-          networkProfile: {
-            networkInterfaces: [{ id: nic.id }],
-          },
-          tags: {
-            customer,
-            'managed-by': 'mediar-dashboard',
-            'organization-id': organizationId,
-          },
-        }
+        vmParameters
       );
       const result = await vmPoller.pollUntilDone();
 
