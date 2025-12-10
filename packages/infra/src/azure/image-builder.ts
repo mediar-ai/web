@@ -4,7 +4,7 @@
  * Supports specialized images (no sysprep) for faster VM boot times.
  */
 
-import { ImageBuilderClient, ImageTemplate } from '@azure/arm-imagebuilder';
+import { ImageBuilderClient, ImageTemplate, ImageTemplateSharedImageDistributor } from '@azure/arm-imagebuilder';
 import { ComputeManagementClient } from '@azure/arm-compute';
 import { getAzureCredential, getSubscriptionId } from './client';
 
@@ -479,7 +479,20 @@ wevtutil cl System
 wevtutil cl Application
 wevtutil cl Security
 
-Write-Host 'Provisioning complete!'
+# ==============================================================================
+# 19. Prepare for specialized image (NO SYSPREP)
+# ==============================================================================
+# We do NOT run sysprep - this creates a SPECIALIZED image
+# The image will boot directly into vmuser with all settings preserved
+# This avoids OOBE (first-run experience) and keeps credentials intact
+
+Write-Host 'Preparing for specialized image capture...'
+# Ensure auto-login is definitely set before capture
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v AutoAdminLogon /t REG_SZ /d 1 /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultUsername /t REG_SZ /d vmuser /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultPassword /t REG_SZ /d $vmPassword /f
+
+Write-Host 'Provisioning complete! Image will be captured as SPECIALIZED (no sysprep).'
 `;
 }
 
@@ -538,13 +551,14 @@ export async function createImageTemplate(
           artifactTags: {
             'created-by': 'mediar-image-builder',
             'created-at': new Date().toISOString(),
+            'os-state': 'specialized',
           },
           replicationRegions: [IMAGE_CONFIG.location],
           versioning: {
             scheme: 'Latest',
           },
           excludeFromLatest: false,
-        },
+        } as ImageTemplateSharedImageDistributor,
       ],
       vmProfile: {
         vmSize: IMAGE_CONFIG.vmSize,

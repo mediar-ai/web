@@ -610,7 +610,7 @@ var IMAGE_CONFIG = {
   baseImageOffer: "WindowsServer",
   baseImageSku: "2022-datacenter-g2"
 };
-var IMAGE_BUILDER_IDENTITY = "/subscriptions/{subscriptionId}/resourceGroups/UI-AUTOMATION-IMAGES-RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/image-builder-identity";
+var IMAGE_BUILDER_IDENTITY = "/subscriptions/{subscriptionId}/resourcegroups/UI-AUTOMATION-IMAGES-RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/image-builder-identity";
 var imageBuilderClient = null;
 function getImageBuilderClient() {
   if (!imageBuilderClient) {
@@ -705,7 +705,7 @@ Write-Host 'Installing rclone, ffmpeg, chrome...'
 choco install -y rclone ffmpeg googlechrome --ignore-checksums
 
 # ==============================================================================
-# 7. Configure Chrome
+# 7. Configure Chrome (full config matching Packer)
 # ==============================================================================
 Write-Host 'Configuring Chrome...'
 $chromePoliciesPath = 'HKLM:\\SOFTWARE\\Policies\\Google\\Chrome'
@@ -716,8 +716,31 @@ Set-ItemProperty -Path $chromePoliciesPath -Name 'MetricsReportingEnabled' -Valu
 Set-ItemProperty -Path $chromePoliciesPath -Name 'PasswordManagerEnabled' -Value 0 -Type DWord
 
 $chromeUserDataPath = 'C:\\Users\\vmuser\\AppData\\Local\\Google\\Chrome\\User Data'
-New-Item -ItemType Directory -Force -Path "$chromeUserDataPath\\Default" | Out-Null
+$chromeDefaultPath = "$chromeUserDataPath\\Default"
+New-Item -ItemType Directory -Force -Path $chromeDefaultPath | Out-Null
 New-Item -ItemType File -Force -Path "$chromeUserDataPath\\First Run" | Out-Null
+
+# Create Local State to mark first run as complete
+$localState = @{
+    browser = @{
+        has_seen_welcome_page = $true
+        should_reset_check_default_browser = $false
+    }
+}
+$localState | ConvertTo-Json -Depth 10 | Out-File -FilePath "$chromeUserDataPath\\Local State" -Encoding UTF8
+
+# Create Preferences to skip first-run dialogs
+$chromePrefs = @{
+    browser = @{
+        show_home_button = $false
+        check_default_browser = $false
+    }
+    credentials_enable_service = $false
+    signin = @{
+        allowed_on_next_startup = $false
+    }
+}
+$chromePrefs | ConvertTo-Json -Depth 10 | Out-File -FilePath "$chromeDefaultPath\\Preferences" -Encoding UTF8
 
 # Install Terminator extension
 Write-Host 'Installing Terminator extension...'
@@ -754,7 +777,58 @@ endpoint = $s3Endpoint
 }
 
 # ==============================================================================
-# 10. Install VNC Server
+# 10. Create S3 Mount Script (matching Packer)
+# ==============================================================================
+Write-Host 'Creating S3 mount script...'
+@'
+# Mount S3 bucket as S: drive using rclone
+$rclonePath = (Get-Command rclone -ErrorAction SilentlyContinue).Path
+if (-not $rclonePath) {
+    $rclonePath = "C:\\ProgramData\\chocolatey\\bin\\rclone.exe"
+}
+
+# Check if S: is already mounted
+if (Test-Path S:\\) {
+    Write-Host "S: drive already mounted"
+    exit 0
+}
+
+# Mount with network mode for better cross-process access
+$mountArgs = @(
+    "mount",
+    "s3:",
+    "S:",
+    "--vfs-cache-mode", "full",
+    "--vfs-cache-max-age", "1h",
+    "--vfs-read-chunk-size", "64M",
+    "--vfs-read-chunk-size-limit", "512M",
+    "--buffer-size", "64M",
+    "--dir-cache-time", "30s",
+    "--poll-interval", "15s",
+    "--config", "C:\\ProgramData\\rclone\\rclone.conf",
+    "--network-mode",
+    "--volname", "MediarS3"
+)
+
+Start-Process -FilePath $rclonePath -ArgumentList $mountArgs -WindowStyle Hidden
+Write-Host "S3 mount started"
+
+# Wait for mount (up to 30 seconds)
+$retries = 0
+while (!(Test-Path S:\\) -and $retries -lt 30) {
+    Start-Sleep -Seconds 1
+    $retries++
+}
+
+if (Test-Path S:\\) {
+    Write-Host "S: drive mounted successfully"
+} else {
+    Write-Host "Warning: S: drive mount timeout"
+}
+'@ | Out-File -FilePath C:\\Scripts\\mount-s3.ps1 -Encoding UTF8
+
+# ==============================================================================
+# 11. Install VNC Server
 # ==============================================================================
 Write-Host 'Installing TightVNC...'
 Invoke-WebRequest -Uri 'https://www.tightvnc.com/download/2.8.81/tightvnc-2.8.81-gpl-setup-64bit.msi' -OutFile 'C:\\Temp\\vnc.msi' -UseBasicParsing
@@ -763,7 +837,7 @@ Remove-Item 'C:\\Temp\\vnc.msi' -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName 'Allow VNC 5900' -Direction Inbound -LocalPort 5900 -Protocol TCP -Action Allow -Enabled True -ErrorAction SilentlyContinue
 
 # ==============================================================================
-# 11. Create vmuser account
+# 12. Create vmuser account
 # ==============================================================================
 Write-Host 'Creating vmuser account...'
 if (-not (Get-LocalUser -Name 'vmuser' -ErrorAction SilentlyContinue)) {
@@ -772,7 +846,7 @@ if (-not (Get-LocalUser -Name 'vmuser' -ErrorAction SilentlyContinue)) {
 }
 
 # ==============================================================================
-# 12. Configure Auto-login
+# 13. Configure Auto-login
 # ==============================================================================
 Write-Host 'Configuring auto-login...'
 reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v AutoAdminLogon /t REG_SZ /d 1 /f
@@ -781,63 +855,176 @@ reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v Def
 reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultDomainName /t REG_SZ /d . /f
 reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v ForceAutoLogon /t REG_SZ /d 1 /f
 reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' /v DisableCAD /t REG_DWORD /d 1 /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' /v dontdisplaylastusername /t REG_DWORD /d 0 /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' /v DisableAutomaticRestartSignOn /t REG_DWORD /d 0 /f
 
 # ==============================================================================
-# 13. Create MCP Startup Script
+# 14. Create MCP Startup Script (with OTEL, Sentry, S3 mount, screen recording)
 # ==============================================================================
 Write-Host 'Creating MCP startup script...'
 @'
 Start-Transcript -Path C:\\MCP\\logs\\mcp-startup-$((Get-Date).ToString('yyyyMMdd-HHmmss')).log
-Write-Host 'Starting MCP agent...'
+Write-Host 'Starting MCP with OTEL telemetry (ProcessStartInfo method)...'
 Get-Process terminator* -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
+
+# Mount S3 Drive (must happen in user session)
+Write-Host 'Mounting S3 drive...'
+& C:\\Scripts\\mount-s3.ps1
+Start-Sleep -Seconds 5
+
+# Start Screen Recording (Segmented 10-min chunks)
+Write-Host 'Starting continuous screen recording...'
+# Wait for S: drive (up to 30s)
+$retries = 0
+while (!(Test-Path S:\\) -and $retries -lt 30) { Start-Sleep -Seconds 1; $retries++ }
+
+if (Test-Path S:\\) {
+    $recDir = "S:\\recordings\\$env:COMPUTERNAME\\$((Get-Date).ToString('yyyy-MM-dd'))"
+    if (!(Test-Path $recDir)) { New-Item -ItemType Directory -Force -Path $recDir | Out-Null }
+
+    # Use fragmented MP4 so files are playable while still recording
+    $ffmpegArgs = "-f gdigrab -framerate 5 -i desktop -c:v libx264 -preset ultrafast -crf 35 -pix_fmt yuv420p -g 25 -f segment -segment_time 600 -segment_format_options movflags=+frag_keyframe+empty_moov+default_base_moof -reset_timestamps 1 -strftime 1 \`"$recDir\\%H-%M-%S.mp4\`""
+    Start-Process -FilePath "ffmpeg" -ArgumentList $ffmpegArgs -WindowStyle Hidden
+    Write-Host "Recording started to $recDir"
+} else {
+    Write-Host "S: drive not found, skipping recording"
+}
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = 'C:\\MCP\\terminator-mcp-agent.exe'
 $psi.Arguments = '-t http --host 0.0.0.0 -p 8080 --auth-token cargorunmediar123'
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
 
+# Copy all environment variables
 foreach ($key in [System.Environment]::GetEnvironmentVariables().Keys) {
-  $psi.EnvironmentVariables[$key] = [System.Environment]::GetEnvironmentVariable($key)
+    $psi.EnvironmentVariables[$key] = [System.Environment]::GetEnvironmentVariable($key)
 }
 
+# Fix user environment paths
 $psi.EnvironmentVariables['USERPROFILE'] = 'C:\\Users\\vmuser'
 $psi.EnvironmentVariables['LOCALAPPDATA'] = 'C:\\Users\\vmuser\\AppData\\Local'
 $psi.EnvironmentVariables['APPDATA'] = 'C:\\Users\\vmuser\\AppData\\Roaming'
+$psi.EnvironmentVariables['TEMP'] = 'C:\\Users\\vmuser\\AppData\\Local\\Temp'
+$psi.EnvironmentVariables['TMP'] = 'C:\\Users\\vmuser\\AppData\\Local\\Temp'
+$psi.EnvironmentVariables['HOMEPATH'] = '\\Users\\vmuser'
+$psi.EnvironmentVariables['HOMEDRIVE'] = 'C:'
+
+# Get host information for telemetry
+$hostname = [System.Net.Dns]::GetHostName()
+$ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*'} | Select-Object -First 1).IPAddress
+
+# Configure MCP authentication
 $psi.EnvironmentVariables['MCP_AUTH_TOKEN'] = 'cargorunmediar123'
 
+# Configure OTEL telemetry
+$psi.EnvironmentVariables['OTEL_SDK_ENABLED'] = [System.Environment]::GetEnvironmentVariable('OTEL_SDK_ENABLED', 'Machine')
+$psi.EnvironmentVariables['OTEL_EXPORTER_OTLP_ENDPOINT'] = $env:OTEL_COLLECTOR_ENDPOINT
+$psi.EnvironmentVariables['OTEL_SERVICE_NAME'] = 'mcp-vm-agent'
+$psi.EnvironmentVariables['OTEL_RESOURCE_ATTRIBUTES'] = "host.name=$hostname,host.ip=$ip"
+$psi.EnvironmentVariables['OTEL_SKIP_COLLECTOR_CHECK'] = 'true'
+$psi.EnvironmentVariables['RUST_LOG'] = 'terminator_mcp_agent=debug,terminator=debug,hyper=warn,reqwest=warn,h2=warn'
+
+# Configure Sentry error tracking
+$psi.EnvironmentVariables['SENTRY_DSN'] = $env:SENTRY_DSN
+$psi.EnvironmentVariables['SENTRY_ENVIRONMENT'] = if ($env:SENTRY_ENVIRONMENT) { $env:SENTRY_ENVIRONMENT } else { 'production' }
+$psi.EnvironmentVariables['SENTRY_DEPLOYMENT_TYPE'] = if ($env:SENTRY_DEPLOYMENT_TYPE) { $env:SENTRY_DEPLOYMENT_TYPE } else { 'backend-vm' }
+$vmName = if ($env:AZURE_VM_NAME) { $env:AZURE_VM_NAME } else { 'unknown' }
+$rgName = if ($env:AZURE_RESOURCE_GROUP) { $env:AZURE_RESOURCE_GROUP } else { 'unknown' }
+$vmPurpose = if ($env:AZURE_VM_PURPOSE) { $env:AZURE_VM_PURPOSE } else { 'unknown' }
+$psi.EnvironmentVariables['SENTRY_SERVER_NAME'] = "$hostname ($ip) - VM: $vmName - RG: $rgName"
+$psi.EnvironmentVariables['SENTRY_TAGS'] = "deployment_type:backend-vm,vm_name:$vmName,resource_group:$rgName,purpose:$vmPurpose"
+
+Write-Host "DEBUG: OTEL endpoint configured: $env:OTEL_COLLECTOR_ENDPOINT"
+Write-Host "DEBUG: MCP authentication enabled with Bearer token"
+Write-Host "DEBUG: Sentry error tracking enabled (deployment_type: backend-vm)"
+
 $proc = [System.Diagnostics.Process]::Start($psi)
+
+# Setup async log streaming
+Start-Job -ScriptBlock {
+    param($processId)
+    $proc = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($proc) {
+        $proc.StandardOutput.BaseStream.CopyToAsync([System.IO.File]::OpenWrite('C:\\MCP\\logs\\mcp-output.log'))
+        $proc.StandardError.BaseStream.CopyToAsync([System.IO.File]::OpenWrite('C:\\MCP\\logs\\mcp-output.log'))
+    }
+} -ArgumentList $proc.Id | Out-Null
+
 Write-Host "MCP started with PID: $($proc.Id)"
+Write-Host "OTEL endpoint: $env:OTEL_COLLECTOR_ENDPOINT"
+Write-Host "Service name: mcp-vm-agent"
+Write-Host "Resource attributes: host.name=$hostname,host.ip=$ip"
+Write-Host "Output logged to: C:\\MCP\\logs\\mcp-output.log"
 Stop-Transcript
 '@ | Out-File -FilePath C:\\MCP\\start-mcp-user-session.ps1 -Encoding UTF8
 
 # ==============================================================================
-# 14. Create Scheduled Tasks
+# 15. Create Scheduled Tasks (MCP startup + auto-login enforcement)
 # ==============================================================================
 Write-Host 'Creating scheduled tasks...'
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-ExecutionPolicy Bypass -File C:\\MCP\\start-mcp-user-session.ps1'
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User 'vmuser'
 $principal = New-ScheduledTaskPrincipal -UserId 'vmuser' -LogonType Interactive -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -DontStopOnIdleEnd -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName 'StartMCPUserSession' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
 
+# Create auto-login enforcement script (self-healing on every boot)
+Write-Host 'Creating auto-login enforcement script...'
+@'
+# Enforce auto-login settings on every boot (runs as SYSTEM before logon)
+$winlogonPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'
+Set-ItemProperty -Path $winlogonPath -Name 'AutoAdminLogon' -Value '1' -Type String
+Set-ItemProperty -Path $winlogonPath -Name 'DefaultUsername' -Value 'vmuser' -Type String
+Set-ItemProperty -Path $winlogonPath -Name 'DefaultPassword' -Value '${options.vmPassword}' -Type String
+Set-ItemProperty -Path $winlogonPath -Name 'DefaultDomainName' -Value '.' -Type String
+Set-ItemProperty -Path $winlogonPath -Name 'ForceAutoLogon' -Value '1' -Type String
+Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'DisableCAD' -Value 1 -Type DWord
+'@ | Out-File -FilePath C:\\MCP\\enforce-autologin.ps1 -Encoding UTF8
+
+# Create scheduled task to run at system startup (BEFORE any user logon)
+$autoLoginAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-ExecutionPolicy Bypass -WindowStyle Hidden -File C:\\MCP\\enforce-autologin.ps1'
+$autoLoginTrigger = New-ScheduledTaskTrigger -AtStartup
+$autoLoginPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$autoLoginSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+Register-ScheduledTask -TaskName 'EnforceAutoLogin' -Action $autoLoginAction -Trigger $autoLoginTrigger -Principal $autoLoginPrincipal -Settings $autoLoginSettings -Force
+Write-Host 'Auto-login enforcement scheduled task created'
+
 # ==============================================================================
-# 15. Configure Firewall
+# 16. Configure Firewall
 # ==============================================================================
 Write-Host 'Configuring firewall...'
 New-NetFirewallRule -DisplayName 'Allow MCP 8080' -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow -Enabled True -ErrorAction SilentlyContinue
 
 # ==============================================================================
-# 16. Disable Server Manager
+# 17. Disable Server Manager and diagnostic screens
 # ==============================================================================
 Write-Host 'Disabling Server Manager...'
 $serverManagerPath = 'HKLM:\\SOFTWARE\\Microsoft\\ServerManager'
 if (-not (Test-Path $serverManagerPath)) { New-Item -Path $serverManagerPath -Force | Out-Null }
 Set-ItemProperty -Path $serverManagerPath -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
 
+$oobePath = 'HKLM:\\SOFTWARE\\Microsoft\\ServerManager\\Oobe'
+if (-not (Test-Path $oobePath)) { New-Item -Path $oobePath -Force | Out-Null }
+Set-ItemProperty -Path $oobePath -Name 'DoNotOpenInitialConfigurationTasksAtLogon' -Value 1 -Type DWord
+
+$privacyPath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\OOBE'
+if (-not (Test-Path $privacyPath)) { New-Item -Path $privacyPath -Force | Out-Null }
+New-ItemProperty -Path $privacyPath -Name 'DisablePrivacyExperience' -Value 1 -PropertyType DWord -Force | Out-Null
+
+$dcPath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection'
+if (-not (Test-Path $dcPath)) { New-Item -Path $dcPath -Force | Out-Null }
+New-ItemProperty -Path $dcPath -Name 'AllowTelemetry' -Value 1 -PropertyType DWord -Force | Out-Null
+
+$feedbackPath = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Feedback'
+if (-not (Test-Path $feedbackPath)) { New-Item -Path $feedbackPath -Force | Out-Null }
+New-ItemProperty -Path $feedbackPath -Name 'DoNotShowFeedbackNotifications' -Value 1 -PropertyType DWord -Force | Out-Null
+
 # ==============================================================================
-# 17. Cleanup
+# 18. Cleanup
 # ==============================================================================
 Write-Host 'Cleaning up...'
 Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue
@@ -846,7 +1033,20 @@ wevtutil cl System
 wevtutil cl Application
 wevtutil cl Security
 
-Write-Host 'Provisioning complete!'
+# ==============================================================================
+# 19. Prepare for specialized image (NO SYSPREP)
+# ==============================================================================
+# We do NOT run sysprep - this creates a SPECIALIZED image
+# The image will boot directly into vmuser with all settings preserved
+# This avoids OOBE (first-run experience) and keeps credentials intact
+
+Write-Host 'Preparing for specialized image capture...'
+# Ensure auto-login is definitely set before capture
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v AutoAdminLogon /t REG_SZ /d 1 /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultUsername /t REG_SZ /d vmuser /f
+reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultPassword /t REG_SZ /d $vmPassword /f
+
+Write-Host 'Provisioning complete! Image will be captured as SPECIALIZED (no sysprep).'
 `;
 }
 async function createImageTemplate(templateName, options, onProgress) {
@@ -892,7 +1092,8 @@ async function createImageTemplate(templateName, options, onProgress) {
           runOutputName: `${templateName}-output`,
           artifactTags: {
             "created-by": "mediar-image-builder",
-            "created-at": (/* @__PURE__ */ new Date()).toISOString()
+            "created-at": (/* @__PURE__ */ new Date()).toISOString(),
+            "os-state": "specialized"
           },
           replicationRegions: [IMAGE_CONFIG.location],
           versioning: {

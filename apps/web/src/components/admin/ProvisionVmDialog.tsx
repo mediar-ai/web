@@ -30,16 +30,34 @@ interface ProvisionVmDialogProps {
   onSuccess: () => void;
 }
 
-// Provisioning steps with estimated durations (in seconds)
-const PROVISIONING_STEPS = [
-  { label: 'Finding latest Packer image', duration: 5 },
-  { label: 'Creating Azure resource group', duration: 10 },
-  { label: 'Setting up virtual network', duration: 15 },
-  { label: 'Configuring network security', duration: 10 },
-  { label: 'Creating Windows VM', duration: 180 }, // 3 minutes - the big one
-  { label: 'Waiting for VM to start', duration: 120 }, // 2 minutes
-  { label: 'Registering in database', duration: 5 },
-];
+interface ProvisioningStep {
+  step: string;
+  status: 'in_progress' | 'completed' | 'failed';
+  message: string;
+  timestamp: string;
+}
+
+// Map Inngest step names to UI labels (in order)
+const STEP_CONFIG: Record<string, { label: string; order: number }> = {
+  queued: { label: 'Queued for provisioning', order: 0 },
+  init: { label: 'Starting provisioning job', order: 1 },
+  image: { label: 'Finding latest Packer image', order: 2 },
+  resource_group: { label: 'Creating Azure resource group', order: 3 },
+  network: { label: 'Setting up virtual network', order: 4 },
+  public_ip: { label: 'Allocating public IP address', order: 5 },
+  nsg: { label: 'Configuring network security', order: 6 },
+  nic: { label: 'Creating network interface', order: 7 },
+  vm: { label: 'Creating Windows VM', order: 8 },
+  configure: { label: 'Configuring VM & starting MCP', order: 9 },
+  finalize: { label: 'Finalizing setup', order: 10 },
+  done: { label: 'VM Ready!', order: 11 },
+};
+
+const ORDERED_STEPS = Object.entries(STEP_CONFIG)
+  .sort((a, b) => a[1].order - b[1].order)
+  .map(([key, value]) => ({ key, ...value }));
+
+const TOTAL_STEPS = ORDERED_STEPS.length;
 
 export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDialogProps) {
   const [loading, setLoading] = useState(true);
@@ -49,10 +67,11 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
   const [provisioningComplete, setProvisioningComplete] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Progress tracking
-  const [currentStep, setCurrentStep] = useState(0);
+  // Progress tracking - now from real DB data
+  const [currentProvisioningStep, setCurrentProvisioningStep] = useState<ProvisioningStep | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const [formData, setFormData] = useState({
@@ -67,36 +86,35 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
     breakdown: { item: string; cost: number }[];
   } | null>(null);
 
-  // Calculate which step we should be on based on elapsed time
-  const calculateCurrentStep = useCallback((elapsed: number) => {
-    let cumulativeTime = 0;
-    for (let i = 0; i < PROVISIONING_STEPS.length; i++) {
-      cumulativeTime += PROVISIONING_STEPS[i].duration;
-      if (elapsed < cumulativeTime) {
-        return i;
-      }
-    }
-    return PROVISIONING_STEPS.length - 1;
-  }, []);
+  // Get current step order from real data
+  const currentStepOrder = useMemo(() => {
+    if (!currentProvisioningStep) return 0;
+    return STEP_CONFIG[currentProvisioningStep.step]?.order ?? 0;
+  }, [currentProvisioningStep]);
 
-  // Start progress simulation when provisioning starts
-  const startProgressSimulation = useCallback(() => {
+  // Calculate progress percentage from actual step
+  const progressPercent = useMemo(() => {
+    if (provisioningComplete) return 100;
+    const baseProgress = (currentStepOrder / TOTAL_STEPS) * 100;
+    const inProgressBonus = currentProvisioningStep?.status === 'in_progress' ? 2 : 0;
+    return Math.min(95, baseProgress + inProgressBonus);
+  }, [currentStepOrder, provisioningComplete, currentProvisioningStep]);
+
+  // Start elapsed time counter
+  const startTimer = useCallback(() => {
     startTimeRef.current = Date.now();
-    setCurrentStep(0);
     setElapsedSeconds(0);
-
-    progressIntervalRef.current = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
       setElapsedSeconds(elapsed);
-      setCurrentStep(calculateCurrentStep(elapsed));
     }, 1000);
-  }, [calculateCurrentStep]);
+  }, []);
 
-  // Stop progress simulation
-  const stopProgressSimulation = useCallback(() => {
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
-      progressIntervalRef.current = null;
+  // Stop timer
+  const stopTimer = useCallback(() => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
     }
   }, []);
 
@@ -109,16 +127,17 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       setProvisioning(false);
       setProvisioningComplete(false);
       setSearchTerm('');
-      setCurrentStep(0);
+      setCurrentProvisioningStep(null);
+      setCompletedSteps(new Set());
       setElapsedSeconds(0);
-      stopProgressSimulation();
+      stopTimer();
     }
-  }, [isOpen, stopProgressSimulation]);
+  }, [isOpen, stopTimer]);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => stopProgressSimulation();
-  }, [stopProgressSimulation]);
+    return () => stopTimer();
+  }, [stopTimer]);
 
   const fetchOptions = async () => {
     setLoading(true);
@@ -162,15 +181,15 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
     }
   };
 
-  // Poll for machine status
+  // Poll for machine status - now reads real provisioning_step from DB
   const pollMachineStatus = useCallback(async (machineId: number) => {
-    const pollInterval = 5000; // 5 seconds
+    const pollInterval = 3000; // 3 seconds for more responsive UI
     const maxPollTime = 15 * 60 * 1000; // 15 minutes max
     const startTime = Date.now();
 
     const poll = async () => {
       if (Date.now() - startTime > maxPollTime) {
-        stopProgressSimulation();
+        stopTimer();
         toast.error('Provisioning is taking too long. Check the machines list for status.');
         setProvisioning(false);
         return;
@@ -192,11 +211,45 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
           return;
         }
 
+        // Parse provisioning_step from DB
+        if (machine.provisioning_step) {
+          let stepData: ProvisioningStep;
+          if (typeof machine.provisioning_step === 'string') {
+            stepData = JSON.parse(machine.provisioning_step);
+          } else {
+            stepData = machine.provisioning_step;
+          }
+
+          setCurrentProvisioningStep(stepData);
+
+          // Track completed steps - mark all steps before current as completed
+          const currentOrder = STEP_CONFIG[stepData.step]?.order ?? 0;
+          const newCompleted = new Set<string>();
+          for (const [key, config] of Object.entries(STEP_CONFIG)) {
+            if (config.order < currentOrder) {
+              newCompleted.add(key);
+            }
+            // Also mark current step as completed if its status is 'completed'
+            if (key === stepData.step && stepData.status === 'completed') {
+              newCompleted.add(key);
+            }
+          }
+          setCompletedSteps(newCompleted);
+
+          // Check if provisioning failed
+          if (stepData.status === 'failed') {
+            stopTimer();
+            toast.error(`VM provisioning failed: ${stepData.message}`);
+            setProvisioning(false);
+            return;
+          }
+        }
+
         // Check if provisioning is complete (status='active' means Azure provisioning succeeded)
         if (machine.status === 'active') {
           // Provisioning complete!
-          stopProgressSimulation();
-          setCurrentStep(PROVISIONING_STEPS.length);
+          stopTimer();
+          setCompletedSteps(new Set(Object.keys(STEP_CONFIG)));
           setProvisioningComplete(true);
           toast.success('VM provisioned successfully!');
           setTimeout(() => {
@@ -206,17 +259,17 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
           return;
         }
 
-        // Check if provisioning failed (status='inactive' + health_status='unhealthy' + still has placeholder endpoint)
+        // Check if provisioning failed (status='inactive' + health_status='unhealthy' + not still provisioning)
         const isStillProvisioning = machine.mcp_endpoint?.includes('provisioning.local');
-        if (machine.health_status === 'unhealthy' && isStillProvisioning) {
+        if (machine.health_status === 'unhealthy' && !isStillProvisioning) {
           // Provisioning failed
-          stopProgressSimulation();
+          stopTimer();
           toast.error('VM provisioning failed. Check the machines list for details.');
           setProvisioning(false);
           return;
         }
 
-        // Still provisioning (status='inactive', health_status='unknown', has placeholder endpoint), continue polling
+        // Still provisioning, continue polling
         setTimeout(poll, pollInterval);
       } catch {
         // Network error, retry
@@ -224,9 +277,9 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       }
     };
 
-    // Start polling
-    setTimeout(poll, pollInterval);
-  }, [stopProgressSimulation, onSuccess, onClose]);
+    // Start polling immediately
+    poll();
+  }, [stopTimer, onSuccess, onClose]);
 
   const handleProvision = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,7 +296,9 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
 
     setProvisioning(true);
     setProvisioningComplete(false);
-    startProgressSimulation();
+    setCurrentProvisioningStep({ step: 'queued', status: 'in_progress', message: 'Sending request...', timestamp: new Date().toISOString() });
+    setCompletedSteps(new Set());
+    startTimer();
 
     try {
       const res = await fetch('/api/admin/machines/provision', {
@@ -257,7 +312,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
       const data = await res.json();
 
       if (!res.ok) {
-        stopProgressSimulation();
+        stopTimer();
         toast.error(data.error || 'Failed to start provisioning');
         setProvisioning(false);
         return;
@@ -268,13 +323,13 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
         toast.success('VM provisioning started! Monitoring progress...');
         pollMachineStatus(data.machine.id);
       } else {
-        stopProgressSimulation();
+        stopTimer();
         toast.error(data.error || 'Failed to start provisioning');
         setProvisioning(false);
       }
     } catch (err) {
       console.error('Provision error:', err);
-      stopProgressSimulation();
+      stopTimer();
       toast.error('Failed to start provisioning');
       setProvisioning(false);
     }
@@ -339,48 +394,63 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
                 </div>
               </div>
 
-              {/* Progress bar */}
+              {/* Progress bar - now based on actual step */}
               <div className="h-2 bg-gray-200 border border-gray-300">
                 <div
-                  className="h-full bg-black transition-all duration-1000"
-                  style={{
-                    width: provisioningComplete
-                      ? '100%'
-                      : `${Math.min(95, (currentStep / PROVISIONING_STEPS.length) * 100 + (elapsedSeconds % 30) / 3)}%`
-                  }}
+                  className="h-full bg-black transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
                 />
               </div>
 
-              {/* Steps with animated states */}
+              {/* Current status message */}
+              {currentProvisioningStep && !provisioningComplete && (
+                <div className="text-center">
+                  <p className="font-mono text-sm text-gray-600">
+                    {currentProvisioningStep.message}
+                  </p>
+                </div>
+              )}
+
+              {/* Steps with real states from DB */}
               <div className="border-2 border-black p-3 bg-gray-50">
                 <p className="font-mono text-xs text-gray-600 uppercase mb-3">Progress:</p>
                 <ul className="space-y-2">
-                  {PROVISIONING_STEPS.map((step, i) => {
-                    const isComplete = provisioningComplete || i < currentStep;
-                    const isActive = !provisioningComplete && i === currentStep;
+                  {ORDERED_STEPS.map((step) => {
+                    const isComplete = provisioningComplete || completedSteps.has(step.key);
+                    const isActive = !provisioningComplete && currentProvisioningStep?.step === step.key;
+                    const isFailed = isActive && currentProvisioningStep?.status === 'failed';
 
                     return (
                       <li
-                        key={i}
-                        className={`font-mono text-sm flex items-center gap-2 transition-all ${
-                          isComplete ? 'text-black' : isActive ? 'text-black font-bold' : 'text-gray-400'
+                        key={step.key}
+                        className={`font-mono text-sm flex items-start gap-2 transition-all ${
+                          isFailed ? 'text-red-600' : isComplete ? 'text-black' : isActive ? 'text-black font-bold' : 'text-gray-400'
                         }`}
                       >
-                        {isComplete ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : isActive ? (
-                          <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-                        ) : (
-                          <span className="w-4 h-4 flex items-center justify-center">
-                            <span className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
-                          </span>
-                        )}
-                        {step.label}
-                        {isActive && (
-                          <span className="text-xs text-gray-500 ml-auto">
-                            ~{Math.ceil(step.duration / 60)}min
-                          </span>
-                        )}
+                        <span className="flex-shrink-0 mt-0.5">
+                          {isComplete ? (
+                            <Check className="w-4 h-4" />
+                          ) : isActive ? (
+                            isFailed ? (
+                              <AlertTriangle className="w-4 h-4" />
+                            ) : (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            )
+                          ) : (
+                            <span className="w-4 h-4 flex items-center justify-center">
+                              <span className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span>{step.label}</span>
+                          {/* Show detailed message for active step */}
+                          {isActive && currentProvisioningStep?.message && (
+                            <p className="text-xs text-gray-500 mt-0.5 truncate">
+                              {currentProvisioningStep.message}
+                            </p>
+                          )}
+                        </div>
                       </li>
                     );
                   })}
