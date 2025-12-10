@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Look up existing workflow by github_folder (UUID)
     const { data: existingWorkflow } = await supabase
       .from('deployed_workflows')
-      .select('id, organization_id')
+      .select('id, organization_id, uuid')
       .eq('github_folder', folder_id)
       .single();
 
@@ -85,8 +85,12 @@ export async function POST(request: NextRequest) {
     let actualUpdatedAt: string;
 
     if (existingWorkflow) {
-      // Verify ownership
-      if (existingWorkflow.organization_id !== effectiveOrgId) {
+      // Check write permission using centralized helper
+      const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+      const access = await checkWorkflowAccess(effectiveOrgId, existingWorkflow.uuid);
+
+      if (!access.canWrite) {
+        console.log(`[Publish] Access denied: org=${effectiveOrgId}, workflow=${folder_id}, level=${access.accessLevel}`);
         return NextResponse.json(
           { success: false, error: 'Not authorized to update this workflow' },
           { status: 403 }
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
       }
 
       workflowId = existingWorkflow.id;
-      console.log(`🔄 Updating existing workflow ID: ${workflowId}`);
+      console.log(`🔄 Updating existing workflow ID: ${workflowId} (access: ${access.accessLevel})`);
 
       // Update workflow metadata including step_count from typescript metadata
       // Select back content_updated_at to get the actual DB timestamp (used for sync comparison)
