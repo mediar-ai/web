@@ -147,6 +147,17 @@ export async function PUT(
       );
     }
 
+    // Get the workflow UUID for the access records
+    const { data: workflow, error: workflowError } = await supabase
+      .from('deployed_workflows')
+      .select('uuid')
+      .eq('id', workflowId)
+      .single();
+
+    if (workflowError || !workflow) {
+      throw new Error(`Failed to fetch workflow: ${workflowError?.message || 'not found'}`);
+    }
+
     // First, remove all existing access for this workflow
     const { error: deleteError } = await supabase
       .from('workflow_organization_access')
@@ -163,6 +174,7 @@ export async function PUT(
       const accessEntries = organizationIds.map(orgId => ({
         workflow_id: workflowId,
         organization_id: orgId,
+        workflow_uuid: workflow.uuid, // Required for check_org_workflow_access function
       }));
 
       const { error: insertError } = await supabase

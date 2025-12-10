@@ -205,23 +205,21 @@ export async function POST(request: NextRequest) {
       const octokit = await getAuthenticatedOctokit();
 
         // Generate package.json for the workflow
+        // Use @mediar-ai/workflow as the main runtime (matches desktop app template)
         const packageJson = {
           name: name.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
           version: newVersionNumber,
           description: description || metadata.description || '',
           main: 'src/terminator.ts',
           scripts: {
-            build: 'tsc',
-            start: 'ts-node src/terminator.ts'
+            build: 'tsc --noEmit'
           },
           dependencies: {
-            '@anthropic-ai/sdk': '^0.27.0',
-            'zod': '^3.23.8'
+            '@mediar-ai/workflow': 'latest'
           },
           devDependencies: {
             'typescript': '^5.0.0',
-            '@types/node': '^20.0.0',
-            'ts-node': '^10.9.0'
+            '@types/node': '^20.0.0'
           }
         };
 
