@@ -665,24 +665,12 @@ export async function DELETE(
 
     // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
     const isOwner = workflow.created_by === authenticatedUserId;
-    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg =
-      workflow.organization_id && workflow.organization_id === orgId;
 
-    // Check workflow_organization_access table for organization-based access
-    // DELETE requires admin access level
-    let hasOrgAccess = false;
-    if (orgId) {
-      const { data: orgAccess } = await supabase
-        .from('workflow_organization_access')
-        .select('access_level')
-        .eq('workflow_id', workflow.id)
-        .eq('organization_id', orgId)
-        .single();
-
-      // Only 'admin' access level can delete workflows (write cannot delete)
-      hasOrgAccess = !!orgAccess && orgAccess.access_level === 'admin';
-    }
+    // Check admin permission using centralized helper (delete requires admin access)
+    const { checkWorkflowAccess, getWorkflowUuid } = await import('@/lib/workflow-permissions');
+    const workflowUuid = workflow.github_folder || await getWorkflowUuid(workflow.id);
+    const access = orgId && workflowUuid ? await checkWorkflowAccess(orgId, workflowUuid) : null;
+    const hasAdminAccess = access?.canAdmin ?? false;
 
     // Prevent deletion of public workflows (is_public = true) by non-Mediar users
     if (workflow.is_public && !isMediarOrgDelete && !isMediarAdminDelete) {
@@ -700,18 +688,16 @@ export async function DELETE(
 
     // Allow deletion if:
     // - User is in Mediar org or is a Mediar admin (can delete any workflow)
-    // - User is the workflow owner
-    // - User is in the same org (organization_id field) - supports desktop users
-    // - User's organization has admin access via workflow_organization_access table
+    // - User is the workflow owner (created_by)
+    // - User's organization has admin access (owner or shared with admin level)
     if (
       !isMediarOrgDelete &&
       !isMediarAdminDelete &&
       !isOwner &&
-      !isSameOrg &&
-      !hasOrgAccess
+      !hasAdminAccess
     ) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized deletion for workflow ${workflow.id}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, level: ${access?.accessLevel}) attempted unauthorized deletion for workflow ${workflow.id}`
       );
       return NextResponse.json(
         {
