@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import {
-  provisionVm,
   getEstimatedMonthlyCost,
   getAvailableVmSizes,
   getAvailableRegions,
 } from '@/lib/azure/vm-provisioning';
+import { inngest } from '@/lib/inngest';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 // Default Mediar organization ID for new VMs
@@ -191,6 +190,12 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
         region: body.location || 'eastus',
         is_global: false,
         provisioned_at: new Date().toISOString(),
+        provisioning_step: JSON.stringify({
+          step: 'queued',
+          status: 'in_progress',
+          message: 'Waiting for provisioning to start...',
+          timestamp: new Date().toISOString(),
+        }),
       })
       .select()
       .single();
@@ -216,64 +221,20 @@ async function handleProvision(body: ProvisionBody): Promise<NextResponse> {
 
     console.log(`[Provision API] Created provisioning record with ID: ${machineId}`);
 
-    // Step 2: Schedule Azure provisioning to run after response using Next.js after()
-    after(async () => {
-      console.log(`[Provision API] Starting background Azure provisioning for: ${body.name}`);
-
-      try {
-        const result = await provisionVm({
-          name: body.name,
-          customer: customerName,
-          organizationId: body.organizationId || DEFAULT_ORG_ID,
-          location: body.location,
-          vmSize: body.vmSize,
-        });
-
-        if (result.success) {
-          // Update DB record with Azure details
-          const { error: updateError } = await supabase
-            .from('remote_machines')
-            .update({
-              mcp_endpoint: result.mcpEndpoint,
-              health_endpoint: `http://${result.publicIp}:8080/health`,
-              management_endpoint: `http://${result.publicIp}:8080/management`,
-              azure_resource_id: result.vmId,
-              status: 'active',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', machineId);
-
-          if (updateError) {
-            console.error(`[Provision API] Failed to update machine ${machineId}:`, updateError);
-          } else {
-            console.log(`[Provision API] VM ${body.name} provisioned successfully: ${result.vmId}`);
-          }
-        } else {
-          // Update DB record with failure (keep status 'inactive', mark as unhealthy)
-          await supabase
-            .from('remote_machines')
-            .update({
-              status: 'inactive',
-              health_status: 'unhealthy',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', machineId);
-
-          console.error(`[Provision API] VM provision failed: ${result.error}`);
-        }
-      } catch (error) {
-        console.error(`[Provision API] Background provisioning error:`, error);
-        // Update DB record with failure (keep status 'inactive', mark as unhealthy)
-        await supabase
-          .from('remote_machines')
-          .update({
-            status: 'inactive',
-            health_status: 'unhealthy',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', machineId);
-      }
+    // Step 2: Send event to Inngest to trigger durable provisioning function
+    console.log(`[Provision API] Sending vm/provision.requested event to Inngest for machine ${machineId}`);
+    await inngest.send({
+      name: 'vm/provision.requested',
+      data: {
+        machineId,
+        vmName: body.name,
+        customer: customerName,
+        organizationId: targetOrgId,
+        location: body.location || 'eastus',
+        vmSize: body.vmSize || 'Standard_D4s_v3',
+      },
     });
+    console.log(`[Provision API] Inngest event sent successfully`);
 
     // Step 3: Return immediately with the machine ID (UI will poll for status)
     return NextResponse.json({
