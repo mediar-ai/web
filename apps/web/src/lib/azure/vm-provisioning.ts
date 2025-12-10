@@ -373,44 +373,59 @@ export async function provisionVm(
     const vmAdminUsername = process.env.AZURE_VM_ADMIN_USERNAME || 'vmuser';
     const vmAdminPassword = process.env.AZURE_VM_ADMIN_PASSWORD;
 
-    if (!vmAdminPassword) {
-      throw new Error('AZURE_VM_ADMIN_PASSWORD environment variable is required');
+    // For generalized images, we need credentials
+    if (!image.specialized && !vmAdminPassword) {
+      throw new Error('AZURE_VM_ADMIN_PASSWORD environment variable is required for generalized images');
+    }
+
+    // Build VM parameters - osProfile differs based on image type
+    // CRITICAL: Specialized images already have user/password baked in from Packer
+    // Providing osProfile for specialized images breaks the VM Agent!
+    const vmParameters: Parameters<typeof computeClient.virtualMachines.beginCreateOrUpdate>[2] = {
+      location,
+      hardwareProfile: { vmSize },
+      storageProfile: {
+        imageReference: { id: image.id },
+        osDisk: {
+          createOption: 'FromImage',
+          managedDisk: {
+            storageAccountType: DEFAULT_VM_CONFIG.osDiskType,
+          },
+          diskSizeGB: DEFAULT_VM_CONFIG.osDiskSizeGb,
+        },
+      },
+      networkProfile: {
+        networkInterfaces: [{ id: nic.id }],
+      },
+      tags: {
+        customer: options.customer,
+        'managed-by': 'mediar-dashboard',
+        'organization-id': options.organizationId || '',
+        'image-type': image.specialized ? 'specialized' : 'generalized',
+      },
+    };
+
+    // Only set osProfile for generalized images
+    // Specialized images have credentials baked in and setting osProfile breaks VM Agent
+    if (!image.specialized) {
+      vmParameters.osProfile = {
+        computerName: names.vm,
+        adminUsername: vmAdminUsername,
+        adminPassword: vmAdminPassword,
+        windowsConfiguration: {
+          provisionVMAgent: true,
+          enableAutomaticUpdates: false,
+        },
+      };
+      progress('vm', 'in_progress', 'Creating VM with osProfile (generalized image)...');
+    } else {
+      progress('vm', 'in_progress', 'Creating VM without osProfile (specialized image - faster boot)...');
     }
 
     const vmPoller = await computeClient.virtualMachines.beginCreateOrUpdate(
       names.resourceGroup,
       names.vm,
-      {
-        location,
-        hardwareProfile: { vmSize },
-        storageProfile: {
-          imageReference: { id: image.id },
-          osDisk: {
-            createOption: 'FromImage',
-            managedDisk: {
-              storageAccountType: DEFAULT_VM_CONFIG.osDiskType,
-            },
-            diskSizeGB: DEFAULT_VM_CONFIG.osDiskSizeGb,
-          },
-        },
-        osProfile: {
-          computerName: names.vm,
-          adminUsername: vmAdminUsername,
-          adminPassword: vmAdminPassword,
-          windowsConfiguration: {
-            provisionVMAgent: true,
-            enableAutomaticUpdates: false,
-          },
-        },
-        networkProfile: {
-          networkInterfaces: [{ id: nic.id }],
-        },
-        tags: {
-          customer: options.customer,
-          'managed-by': 'mediar-dashboard',
-          'organization-id': options.organizationId || '',
-        },
-      }
+      vmParameters
     );
     const vm = await vmPoller.pollUntilDone();
     progress('vm', 'completed', `Virtual machine created: ${vm.name}`);
