@@ -65,6 +65,17 @@ export const provisionVmFunction = inngest.createFunction(
   },
   { event: 'vm/provision.requested' },
   async ({ event, step }) => {
+    // Step 0: Mark that Inngest has picked up the job
+    await step.run('init', async () => {
+      console.log();
+      const supabase = getSupabase();
+      await supabase.from('remote_machines').update({
+        provisioning_step: JSON.stringify({ step: 'init', status: 'in_progress', message: 'Inngest job started...', timestamp: new Date().toISOString() }),
+        updated_at: new Date().toISOString(),
+      }).eq('id', event.data.machineId);
+      return { started: true };
+    });
+
     const { machineId, vmName, customer, organizationId, location, vmSize } = event.data;
     const names = generateResourceNames(vmName, customer);
     const subscriptionId = getSubscriptionId();
