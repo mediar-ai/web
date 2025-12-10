@@ -1034,19 +1034,85 @@ wevtutil cl Application
 wevtutil cl Security
 
 # ==============================================================================
-# 19. Prepare for specialized image (NO SYSPREP)
+# 19. Create Unattend.xml for OOBE bypass
 # ==============================================================================
-# We do NOT run sysprep - this creates a SPECIALIZED image
-# The image will boot directly into vmuser with all settings preserved
-# This avoids OOBE (first-run experience) and keeps credentials intact
+# Azure Image Builder always runs sysprep, so we need unattend.xml to skip OOBE
+# This file tells Windows Setup to auto-configure regional settings and skip prompts
 
-Write-Host 'Preparing for specialized image capture...'
-# Ensure auto-login is definitely set before capture
-reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v AutoAdminLogon /t REG_SZ /d 1 /f
-reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultUsername /t REG_SZ /d vmuser /f
-reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultPassword /t REG_SZ /d $vmPassword /f
+Write-Host 'Creating unattend.xml for OOBE bypass...'
+$unattendPath = 'C:\\Windows\\Panther\\Unattend'
+New-Item -ItemType Directory -Force -Path $unattendPath | Out-Null
+@'
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+      </OOBE>
+      <TimeZone>UTC</TimeZone>
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <Username>vmuser</Username>
+        <Password>
+          <Value>${options.vmPassword}</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <LogonCount>9999</LogonCount>
+      </AutoLogon>
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>vmuser</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>${options.vmPassword}</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>cmd /c reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>cmd /c reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultUsername /t REG_SZ /d vmuser /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>cmd /c reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword /t REG_SZ /d "${options.vmPassword}" /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+</unattend>
+'@ | Out-File -FilePath "$unattendPath\\unattend.xml" -Encoding UTF8
 
-Write-Host 'Provisioning complete! Image will be captured as SPECIALIZED (no sysprep).'
+# Also copy to sysprep directory where Windows looks for it
+Copy-Item "$unattendPath\\unattend.xml" 'C:\\Windows\\System32\\Sysprep\\unattend.xml' -Force
+Write-Host 'Unattend.xml created for OOBE bypass'
+
+Write-Host 'Provisioning complete!'
 `;
 }
 async function createImageTemplate(templateName, options, onProgress) {
