@@ -121,7 +121,7 @@ export async function GET(
     const { data: workflowOwnership, error: ownershipError } = await supabase
       .from('deployed_workflows')
       .select(
-        'id, name, created_by, organization_id, status, description, category'
+        'id, name, created_by, organization_id, status, description, category, github_folder'
       )
       .eq('id', workflowIdNum)
       .single();
@@ -137,58 +137,25 @@ export async function GET(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
 
-    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
-    const isOwner = workflowOwnership.created_by === authenticatedUserId;
-    const isOrgAdmin = has({ role: 'org:admin' }) || has({ role: 'org:owner' });
-    const isSameOrg =
-      workflowOwnership.organization_id &&
-      workflowOwnership.organization_id === orgId;
-
-    // Check if this is a globally public workflow (is_public = true)
-    const { data: isPublicWorkflow } = await supabase
-      .from('deployed_workflows')
-      .select('is_public')
-      .eq('id', workflowIdNum)
-      .single();
-
-    const isGloballyPublic = isPublicWorkflow?.is_public === true;
-
-    // Check workflow_organization_access table for organization-based access
-    // Allow ANY member of an organization with access (not just admins)
-    let hasOrgAccess = false;
-    if (orgId) {
-      const { data: orgAccess } = await supabase
-        .from('workflow_organization_access')
-        .select('organization_id')
-        .eq('workflow_id', workflowIdNum)
-        .eq('organization_id', orgId)
-        .single();
-
-      hasOrgAccess = !!orgAccess;
-    }
+    // STEP 3: AUTHORIZATION - Use centralized RPC for access check (single DB call)
+    const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+    const workflowUuid = loadedWorkflow.metadata?.github_folder || workflowOwnership.github_folder;
+    const access = orgId && workflowUuid ? await checkWorkflowAccess(orgId, workflowUuid) : null;
 
     // Allow access if:
     // - User is in Mediar org or is a Mediar admin (can view any workflow)
-    // - User is the workflow owner
-    // - User is in the same org (organization_id field) - supports desktop users
-    // - User's organization has access via workflow_organization_access table (ANY member, not just admins)
-    // - Workflow is globally public (is_public = true)
-    if (
-      !isMediarOrg &&
-      !isMediarAdmin &&
-      !isOwner &&
-      !isSameOrg &&
-      !hasOrgAccess &&
-      !isGloballyPublic
-    ) {
+    // - User has any access level via RPC (owner, admin, write, read, public_read)
+    if (!isMediarOrg && !isMediarAdmin && !access?.hasAccess) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized read of workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, level: ${access?.accessLevel}) attempted unauthorized read of workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         { error: 'Forbidden - You do not have access to this workflow' },
         { status: 403 }
       );
     }
+
+    const isGloballyPublic = access?.accessLevel === 'public_read';
 
     const status = workflowOwnership.status || 'active';
 
@@ -368,7 +335,7 @@ export async function PATCH(
     const resolveResult = await resolveWorkflowId(
       supabase,
       workflowId,
-      'id, name, created_by, organization_id, is_public, github_path'
+      'id, name, created_by, organization_id, is_public, github_path, github_folder'
     );
 
     if (resolveResult.error || !resolveResult.workflow) {
@@ -385,55 +352,17 @@ export async function PATCH(
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
     const { isMediarOrg, isMediarAdmin } = await getEffectiveOrgId(null);
 
-    // Prevent modification of public workflows (is_public = true) by non-Mediar users
-    if (workflow.is_public && !isMediarOrg && !isMediarAdmin) {
-      console.warn(
-        `[SECURITY] User ${authenticatedUserId} attempted to modify public workflow ${workflowIdNum}`
-      );
-      return NextResponse.json(
-        {
-          error:
-            'Forbidden - Public workflows can only be modified by Mediar administrators',
-        },
-        { status: 403 }
-      );
-    }
-
-    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
-    const isOwner = workflow.created_by === authenticatedUserId;
-    const isSameOrg =
-      workflow.organization_id && workflow.organization_id === orgId;
-
-    // Check workflow_organization_access table for organization-based access
-    // PATCH (modify) requires write or admin access level
-    let hasOrgAccess = false;
-    if (orgId) {
-      const { data: orgAccess } = await supabase
-        .from('workflow_organization_access')
-        .select('access_level')
-        .eq('workflow_id', workflowIdNum)
-        .eq('organization_id', orgId)
-        .single();
-
-      // Only 'write' or 'admin' access levels can modify workflows
-      hasOrgAccess =
-        !!orgAccess && ['write', 'admin'].includes(orgAccess.access_level);
-    }
+    // STEP 3: AUTHORIZATION - Use centralized RPC for access check (single DB call)
+    const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+    const workflowUuid = workflow.github_folder;
+    const access = orgId && workflowUuid ? await checkWorkflowAccess(orgId, workflowUuid) : null;
 
     // Allow modification if:
     // - User is in Mediar org or is a Mediar admin (can modify any workflow)
-    // - User is the workflow owner
-    // - User is in the same org (organization_id field) - supports desktop users
-    // - User's organization has access via workflow_organization_access table
-    if (
-      !isMediarOrg &&
-      !isMediarAdmin &&
-      !isOwner &&
-      !isSameOrg &&
-      !hasOrgAccess
-    ) {
+    // - User has write access via RPC (owner, admin, write)
+    if (!isMediarOrg && !isMediarAdmin && !access?.canWrite) {
       console.warn(
-        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, isSameOrg: ${isSameOrg}) attempted unauthorized update for workflow ${workflowIdNum}`
+        `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, level: ${access?.accessLevel}) attempted unauthorized update for workflow ${workflowIdNum}`
       );
       return NextResponse.json(
         {
@@ -663,39 +592,15 @@ export async function DELETE(
       isMediarAdmin: isMediarAdminDelete,
     } = await getEffectiveOrgId(null);
 
-    // STEP 3: AUTHORIZATION - Check workflow ownership or org membership
-    const isOwner = workflow.created_by === authenticatedUserId;
-
-    // Check admin permission using centralized helper (delete requires admin access)
-    const { checkWorkflowAccess, getWorkflowUuid } = await import('@/lib/workflow-permissions');
-    const workflowUuid = workflow.github_folder || await getWorkflowUuid(workflow.id);
+    // STEP 3: AUTHORIZATION - Use centralized RPC for access check (single DB call)
+    const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+    const workflowUuid = workflow.github_folder;
     const access = orgId && workflowUuid ? await checkWorkflowAccess(orgId, workflowUuid) : null;
-    const hasAdminAccess = access?.canAdmin ?? false;
-
-    // Prevent deletion of public workflows (is_public = true) by non-Mediar users
-    if (workflow.is_public && !isMediarOrgDelete && !isMediarAdminDelete) {
-      console.warn(
-        `[SECURITY] User ${authenticatedUserId} attempted to delete public workflow ${workflow.id}`
-      );
-      return NextResponse.json(
-        {
-          error:
-            'Forbidden - Public workflows can only be deleted by Mediar administrators',
-        },
-        { status: 403 }
-      );
-    }
 
     // Allow deletion if:
     // - User is in Mediar org or is a Mediar admin (can delete any workflow)
-    // - User is the workflow owner (created_by)
-    // - User's organization has admin access (owner or shared with admin level)
-    if (
-      !isMediarOrgDelete &&
-      !isMediarAdminDelete &&
-      !isOwner &&
-      !hasAdminAccess
-    ) {
+    // - User has admin access via RPC (owner or shared with admin level)
+    if (!isMediarOrgDelete && !isMediarAdminDelete && !access?.canAdmin) {
       console.warn(
         `[SECURITY] User ${authenticatedUserId} (orgId: ${orgId}, level: ${access?.accessLevel}) attempted unauthorized deletion for workflow ${workflow.id}`
       );
