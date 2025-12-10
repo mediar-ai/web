@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { mapClerkIdToDbId } from '@/lib/orgIdMapping';
 import { NextRequest, NextResponse } from 'next/server';
+import { getGitHubToken } from '@/lib/github-app-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -179,12 +180,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch from GitHub (with auth if private repo)
-    const githubToken = process.env.GITHUB_TOKEN;
-
-    if (!githubToken) {
-      console.error('GITHUB_TOKEN not configured');
+    // Uses GitHub App authentication if configured, otherwise falls back to PAT
+    let githubToken: string;
+    try {
+      githubToken = await getGitHubToken();
+    } catch (error) {
+      console.error('Failed to get GitHub token:', error);
       return NextResponse.json(
-        { error: 'GitHub token not configured' },
+        { error: 'GitHub authentication not configured' },
         { status: 500 }
       );
     }

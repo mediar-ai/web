@@ -2,6 +2,7 @@ import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
 import { createClient } from '@supabase/supabase-js';
 import { createClerkClient } from '@clerk/backend';
+import { getAuthenticatedOctokit, isGitHubAppConfigured } from './github-app-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,24 +27,25 @@ export interface UserContext {
 }
 
 export class GitHubWorkflowManager {
-  private octokit: Octokit;
+  private octokit: Octokit | null = null;
   private owner = 'mediar-ai';
   private repo = 'workflows';
   private baseBranch = 'main';
   private devBranch = 'dev';
 
   constructor() {
-    const token = process.env.GITHUB_WORKFLOW_TOKEN || process.env.GITHUB_TOKEN;
-    if (!token) {
-      // Only log when actually running, not during static build
-      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-        console.warn('GitHub token not configured for client-side operations');
-      }
+    // Octokit will be lazily initialized via ensureOctokit()
+    // This allows for async GitHub App authentication
+  }
+
+  /**
+   * Ensure Octokit is initialized (supports async GitHub App auth)
+   */
+  private async ensureOctokit(): Promise<Octokit> {
+    if (!this.octokit) {
+      this.octokit = await getAuthenticatedOctokit();
     }
-    this.octokit = new Octokit({
-      auth: token,
-      userAgent: 'mediar-workflow-manager'
-    });
+    return this.octokit;
   }
 
   /**
@@ -85,11 +87,12 @@ export class GitHubWorkflowManager {
       const packageJsonPath = `${workflow.github_folder}/package.json`;
 
       // Fetch existing package.json from GitHub
+      const octokit = await this.ensureOctokit();
       let existingContent: any = {};
       let existingSha: string | undefined;
 
       try {
-        const { data: existingFile } = await this.octokit.repos.getContent({
+        const { data: existingFile } = await octokit.repos.getContent({
           owner: this.owner,
           repo: this.repo,
           path: packageJsonPath,
@@ -131,7 +134,7 @@ export class GitHubWorkflowManager {
       }
 
       // Commit updated package.json directly to main
-      const { data } = await this.octokit.repos.createOrUpdateFileContents({
+      const { data } = await octokit.repos.createOrUpdateFileContents({
         owner: this.owner,
         repo: this.repo,
         path: packageJsonPath,
@@ -179,6 +182,9 @@ export class GitHubWorkflowManager {
         throw new Error('workflowId is required');
       }
 
+      // Get authenticated Octokit instance (supports GitHub App auth)
+      const octokit = await this.ensureOctokit();
+
       // Check if workflow already has a github_path - preserve exact existing structure!
       const { data: existingWorkflow } = await supabase
         .from('deployed_workflows')
@@ -221,13 +227,13 @@ export class GitHubWorkflowManager {
 
       if (createPR) {
         // Create a new branch from target
-        const { data: ref } = await this.octokit.git.getRef({
+        const { data: ref } = await octokit.git.getRef({
           owner: this.owner,
           repo: this.repo,
           ref: `heads/${targetBranch}`
         });
 
-        await this.octokit.git.createRef({
+        await octokit.git.createRef({
           owner: this.owner,
           repo: this.repo,
           ref: `refs/heads/${branchName}`,
@@ -240,7 +246,7 @@ export class GitHubWorkflowManager {
       // Check if file exists
       let existingSha: string | undefined;
       try {
-        const { data: existingFile } = await this.octokit.repos.getContent({
+        const { data: existingFile } = await octokit.repos.getContent({
           owner: this.owner,
           repo: this.repo,
           path: filePath,
@@ -271,7 +277,7 @@ export class GitHubWorkflowManager {
       }
 
       // Create or update file
-      const { data } = await this.octokit.repos.createOrUpdateFileContents({
+      const { data } = await octokit.repos.createOrUpdateFileContents({
         owner: this.owner,
         repo: this.repo,
         path: filePath,
@@ -309,7 +315,7 @@ ${message || 'Workflow created via Mediar UI'}
 ---
 *Automated PR from Mediar workflow system*`;
 
-        const { data: pr } = await this.octokit.pulls.create({
+        const { data: pr } = await octokit.pulls.create({
           owner: this.owner,
           repo: this.repo,
           title: `Add workflow: ${workflowName}`,
@@ -407,7 +413,8 @@ ${message || 'Workflow created via Mediar UI'}
 
   async getWorkflow(path: string, ref?: string): Promise<any> {
     try {
-      const { data } = await this.octokit.repos.getContent({
+      const octokit = await this.ensureOctokit();
+      const { data } = await octokit.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path,
