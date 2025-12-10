@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { parseTypeScriptWorkflow } from '@/lib/typescript-workflow-parser';
-import { Octokit } from '@octokit/rest';
+import { getAuthenticatedOctokit, isGitHubAppConfigured } from '@/lib/github-app-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -199,14 +199,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Push files to GitHub
-    const githubToken = process.env.GITHUB_WORKFLOW_TOKEN || process.env.GITHUB_TOKEN;
-    if (!githubToken) {
-      console.warn('⚠️ GitHub token not configured - skipping GitHub sync');
-    } else {
-      try {
-        console.log(`📤 Pushing ${body.files?.length || 0} files to GitHub...`);
-        const octokit = new Octokit({ auth: githubToken });
+    // Push files to GitHub using GitHub App or PAT
+    try {
+      console.log(`📤 Pushing ${body.files?.length || 0} files to GitHub...`);
+      const octokit = await getAuthenticatedOctokit();
 
         // Generate package.json for the workflow
         const packageJson = {
@@ -355,11 +351,10 @@ export async function POST(request: NextRequest) {
 
           console.log(`✅ GitHub sync complete - commit: ${lastCommitSha.substring(0, 7)}${releaseUrl ? ', release created' : ''}`);
         }
-      } catch (githubError) {
-        console.error('❌ GitHub sync failed:', githubError);
-        // Don't fail the whole request - DB is already updated
-        // The workflow can still be manually synced later
-      }
+    } catch (githubError) {
+      console.error('❌ GitHub sync failed:', githubError);
+      // Don't fail the whole request - DB is already updated
+      // The workflow can still be manually synced later
     }
 
     console.log(`✅ Published TypeScript workflow: ID=${workflowId}, version=${newVersionNumber}`);
