@@ -180,6 +180,9 @@ export async function GET(request: NextRequest) {
       created_at: machine.created_at,
       updated_at: machine.updated_at,
       mcp_version: machine.mcp_version,
+
+      // Provisioning status (for UI progress tracking)
+      provisioning_step: machine.provisioning_step,
     }));
 
     const responseData = {
