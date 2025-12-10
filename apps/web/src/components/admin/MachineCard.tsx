@@ -14,11 +14,16 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
-  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { VNC_GATEWAY_URL } from '@/lib/azure';
 
+interface ProvisioningStep {
+  step: string;
+  status: 'in_progress' | 'completed' | 'failed';
+  message: string;
+  timestamp: string;
+}
 interface MachineCardProps {
   machine: {
     id: number;
@@ -41,6 +46,8 @@ interface MachineCardProps {
     // Boot time metrics
     provisioned_at?: string;
     first_healthy_at?: string;
+    // Provisioning progress
+    provisioning_step?: ProvisioningStep | string;
   };
   onRefresh: () => void;
   compact?: boolean;
@@ -48,17 +55,23 @@ interface MachineCardProps {
 
 type OperationType = 'start' | 'stop' | 'restart' | 'deallocate';
 
-export function MachineCard({ machine, onRefresh, compact = false }: MachineCardProps) {
+export function MachineCard({
+  machine,
+  onRefresh,
+  compact = false,
+}: MachineCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [loadingOperation, setLoadingOperation] = useState<OperationType | null>(null);
+  const [loadingOperation, setLoadingOperation] =
+    useState<OperationType | null>(null);
   const [showVnc, setShowVnc] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const powerState = machine.power_state || 'unknown';
   const isRunning = powerState === 'running';
   const isStopped = powerState === 'stopped' || powerState === 'deallocated';
-  const isTransitioning = ['starting', 'stopping', 'deallocating'].includes(powerState);
+  const isTransitioning = ['starting', 'stopping', 'deallocating'].includes(
+    powerState
+  );
 
   const getHealthIndicator = () => {
     const status = machine.health_status;
@@ -66,7 +79,11 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
       return { bg: 'bg-black', ring: '', text: 'HEALTHY' };
     }
     if (status === 'unhealthy' || status === 'unreachable') {
-      return { bg: 'bg-black', ring: 'ring-2 ring-black ring-offset-2', text: status.toUpperCase() };
+      return {
+        bg: 'bg-black',
+        ring: 'ring-2 ring-black ring-offset-2',
+        text: status.toUpperCase(),
+      };
     }
     return { bg: 'bg-gray-400', ring: '', text: 'UNKNOWN' };
   };
@@ -132,9 +149,10 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
 
     setLoadingOperation(operation);
     try {
-      const endpoint = operation === 'restart'
-        ? `/api/admin/machines/${machine.id}/restart`
-        : `/api/machines/${machine.id}/${operation}`;
+      const endpoint =
+        operation === 'restart'
+          ? `/api/admin/machines/${machine.id}/restart`
+          : `/api/machines/${machine.id}/${operation}`;
 
       const response = await fetch(endpoint, { method: 'POST' });
       const data = await response.json();
@@ -156,10 +174,10 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
     // Double confirm for destructive action
     const confirmed = confirm(
       `Are you sure you want to DELETE "${machine.name}"?\n\n` +
-      `This will:\n` +
-      `- Delete the Azure VM and ALL associated resources (disk, NIC, IP, NSG, VNet)\n` +
-      `- Remove the machine from the database\n\n` +
-      `This action CANNOT be undone.`
+        `This will:\n` +
+        `- Delete the Azure VM and ALL associated resources (disk, NIC, IP, NSG, VNet)\n` +
+        `- Remove the machine from the database\n\n` +
+        `This action CANNOT be undone.`
     );
 
     if (!confirmed) return;
@@ -194,34 +212,18 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
     }
   };
 
-  const handleSync = async () => {
-    setIsSyncing(true);
-    try {
-      const response = await fetch(`/api/admin/machines/${machine.id}/sync`, {
-        method: 'POST',
-      });
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success(data.message || 'Synced from Azure');
-        onRefresh();
-      } else {
-        toast.error(data.error || 'Sync failed');
-      }
-    } catch {
-      toast.error('Failed to sync from Azure');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  // handleSync removed - auto-sync now happens in health check cron after 2+ failures
 
   const getVncUrl = () => {
     // VNC gateway looks up VMs by terraform:{key} tag in the database
     // First check tags (preferred), then fall back to terraform_key (if not dashboard-*)
-    const tagKey = machine.tags?.find(t => t.startsWith('terraform:'))?.replace('terraform:', '');
-    const terraformKey = machine.terraform_key && !machine.terraform_key.startsWith('dashboard-')
-      ? machine.terraform_key
-      : null;
+    const tagKey = machine.tags
+      ?.find(t => t.startsWith('terraform:'))
+      ?.replace('terraform:', '');
+    const terraformKey =
+      machine.terraform_key && !machine.terraform_key.startsWith('dashboard-')
+        ? machine.terraform_key
+        : null;
     const key = tagKey || terraformKey;
     if (!key) return null;
     return `${VNC_GATEWAY_URL}/vnc/${key}`;
@@ -252,8 +254,12 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
       <div className="border border-gray-300 bg-gray-50 p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full ${indicator.bg}`} />
-          <span className="font-mono text-sm text-gray-600">{machine.name}</span>
-          <span className="text-xs font-mono text-gray-400 uppercase">{machine.status}</span>
+          <span className="font-mono text-sm text-gray-600">
+            {machine.name}
+          </span>
+          <span className="text-xs font-mono text-gray-400 uppercase">
+            {machine.status}
+          </span>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
           <span>{formatTimeAgo(machine.last_health_check)}</span>
@@ -267,9 +273,17 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
         {isExpanded && (
           <div className="absolute right-0 top-full mt-1 z-10 bg-white border-2 border-black p-4 shadow-lg">
             <div className="text-sm space-y-2">
-              <div><span className="text-gray-500">ID:</span> {machine.id}</div>
-              <div><span className="text-gray-500">Endpoint:</span> {machine.mcp_endpoint || '-'}</div>
-              <div><span className="text-gray-500">Azure:</span> {hasAzure ? 'Yes' : 'No'}</div>
+              <div>
+                <span className="text-gray-500">ID:</span> {machine.id}
+              </div>
+              <div>
+                <span className="text-gray-500">Endpoint:</span>{' '}
+                {machine.mcp_endpoint || '-'}
+              </div>
+              <div>
+                <span className="text-gray-500">Azure:</span>{' '}
+                {hasAzure ? 'Yes' : 'No'}
+              </div>
             </div>
           </div>
         )}
@@ -278,11 +292,17 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
   }
 
   return (
-    <div className={`border-2 ${machine.health_status === 'healthy' ? 'border-black' : 'border-gray-400'} bg-white`}>
+    <div
+      className={`border-2 ${machine.health_status === 'healthy' ? 'border-black' : 'border-gray-400'} bg-white`}
+    >
       {/* Header */}
-      <div className={`flex items-center justify-between p-3 ${machine.health_status === 'healthy' ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
+      <div
+        className={`flex items-center justify-between p-3 ${machine.health_status === 'healthy' ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}
+      >
         <div className="flex items-center gap-3">
-          <span className={`w-3 h-3 rounded-full ${machine.health_status === 'healthy' ? 'bg-white' : indicator.bg} ${isTransitioning ? 'animate-pulse' : ''}`} />
+          <span
+            className={`w-3 h-3 rounded-full ${machine.health_status === 'healthy' ? 'bg-white' : indicator.bg} ${isTransitioning ? 'animate-pulse' : ''}`}
+          />
           <span className="font-mono font-bold">{machine.name}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -300,7 +320,9 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               UNKNOWN
             </span>
           )}
-          <span className="text-xs font-mono opacity-70 uppercase">{machine.status}</span>
+          <span className="text-xs font-mono opacity-70 uppercase">
+            {machine.status}
+          </span>
         </div>
       </div>
 
@@ -321,8 +343,12 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-500 font-mono uppercase">Last Check</div>
-          <div className="font-mono">{formatTimeAgo(machine.last_health_check)}</div>
+          <div className="text-xs text-gray-500 font-mono uppercase">
+            Last Check
+          </div>
+          <div className="font-mono">
+            {formatTimeAgo(machine.last_health_check)}
+          </div>
         </div>
         <div>
           <div className="text-xs text-gray-500 font-mono uppercase">MCP</div>
@@ -330,7 +356,9 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             {machine.mcp_version ? (
               <span className="text-green-600">v{machine.mcp_version}</span>
             ) : machine.mcp_endpoint ? (
-              <span className="text-gray-400" title={machine.mcp_endpoint}>Not responding</span>
+              <span className="text-gray-400" title={machine.mcp_endpoint}>
+                Not responding
+              </span>
             ) : (
               <span className="text-gray-400">No endpoint</span>
             )}
@@ -349,7 +377,9 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
         </div>
         <div>
           <div className="text-xs text-gray-500 font-mono uppercase">Azure</div>
-          <div className="font-mono text-xs">{hasAzure ? 'Configured' : 'Not set'}</div>
+          <div className="font-mono text-xs">
+            {hasAzure ? 'Configured' : 'Not set'}
+          </div>
         </div>
       </div>
 
@@ -363,7 +393,11 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               disabled={isRunning || loadingOperation !== null}
               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {loadingOperation === 'start' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+              {loadingOperation === 'start' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Play className="w-3 h-3" />
+              )}
               START
             </button>
 
@@ -372,7 +406,11 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               disabled={isStopped || loadingOperation !== null}
               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {loadingOperation === 'stop' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              {loadingOperation === 'stop' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Square className="w-3 h-3" />
+              )}
               STOP
             </button>
 
@@ -381,32 +419,35 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               disabled={isStopped || loadingOperation !== null}
               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {loadingOperation === 'restart' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+              {loadingOperation === 'restart' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RotateCcw className="w-3 h-3" />
+              )}
               RESTART
             </button>
 
             <button
               onClick={() => executeOperation('deallocate')}
-              disabled={powerState === 'deallocated' || loadingOperation !== null}
+              disabled={
+                powerState === 'deallocated' || loadingOperation !== null
+              }
               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-red-600 hover:text-white hover:border-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {loadingOperation === 'deallocate' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
+              {loadingOperation === 'deallocate' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Power className="w-3 h-3" />
+              )}
               DEALLOCATE
             </button>
 
-            {/* Sync from Azure - useful when endpoints are missing */}
-            <button
-              onClick={handleSync}
-              disabled={isSyncing || loadingOperation !== null}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Fetch public IP from Azure and update endpoints"
-            >
-              {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              SYNC
-            </button>
+            {/* SYNC button removed - auto-sync now happens in health check after 2+ failures */}
           </>
         ) : (
-          <span className="text-xs font-mono text-gray-400">No Azure controls (no resource ID)</span>
+          <span className="text-xs font-mono text-gray-400">
+            No Azure controls (no resource ID)
+          </span>
         )}
 
         <div className="border-l border-gray-300 mx-1" />
@@ -457,7 +498,11 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             title="Delete VM and all Azure resources"
           >
-            {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            {isDeleting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Trash2 className="w-3 h-3" />
+            )}
             DELETE
           </button>
         )}
@@ -467,7 +512,11 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
           onClick={() => setIsExpanded(!isExpanded)}
           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white transition-colors ml-auto"
         >
-          {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          {isExpanded ? (
+            <ChevronUp className="w-3 h-3" />
+          ) : (
+            <ChevronDown className="w-3 h-3" />
+          )}
           {isExpanded ? 'LESS' : 'MORE'}
         </button>
       </div>
@@ -477,7 +526,10 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
         <div className="border-t-2 border-black">
           <div className="p-2 bg-gray-50 flex items-center justify-between border-b border-gray-200">
             <span className="text-xs font-mono text-gray-600">VNC VIEWER</span>
-            <button onClick={() => setShowVnc(false)} className="text-xs font-mono hover:underline">
+            <button
+              onClick={() => setShowVnc(false)}
+              className="text-xs font-mono hover:underline"
+            >
               CLOSE
             </button>
           </div>
@@ -495,7 +547,9 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
           {/* Uptime Stats */}
           {(machine.total_checks ?? 0) > 0 && (
             <div className="mb-4 p-3 border border-gray-300 bg-white">
-              <div className="text-xs text-gray-500 font-mono uppercase mb-2">HEALTH RELIABILITY</div>
+              <div className="text-xs text-gray-500 font-mono uppercase mb-2">
+                HEALTH RELIABILITY
+              </div>
               <div className="flex items-center gap-4">
                 {/* Success rate bar */}
                 <div className="flex-1">
@@ -503,7 +557,7 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
                     <span>Success Rate</span>
                     <span className="font-bold">
                       {machine.total_checks && machine.total_checks > 0
-                        ? `${Math.round((machine.successful_checks || 0) / machine.total_checks * 100)}%`
+                        ? `${Math.round(((machine.successful_checks || 0) / machine.total_checks) * 100)}%`
                         : '-'}
                     </span>
                   </div>
@@ -511,32 +565,41 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
                     <div
                       className="h-full bg-black transition-all"
                       style={{
-                        width: machine.total_checks && machine.total_checks > 0
-                          ? `${Math.round((machine.successful_checks || 0) / machine.total_checks * 100)}%`
-                          : '0%'
+                        width:
+                          machine.total_checks && machine.total_checks > 0
+                            ? `${Math.round(((machine.successful_checks || 0) / machine.total_checks) * 100)}%`
+                            : '0%',
                       }}
                     />
                   </div>
                 </div>
                 {/* Stats */}
                 <div className="text-right text-xs font-mono">
-                  <div className="text-gray-500">{machine.successful_checks || 0} / {machine.total_checks || 0}</div>
+                  <div className="text-gray-500">
+                    {machine.successful_checks || 0} /{' '}
+                    {machine.total_checks || 0}
+                  </div>
                   <div className="text-gray-400">checks</div>
                 </div>
               </div>
-              {machine.uptime_percentage !== undefined && machine.uptime_percentage !== null && (
-                <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between text-xs font-mono">
-                  <span className="text-gray-500">Uptime</span>
-                  <span className="font-bold">{machine.uptime_percentage.toFixed(1)}%</span>
-                </div>
-              )}
+              {machine.uptime_percentage !== undefined &&
+                machine.uptime_percentage !== null && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between text-xs font-mono">
+                    <span className="text-gray-500">Uptime</span>
+                    <span className="font-bold">
+                      {machine.uptime_percentage.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
             </div>
           )}
 
           {/* Boot Time (for auto-provisioned VMs) */}
           {(bootTime || machine.provisioned_at) && (
             <div className="mb-4 p-3 border border-gray-300 bg-white">
-              <div className="text-xs text-gray-500 font-mono uppercase mb-2">BOOT METRICS</div>
+              <div className="text-xs text-gray-500 font-mono uppercase mb-2">
+                BOOT METRICS
+              </div>
               <div className="grid grid-cols-2 gap-4 text-xs font-mono">
                 {bootTime && (
                   <div className="flex justify-between">
@@ -547,13 +610,17 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
                 {machine.provisioned_at && !machine.first_healthy_at && (
                   <div className="flex justify-between col-span-2">
                     <span className="text-gray-500">Provisioned</span>
-                    <span className="text-gray-400">Waiting for first healthy check...</span>
+                    <span className="text-gray-400">
+                      Waiting for first healthy check...
+                    </span>
                   </div>
                 )}
                 {machine.provisioned_at && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Provisioned At</span>
-                    <span>{new Date(machine.provisioned_at).toLocaleString()}</span>
+                    <span>
+                      {new Date(machine.provisioned_at).toLocaleString()}
+                    </span>
                   </div>
                 )}
               </div>
@@ -562,12 +629,18 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <div className="text-xs text-gray-500 font-mono uppercase mb-1">Azure Resource ID</div>
+              <div className="text-xs text-gray-500 font-mono uppercase mb-1">
+                Azure Resource ID
+              </div>
               <div className="font-mono text-xs break-all flex items-start gap-1">
-                {machine.azure_resource_id || <span className="text-gray-400">Not configured</span>}
+                {machine.azure_resource_id || (
+                  <span className="text-gray-400">Not configured</span>
+                )}
                 {machine.azure_resource_id && (
                   <button
-                    onClick={() => copyToClipboard(machine.azure_resource_id!, 'Resource ID')}
+                    onClick={() =>
+                      copyToClipboard(machine.azure_resource_id!, 'Resource ID')
+                    }
                     className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
                   >
                     <Copy className="w-3 h-3" />
@@ -576,12 +649,16 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               </div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 font-mono uppercase mb-1">MCP Endpoint</div>
+              <div className="text-xs text-gray-500 font-mono uppercase mb-1">
+                MCP Endpoint
+              </div>
               <div className="font-mono text-xs break-all flex items-start gap-1">
                 {machine.mcp_endpoint || '-'}
                 {machine.mcp_endpoint && (
                   <button
-                    onClick={() => copyToClipboard(machine.mcp_endpoint!, 'Endpoint')}
+                    onClick={() =>
+                      copyToClipboard(machine.mcp_endpoint!, 'Endpoint')
+                    }
                     className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
                   >
                     <Copy className="w-3 h-3" />
@@ -591,10 +668,15 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
             </div>
             {machine.tags && machine.tags.length > 0 && (
               <div className="col-span-2">
-                <div className="text-xs text-gray-500 font-mono uppercase mb-1">Tags</div>
+                <div className="text-xs text-gray-500 font-mono uppercase mb-1">
+                  Tags
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {machine.tags.map((tag, i) => (
-                    <span key={i} className="px-2 py-0.5 text-xs font-mono bg-gray-200 border border-gray-300">
+                    <span
+                      key={i}
+                      className="px-2 py-0.5 text-xs font-mono bg-gray-200 border border-gray-300"
+                    >
                       {tag}
                     </span>
                   ))}
@@ -602,7 +684,6 @@ export function MachineCard({ machine, onRefresh, compact = false }: MachineCard
               </div>
             )}
           </div>
-
         </div>
       )}
     </div>
