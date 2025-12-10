@@ -234,7 +234,8 @@ export async function POST(request: NextRequest) {
           workflow_id: newWorkflow.id,
           organization_id: effectiveOrgId,
           access_level: 'admin',
-          granted_at: new Date().toISOString()
+          granted_at: new Date().toISOString(),
+          workflow_uuid: newWorkflow.uuid, // Required for check_org_workflow_access function
         });
 
       if (accessError) {
