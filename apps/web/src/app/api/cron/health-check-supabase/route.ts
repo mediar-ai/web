@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { getVmPublicIp } from '@/lib/azure/vm-operations';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -283,9 +284,65 @@ export async function GET(request: Request) {
         } catch (error: any) {
           // Machine is unreachable or errored - should be UNHEALTHY not UNKNOWN
           const responseTime = Date.now() - checkStartTime;
-          const newStatus = 'unhealthy';
+          let newStatus = 'unhealthy';
+          let syncedIp: string | null = null;
 
           console.log(`[${machine.name}] Health check failed: ${error.message}`);
+
+          // Auto-sync: If machine has Azure resource ID, try to fetch updated IP and retry
+          if (machine.azure_resource_id && (machine.consecutive_failures || 0) >= 2) {
+            console.log(`[${machine.name}] Attempting auto-sync from Azure after ${machine.consecutive_failures} failures...`);
+            try {
+              const publicIp = await getVmPublicIp(machine.azure_resource_id);
+              if (publicIp) {
+                const currentIp = machine.mcp_endpoint?.match(/http:\/\/([^:]+):/)?.[1];
+                if (publicIp !== currentIp) {
+                  console.log(`[${machine.name}] IP changed: ${currentIp} -> ${publicIp}, updating endpoints`);
+                  syncedIp = publicIp;
+
+                  // Update endpoints in DB
+                  await supabase
+                    .from('remote_machines')
+                    .update({
+                      mcp_endpoint: `http://${publicIp}:8080/mcp`,
+                      health_endpoint: `http://${publicIp}:8080/health`,
+                      management_endpoint: `http://${publicIp}:8080/management`,
+                    })
+                    .eq('id', machine.id);
+
+                  // Retry health check with new IP
+                  const retryUrl = `http://${publicIp}:8080/health`;
+                  console.log(`[${machine.name}] Retrying health check at: ${retryUrl}`);
+                  const retryController = new AbortController();
+                  const retryTimeout = setTimeout(() => retryController.abort(), 10000);
+
+                  try {
+                    const retryResponse = await fetch(retryUrl, {
+                      method: 'GET',
+                      signal: retryController.signal,
+                      headers: {
+                        'Accept': 'application/json',
+                        'Authorization': 'Bearer ***REMOVED***'
+                      }
+                    });
+                    clearTimeout(retryTimeout);
+
+                    if (retryResponse.ok) {
+                      console.log(`[${machine.name}] Retry succeeded after IP sync!`);
+                      newStatus = 'healthy';
+                    }
+                  } catch (retryError) {
+                    console.log(`[${machine.name}] Retry after sync also failed`);
+                    clearTimeout(retryTimeout);
+                  }
+                } else {
+                  console.log(`[${machine.name}] IP unchanged (${publicIp}), sync not needed`);
+                }
+              }
+            } catch (syncError: any) {
+              console.log(`[${machine.name}] Auto-sync failed: ${syncError.message}`);
+            }
+          }
 
           const healthDetails = {
             lastCheck: new Date().toISOString(),
@@ -308,12 +365,19 @@ export async function GET(request: Request) {
             updateData.health_details = JSON.stringify(healthDetails);
           }
 
+          const isHealthy = newStatus === 'healthy';
+
           if ('total_checks' in machine) {
             updateData.total_checks = (machine.total_checks || 0) + 1;
-            updateData.consecutive_failures = (machine.consecutive_failures || 0) + 1;
+            updateData.successful_checks = (machine.successful_checks || 0) + (isHealthy ? 1 : 0);
+            updateData.consecutive_failures = isHealthy ? 0 : (machine.consecutive_failures || 0) + 1;
           }
 
-          if ('last_unhealthy_at' in machine) {
+          if ('last_healthy_at' in machine && isHealthy) {
+            updateData.last_healthy_at = currentTime;
+          }
+
+          if ('last_unhealthy_at' in machine && !isHealthy) {
             updateData.last_unhealthy_at = currentTime;
           }
 
@@ -330,9 +394,9 @@ export async function GET(request: Request) {
             .from('health_check_history')
             .insert({
               machine_id: machine.id,
-              is_healthy: false,
+              is_healthy: isHealthy,
               response_time_ms: responseTime,
-              error_message: error.message || 'Health check failed'
+              error_message: isHealthy ? null : (error.message || 'Health check failed')
             });
 
           if (historyError) {
@@ -364,7 +428,9 @@ export async function GET(request: Request) {
             newStatus,
             healthDetails,
             changed: machine.health_status !== newStatus,
-            error: error.message || 'Health check failed'
+            error: isHealthy ? null : (error.message || 'Health check failed'),
+            syncedIp,
+            recoveredViaSync: isHealthy && syncedIp !== null
           };
         }
       })
