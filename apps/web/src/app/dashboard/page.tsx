@@ -1522,7 +1522,7 @@ function DashboardContent() {
                     className="px-4 py-1.5 bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-2 text-sm font-mono"
                   >
                     <Monitor className="w-4 h-4" />
-                    <span className="uppercase text-xs">Launch VM</span>
+                    <span className="uppercase text-xs">New Sandbox</span>
                   </button>
                 </div>
               </div>
