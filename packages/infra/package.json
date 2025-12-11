@@ -30,7 +30,8 @@
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "cli": "tsx src/cli/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "clean": "rimraf dist .turbo"
   },
   "dependencies": {
     "@azure/arm-compute": "^23.2.0",
