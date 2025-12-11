@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { OnboardingProgress } from './OnboardingProgress';
 import { SocialFollowCard } from './SocialFollowCard';
 import { VideoStep } from './VideoStep';
+import { InviteTeamStep } from './InviteTeamStep';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePostHog } from 'posthog-js/react';
-import { ArrowLeft, ArrowRight, Share2, Play, Gift } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Share2, Play, Gift, Users } from 'lucide-react';
 
 // Social platform icons
 const TwitterIcon = () => (
@@ -47,7 +48,7 @@ const SOCIAL_LINKS = {
 
 const INTRO_VIDEO = 'https://www.youtube.com/watch?v=v5qJ1pLcNY0';
 
-const STEP_LABELS = ['Welcome!', 'Watch & Learn'];
+const STEP_LABELS = ['Invite Team', 'Welcome!', 'Watch & Learn'];
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -74,10 +75,12 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
     watchVideo,
     dismissOnboarding,
     completeOnboarding,
+    trackInviteSent,
   } = useOnboarding();
 
   const [referralSource, setReferralSource] = useState<string>('');
   const [hasAnsweredReferral, setHasAnsweredReferral] = useState(false);
+  const [invitesSent, setInvitesSent] = useState(0);
 
   // Check if user already answered
   useEffect(() => {
@@ -101,8 +104,13 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
     }
   };
 
+  const handleInviteSent = useCallback(() => {
+    setInvitesSent(prev => prev + 1);
+    trackInviteSent();
+  }, [trackInviteSent]);
+
   const handleNext = useCallback(() => {
-    if (currentStep < 2) {
+    if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
     } else {
       completeOnboarding();
@@ -132,7 +140,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             {/* Progress Indicator */}
             <OnboardingProgress
               currentStep={currentStep}
-              totalSteps={2}
+              totalSteps={3}
               stepLabels={STEP_LABELS}
             />
 
@@ -154,6 +162,13 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             {/* Step Content */}
             <div className="flex-1">
               {currentStep === 1 && (
+                <InviteTeamStep
+                  invitesSent={invitesSent}
+                  onInviteSent={handleInviteSent}
+                />
+              )}
+
+              {currentStep === 2 && (
                 <div className="space-y-4">
                   <h2 className="text-2xl font-mono font-bold text-black">Welcome!</h2>
                   <p className="text-gray-600">
@@ -222,7 +237,7 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
                 </div>
               )}
 
-              {currentStep === 2 && (
+              {currentStep === 3 && (
                 <div className="space-y-4">
                   <h2 className="text-2xl font-mono font-bold text-black">Watch & Learn</h2>
                   <p className="text-gray-600">
@@ -266,8 +281,8 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
                 onClick={handleNext}
                 className="bg-black text-white hover:bg-gray-800"
               >
-                {currentStep === 2 ? 'Finish' : 'Next'}
-                {currentStep !== 2 && <ArrowRight className="w-4 h-4 ml-2" />}
+                {currentStep === 3 ? 'Finish' : currentStep === 1 ? 'Skip' : 'Next'}
+                {currentStep !== 3 && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </div>
           </div>
@@ -276,6 +291,8 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
           <div className="hidden md:flex w-80 bg-black p-8 flex-col items-center justify-center text-white">
             <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-6">
               {currentStep === 1 ? (
+                <Users className="w-10 h-10 text-white" />
+              ) : currentStep === 2 ? (
                 <Share2 className="w-10 h-10 text-white" />
               ) : (
                 <Play className="w-10 h-10 text-white" />
@@ -283,11 +300,15 @@ export function OnboardingModal({ isOpen, onOpenChange }: OnboardingModalProps) 
             </div>
             <h3 className="text-xl font-bold text-center mb-2 text-white font-mono">
               {currentStep === 1
+                ? 'Better together!'
+                : currentStep === 2
                 ? 'Connect with us on social media!'
                 : 'See Mediar in action!'}
             </h3>
             <p className="text-gray-400 text-sm text-center">
               {currentStep === 1
+                ? 'Invite your team to collaborate on automations'
+                : currentStep === 2
                 ? 'Follow us and earn credits for each platform you join'
                 : 'Watch a quick intro and earn 2 credits'}
             </p>

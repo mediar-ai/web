@@ -1,0 +1,557 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Monitor,
+  Cpu,
+  Zap,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Coins,
+  CreditCard,
+  Sparkles,
+  Gift,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { VM_SIZES, CREDIT_PACKAGES } from '@/lib/credits';
+import { cn } from '@/lib/utils';
+import { FreeCreditsEligibilityModal } from './FreeCreditsEligibilityModal';
+
+interface LaunchVmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userCredits: number;
+  onCreditsChange?: () => void;
+}
+
+type Step = 'config' | 'buy-credits' | 'provisioning' | 'success';
+
+interface VmConfig {
+  name: string;
+  vmSize: string;
+}
+
+export function LaunchVmDialog({
+  open,
+  onOpenChange,
+  userCredits,
+  onCreditsChange,
+}: LaunchVmDialogProps) {
+  const [step, setStep] = useState<Step>('config');
+  const [config, setConfig] = useState<VmConfig>({
+    name: '',
+    vmSize: 'Standard_D4s_v3',
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [provisioningStatus, setProvisioningStatus] = useState<string>('');
+  const [machineId, setMachineId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showFreeCreditsModal, setShowFreeCreditsModal] = useState(false);
+
+  const selectedSize = VM_SIZES.find(s => s.id === config.vmSize) || VM_SIZES[1];
+  const canAfford = userCredits >= selectedSize.launchCost;
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setStep('config');
+      setConfig({ name: '', vmSize: 'Standard_D4s_v3' });
+      setError(null);
+      setMachineId(null);
+      setProvisioningStatus('');
+    }
+  }, [open]);
+
+  const handleLaunch = async () => {
+    if (!config.name.trim()) {
+      setError('Please enter a VM name');
+      return;
+    }
+
+    if (!canAfford) {
+      setStep('buy-credits');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setStep('provisioning');
+    setProvisioningStatus('Starting provisioning...');
+
+    try {
+      const response = await fetch('/api/vm/provision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: config.name,
+          vmSize: config.vmSize,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to provision VM');
+      }
+
+      setMachineId(data.machine.id);
+      setProvisioningStatus('VM is being provisioned...');
+
+      // Poll for status updates
+      pollProvisioningStatus(data.machine.id);
+
+      toast.success(`VM "${data.machine.name}" is being provisioned!`);
+      onCreditsChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to provision VM');
+      setStep('config');
+      toast.error('Failed to provision VM');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const pollProvisioningStatus = async (id: number) => {
+    const maxAttempts = 60; // 10 minutes at 10s intervals
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/machines/${id}`);
+        const data = await response.json();
+
+        if (data.machine) {
+          const provStep = data.machine.provisioning_step;
+          if (provStep) {
+            const parsed = typeof provStep === 'string' ? JSON.parse(provStep) : provStep;
+            setProvisioningStatus(parsed.message || `Step: ${parsed.step}`);
+
+            if (parsed.step === 'done' || parsed.status === 'completed') {
+              setStep('success');
+              onCreditsChange?.();
+              return;
+            }
+
+            if (parsed.status === 'failed') {
+              setError(parsed.message || 'Provisioning failed');
+              return;
+            }
+          }
+
+          if (data.machine.status === 'active') {
+            setStep('success');
+            onCreditsChange?.();
+            return;
+          }
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 10000); // Poll every 10 seconds
+        }
+      } catch {
+        // Continue polling on error
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 10000);
+        }
+      }
+    };
+
+    poll();
+  };
+
+  const handleBuyCredits = async (packageId: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/credits/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create checkout');
+      }
+
+      // Redirect to Stripe
+      window.location.href = data.url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to start checkout');
+      setIsLoading(false);
+    }
+  };
+
+  const handleFreeCreditsGranted = (_amount: number) => {
+    // Refresh credits and go back to config step
+    onCreditsChange?.();
+    setStep('config');
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg" className="max-h-[90vh] overflow-y-auto">
+        {step === 'config' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-mono text-xl">
+                <Monitor className="h-5 w-5" />
+                LAUNCH CLOUD VM
+              </DialogTitle>
+              <DialogDescription>
+                Create a Windows VM with all automation tools pre-installed
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              {/* VM Name */}
+              <div className="space-y-2">
+                <Label htmlFor="vm-name" className="font-mono text-xs uppercase">
+                  VM Name
+                </Label>
+                <Input
+                  id="vm-name"
+                  placeholder="my-workflow-vm"
+                  value={config.name}
+                  onChange={e => setConfig({ ...config, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                  className="font-mono border-2 border-black"
+                />
+                <p className="text-xs text-gray-500">
+                  Only lowercase letters, numbers, and hyphens
+                </p>
+              </div>
+
+              {/* VM Size Selection */}
+              <div className="space-y-3">
+                <Label className="font-mono text-xs uppercase">VM Size</Label>
+                <div className="grid gap-3">
+                  {VM_SIZES.map(size => (
+                    <button
+                      key={size.id}
+                      onClick={() => setConfig({ ...config, vmSize: size.id })}
+                      className={cn(
+                        'relative flex items-center justify-between p-4 border-2 transition-all text-left',
+                        config.vmSize === size.id
+                          ? 'border-black bg-black text-white'
+                          : 'border-gray-200 hover:border-black'
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Cpu className="h-5 w-5" />
+                        <div>
+                          <div className="font-mono font-bold">{size.name}</div>
+                          <div className={cn(
+                            'text-sm',
+                            config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
+                          )}>
+                            {size.specs}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-bold flex items-center gap-1">
+                          <Coins className="h-4 w-4" />
+                          {size.launchCost}
+                        </div>
+                        <div className={cn(
+                          'text-xs',
+                          config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
+                        )}>
+                          + {size.perHourCost}/hr
+                        </div>
+                      </div>
+                      {size.recommended && (
+                        <span className={cn(
+                          'absolute -top-2 -right-2 px-2 py-0.5 text-xs font-mono',
+                          config.vmSize === size.id
+                            ? 'bg-white text-black'
+                            : 'bg-black text-white'
+                        )}>
+                          RECOMMENDED
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cost Summary */}
+              <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-mono text-sm text-gray-600">Your Balance</span>
+                  <span className="font-mono font-bold flex items-center gap-1">
+                    <Coins className="h-4 w-4" />
+                    {userCredits} credits
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-mono text-sm text-gray-600">Launch Cost</span>
+                  <span className="font-mono font-bold flex items-center gap-1">
+                    <Coins className="h-4 w-4" />
+                    {selectedSize.launchCost} credits
+                  </span>
+                </div>
+                <div className="border-t border-gray-300 pt-2 flex justify-between items-center">
+                  <span className="font-mono text-sm font-bold">After Launch</span>
+                  <span className={cn(
+                    'font-mono font-bold',
+                    canAfford ? 'text-black' : 'text-red-600'
+                  )}>
+                    {userCredits - selectedSize.launchCost} credits
+                  </span>
+                </div>
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 text-red-600 text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="black-outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              {canAfford ? (
+                <Button
+                  onClick={handleLaunch}
+                  disabled={!config.name.trim() || isLoading}
+                  className="bg-black text-white hover:bg-gray-800"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  Launch VM
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setStep('buy-credits')}
+                  className="bg-black text-white hover:bg-gray-800"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Buy Credits
+                </Button>
+              )}
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'buy-credits' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-mono text-xl">
+                <Coins className="h-5 w-5" />
+                GET CREDITS
+              </DialogTitle>
+              <DialogDescription>
+                You need {selectedSize.launchCost - userCredits} more credits to launch this VM
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-4">
+              {/* Free Credits Option */}
+              <button
+                onClick={() => setShowFreeCreditsModal(true)}
+                disabled={isLoading}
+                className="relative flex items-center justify-between p-4 border-2 border-dashed border-gray-400 hover:border-black transition-all text-left bg-gray-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-black text-white rounded-full">
+                    <Gift className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-mono font-bold text-lg">Free Credits</div>
+                    <div className="text-sm text-gray-500">
+                      For open source contributors
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-2xl font-bold text-black">FREE</div>
+                  <div className="text-sm text-gray-500 flex items-center gap-1 justify-end">
+                    <Coins className="h-3 w-3" />
+                    15 credits
+                  </div>
+                </div>
+              </button>
+
+              <div className="relative flex items-center justify-center py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <span className="relative bg-white px-3 text-sm text-gray-500 font-mono">
+                  OR BUY CREDITS
+                </span>
+              </div>
+
+              {CREDIT_PACKAGES.map(pkg => (
+                <button
+                  key={pkg.id}
+                  onClick={() => handleBuyCredits(pkg.id)}
+                  disabled={isLoading}
+                  className={cn(
+                    'relative flex items-center justify-between p-4 border-2 transition-all text-left',
+                    pkg.popular
+                      ? 'border-black bg-black text-white'
+                      : 'border-gray-200 hover:border-black'
+                  )}
+                >
+                  <div>
+                    <div className="font-mono font-bold text-lg">{pkg.name}</div>
+                    <div className={cn(
+                      'text-sm',
+                      pkg.popular ? 'text-gray-300' : 'text-gray-500'
+                    )}>
+                      {pkg.description}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-2xl font-bold">${pkg.price}</div>
+                    <div className={cn(
+                      'text-sm flex items-center gap-1 justify-end',
+                      pkg.popular ? 'text-gray-300' : 'text-gray-500'
+                    )}>
+                      <Coins className="h-3 w-3" />
+                      {pkg.credits} credits
+                    </div>
+                  </div>
+                  {pkg.popular && (
+                    <span className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-mono bg-white text-black flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      BEST VALUE
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="black-outline"
+                onClick={() => setStep('config')}
+                disabled={isLoading}
+              >
+                Back
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'provisioning' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-mono text-xl">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                PROVISIONING VM
+              </DialogTitle>
+              <DialogDescription>
+                This usually takes 5-10 minutes. You can close this dialog.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-8 flex flex-col items-center gap-4">
+              <div className="relative">
+                <div className="w-24 h-24 border-4 border-black rounded-full flex items-center justify-center">
+                  <Monitor className="h-10 w-10 animate-pulse" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-full">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="font-mono font-bold">{config.name}</p>
+                <p className="text-sm text-gray-500 mt-1">{provisioningStatus}</p>
+              </div>
+              <div className="w-full max-w-xs bg-gray-200 h-2 rounded-full overflow-hidden">
+                <div className="bg-black h-full animate-pulse" style={{ width: '60%' }} />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="black-outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Close (will continue in background)
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'success' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-mono text-xl text-green-700">
+                <CheckCircle2 className="h-5 w-5" />
+                VM LAUNCHED
+              </DialogTitle>
+              <DialogDescription>
+                Your VM is ready to use
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-8 flex flex-col items-center gap-4">
+              <div className="w-24 h-24 border-4 border-green-600 rounded-full flex items-center justify-center bg-green-50">
+                <CheckCircle2 className="h-12 w-12 text-green-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-mono font-bold text-lg">{config.name}</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Windows VM with automation tools pre-installed
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="black-outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  onOpenChange(false);
+                  if (machineId) {
+                    window.location.href = `/machines/${machineId}`;
+                  }
+                }}
+                className="bg-black text-white hover:bg-gray-800"
+              >
+                View VM
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+
+      {/* Free Credits Eligibility Modal */}
+      <FreeCreditsEligibilityModal
+        isOpen={showFreeCreditsModal}
+        onOpenChange={setShowFreeCreditsModal}
+        onCreditsGranted={handleFreeCreditsGranted}
+      />
+    </Dialog>
+  );
+}

@@ -139,7 +139,7 @@ export async function GET(
 
     // STEP 3: AUTHORIZATION - Use centralized RPC for access check (single DB call)
     const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
-    const workflowUuid = loadedWorkflow.metadata?.github_folder || workflowOwnership.github_folder;
+    const workflowUuid = (loadedWorkflow.metadata as { github_folder?: string } | undefined)?.github_folder || workflowOwnership.github_folder;
     const access = orgId && workflowUuid ? await checkWorkflowAccess(orgId, workflowUuid) : null;
 
     // Allow access if:
