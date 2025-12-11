@@ -74,14 +74,20 @@ export default function MyMachinesPage() {
     }
   }, []);
 
+  // Check if any machine is transitioning (starting/stopping)
+  const hasTransitioningMachine = machines.some(m =>
+    ['stopping', 'starting', 'deallocating'].includes(m.status?.toLowerCase() || '')
+  );
+
   useEffect(() => {
     fetchMachines();
     fetchUserCredits();
 
-    // Poll for updates every 30 seconds
-    const interval = setInterval(fetchMachines, 30000);
+    // Poll faster (5s) when machines are transitioning, otherwise every 30s
+    const pollInterval = hasTransitioningMachine ? 5000 : 30000;
+    const interval = setInterval(fetchMachines, pollInterval);
     return () => clearInterval(interval);
-  }, [fetchMachines, fetchUserCredits]);
+  }, [fetchMachines, fetchUserCredits, hasTransitioningMachine]);
 
   const handleStart = async (machineId: number) => {
     setActionLoading(machineId);
@@ -179,6 +185,7 @@ export default function MyMachinesPage() {
           icon: <Loader2 className="h-4 w-4 animate-spin" />,
         };
       case 'stopping':
+      case 'deallocating':
         return {
           label: 'Stopping...',
           color: 'text-gray-600',
@@ -187,6 +194,7 @@ export default function MyMachinesPage() {
         };
       case 'stopped':
       case 'inactive':
+      case 'deallocated':
         return {
           label: 'Stopped',
           color: 'text-gray-500',
@@ -297,10 +305,13 @@ export default function MyMachinesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {machines.map(machine => {
               const statusDisplay = getStatusDisplay(machine);
-              const isActive = machine.status === 'active';
-              const canStart = ['stopped', 'inactive'].includes(machine.status) && !machine.provisioning_step;
-              const canStop = machine.status === 'active';
-              const isActionLoading = actionLoading === machine.id;
+              const status = machine.status?.toLowerCase() || 'unknown';
+              const isRunning = status === 'active';
+              const isStopped = ['stopped', 'inactive', 'deallocated'].includes(status) && !machine.provisioning_step;
+              const isTransitioning = ['stopping', 'starting', 'deallocating'].includes(status);
+              const canStart = isStopped;
+              const canStop = isRunning;
+              const isActionLoading = actionLoading === machine.id || isTransitioning;
               const vncUrl = getVncUrl(machine);
 
               return (
@@ -311,12 +322,12 @@ export default function MyMachinesPage() {
                   {/* Header */}
                   <div className={cn(
                     'flex items-center justify-between p-3',
-                    isActive ? 'bg-black text-white' : 'bg-gray-100'
+                    isRunning ? 'bg-black text-white' : 'bg-gray-100'
                   )}>
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         'p-2 rounded',
-                        isActive ? 'bg-white text-black' : 'bg-gray-200'
+                        isRunning ? 'bg-white text-black' : 'bg-gray-200'
                       )}>
                         <Monitor className="h-4 w-4" />
                       </div>
@@ -330,7 +341,7 @@ export default function MyMachinesPage() {
                     </div>
                     <div className={cn(
                       'px-2 py-1 rounded text-xs font-mono flex items-center gap-1',
-                      isActive ? 'bg-white text-black' : statusDisplay.bg
+                      isRunning ? 'bg-white text-black' : statusDisplay.bg
                     )}>
                       {statusDisplay.icon}
                       {statusDisplay.label}
@@ -339,7 +350,7 @@ export default function MyMachinesPage() {
 
                   {/* Screen View */}
                   <div className="relative flex-1 min-h-[280px] bg-gray-900">
-                    {isActive && vncUrl ? (
+                    {isRunning && vncUrl ? (
                       <>
                         {/* Live indicator */}
                         <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 bg-black/80 text-white text-xs font-mono rounded">
@@ -361,10 +372,15 @@ export default function MyMachinesPage() {
                           allow="clipboard-read; clipboard-write"
                         />
                       </>
-                    ) : isActive ? (
+                    ) : isRunning ? (
                       <div className="flex flex-col items-center justify-center h-full text-gray-400">
                         <Loader2 className="h-8 w-8 animate-spin mb-2" />
                         <span className="text-sm font-mono">Connecting to screen...</span>
+                      </div>
+                    ) : isTransitioning ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                        <span className="text-sm font-mono">{statusDisplay.label}</span>
                       </div>
                     ) : machine.provisioning_step ? (
                       <div className="flex flex-col items-center justify-center h-full text-gray-400">
