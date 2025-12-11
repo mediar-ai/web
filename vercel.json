@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd apps/web && npm run build",
+  "buildCommand": "npx turbo build --filter=@mediar/web",
   "outputDirectory": "apps/web/.next",
   "installCommand": "npm install",
   "framework": "nextjs",
