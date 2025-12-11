@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
         health_endpoint: `http://${placeholderIp}:8080/health`,
         management_endpoint: `http://${placeholderIp}:8080/management`,
         terraform_key: `user-${userId}-${body.name}`,
-        tags: [`user:${userId}`, `vm:${body.name}`],
+        tags: [`terraform:user-${userId}-${body.name}`, `user:${userId}`, `vm:${body.name}`],
         status: 'inactive',
         health_status: 'unknown',
         machine_type: 'windows_vm',
