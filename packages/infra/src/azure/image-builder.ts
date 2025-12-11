@@ -197,6 +197,17 @@ try {
 } catch { Write-Host "Extension download failed: \$_" }
 
 # ==============================================================================
+# 7b. Install Mediar Desktop App
+# ==============================================================================
+Write-Host 'Installing Mediar Desktop App...'
+try {
+  Invoke-WebRequest -Uri 'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64' -OutFile 'C:\\Temp\\mediar-setup.exe' -UseBasicParsing
+  Start-Process -FilePath 'C:\\Temp\\mediar-setup.exe' -ArgumentList '/S' -Wait
+  Remove-Item 'C:\\Temp\\mediar-setup.exe' -Force -ErrorAction SilentlyContinue
+  Write-Host 'Mediar Desktop App installed successfully'
+} catch { Write-Host "Mediar Desktop App install failed: \$_" }
+
+# ==============================================================================
 # 8. Install WinFsp
 # ==============================================================================
 Write-Host 'Installing WinFsp...'
