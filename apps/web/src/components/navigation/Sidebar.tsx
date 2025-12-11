@@ -87,7 +87,7 @@ export function Sidebar() {
   const navigation: NavItem[] = useMemo(
     () => [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-      { label: 'My Machines', href: '/my-machines', icon: Monitor },
+      { label: 'Sandboxes', href: '/my-machines', icon: Monitor },
       { label: 'Alerts', href: '/notifications', icon: Bell },
       {
         label: 'Settings',

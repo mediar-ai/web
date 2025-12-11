@@ -230,10 +230,10 @@ export default function MyMachinesPage() {
           <div>
             <h1 className="text-3xl font-mono font-bold flex items-center gap-3">
               <Monitor className="h-8 w-8" />
-              MY MACHINES
+              AGENT SANDBOXES
             </h1>
             <p className="text-gray-600 mt-1">
-              Manage your cloud VMs
+              Secure cloud environments for your AI agents
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -250,25 +250,25 @@ export default function MyMachinesPage() {
               className="bg-black text-white hover:bg-gray-800 gap-2"
             >
               <Plus className="h-4 w-4" />
-              Launch VM
+              New Sandbox
             </Button>
           </div>
         </div>
 
-        {/* Machines List */}
+        {/* Sandboxes List */}
         {machines.length === 0 ? (
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
             <Monitor className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-            <h2 className="text-xl font-mono font-bold mb-2">No machines yet</h2>
+            <h2 className="text-xl font-mono font-bold mb-2">No sandboxes yet</h2>
             <p className="text-gray-500 mb-6">
-              Launch a cloud VM to get started with workflow automation
+              Launch an agent sandbox to run your workflows in the cloud
             </p>
             <Button
               onClick={() => setLaunchVmOpen(true)}
               className="bg-black text-white hover:bg-gray-800 gap-2"
             >
               <Plus className="h-4 w-4" />
-              Launch Your First VM
+              Create Your First Sandbox
             </Button>
           </div>
         ) : (

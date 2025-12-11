@@ -51,12 +51,12 @@ export const VM_COSTS = {
   },
 } as const;
 
-// VM Size info for UI display
+// Sandbox size info for UI display
 export const VM_SIZES = [
   {
     id: 'Standard_D2s_v3',
-    name: 'Small',
-    specs: '2 vCPUs, 8GB RAM',
+    name: 'Starter',
+    specs: 'Good for simple workflows',
     launchCost: VM_COSTS.launch['Standard_D2s_v3'],
     perMinuteCost: VM_COSTS.perMinute['Standard_D2s_v3'],
     perHourCost: Math.round(VM_COSTS.perMinute['Standard_D2s_v3'] * 60), // 12 credits/hr
@@ -64,8 +64,8 @@ export const VM_SIZES = [
   },
   {
     id: 'Standard_D4s_v3',
-    name: 'Medium',
-    specs: '4 vCPUs, 16GB RAM',
+    name: 'Standard',
+    specs: 'Best for most workflows',
     launchCost: VM_COSTS.launch['Standard_D4s_v3'],
     perMinuteCost: VM_COSTS.perMinute['Standard_D4s_v3'],
     perHourCost: Math.round(VM_COSTS.perMinute['Standard_D4s_v3'] * 60), // 24 credits/hr
@@ -73,8 +73,8 @@ export const VM_SIZES = [
   },
   {
     id: 'Standard_D8s_v3',
-    name: 'Large',
-    specs: '8 vCPUs, 32GB RAM',
+    name: 'Performance',
+    specs: 'For complex multi-app workflows',
     launchCost: VM_COSTS.launch['Standard_D8s_v3'],
     perMinuteCost: VM_COSTS.perMinute['Standard_D8s_v3'],
     perHourCost: Math.round(VM_COSTS.perMinute['Standard_D8s_v3'] * 60), // 48 credits/hr
