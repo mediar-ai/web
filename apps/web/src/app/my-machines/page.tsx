@@ -13,12 +13,16 @@ import {
   CheckCircle2,
   Clock,
   MapPin,
+  Maximize2,
+  X,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { LaunchVmDialog } from '@/components/vm/LaunchVmDialog';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
+import { VNC_GATEWAY_URL } from '@/lib/azure';
 
 interface Machine {
   id: number;
@@ -30,6 +34,9 @@ interface Machine {
   provisioning_step: string | null;
   created_at: string;
   provisioned_at: string | null;
+  terraform_key?: string;
+  mcp_endpoint?: string;
+  tags?: string[];
 }
 
 export default function MyMachinesPage() {
@@ -38,6 +45,7 @@ export default function MyMachinesPage() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [launchVmOpen, setLaunchVmOpen] = useState(false);
   const [userCredits, setUserCredits] = useState(0);
+  const [fullscreenMachine, setFullscreenMachine] = useState<Machine | null>(null);
 
   const fetchMachines = useCallback(async () => {
     try {
@@ -211,6 +219,20 @@ export default function MyMachinesPage() {
     });
   };
 
+  const getVncUrl = (machine: Machine) => {
+    // VNC gateway looks up VMs by terraform:{key} tag or terraform_key
+    const tagKey = machine.tags
+      ?.find(t => t.startsWith('terraform:'))
+      ?.replace('terraform:', '');
+    const terraformKey =
+      machine.terraform_key && !machine.terraform_key.startsWith('dashboard-')
+        ? machine.terraform_key
+        : null;
+    const key = tagKey || terraformKey;
+    if (!key) return null;
+    return `${VNC_GATEWAY_URL}/vnc/${key}`;
+  };
+
   if (isLoading) {
     return (
       <DashboardLayout>
@@ -272,96 +294,141 @@ export default function MyMachinesPage() {
             </Button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {machines.map(machine => {
               const statusDisplay = getStatusDisplay(machine);
               const isActive = machine.status === 'active';
               const canStart = ['stopped', 'inactive'].includes(machine.status) && !machine.provisioning_step;
               const canStop = machine.status === 'active';
               const isActionLoading = actionLoading === machine.id;
+              const vncUrl = getVncUrl(machine);
 
               return (
                 <div
                   key={machine.id}
-                  className="border-2 border-black p-4 hover:bg-gray-50 transition-colors"
+                  className="border-2 border-black bg-white flex flex-col"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                  {/* Header */}
+                  <div className={cn(
+                    'flex items-center justify-between p-3',
+                    isActive ? 'bg-black text-white' : 'bg-gray-100'
+                  )}>
+                    <div className="flex items-center gap-3">
                       <div className={cn(
-                        'p-3 rounded-lg',
-                        isActive ? 'bg-black text-white' : 'bg-gray-100'
+                        'p-2 rounded',
+                        isActive ? 'bg-white text-black' : 'bg-gray-200'
                       )}>
-                        <Monitor className="h-6 w-6" />
+                        <Monitor className="h-4 w-4" />
                       </div>
                       <div>
-                        <h3 className="font-mono font-bold text-lg">{machine.name}</h3>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {machine.region}
-                          </span>
-                          <span>Created {formatDate(machine.created_at)}</span>
+                        <h3 className="font-mono font-bold">{machine.name}</h3>
+                        <div className="flex items-center gap-2 text-xs opacity-70">
+                          <MapPin className="h-3 w-3" />
+                          {machine.region}
                         </div>
                       </div>
                     </div>
+                    <div className={cn(
+                      'px-2 py-1 rounded text-xs font-mono flex items-center gap-1',
+                      isActive ? 'bg-white text-black' : statusDisplay.bg
+                    )}>
+                      {statusDisplay.icon}
+                      {statusDisplay.label}
+                    </div>
+                  </div>
 
-                    <div className="flex items-center gap-4">
-                      {/* Status Badge */}
-                      <div className={cn(
-                        'px-3 py-1 rounded-full flex items-center gap-2 text-sm font-mono',
-                        statusDisplay.bg
-                      )}>
-                        {statusDisplay.icon}
-                        {statusDisplay.label}
+                  {/* Screen View */}
+                  <div className="relative flex-1 min-h-[280px] bg-gray-900">
+                    {isActive && vncUrl ? (
+                      <>
+                        {/* Live indicator */}
+                        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 bg-black/80 text-white text-xs font-mono rounded">
+                          <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                          LIVE
+                        </div>
+                        {/* Fullscreen button */}
+                        <button
+                          onClick={() => setFullscreenMachine(machine)}
+                          className="absolute top-2 right-2 z-10 p-1.5 bg-black/80 text-white hover:bg-black transition-colors rounded"
+                          title="Fullscreen"
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                        {/* VNC iframe */}
+                        <iframe
+                          src={vncUrl}
+                          className="w-full h-full border-0"
+                          allow="clipboard-read; clipboard-write"
+                        />
+                      </>
+                    ) : isActive ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                        <span className="text-sm font-mono">Connecting to screen...</span>
                       </div>
+                    ) : machine.provisioning_step ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                        <span className="text-sm font-mono">{statusDisplay.label}</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                        <Monitor className="h-12 w-12 mb-2 opacity-50" />
+                        <span className="text-sm font-mono">Sandbox is stopped</span>
+                        <span className="text-xs text-gray-400 mt-1">Start to view the screen</span>
+                      </div>
+                    )}
+                  </div>
 
-                      {/* Actions */}
-                      <div className="flex items-center gap-2">
-                        {canStart && (
-                          <Button
-                            variant="black-outline"
-                            size="sm"
-                            onClick={() => handleStart(machine.id)}
-                            disabled={isActionLoading}
-                          >
-                            {isActionLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                            Start
-                          </Button>
-                        )}
-                        {canStop && (
-                          <Button
-                            variant="black-outline"
-                            size="sm"
-                            onClick={() => handleStop(machine.id)}
-                            disabled={isActionLoading}
-                          >
-                            {isActionLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Square className="h-4 w-4" />
-                            )}
-                            Stop
-                          </Button>
-                        )}
+                  {/* Actions Footer */}
+                  <div className="p-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+                    <div className="text-xs text-gray-500 font-mono">
+                      Created {formatDate(machine.created_at)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canStart && (
                         <Button
                           variant="black-outline"
                           size="sm"
-                          onClick={() => handleDelete(machine.id, machine.name)}
+                          onClick={() => handleStart(machine.id)}
                           disabled={isActionLoading}
-                          className="hover:bg-red-600 hover:text-white hover:border-red-600"
                         >
                           {isActionLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Trash2 className="h-4 w-4" />
+                            <Play className="h-4 w-4" />
                           )}
-                          Delete
+                          Start
                         </Button>
-                      </div>
+                      )}
+                      {canStop && (
+                        <Button
+                          variant="black-outline"
+                          size="sm"
+                          onClick={() => handleStop(machine.id)}
+                          disabled={isActionLoading}
+                        >
+                          {isActionLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                          Stop
+                        </Button>
+                      )}
+                      <Button
+                        variant="black-outline"
+                        size="sm"
+                        onClick={() => handleDelete(machine.id, machine.name)}
+                        disabled={isActionLoading}
+                        className="hover:bg-red-600 hover:text-white hover:border-red-600"
+                      >
+                        {isActionLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -381,6 +448,46 @@ export default function MyMachinesPage() {
           fetchMachines();
         }}
       />
+
+      {/* Fullscreen Modal */}
+      {fullscreenMachine && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-black text-white border-b border-gray-800">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                <h3 className="font-mono font-bold text-sm uppercase">
+                  {fullscreenMachine.name}
+                </h3>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+                <Radio className="w-3 h-3" />
+                <span>INTERACTIVE</span>
+              </div>
+              <button
+                onClick={() => setFullscreenMachine(null)}
+                className="p-2 hover:bg-gray-800 rounded transition-colors"
+                title="Exit fullscreen"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          {/* VNC viewer */}
+          <div className="flex-1">
+            {getVncUrl(fullscreenMachine) && (
+              <iframe
+                src={getVncUrl(fullscreenMachine)!}
+                className="w-full h-full border-0"
+                allow="clipboard-read; clipboard-write"
+              />
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </DashboardLayout>
   );
