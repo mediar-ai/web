@@ -43,22 +43,25 @@ interface VmConfig {
   vmSize: string;
 }
 
-// Map backend provisioning steps to user-friendly messages with fun subtitles
-const STEP_MESSAGES: Record<string, { message: string; sub: string }> = {
-  'init': { message: "Initializing...", sub: "Warming up the engines" },
-  'image': { message: "Selecting the best image...", sub: "Only the finest for you" },
-  'resource-group': { message: "Creating your workspace...", sub: "A place to call home" },
-  'network': { message: "Setting up secure networking...", sub: "Building the highways" },
-  'security': { message: "Configuring security rules...", sub: "Fort Knox mode activated" },
-  'public-ip': { message: "Reserving your address...", sub: "Prime real estate" },
-  'nic': { message: "Connecting the dots...", sub: "Almost there!" },
-  'vm': { message: "Launching your sandbox...", sub: "The moment you've been waiting for" },
-  'configure': { message: "Installing automation tools...", sub: "Loading the good stuff" },
-  'finalize': { message: "Final touches...", sub: "Polishing everything up" },
-  'done': { message: "Ready to go!", sub: "Your sandbox awaits" },
-};
+// User-friendly provisioning steps (simplified from technical backend steps)
+const PROVISIONING_STEPS = [
+  { key: 'prepare', label: 'Preparing environment', backendSteps: ['init', 'image', 'queued'] },
+  { key: 'infrastructure', label: 'Setting up infrastructure', backendSteps: ['resource-group', 'resource_group', 'network', 'security', 'nsg'] },
+  { key: 'network', label: 'Configuring network', backendSteps: ['public-ip', 'public_ip', 'nic'] },
+  { key: 'launch', label: 'Launching sandbox', backendSteps: ['vm'] },
+  { key: 'configure', label: 'Installing tools', backendSteps: ['configure', 'finalize'] },
+  { key: 'ready', label: 'Ready!', backendSteps: ['done'] },
+];
 
-const DEFAULT_MESSAGE = { message: "Setting things up...", sub: "Good things take time" };
+// Get which user-facing step we're on based on backend step
+const getActiveStepIndex = (backendStep: string): number => {
+  for (let i = 0; i < PROVISIONING_STEPS.length; i++) {
+    if (PROVISIONING_STEPS[i].backendSteps.includes(backendStep)) {
+      return i;
+    }
+  }
+  return 0;
+};
 
 export function LaunchVmDialog({
   open,
@@ -506,60 +509,67 @@ export function LaunchVmDialog({
                 CREATING SANDBOX
               </DialogTitle>
               <DialogDescription>
-                Your agent environment will be ready in about 5 minutes
+                <span className="font-mono font-bold">{config.name}</span> — usually takes 5-7 minutes
               </DialogDescription>
             </DialogHeader>
 
-            <div className="py-6 flex flex-col items-center gap-5">
-              {/* Animated icon */}
-              <div className="relative">
-                <div className="w-24 h-24 border-4 border-black rounded-full flex items-center justify-center bg-gray-50">
-                  <Monitor className="h-10 w-10" />
-                </div>
-                <div className="absolute -bottom-1 -right-1 bg-black text-white p-2 rounded-full">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
-              </div>
+            <div className="py-6 space-y-6">
+              {/* Step list */}
+              <div className="space-y-3">
+                {PROVISIONING_STEPS.map((provStep, index) => {
+                  const activeIndex = getActiveStepIndex(currentStep);
+                  const isComplete = index < activeIndex;
+                  const isActive = index === activeIndex;
 
-              {/* Sandbox name */}
-              <p className="font-mono font-bold text-lg">{config.name}</p>
-
-              {/* Current step message from backend */}
-              <div className="text-center">
-                <p className="font-mono text-lg">
-                  {STEP_MESSAGES[currentStep]?.message || DEFAULT_MESSAGE.message}
-                </p>
-                <p className="text-sm text-gray-400 mt-1 italic">
-                  {STEP_MESSAGES[currentStep]?.sub || DEFAULT_MESSAGE.sub}
-                </p>
-              </div>
-
-              {/* Technical status from backend */}
-              {provisioningStatus && (
-                <p className="text-xs text-gray-400 font-mono bg-gray-50 px-3 py-1 rounded">
-                  {provisioningStatus}
-                </p>
-              )}
-
-              {/* Progress indicator */}
-              <div className="w-full max-w-xs">
-                <div className="flex justify-center gap-1">
-                  {Object.keys(STEP_MESSAGES).slice(0, -1).map((stepKey) => {
-                    const stepIndex = Object.keys(STEP_MESSAGES).indexOf(stepKey);
-                    const currentIndex = Object.keys(STEP_MESSAGES).indexOf(currentStep);
-                    const isComplete = stepIndex < currentIndex;
-                    const isCurrent = stepKey === currentStep;
-                    return (
-                      <div
-                        key={stepKey}
-                        className={cn(
-                          'h-1.5 flex-1 rounded-full transition-all duration-300',
-                          isComplete ? 'bg-black' : isCurrent ? 'bg-black animate-pulse' : 'bg-gray-200'
+                  return (
+                    <div
+                      key={provStep.key}
+                      className={cn(
+                        'flex items-center gap-3 p-3 border-2 transition-all',
+                        isComplete ? 'border-black bg-black text-white' :
+                        isActive ? 'border-black bg-gray-50' :
+                        'border-gray-200 bg-gray-50 text-gray-400'
+                      )}
+                    >
+                      {/* Step indicator */}
+                      <div className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
+                        isComplete ? 'bg-white text-black' :
+                        isActive ? 'bg-black text-white' :
+                        'bg-gray-200 text-gray-400'
+                      )}>
+                        {isComplete ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : isActive ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className="font-mono text-sm font-bold">{index + 1}</span>
                         )}
-                      />
-                    );
-                  })}
-                </div>
+                      </div>
+
+                      {/* Step label */}
+                      <span className={cn(
+                        'font-mono text-sm',
+                        isActive && 'font-bold'
+                      )}>
+                        {provStep.label}
+                      </span>
+
+                      {/* Active indicator dot */}
+                      {isActive && (
+                        <span className="ml-auto h-2 w-2 rounded-full bg-black animate-pulse" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-black transition-all duration-500"
+                  style={{ width: `${((getActiveStepIndex(currentStep) + 1) / PROVISIONING_STEPS.length) * 100}%` }}
+                />
               </div>
             </div>
 
