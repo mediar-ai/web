@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["NEXT_PUBLIC_*", "SUPABASE_*", "CLERK_*", "AZURE_*", "STRIPE_*"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
