@@ -10,5 +10,8 @@
     "lint:fix": "next lint --fix",
     "type-check": "tsc --noEmit",
     "clean": "rimraf .next .turbo"
+  },
+  "dependencies": {
+    "@mediar/infra": "*"
   }
 }
