@@ -76,7 +76,7 @@ export function LaunchVmDialog({
 
   const handleLaunch = async () => {
     if (!config.name.trim()) {
-      setError('Please enter a VM name');
+      setError('Please enter a sandbox name');
       return;
     }
 
@@ -88,7 +88,7 @@ export function LaunchVmDialog({
     setIsLoading(true);
     setError(null);
     setStep('provisioning');
-    setProvisioningStatus('Starting provisioning...');
+    setProvisioningStatus('Preparing your sandbox...');
 
     try {
       const response = await fetch('/api/vm/provision', {
@@ -103,21 +103,21 @@ export function LaunchVmDialog({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to provision VM');
+        throw new Error(data.error || 'Failed to create sandbox');
       }
 
       setMachineId(data.machine.id);
-      setProvisioningStatus('VM is being provisioned...');
+      setProvisioningStatus('Setting up your environment...');
 
       // Poll for status updates
       pollProvisioningStatus(data.machine.id);
 
-      toast.success(`VM "${data.machine.name}" is being provisioned!`);
+      toast.success(`Creating "${data.machine.name}"...`);
       onCreditsChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to provision VM');
+      setError(err instanceof Error ? err.message : 'Failed to create sandbox');
       setStep('config');
-      toast.error('Failed to provision VM');
+      toast.error('Failed to create sandbox');
     } finally {
       setIsLoading(false);
     }
@@ -210,34 +210,35 @@ export function LaunchVmDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-mono text-xl">
                 <Monitor className="h-5 w-5" />
-                LAUNCH CLOUD VM
+                LAUNCH AGENT SANDBOX
               </DialogTitle>
               <DialogDescription>
-                Create a Windows VM with all automation tools pre-installed
+                Your AI agent runs workflows in a secure cloud environment
+                <span className="block text-xs text-gray-400 mt-1">Windows cloud machine with all tools pre-installed</span>
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-6 py-4">
-              {/* VM Name */}
+              {/* Sandbox Name */}
               <div className="space-y-2">
                 <Label htmlFor="vm-name" className="font-mono text-xs uppercase">
-                  VM Name
+                  Sandbox Name
                 </Label>
                 <Input
                   id="vm-name"
-                  placeholder="my-workflow-vm"
+                  placeholder="my-automation"
                   value={config.name}
                   onChange={e => setConfig({ ...config, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
                   className="font-mono border-2 border-black"
                 />
                 <p className="text-xs text-gray-500">
-                  Only lowercase letters, numbers, and hyphens
+                  Give it a name you'll recognize
                 </p>
               </div>
 
-              {/* VM Size Selection */}
+              {/* Size Selection */}
               <div className="space-y-3">
-                <Label className="font-mono text-xs uppercase">VM Size</Label>
+                <Label className="font-mono text-xs uppercase">Performance</Label>
                 <div className="grid gap-3">
                   {VM_SIZES.map(size => (
                     <button
@@ -342,7 +343,7 @@ export function LaunchVmDialog({
                   ) : (
                     <Zap className="h-4 w-4" />
                   )}
-                  Launch VM
+                  Launch Sandbox
                 </Button>
               ) : (
                 <Button
@@ -365,7 +366,7 @@ export function LaunchVmDialog({
                 GET CREDITS
               </DialogTitle>
               <DialogDescription>
-                You need {selectedSize.launchCost - userCredits} more credits to launch this VM
+                You need {selectedSize.launchCost - userCredits} more credits to launch this sandbox
               </DialogDescription>
             </DialogHeader>
 
@@ -463,10 +464,10 @@ export function LaunchVmDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-mono text-xl">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                PROVISIONING VM
+                CREATING SANDBOX
               </DialogTitle>
               <DialogDescription>
-                This usually takes 5-10 minutes. You can close this dialog.
+                Setting up your secure environment. This takes about 5 minutes.
               </DialogDescription>
             </DialogHeader>
 
@@ -493,7 +494,7 @@ export function LaunchVmDialog({
                 variant="black-outline"
                 onClick={() => onOpenChange(false)}
               >
-                Close (will continue in background)
+                Close (continues in background)
               </Button>
             </DialogFooter>
           </>
@@ -502,23 +503,23 @@ export function LaunchVmDialog({
         {step === 'success' && (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 font-mono text-xl text-green-700">
+              <DialogTitle className="flex items-center gap-2 font-mono text-xl">
                 <CheckCircle2 className="h-5 w-5" />
-                VM LAUNCHED
+                SANDBOX READY
               </DialogTitle>
               <DialogDescription>
-                Your VM is ready to use
+                Your agent sandbox is ready to run workflows
               </DialogDescription>
             </DialogHeader>
 
             <div className="py-8 flex flex-col items-center gap-4">
-              <div className="w-24 h-24 border-4 border-green-600 rounded-full flex items-center justify-center bg-green-50">
-                <CheckCircle2 className="h-12 w-12 text-green-600" />
+              <div className="w-24 h-24 border-4 border-black rounded-full flex items-center justify-center bg-gray-50">
+                <CheckCircle2 className="h-12 w-12 text-black" />
               </div>
               <div className="text-center">
                 <p className="font-mono font-bold text-lg">{config.name}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Windows VM with automation tools pre-installed
+                  Ready to execute your automations
                 </p>
               </div>
             </div>
@@ -539,7 +540,7 @@ export function LaunchVmDialog({
                 }}
                 className="bg-black text-white hover:bg-gray-800"
               >
-                View VM
+                View Sandbox
               </Button>
             </DialogFooter>
           </>
