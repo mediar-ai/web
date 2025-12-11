@@ -307,8 +307,22 @@ export default function MyMachinesPage() {
               const statusDisplay = getStatusDisplay(machine);
               const status = machine.status?.toLowerCase() || 'unknown';
               const isRunning = status === 'active';
-              const isStopped = ['stopped', 'inactive', 'deallocated'].includes(status) && !machine.provisioning_step;
-              const isTransitioning = ['stopping', 'starting', 'deallocating'].includes(status);
+
+              // Check if provisioning is in progress (not done/completed)
+              const isProvisioning = (() => {
+                if (!machine.provisioning_step) return false;
+                try {
+                  const step = typeof machine.provisioning_step === 'string'
+                    ? JSON.parse(machine.provisioning_step)
+                    : machine.provisioning_step;
+                  return step.step !== 'done' && step.status !== 'completed';
+                } catch {
+                  return false;
+                }
+              })();
+
+              const isStopped = ['stopped', 'inactive', 'deallocated'].includes(status) && !isProvisioning;
+              const isTransitioning = ['stopping', 'starting', 'deallocating'].includes(status) || isProvisioning;
               const canStart = isStopped;
               const canStop = isRunning;
               const isActionLoading = actionLoading === machine.id || isTransitioning;
@@ -382,16 +396,11 @@ export default function MyMachinesPage() {
                         <Loader2 className="h-8 w-8 animate-spin mb-2" />
                         <span className="text-sm font-mono">{statusDisplay.label}</span>
                       </div>
-                    ) : machine.provisioning_step ? (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
-                        <span className="text-sm font-mono">{statusDisplay.label}</span>
-                      </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full text-gray-500">
                         <Monitor className="h-12 w-12 mb-2 opacity-50" />
                         <span className="text-sm font-mono">Sandbox is stopped</span>
-                        <span className="text-xs text-gray-400 mt-1">Start to view the screen</span>
+                        <span className="text-xs text-gray-400 mt-1">Click Start to power on</span>
                       </div>
                     )}
                   </div>
