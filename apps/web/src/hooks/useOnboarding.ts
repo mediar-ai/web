@@ -11,6 +11,7 @@ export interface OnboardingState {
   followed_linkedin: boolean;
   joined_discord: boolean;
   watched_video: boolean;
+  invites_sent: number;
   total_credits_earned: number;
   dismissed_at: string | null;
   onboarding_completed_at: string | null;
@@ -26,6 +27,7 @@ interface UseOnboardingReturn {
   setCurrentStep: (step: number) => void;
   followSocial: (platform: 'twitter' | 'github' | 'linkedin' | 'discord') => Promise<number>;
   watchVideo: () => Promise<number>;
+  trackInviteSent: () => Promise<void>;
   dismissOnboarding: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   refetch: () => Promise<void>;
@@ -109,6 +111,27 @@ export function useOnboarding(): UseOnboardingReturn {
     }
   }, [posthog]);
 
+  const trackInviteSent = useCallback(async (): Promise<void> => {
+    try {
+      posthog?.capture('onboarding_invite_sent', {
+        timestamp: new Date().toISOString(),
+      });
+
+      const response = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'invite_sent' }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOnboarding(data.onboarding);
+      }
+    } catch (error) {
+      console.error('Failed to track invite:', error);
+    }
+  }, [posthog]);
+
   const dismissOnboarding = useCallback(async () => {
     try {
       posthog?.capture('onboarding_dismissed', {
@@ -169,6 +192,7 @@ export function useOnboarding(): UseOnboardingReturn {
     setCurrentStep,
     followSocial,
     watchVideo,
+    trackInviteSent,
     dismissOnboarding,
     completeOnboarding,
     refetch: fetchOnboarding,

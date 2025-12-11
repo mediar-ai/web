@@ -29,6 +29,7 @@ import {
   Wand2,
   Tag,
   X,
+  Monitor,
 } from 'lucide-react';
 import {
   useEffect,
@@ -49,6 +50,7 @@ import {
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LaunchVmDialog, CreditsDisplay } from '@/components/vm';
 
 function DashboardContent() {
   const { isLoaded, userId } = useAuth();
@@ -311,6 +313,28 @@ function DashboardContent() {
   const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
   const [selectedWorkflowForVersion, setSelectedWorkflowForVersion] =
     useState<WorkflowWithSettings | null>(null);
+
+  // VM Launch state
+  const [launchVmOpen, setLaunchVmOpen] = useState(false);
+  const [userCredits, setUserCredits] = useState(0);
+
+  // Fetch user credits
+  const fetchUserCredits = useCallback(async () => {
+    try {
+      const response = await fetch('/api/user/credits');
+      const data = await response.json();
+      setUserCredits(data.balance || 0);
+    } catch {
+      // Silently fail - credits feature may not be available
+    }
+  }, []);
+
+  // Fetch credits on mount
+  useEffect(() => {
+    if (userId) {
+      fetchUserCredits();
+    }
+  }, [userId, fetchUserCredits]);
 
   // Use keyboard navigation
   const { selectedIndex: navSelectedIndex } = useKeyboardNavigation({
@@ -1467,23 +1491,40 @@ function DashboardContent() {
           ) : (
             <>
               {/* Stats Bar - Inline */}
-              <div className="border-2 border-black p-2 mb-4 flex items-center gap-6">
-                {stats.map(stat => {
-                  const Icon = stat.icon;
-                  return (
-                    <div key={stat.label} className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-mono text-sm font-medium text-gray-600 uppercase">
-                          {stat.label}
-                        </span>
-                        <span className="font-mono text-lg font-bold">
-                          {stat.value}
-                        </span>
+              <div className="border-2 border-black p-2 mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                  {stats.map(stat => {
+                    const Icon = stat.icon;
+                    return (
+                      <div key={stat.label} className="flex items-center gap-2">
+                        <Icon className="w-4 h-4 flex-shrink-0" />
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-mono text-sm font-medium text-gray-600 uppercase">
+                            {stat.label}
+                          </span>
+                          <span className="font-mono text-lg font-bold">
+                            {stat.value}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-3">
+                  <CreditsDisplay balance={userCredits} />
+                  <button
+                    onClick={() => {
+                      posthog?.capture('dashboard_launch_vm_click', {
+                        timestamp: new Date().toISOString(),
+                      });
+                      setLaunchVmOpen(true);
+                    }}
+                    className="px-4 py-1.5 bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-2 text-sm font-mono"
+                  >
+                    <Monitor className="w-4 h-4" />
+                    <span className="uppercase text-xs">Launch VM</span>
+                  </button>
+                </div>
               </div>
 
               {/* Header with Actions */}
@@ -1758,6 +1799,14 @@ function DashboardContent() {
             fetchExecutionDetails(execution.execution_id);
           }}
           onRefresh={() => fetchWorkflows(true)}
+        />
+
+        {/* Launch VM Dialog */}
+        <LaunchVmDialog
+          open={launchVmOpen}
+          onOpenChange={setLaunchVmOpen}
+          userCredits={userCredits}
+          onCreditsChange={fetchUserCredits}
         />
 
         {/* Dialogs */}

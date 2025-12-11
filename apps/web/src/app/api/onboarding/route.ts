@@ -145,6 +145,11 @@ export async function POST(req: NextRequest) {
         }
         break;
 
+      case 'invite_sent':
+        // Track invite sent (just increment counter, no credits)
+        updates.invites_sent = (onboarding.invites_sent || 0) + 1;
+        break;
+
       case 'dismiss':
         // User clicked "Maybe later"
         updates.dismissed_at = new Date().toISOString();
@@ -176,6 +181,29 @@ export async function POST(req: NextRequest) {
       if (updateError) {
         console.error('onboarding: error updating', updateError);
         return NextResponse.json({ error: 'failed to update onboarding' }, { status: 500 });
+      }
+
+      // Also add credits to user_credits table for VM usage
+      if (creditsToAdd > 0) {
+        const actionDescription = action === 'watch_video'
+          ? 'Watched onboarding video'
+          : `Followed ${platform}`;
+
+        try {
+          const { error: creditError } = await supabase.rpc('add_credits', {
+            p_user_id: userId,
+            p_amount: creditsToAdd,
+            p_type: 'onboarding',
+            p_description: actionDescription,
+            p_reference_id: `onboarding-${action}-${platform || 'video'}`,
+          });
+          if (creditError) {
+            console.error('onboarding: failed to add credits to user_credits', creditError);
+          }
+        } catch (err) {
+          // Don't fail the request if credits table doesn't exist yet
+          console.error('onboarding: failed to add credits to user_credits', err);
+        }
       }
 
       return NextResponse.json({
