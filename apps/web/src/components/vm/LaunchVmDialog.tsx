@@ -347,6 +347,20 @@ export function LaunchVmDialog({
                 </div>
               </div>
 
+              {/* Free credits hint for users with low balance */}
+              {userCredits < 15 && (
+                <button
+                  onClick={() => setShowFreeCreditsModal(true)}
+                  className="w-full flex items-center justify-between p-3 border-2 border-dashed border-gray-300 hover:border-black transition-all text-left bg-gray-50"
+                >
+                  <div className="flex items-center gap-2">
+                    <Gift className="h-5 w-5" />
+                    <span className="text-sm">Open source contributor?</span>
+                  </div>
+                  <span className="text-sm font-mono font-bold">Get 15 free credits →</span>
+                </button>
+              )}
+
               {error && (
                 <div className="flex items-center gap-2 text-red-600 text-sm">
                   <AlertCircle className="h-4 w-4" />
