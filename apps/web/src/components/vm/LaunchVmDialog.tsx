@@ -43,6 +43,20 @@ interface VmConfig {
   vmSize: string;
 }
 
+// Fun loading messages aligned with Mediar brand
+const PROVISIONING_MESSAGES = [
+  { message: "Spinning up your sandbox...", sub: "This is the fun part" },
+  { message: "Waking up the robots...", sub: "They had a good nap" },
+  { message: "Teaching your agent new tricks...", sub: "It's a quick learner" },
+  { message: "Connecting to the cloud...", sub: "No umbrella needed" },
+  { message: "Installing automation superpowers...", sub: "With great power..." },
+  { message: "Warming up the engines...", sub: "Almost ready for takeoff" },
+  { message: "Brewing some digital coffee...", sub: "Your agent needs caffeine too" },
+  { message: "Assembling the dream team...", sub: "Your workflows are in good hands" },
+  { message: "Calibrating the automation matrix...", sub: "Sounds cooler than it is" },
+  { message: "Deploying your personal assistant...", sub: "It doesn't need lunch breaks" },
+];
+
 export function LaunchVmDialog({
   open,
   onOpenChange,
@@ -56,6 +70,7 @@ export function LaunchVmDialog({
   });
   const [isLoading, setIsLoading] = useState(false);
   const [provisioningStatus, setProvisioningStatus] = useState<string>('');
+  const [funMessage, setFunMessage] = useState(PROVISIONING_MESSAGES[0]);
   const [machineId, setMachineId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showFreeCreditsModal, setShowFreeCreditsModal] = useState(false);
@@ -71,8 +86,23 @@ export function LaunchVmDialog({
       setError(null);
       setMachineId(null);
       setProvisioningStatus('');
+      setFunMessage(PROVISIONING_MESSAGES[0]);
     }
   }, [open]);
+
+  // Rotate fun messages during provisioning
+  useEffect(() => {
+    if (step === 'provisioning') {
+      const interval = setInterval(() => {
+        setFunMessage(prev => {
+          const currentIndex = PROVISIONING_MESSAGES.findIndex(m => m.message === prev.message);
+          const nextIndex = (currentIndex + 1) % PROVISIONING_MESSAGES.length;
+          return PROVISIONING_MESSAGES[nextIndex];
+        });
+      }, 4000); // Change message every 4 seconds
+      return () => clearInterval(interval);
+    }
+  }, [step]);
 
   const handleLaunch = async () => {
     if (!config.name.trim()) {
@@ -463,29 +493,52 @@ export function LaunchVmDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-mono text-xl">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Zap className="h-5 w-5" />
                 CREATING SANDBOX
               </DialogTitle>
               <DialogDescription>
-                Setting up your secure environment. This takes about 5 minutes.
+                Your agent environment will be ready in about 5 minutes
               </DialogDescription>
             </DialogHeader>
 
-            <div className="py-8 flex flex-col items-center gap-4">
+            <div className="py-8 flex flex-col items-center gap-6">
+              {/* Animated icon */}
               <div className="relative">
-                <div className="w-24 h-24 border-4 border-black rounded-full flex items-center justify-center">
-                  <Monitor className="h-10 w-10 animate-pulse" />
+                <div className="w-28 h-28 border-4 border-black rounded-full flex items-center justify-center bg-gray-50">
+                  <Monitor className="h-12 w-12" />
                 </div>
-                <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-full">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="absolute -bottom-1 -right-1 bg-black text-white p-2 rounded-full">
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 </div>
+                {/* Decorative rings */}
+                <div className="absolute inset-0 border-4 border-gray-200 rounded-full animate-ping opacity-20" />
               </div>
+
+              {/* Sandbox name */}
               <div className="text-center">
-                <p className="font-mono font-bold">{config.name}</p>
-                <p className="text-sm text-gray-500 mt-1">{provisioningStatus}</p>
+                <p className="font-mono font-bold text-xl">{config.name}</p>
               </div>
-              <div className="w-full max-w-xs bg-gray-200 h-2 rounded-full overflow-hidden">
-                <div className="bg-black h-full animate-pulse" style={{ width: '60%' }} />
+
+              {/* Fun rotating message */}
+              <div className="text-center min-h-[60px] flex flex-col justify-center">
+                <p className="font-mono text-lg transition-all duration-300">{funMessage.message}</p>
+                <p className="text-sm text-gray-400 mt-1 italic">{funMessage.sub}</p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full max-w-sm">
+                <div className="bg-gray-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-black h-full transition-all duration-1000 ease-out"
+                    style={{
+                      width: '100%',
+                      animation: 'progress 300s linear forwards'
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2 text-center font-mono">
+                  {provisioningStatus || 'Initializing...'}
+                </p>
               </div>
             </div>
 
@@ -494,7 +547,7 @@ export function LaunchVmDialog({
                 variant="black-outline"
                 onClick={() => onOpenChange(false)}
               >
-                Close (continues in background)
+                Close — we'll keep working in the background
               </Button>
             </DialogFooter>
           </>
