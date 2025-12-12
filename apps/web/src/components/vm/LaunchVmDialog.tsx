@@ -83,13 +83,16 @@ export function LaunchVmDialog({
   const [error, setError] = useState<string | null>(null);
   const [showFreeCreditsModal, setShowFreeCreditsModal] = useState(false);
   const provisioningStartTime = useRef<number>(0);
+  // Track if dialog was previously open to detect fresh opens vs re-renders
+  const wasOpenRef = useRef(false);
 
   const selectedSize = VM_SIZES.find(s => s.id === config.vmSize) || VM_SIZES[1];
   const canAfford = userCredits >= selectedSize.launchCost;
 
-  // Track dialog open
+  // Reset state only when dialog freshly opens (not on userCredits changes)
   useEffect(() => {
-    if (open) {
+    // Only reset when transitioning from closed to open
+    if (open && !wasOpenRef.current) {
       posthog?.capture('sandbox_dialog_opened', {
         user_credits: userCredits,
         can_afford_default: userCredits >= VM_SIZES[1].launchCost,
@@ -101,6 +104,7 @@ export function LaunchVmDialog({
       setProvisioningStatus('');
       setCurrentStep('init');
     }
+    wasOpenRef.current = open;
   }, [open, posthog, userCredits]);
 
   const handleLaunch = async () => {
