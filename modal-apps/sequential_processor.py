@@ -36,7 +36,7 @@ DB_CONFIG = {
     'port': 5432,
     'database': 'postgres',
     'user': 'postgres.eshwntsgsputksqamckh',
-    'password': '***REMOVED***'
+    'password': 'bpveHeKhaw73HQ'
 }
 
 # Processing status constants
