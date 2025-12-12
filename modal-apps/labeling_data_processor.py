@@ -29,7 +29,7 @@ DB_CONFIG = {
     'port': 5432,
     'database': 'postgres',
     'user': 'postgres.eshwntsgsputksqamckh',
-    'password': 'dS64xX6mU3E4Sbyc'
+    'password': 'bpveHeKhaw73HQ'
 }
 
 # --- Utility Functions (Adapted from sequential_processor.py) ---
