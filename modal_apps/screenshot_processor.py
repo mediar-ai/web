@@ -9,26 +9,19 @@ from typing import Dict, List, Optional, Tuple
 app = modal.App("screenshot-processor")
 app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 
-# SQL to find screenshot_diff events that haven't been processed yet (supports both Structure A and B)
+# SQL to find screenshot_diff events that haven't been processed yet.
+# This is much simpler and faster now, querying the enriched view.
 GET_UNPROCESSED_SCREENSHOTS_SQL = """
     SELECT id, user_id, session_id, created_at, payload
-    FROM low_level_events 
-    WHERE payload->'payload'->>'type' = 'screenshot_diff'
+    FROM low_level_events_enriched
+    WHERE event_type = 'screenshot_diff'
     AND NOT EXISTS (
         SELECT 1 FROM low_level_processed_screenshots lps 
-        WHERE lps.event_id = low_level_events.id
+        WHERE lps.event_id = low_level_events_enriched.id
     )
     AND NOT EXISTS (
         SELECT 1 FROM screenshot_processing_locks spl
-        WHERE spl.event_id = low_level_events.id AND spl.expires_at > NOW()
-    )
-    AND (
-        -- Structure A: screenshot_diff format
-        LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'after') > 5000 OR
-        LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000 OR
-        -- Structure B: direct screenshot format
-        LENGTH(payload->'payload'->'event'->>'screenshot_after') > 5000 OR
-        LENGTH(payload->'payload'->'event'->>'screenshot_before') > 5000
+        WHERE spl.event_id = low_level_events_enriched.id AND spl.expires_at > NOW()
     )
     ORDER BY created_at DESC
     LIMIT %s;
@@ -302,20 +295,12 @@ def scheduled_screenshot_processing():
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT COUNT(*) FROM low_level_events 
-            WHERE payload->'payload'->>'type' = 'screenshot_diff'
+            SELECT COUNT(*) FROM low_level_events_enriched
+            WHERE event_type = 'screenshot_diff'
             AND NOT EXISTS (
                 SELECT 1 FROM low_level_processed_screenshots lps 
-                WHERE lps.event_id = low_level_events.id
+                WHERE lps.event_id = low_level_events_enriched.id
             )
-            AND (
-                -- Structure A: screenshot_diff format
-                LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'after') > 5000 OR
-                LENGTH(payload->'payload'->'event'->'screenshot_diff'->>'before') > 5000 OR
-                -- Structure B: direct screenshot format
-                LENGTH(payload->'payload'->'event'->>'screenshot_after') > 5000 OR
-                LENGTH(payload->'payload'->'event'->>'screenshot_before') > 5000
-            );
         """)
         
         pending_count = cursor.fetchone()[0]

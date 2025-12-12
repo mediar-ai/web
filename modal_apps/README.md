@@ -6,7 +6,7 @@ This directory contains Modal serverless applications for the browser workflow c
 
 ### 1. Sequential Processor (`sequential_processor.py`)
 - **Purpose**: Processes UI tree events and generates workflow analyses using LLM
-- **Status**: ✅ Currently deployed and running
+- **Status**: ✅ Currently deployed and running 
 - **Schedule**: Every 2 minutes
 - **App Name**: `sequential-workflow-processor`
 
@@ -17,30 +17,12 @@ This directory contains Modal serverless applications for the browser workflow c
 - `emergency_cleanup_all_processing_locks()` - Emergency cleanup function
 - `get_processing_status()` - Returns processing statistics
 
-### 2. Screenshot Processor (`screenshot_processor.py`)
-- **Purpose**: Extracts screenshots from events and uploads them to Supabase storage
-- **Status**: ⚠️ Not currently deployed (but functional)
-- **Schedule**: Every 3 minutes (when deployed)
-- **App Name**: `screenshot-processor`
-
-**Functions:**
-- `scheduled_screenshot_processing()` - Processes screenshots on schedule
-- `process_screenshots(batch_size)` - Processes a batch of screenshot events
-- `get_stats()` - Returns processing statistics
-- API endpoints for manual triggering and debugging
-
 ## Deployment Commands
 
 ### Deploy Sequential Processor
 ```bash
 cd modal-apps
 modal deploy sequential_processor.py
-```
-
-### Deploy Screenshot Processor
-```bash
-cd modal-apps
-modal deploy screenshot_processor.py
 ```
 
 ## Database Tables Used
@@ -50,15 +32,11 @@ modal deploy screenshot_processor.py
 - `low_level_workflow_analyses` - Generated analyses
 - `processing_locks` - Prevents duplicate processing
 
-### Screenshot Processor
-- `low_level_events` - Source screenshot events
-- `low_level_processed_screenshots` - Processing status and metadata
-
 ## Environment Variables Required
 
-Both applications require these Modal secrets:
+The sequential processor requires these Modal secrets:
 - `supabase-secret` - Contains `SUPABASE_CONN_STRING`
-- `custom-secret` - Contains `VERCEL_URL` (for sequential processor)
+- `custom-secret` - Contains `VERCEL_URL`
 
 ## Monitoring
 

@@ -23,14 +23,16 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
 # - Added coordinator conflict detection in scheduled_labeling_processing
 # --- END CANCELLATION NOTES ---
 
-# Database connection configuration
-DB_CONFIG = {
-    'host': 'aws-0-us-west-1.pooler.supabase.com',
-    'port': 5432,
-    'database': 'postgres',
-    'user': 'postgres.eshwntsgsputksqamckh',
-    'password': 'bpveHeKhaw73HQ'
-}
+# Database connection configuration using environment variables
+def get_db_config():
+    """Get database configuration from environment variables (Modal secrets)"""
+    return {
+        'host': os.environ['SUPABASE_HOST'],
+        'port': 5432,
+        'database': 'postgres',
+        'user': os.environ['SUPABASE_USER'],
+        'password': os.environ['SUPABASE_PASSWORD']
+    }
 
 # --- Utility Functions (Adapted from sequential_processor.py) ---
 
@@ -68,7 +70,7 @@ def cleanup_expired_labeling_locks(cur, conn):
 def get_database_connection():
     """Gets a new database connection."""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = psycopg2.connect(**get_db_config())
         conn.autocommit = False
         return conn
     except Exception as e:
@@ -371,7 +373,7 @@ def trigger_labeling_for_all_users():
         try:
             cur.execute("""
                 INSERT INTO processing_locks (user_id, event_id, processor_id, status, expires_at)
-                VALUES ('label-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '30 minutes')
+                VALUES ('label-coordinator', 0, %s, 'in_progress', NOW() + INTERVAL '2 minutes')
                 ON CONFLICT (user_id, event_id) DO NOTHING
                 RETURNING id
             """, (coordinator_id,))
@@ -399,7 +401,10 @@ def trigger_labeling_for_all_users():
                 AND NOT EXISTS ( -- Not currently being processed by another labeler
                     SELECT 1 FROM processing_locks
                     WHERE event_id = analysis.id 
-                    AND user_id NOT LIKE '%coordinator%'  -- Fix: Filter out coordinator locks before UUID casting
+                    AND user_id NOT LIKE '%coordinator%'  -- Filter out coordinator locks
+                    AND user_id NOT LIKE 'global-scheduler%'  -- Filter out scheduler locks
+                    AND user_id NOT LIKE 'machine-%'  -- Filter out machine locks
+                    AND user_id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'  -- Only valid UUIDs
                     AND user_id::uuid = analysis.user_id 
                     AND status = 'in_progress' 
                     AND expires_at > NOW()
@@ -409,11 +414,8 @@ def trigger_labeling_for_all_users():
         users_to_process = [row[0] for row in cur.fetchall()]
         print(f"📋 Found {len(users_to_process)} users with analyses to label.")
         
-        # Limit concurrent processing to avoid overwhelming the system
-        MAX_CONCURRENT_USERS = 10  # Process up to 10 users simultaneously
-        if len(users_to_process) > MAX_CONCURRENT_USERS:
-            print(f"⚠️ Limiting to {MAX_CONCURRENT_USERS} concurrent users (found {len(users_to_process)})")
-            users_to_process = users_to_process[:MAX_CONCURRENT_USERS]
+        # Process all users - no artificial limit
+        print(f"🚀 Processing all {len(users_to_process)} users found")
         
         # Create all remote calls WITHOUT waiting for them to start
         print(f"🚀 Preparing {len(users_to_process)} processors for parallel launch...")
@@ -494,12 +496,12 @@ def trigger_labeling_for_all_users():
         
 @app.function(
     secrets=[modal.Secret.from_name("supabase-secret")],
-    schedule=modal.Period(minutes=90),  # Increased from 30 to 90 minutes to prevent overlaps
-    timeout=600
+    schedule=modal.Period(minutes=1),  # Changed from 90 to 1 minute for faster processing
+    timeout=90  # Increased from 45 to 90 seconds to prevent scheduling conflicts
 )
 def scheduled_labeling_processing():
     """Periodically triggers the labeling process for all users every 90 minutes."""
-    print("⏰ Starting scheduled labeling processing...")
+    print("Starting scheduled labeling processing...")
     
     try:
         # Check if any labeling coordinators are already running to prevent conflicts
