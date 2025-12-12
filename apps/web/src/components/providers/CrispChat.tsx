@@ -143,6 +143,33 @@ export function CrispChat() {
                   console.log("Preview already shown this session");
                 }
               }]);
+
+              // Handle operator messages - show bubble + picker
+              window.$crisp.push(["on", "message:received", function(data) {
+                console.log("🟢 Message received:", data);
+
+                // Only handle text messages from operator via network (not history/local)
+                if (data.origin === "network" && data.type === "text" && data.from === "operator") {
+                  console.log("🟢 Operator message detected, showing bubble + picker");
+
+                  // Show the operator's message as a bubble
+                  window.$crisp.push(["do", "message:show", ["text", data.content]]);
+
+                  // Show picker with quick reply options after a short delay
+                  setTimeout(function() {
+                    window.$crisp.push(["do", "message:show", ["picker", {
+                      "id": "quick-reply",
+                      "text": "Quick replies:",
+                      "choices": [
+                        { "value": "what-is-this", "label": "What is this app?", "selected": false },
+                        { "value": "not-working", "label": "The app doesn't work!", "selected": false },
+                        { "value": "how-to-run", "label": "How do I run a workflow?", "selected": false }
+                      ]
+                    }]]);
+                    console.log("🟢 Picker shown");
+                  }, 500);
+                }
+              }]);
             }
 
             // Helper function: Show preview message bubble next to chat button
@@ -169,7 +196,7 @@ export function CrispChat() {
               }
             };
 
-            // Define pulse animation
+            // Define pulse animation and Crisp CSS hacks
             var style = document.createElement('style');
             style.innerHTML = \`
               @keyframes crisp-pulse {
@@ -177,6 +204,31 @@ export function CrispChat() {
                 25% { transform: scale(1.1); }
                 50% { transform: scale(1); }
                 75% { transform: scale(1.1); }
+              }
+              /* HACK: Hide "Compose your reply" and replace with custom text */
+              .crisp-client span[data-for-id="new_messages"] {
+                visibility: hidden !important;
+                position: relative !important;
+              }
+              .crisp-client span[data-for-id="new_messages"]::before {
+                content: "How do I run a workflow?" !important;
+                visibility: visible !important;
+                position: absolute !important;
+                left: 0 !important;
+                font-size: 12px !important;
+                color: #fff !important;
+              }
+              /* Hide the extra span element (icon) */
+              .crisp-client span.cc-1oz0d,
+              .crisp-client span.cc-qdda2,
+              .crisp-client .cc-1oz0d,
+              .crisp-client .cc-qdda2 {
+                display: none !important;
+              }
+              /* Make compose box wider to fit question */
+              .crisp-client .cc-1xry,
+              .crisp-client [data-for-id="new_messages"] {
+                min-width: 180px !important;
               }
             \`;
             document.head.appendChild(style);
