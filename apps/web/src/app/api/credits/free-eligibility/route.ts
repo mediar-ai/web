@@ -5,6 +5,24 @@ import { sendTransactionalEmail } from '@/lib/loops';
 import { getPostHogClient } from '@/lib/posthog-server';
 
 const FREE_CREDITS_AMOUNT = 15; // Credits granted for open source contributors (15 min workflow time)
+const MAX_FREE_CREDITS_PER_IP = 3; // Max free credit grants per IP to prevent multi-account abuse
+
+// Get client IP from request headers
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
+  const vercelIp = request.headers.get('x-vercel-forwarded-for');
+  if (vercelIp) {
+    return vercelIp.split(',')[0].trim();
+  }
+  return 'unknown';
+}
 
 interface SurveyFormData {
   isOpenSourceContributor: 'Yes' | 'No' | '';
@@ -123,12 +141,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Add credits using RPC function
+    // Security: IP-based rate limit to prevent multi-account abuse
+    const clientIp = getClientIp(req);
+    if (clientIp && clientIp !== 'unknown') {
+      const { count: ipCreditsCount } = await supabase
+        .from('credit_transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'free_oss')
+        .ilike('description', `%ip:${clientIp}%`);
+
+      if (ipCreditsCount !== null && ipCreditsCount >= MAX_FREE_CREDITS_PER_IP) {
+        console.warn(`[Free Credits API] IP ${clientIp} hit limit: ${ipCreditsCount}/${MAX_FREE_CREDITS_PER_IP} (user: ${userId})`);
+        return NextResponse.json(
+          { error: 'Too many free credit requests from this network. Please contact support.' },
+          { status: 429 }
+        );
+      }
+    }
+
+    // Add credits using RPC function (include IP in description for rate limit tracking)
     const { data: creditResult, error: creditError } = await supabase.rpc('add_credits', {
       p_user_id: userId,
       p_amount: FREE_CREDITS_AMOUNT,
       p_type: 'free_oss',
-      p_description: `Free credits for open source contributor (${formData.githubHandle})`,
+      p_description: `Free credits for open source contributor (${formData.githubHandle}) ip:${clientIp}`,
       p_reference_id: `free_oss_${submissionId}`,
     });
 

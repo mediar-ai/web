@@ -74,6 +74,24 @@ interface ProvisionBody {
   location?: string;
 }
 
+// Get client IP from request headers (works with Vercel, Cloudflare, etc.)
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
+  // Vercel-specific
+  const vercelIp = request.headers.get('x-vercel-forwarded-for');
+  if (vercelIp) {
+    return vercelIp.split(',')[0].trim();
+  }
+  return 'unknown';
+}
+
 /**
  * POST /api/vm/provision
  * Provision a new VM for the user - deducts credits and starts provisioning
@@ -87,6 +105,7 @@ export async function POST(request: NextRequest) {
   }
 
   const email = user.emailAddresses?.[0]?.emailAddress;
+  const clientIp = getClientIp(request);
 
   const body: ProvisionBody = await request.json();
 
@@ -163,6 +182,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Security: IP-based rate limit - max 5 VMs per IP per 24 hours to prevent multi-account abuse
+  const MAX_VMS_PER_IP_PER_DAY = 5;
+  const TWENTY_FOUR_HOURS_AGO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  if (clientIp && clientIp !== 'unknown') {
+    const ipTag = `ip:${clientIp}`;
+    const { count: ipVmCount } = await supabase
+      .from('remote_machines')
+      .select('id', { count: 'exact', head: true })
+      .contains('tags', [ipTag])
+      .gte('created_at', TWENTY_FOUR_HOURS_AGO);
+
+    if (ipVmCount !== null && ipVmCount >= MAX_VMS_PER_IP_PER_DAY) {
+      console.warn(`[VM Provision API] IP ${clientIp} hit daily limit: ${ipVmCount}/${MAX_VMS_PER_IP_PER_DAY} (user: ${userId})`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many sandboxes created from this network. Please try again tomorrow.`,
+          limit: MAX_VMS_PER_IP_PER_DAY,
+        },
+        { status: 429 }
+      );
+    }
+  }
+
   try {
     // Check and deduct credits atomically
     const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits', {
@@ -219,7 +263,7 @@ export async function POST(request: NextRequest) {
         health_endpoint: `http://${placeholderIp}:8080/health`,
         management_endpoint: `http://${placeholderIp}:8080/management`,
         terraform_key: `user-${userId}-${body.name}`,
-        tags: [`terraform:user-${userId}-${body.name}`, `user:${userId}`, `vm:${body.name}`],
+        tags: [`terraform:user-${userId}-${body.name}`, `user:${userId}`, `vm:${body.name}`, `ip:${clientIp}`],
         status: 'inactive',
         health_status: 'unknown',
         machine_type: 'windows_vm',
