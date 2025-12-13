@@ -118,6 +118,51 @@ export async function POST(request: NextRequest) {
   }
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  // Security: Max 3 VMs per user to prevent abuse
+  const MAX_VMS_PER_USER = 3;
+  const { count: vmCount } = await supabase
+    .from('remote_machines')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_user_id', userId)
+    .not('status', 'in', '("deleted","failed")');
+
+  if (vmCount !== null && vmCount >= MAX_VMS_PER_USER) {
+    console.warn(`[VM Provision API] User ${userId} hit VM limit: ${vmCount}/${MAX_VMS_PER_USER}`);
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Maximum ${MAX_VMS_PER_USER} sandboxes per user. Please delete existing sandboxes first.`,
+        currentCount: vmCount,
+        maxAllowed: MAX_VMS_PER_USER,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Security: Rate limit - max 1 VM creation per hour to prevent rapid abuse
+  const ONE_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: recentVm } = await supabase
+    .from('remote_machines')
+    .select('created_at, name')
+    .eq('owner_user_id', userId)
+    .gte('created_at', ONE_HOUR_AGO)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (recentVm && recentVm.length > 0) {
+    const lastCreated = new Date(recentVm[0].created_at);
+    const waitMinutes = Math.ceil((lastCreated.getTime() + 60 * 60 * 1000 - Date.now()) / 60000);
+    console.warn(`[VM Provision API] User ${userId} rate limited. Last VM: ${recentVm[0].name}`);
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Rate limit: please wait ${waitMinutes} minutes before creating another sandbox.`,
+        retryAfterMinutes: waitMinutes,
+      },
+      { status: 429 }
+    );
+  }
+
   try {
     // Check and deduct credits atomically
     const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits', {
