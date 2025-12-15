@@ -13,7 +13,8 @@ interface ServiceAccountCredentials {
 /**
  * Generate a 1-hour Google OAuth access token for Vertex AI
  * Uses service account credentials to generate token that desktop app
- * can use to call Vertex AI directly
+ * can use to call Vertex AI directly (for Gemini).
+ * Note: Claude Code uses Workload Identity Federation instead (separate endpoint).
  */
 async function generateVertexAccessToken(): Promise<{
   accessToken: string;
@@ -45,7 +46,7 @@ async function generateVertexAccessToken(): Promise<{
 
   // Create JWT assertion for token exchange
   const now = Math.floor(Date.now() / 1000);
-  const expiresAt = now + 3600; // 1 hour
+  const expiresAt = now + 3600; // 1 hour (Google's max for JWT assertion)
 
   const jwtKey = await importPKCS8(credentials.private_key, 'RS256');
 
@@ -84,7 +85,10 @@ async function generateVertexAccessToken(): Promise<{
  * POST /api/auth/desktop-vertex-token
  *
  * Issues a 1-hour Google OAuth access token for Vertex AI
- * Desktop app can use this token to call Vertex AI directly
+ * Desktop app uses this token to call Vertex AI directly (Gemini).
+ *
+ * Note: Claude Code uses Workload Identity Federation via
+ * /api/auth/desktop-vertex-subject-token instead.
  *
  * Request:
  * - Header: Authorization: Bearer <desktop_session_token>
