@@ -18,6 +18,12 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.jsx text eol=lf
+*.mjs text eol=lf
+*.mts text eol=lf
+*.cjs text eol=lf
+*.cts text eol=lf
+*.d.ts text eol=lf
+*.d.mts text eol=lf
 *.html text eol=lf
 *.css text eol=lf
 *.scss text eol=lf
