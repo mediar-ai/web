@@ -77,7 +77,7 @@ export function LaunchVmDialog({
     vmSize: 'Standard_D4s_v3',
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [provisioningStatus, setProvisioningStatus] = useState<string>('');
+  const [_provisioningStatus, setProvisioningStatus] = useState<string>('');
   const [currentStep, setCurrentStep] = useState<string>('init');
   const [machineId, setMachineId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -352,7 +352,7 @@ export function LaunchVmDialog({
                   className="font-mono border-2 border-black"
                 />
                 <p className="text-xs text-gray-500">
-                  Give it a name you'll recognize
+                  Give it a name you&apos;ll recognize
                 </p>
               </div>
 
