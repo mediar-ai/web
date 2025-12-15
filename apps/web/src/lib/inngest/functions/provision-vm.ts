@@ -260,7 +260,6 @@ export const provisionVmFunction = inngest.createFunction(
 
       // For specialized images, osProfile must NOT be provided (already baked in).
       // For generalized images, osProfile is required.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const vmParameters: any = {
         location: location || VM_CONFIG.location,
         hardwareProfile: { vmSize: vmSize || VM_CONFIG.vmSize },
