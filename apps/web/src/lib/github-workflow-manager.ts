@@ -2,7 +2,7 @@ import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
 import { createClient } from '@supabase/supabase-js';
 import { createClerkClient } from '@clerk/backend';
-import { getAuthenticatedOctokit, isGitHubAppConfigured } from './github-app-auth';
+import { getAuthenticatedOctokit } from './github-app-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

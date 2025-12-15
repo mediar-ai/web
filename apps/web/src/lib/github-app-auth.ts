@@ -14,6 +14,7 @@
  */
 
 import { Octokit } from '@octokit/rest';
+import crypto from 'crypto';
 
 // Cache for the installation token (valid for 1 hour)
 let cachedToken: string | null = null;
@@ -24,7 +25,6 @@ let tokenExpiresAt: number = 0;
  */
 function createAppJWT(appId: string, privateKey: string): string {
   // JWT implementation using Node.js crypto
-  const crypto = require('crypto');
 
   const now = Math.floor(Date.now() / 1000);
   const payload = {
