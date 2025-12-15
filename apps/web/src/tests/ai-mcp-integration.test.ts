@@ -488,8 +488,8 @@ export class MCPIntegrationTester {
       let currentMessages = requestBody.messages;
       let stepCount = 0;
       const maxSteps = 5; // Prevent infinite loops
-      let allToolCalls: any[] = [];
-      let allTextResponses: string[] = [];
+      const allToolCalls: any[] = [];
+      const allTextResponses: string[] = [];
 
       while (stepCount < maxSteps) {
         stepCount++;
@@ -1452,10 +1452,10 @@ export class MCPIntegrationTester {
     };
 
     try {
-      let currentMessages = requestBody.messages;
+      const currentMessages = requestBody.messages;
       let stepCount = 0;
       const maxSteps = 6; // Allow for more steps in complex workflow
-      let workflowSteps: any[] = [];
+      const workflowSteps: any[] = [];
       let totalTextLength = 0;
 
       while (stepCount < maxSteps) {
@@ -2136,9 +2136,9 @@ export class MCPIntegrationTester {
       TestLogger.info(`🎭 Scenario: ${scenario.name}`);
 
       try {
-        let conversationMessages: any[] = [];
+        const conversationMessages: any[] = [];
         let scenarioSuccess = true;
-        let stepResults = [];
+        const stepResults = [];
 
         for (let i = 0; i < scenario.messages.length; i++) {
           const userMessage = scenario.messages[i];
@@ -2183,7 +2183,7 @@ export class MCPIntegrationTester {
 
           const decoder = new TextDecoder();
           let assistantResponse = '';
-          let toolCalls: any[] = [];
+          const toolCalls: any[] = [];
 
           try {
             while (true) {
