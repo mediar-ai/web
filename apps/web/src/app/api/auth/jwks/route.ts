@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { importPKCS8, exportJWK } from 'jose';
 import * as crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -23,12 +22,12 @@ export async function GET() {
       );
     }
 
-    let privateKey: string;
+    let privateKeyPem: string;
     try {
       const credentials = JSON.parse(
         Buffer.from(credentialsBase64, 'base64').toString('utf-8')
       );
-      privateKey = credentials.private_key;
+      privateKeyPem = credentials.private_key;
     } catch (e) {
       console.error('[JWKS] Failed to parse credentials:', e);
       return NextResponse.json(
@@ -37,20 +36,20 @@ export async function GET() {
       );
     }
 
-    // Import the private key
-    const key = await importPKCS8(privateKey, 'RS256');
+    // Use Node.js crypto to extract public key components
+    const privateKey = crypto.createPrivateKey(privateKeyPem);
+    const publicKey = crypto.createPublicKey(privateKey);
 
-    // Export as JWK (this gives us the public components)
-    const jwk = await exportJWK(key);
+    // Export as JWK - this works with Node.js crypto
+    const jwk = publicKey.export({ format: 'jwk' });
 
-    // Remove private key components, keep only public
     const publicJwk = {
       kty: jwk.kty,
       n: jwk.n,
       e: jwk.e,
       alg: 'RS256',
       use: 'sig',
-      kid: generateKeyId(privateKey),
+      kid: generateKeyId(privateKeyPem),
     };
 
     const jwks = {
