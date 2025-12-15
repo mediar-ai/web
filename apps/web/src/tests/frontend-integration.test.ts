@@ -516,7 +516,7 @@ class FrontendIntegrationTests {
         },
       ];
 
-      let conversationHistory = [...messages];
+      const conversationHistory = [...messages];
       let stepCount = 0;
       const maxSteps = 4;
       let totalToolCalls = 0;
