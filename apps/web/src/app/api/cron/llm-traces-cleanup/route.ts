@@ -18,11 +18,17 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export async function GET(request: Request) {
   const startTime = Date.now();
 
-  // Verify cron secret (Vercel adds this header for cron jobs)
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    console.warn('[LLM Traces Cleanup] Unauthorized request');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Check if request is from Vercel Cron (has vercel-cron user agent)
+  const userAgent = request.headers.get('user-agent') || '';
+  const isVercelCron = userAgent.includes('vercel-cron');
+
+  // If NOT from Vercel Cron, verify auth
+  if (!isVercelCron) {
+    const authHeader = request.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      console.warn('[LLM Traces Cleanup] Unauthorized request');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   console.log('[LLM Traces Cleanup] Starting cleanup job');
