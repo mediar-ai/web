@@ -190,7 +190,7 @@ export async function POST(
       // Organization ownership - duplicate belongs to current user's organization
       organization_id: orgId || null,
       // Metadata
-      created_by: userId || userEmail || null, // Store userId first for consistent ownership checks
+      created_by: userId || null, // Store Clerk user ID for ownership checks
       total_versions: 1,
     };
 
