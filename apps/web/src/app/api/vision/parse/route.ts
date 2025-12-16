@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 import { getRedisClient } from '@/lib/redis-client';
 
 // Vercel Pro: 5 minute timeout for vision model
@@ -250,6 +251,14 @@ export async function POST(request: NextRequest) {
     });
 
     const duration = Date.now() - startTime;
+
+    // Track LLM usage (fire-and-forget, no user context for this public endpoint)
+    trackLLMUsageAsync({
+      model: modelName,
+      inputTokens: result.usageMetadata?.promptTokenCount || 0,
+      outputTokens: result.usageMetadata?.candidatesTokenCount || 0,
+      source: 'vision_parse',
+    });
 
     // Check finish reason for truncation
     const finishReason = result.candidates?.[0]?.finishReason;

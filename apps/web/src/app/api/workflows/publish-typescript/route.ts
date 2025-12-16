@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userIdentifier = email || userId || 'desktop-user';
+    const userIdentifier = userId || null; // Store Clerk user ID for ownership checks
     console.log(`📤 Publishing TypeScript workflow "${name}" (folder: ${folder_id}) for org: ${effectiveOrgId}`);
 
     // Parse the TypeScript workflow

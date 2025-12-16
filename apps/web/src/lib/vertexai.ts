@@ -1,4 +1,5 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { trackLLMUsageAsync, type LLMSource } from '@/lib/llm-tracking';
 
 
 
@@ -445,6 +446,9 @@ export async function callVertexWithStructuredOutput(
     onTimeout?: (elapsed: number) => void;
     maxRetries?: number;
     retryDelayMs?: number;
+    trackingSource?: LLMSource;
+    trackingUserId?: string;
+    trackingOrgId?: string;
   } = {}
 ) {
   const {
@@ -452,7 +456,10 @@ export async function callVertexWithStructuredOutput(
     onProgress,
     onTimeout,
     maxRetries = 2,
-    retryDelayMs = 1000
+    retryDelayMs = 1000,
+    trackingSource,
+    trackingUserId,
+    trackingOrgId
   } = options;
 
   // Check if this is a Gemini 3 model - requires global endpoint
@@ -570,6 +577,18 @@ export async function callVertexWithStructuredOutput(
       const usageMetadata = response?.usageMetadata;
       if (includeUsageMetadata) {
         console.log('📊 Vertex AI usage metadata:', usageMetadata);
+      }
+
+      // Track LLM usage if source is specified
+      if (trackingSource && usageMetadata) {
+        trackLLMUsageAsync({
+          userId: trackingUserId,
+          orgId: trackingOrgId,
+          model: mappedModelName,
+          inputTokens: usageMetadata.promptTokenCount || 0,
+          outputTokens: usageMetadata.candidatesTokenCount || 0,
+          source: trackingSource,
+        });
       }
 
       // Extract text from the response

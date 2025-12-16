@@ -122,18 +122,3 @@ export async function getEffectiveOrgId(overrideOrgId?: string | null): Promise<
     email: user?.emailAddresses?.[0]?.emailAddress || null, // The user email
   };
 }
-
-/**
- * Check if a user owns a workflow
- * Compares against both userId and email since legacy workflows store email in created_by
- */
-export function isWorkflowOwner(
-  workflowCreatedBy: string | null | undefined,
-  userId: string | null | undefined,
-  email: string | null | undefined
-): boolean {
-  if (!workflowCreatedBy) return false;
-  if (userId && workflowCreatedBy === userId) return true;
-  if (email && workflowCreatedBy === email) return true;
-  return false;
-}

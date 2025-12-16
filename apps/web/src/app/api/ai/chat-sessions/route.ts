@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
-import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,14 +70,16 @@ export async function GET(request: NextRequest) {
     console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
 
     // Resolve workflow ID (supports both numeric ID and UUID)
-    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+    const resolved = await resolveWorkflowId(supabase, workflowId);
 
-    if (resolveError || workflowIdNum === null) {
+    if (resolved.error || !resolved.workflow) {
       return NextResponse.json(
-        { error: resolveError || `Workflow ${workflowId} not found` },
+        { error: resolved.error || `Workflow ${workflowId} not found` },
         { status: 404, headers: corsHeaders }
       );
     }
+
+    const workflowIdNum = resolved.workflow.id;
 
     const { data: sessions, error } = await supabase
       .from('workflow_chat_sessions')
@@ -133,14 +135,20 @@ export async function POST(request: NextRequest) {
     console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
 
     // Resolve workflow ID (supports both numeric ID and UUID)
-    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, String(workflowId));
+    const resolved = await resolveWorkflowId(supabase, String(workflowId));
 
-    if (resolveError || workflowIdNum === null) {
+    if (resolved.error || !resolved.workflow) {
       return NextResponse.json(
-        { error: resolveError || `Workflow ${workflowId} not found` },
+        { error: resolved.error || `Workflow ${workflowId} not found` },
         { status: 404, headers: corsHeaders }
       );
     }
+
+    const workflowIdNum = resolved.workflow.id;
+
+    // Note: No ownership check - any logged-in user can save chat sessions to any workflow
+    // Chat sessions are scoped by user_id anyway, so each user only sees their own sessions
+    console.log(`[Chat Sessions] Saving to workflow ${workflowIdNum} for user ${userId}`);
 
     // Check if session already exists
     const { data: existing } = await supabase

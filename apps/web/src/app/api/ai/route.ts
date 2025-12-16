@@ -45,12 +45,14 @@ async function trackLLMUsage(params: {
     if (!supabaseUrl || !supabaseServiceKey) return;
 
     const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey);
+    console.log(`[Web AI] Tracking usage: model=${params.model}, input=${params.inputTokens}, output=${params.outputTokens}`);
     await supabase.from('mediar_llm_traces').insert({
       user_id: params.userId,
       org_id: params.orgId,
       model: params.model,
       input_tokens: params.inputTokens,
       output_tokens: params.outputTokens,
+      source: 'web_ai',
     });
   } catch (e) {
     console.error('[LLM Tracking] Failed to track usage:', e);
