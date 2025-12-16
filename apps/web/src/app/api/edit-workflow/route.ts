@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Schema, SchemaType } from '@google/generative-ai';
 import { getVertexGenAI } from '@/lib/vertexai';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { WORKFLOW_EDIT_PROMPT } from '@/lib/prompts';
 
@@ -66,6 +67,14 @@ Please respond with a JSON object in this exact format:
 }`;
 
     const result = await model.generateContent(prompt);
+
+    // Track LLM usage
+    trackLLMUsageAsync({
+      model: modelName,
+      inputTokens: result.response?.usageMetadata?.promptTokenCount || 0,
+      outputTokens: result.response?.usageMetadata?.candidatesTokenCount || 0,
+      source: 'workflow_edit',
+    });
 
     // 🔥 VERTEX AI RESPONSE HANDLING 🔥
     const response = result.response;
