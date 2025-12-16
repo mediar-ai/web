@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
-import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
+import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,14 +70,16 @@ export async function GET(request: NextRequest) {
     console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
 
     // Resolve workflow ID (supports both numeric ID and UUID)
-    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, workflowId);
+    const resolved = await resolveWorkflowId(supabase, workflowId);
 
-    if (resolveError || workflowIdNum === null) {
+    if (resolved.error || !resolved.workflow) {
       return NextResponse.json(
-        { error: resolveError || `Workflow ${workflowId} not found` },
+        { error: resolved.error || `Workflow ${workflowId} not found` },
         { status: 404, headers: corsHeaders }
       );
     }
+
+    const workflowIdNum = resolved.workflow.id;
 
     const { data: sessions, error } = await supabase
       .from('workflow_chat_sessions')
@@ -133,14 +135,31 @@ export async function POST(request: NextRequest) {
     console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
 
     // Resolve workflow ID (supports both numeric ID and UUID)
-    const { id: workflowIdNum, error: resolveError } = await getNumericWorkflowId(supabase, String(workflowId));
+    const resolved = await resolveWorkflowId(supabase, String(workflowId));
 
-    if (resolveError || workflowIdNum === null) {
+    if (resolved.error || !resolved.workflow) {
       return NextResponse.json(
-        { error: resolveError || `Workflow ${workflowId} not found` },
+        { error: resolved.error || `Workflow ${workflowId} not found` },
         { status: 404, headers: corsHeaders }
       );
     }
+
+    const workflowIdNum = resolved.workflow.id;
+
+    // Ownership validation: User must own the workflow or workflow must be public
+    // Users can sync chat sessions to their own workflows or public workflows
+    const isOwner = resolved.workflow.created_by === userId;
+    const isPublic = resolved.workflow.is_public === true;
+
+    if (!isOwner && !isPublic) {
+      console.warn(`[Chat Sessions] Access denied: user ${userId} cannot sync to workflow ${workflowId} (owner: ${resolved.workflow.created_by})`);
+      return NextResponse.json(
+        { error: 'Access denied: You can only sync chat sessions to workflows you own or public workflows' },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
+    console.log(`[Chat Sessions] Access granted: ${isOwner ? 'owner' : 'public'} access for workflow ${workflowIdNum}`);
 
     // Check if session already exists
     const { data: existing } = await supabase
