@@ -146,20 +146,9 @@ export async function POST(request: NextRequest) {
 
     const workflowIdNum = resolved.workflow.id;
 
-    // Ownership validation: User must own the workflow or workflow must be public
-    // Users can sync chat sessions to their own workflows or public workflows
-    const isOwner = resolved.workflow.created_by === userId;
-    const isPublic = resolved.workflow.is_public === true;
-
-    if (!isOwner && !isPublic) {
-      console.warn(`[Chat Sessions] Access denied: user ${userId} cannot sync to workflow ${workflowId} (owner: ${resolved.workflow.created_by})`);
-      return NextResponse.json(
-        { error: 'Access denied: You can only sync chat sessions to workflows you own or public workflows' },
-        { status: 403, headers: corsHeaders }
-      );
-    }
-
-    console.log(`[Chat Sessions] Access granted: ${isOwner ? 'owner' : 'public'} access for workflow ${workflowIdNum}`);
+    // Note: No ownership check - any logged-in user can save chat sessions to any workflow
+    // Chat sessions are scoped by user_id anyway, so each user only sees their own sessions
+    console.log(`[Chat Sessions] Saving to workflow ${workflowIdNum} for user ${userId}`);
 
     // Check if session already exists
     const { data: existing } = await supabase
