@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Environment } from '@google/genai';
 import { getRedisClient } from '@/lib/redis-client';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 // Vercel Pro: 5 minute timeout for computer use model
 export const maxDuration = 300;
@@ -277,6 +278,14 @@ CRITICAL RULES:
     });
 
     const duration = Date.now() - startTime;
+
+    // Track LLM usage
+    trackLLMUsageAsync({
+      model: COMPUTER_USE_MODEL,
+      inputTokens: result.usageMetadata?.promptTokenCount || 0,
+      outputTokens: result.usageMetadata?.candidatesTokenCount || 0,
+      source: 'computer_use',
+    });
     const parts = result.candidates?.[0]?.content?.parts || [];
 
     // Check if model returned any function calls

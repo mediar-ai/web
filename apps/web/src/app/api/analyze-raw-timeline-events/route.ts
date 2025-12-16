@@ -337,7 +337,10 @@ async function processSingleBatch(params: BatchProcessingParams): Promise<BatchR
             prompt,
             {},
             model,
-            SINGLE_BATCH_MAPPING_SCHEMA
+            SINGLE_BATCH_MAPPING_SCHEMA,
+            "application/json",
+            false,
+            { trackingSource: 'workflow_analysis' as const }
           );
           
           const llmProcessingTime = Date.now() - llmStartTime;

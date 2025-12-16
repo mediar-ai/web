@@ -210,7 +210,10 @@ export async function POST(req: NextRequest) {
           WORKFLOW_IDENTIFICATION_PROMPT,
           context,
           model,
-          WORKFLOW_IDENTIFICATION_SCHEMA
+          WORKFLOW_IDENTIFICATION_SCHEMA,
+          "application/json",
+          false,
+          { trackingSource: 'workflow_analysis' as const }
         );
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 40, data: { workflowNames } }));
@@ -221,7 +224,10 @@ export async function POST(req: NextRequest) {
           PROMPT_SYNTHESIZE_CONTEXT,
           context,
           model,
-          CONTEXT_SYNTHESIS_SCHEMA
+          CONTEXT_SYNTHESIS_SCHEMA,
+          "application/json",
+          false,
+          { trackingSource: 'workflow_analysis' as const }
         );
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 60, data: { workflowContext } }));
 
@@ -236,7 +242,10 @@ export async function POST(req: NextRequest) {
               workflow_names: workflowNames,
             },
             model,
-            WORKFLOW_REFINEMENT_SCHEMA
+            WORKFLOW_REFINEMENT_SCHEMA,
+            "application/json",
+            false,
+            { trackingSource: 'workflow_analysis' as const }
           );
 
           workflowContext = {

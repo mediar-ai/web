@@ -148,8 +148,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Look up user's org_id for token tracking
+    const { data: userData } = await supabase
+      .from('mediar_users')
+      .select('org_id')
+      .eq('user_id', userId)
+      .single();
+    const orgId = userData?.org_id;
+
     const body = await request.json();
     const { messages, executionId, contextData, model = 'gemini-2.5-pro' } = body;
+
+    // Token usage accumulator for the entire conversation
+    let totalPromptTokens = 0;
+    let totalCandidateTokens = 0;
 
     // Check if context was provided by the frontend
     if (contextData) {
@@ -1482,6 +1494,13 @@ Answer the user's question helpfully and thoroughly by using the available tools
         baseDelayMs: 1000,
         messageType: 'user message',
       });
+
+      // Accumulate token usage
+      if (response?.usageMetadata) {
+        totalPromptTokens += response.usageMetadata.promptTokenCount || 0;
+        totalCandidateTokens += response.usageMetadata.candidatesTokenCount || 0;
+      }
+
       const candidates = response.candidates;
 
       if (!candidates || candidates.length === 0) {
@@ -1575,6 +1594,13 @@ Answer the user's question helpfully and thoroughly by using the available tools
             messageType: 'tool results',
           }
         );
+
+        // Accumulate token usage from tool result response
+        if (nextResponse?.usageMetadata) {
+          totalPromptTokens += nextResponse.usageMetadata.promptTokenCount || 0;
+          totalCandidateTokens += nextResponse.usageMetadata.candidatesTokenCount || 0;
+        }
+
         const nextCandidates = nextResponse.candidates;
 
         if (nextCandidates && nextCandidates.length > 0) {
@@ -1655,6 +1681,31 @@ Answer the user's question helpfully and thoroughly by using the available tools
       }
     } catch (saveError) {
       console.error('[Q&A API] Error saving conversation:', saveError);
+    }
+
+    // Track LLM usage (async, fire-and-forget)
+    if (orgId && (totalPromptTokens > 0 || totalCandidateTokens > 0)) {
+      console.log(
+        `[Q&A API] Token usage: prompt=${totalPromptTokens}, candidates=${totalCandidateTokens}`
+      );
+      // Fire and forget - don't await
+      supabase
+        .from('mediar_llm_traces')
+        .insert({
+          user_id: userId,
+          org_id: orgId,
+          model: model,
+          input_tokens: totalPromptTokens,
+          output_tokens: totalCandidateTokens,
+          source: 'execution_qa',
+          session_id: executionId,
+          turn_number: turnCount,
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error('[Q&A API] Failed to track LLM usage:', error);
+          }
+        });
     }
 
     // Return response

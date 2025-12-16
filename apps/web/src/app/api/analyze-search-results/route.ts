@@ -1,4 +1,5 @@
 import { getVertexGenAI } from '@/lib/vertexai';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -219,6 +220,14 @@ Event ${i + 1}:
         baseDelayMs: 1000,
       }
     );
+
+    // Track LLM usage
+    trackLLMUsageAsync({
+      model: 'gemini-2.5-pro',
+      inputTokens: result.response?.usageMetadata?.promptTokenCount || 0,
+      outputTokens: result.response?.usageMetadata?.candidatesTokenCount || 0,
+      source: 'search_analysis',
+    });
 
     const aiResponse = result.response;
     const aiAnalysis = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text ||

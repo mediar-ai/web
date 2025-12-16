@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getVertexGenAI } from '@/lib/vertexai';
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 const MAX_RETRIES = 3;
 const MAX_TOKEN_SIZE = 100000; // Approximate character limit
@@ -106,6 +107,14 @@ Be specific about:
         topP: 0.95,
         topK: 20,
       },
+    });
+
+    // Track LLM usage
+    trackLLMUsageAsync({
+      model: 'gemini-2.5-flash',
+      inputTokens: result.response?.usageMetadata?.promptTokenCount || 0,
+      outputTokens: result.response?.usageMetadata?.candidatesTokenCount || 0,
+      source: 'error_analysis',
     });
 
     // Extract the response text

@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       description,
       automation_sequence: automationSequence,
       automation_sequence_yaml: workflowYaml,
-      created_by: userEmail || authenticatedUserId || null, // Store email or user ID for author tracking
+      created_by: authenticatedUserId || null, // Store Clerk user ID for ownership checks
       organization_id: organization_id || null,
       is_public,
       category,

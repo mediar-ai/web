@@ -174,7 +174,10 @@ ${JSON.stringify(analyses, null, 2)}`;
         prompt,
         {}, // Empty context since prompt already includes all needed data
         modelName,
-        WORKFLOW_BOUNDARIES_SCHEMA
+        WORKFLOW_BOUNDARIES_SCHEMA,
+        "application/json",
+        false,
+        { trackingSource: 'workflow_analysis' as const }
     );
 
     console.log('[SUCCESS] Vertex AI workflow boundaries successful');
