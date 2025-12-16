@@ -31,7 +31,7 @@ const getRedisClient = async () => {
   return client;
 };
 
-// LLM usage tracking - insert into mediar_llm_traces table
+// LLM usage tracking - insert into mediar_llm_traces table (v2 - with source field)
 async function trackLLMUsage(params: {
   userId: string;
   orgId: string;
