@@ -5,17 +5,10 @@ import { sendTransactionalEmail } from '@/lib/loops';
 import { getPostHogClient } from '@/lib/posthog-server';
 
 interface SurveyFormData {
-  isOpenSourceContributor: 'Yes' | 'No' | '';
-  githubHandle: string;
-  isWorkingOnBounty: 'Yes' | 'No' | '';
-  bountyLink: string;
-  needsWorkflowsForOthers: 'Yes' | 'No' | '';
+  fullName: string;
   whatsappNumber: string;
   agreesToProvideFeedback: 'Yes' | 'No' | '';
   agreesToRaiseIssues: 'Yes' | 'No' | '';
-  agreesToReportMissingFeatures: 'Yes' | 'No' | '';
-  agreesToReportImprovements: 'Yes' | 'No' | '';
-  agreesToTestNewFeatures: 'Yes' | 'No' | '';
 }
 
 export async function POST(req: NextRequest) {
@@ -51,14 +44,8 @@ export async function POST(req: NextRequest) {
 
     // Validate all required fields are 'Yes' for yes/no questions
     const yesNoFields = [
-      'isOpenSourceContributor',
-      'isWorkingOnBounty',
-      'needsWorkflowsForOthers',
       'agreesToProvideFeedback',
       'agreesToRaiseIssues',
-      'agreesToReportMissingFeatures',
-      'agreesToReportImprovements',
-      'agreesToTestNewFeatures',
     ] as const;
 
     for (const field of yesNoFields) {
@@ -71,15 +58,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate text fields are not empty
-    if (!formData.githubHandle?.trim()) {
+    if (!formData.fullName?.trim()) {
       return NextResponse.json(
-        { error: 'GitHub handle is required' },
-        { status: 400 }
-      );
-    }
-    if (!formData.bountyLink?.trim()) {
-      return NextResponse.json(
-        { error: 'Bounty link is required' },
+        { error: 'Name is required' },
         { status: 400 }
       );
     }
@@ -123,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     // Format survey results for email
     const surveyResultsHtml = `
-<h2>Free Access Survey Submission</h2>
+<h2>Free Trial Submission</h2>
 <p><strong>User ID:</strong> ${userId}</p>
 <p><strong>User Email:</strong> ${userEmail}</p>
 <p><strong>Submission ID:</strong> ${submissionId}</p>
@@ -133,17 +114,10 @@ export async function POST(req: NextRequest) {
 
 <h3>Survey Responses:</h3>
 <ul>
-  <li><strong>Open source contributor:</strong> ${formData.isOpenSourceContributor}</li>
-  <li><strong>GitHub handle:</strong> ${formData.githubHandle}</li>
-  <li><strong>Working on bounty:</strong> ${formData.isWorkingOnBounty}</li>
-  <li><strong>Bounty link:</strong> ${formData.bountyLink}</li>
-  <li><strong>Needs workflows for others:</strong> ${formData.needsWorkflowsForOthers}</li>
+  <li><strong>Name:</strong> ${formData.fullName}</li>
   <li><strong>WhatsApp:</strong> ${formData.whatsappNumber}</li>
   <li><strong>Agrees to provide feedback:</strong> ${formData.agreesToProvideFeedback}</li>
   <li><strong>Agrees to raise issues:</strong> ${formData.agreesToRaiseIssues}</li>
-  <li><strong>Agrees to report missing features:</strong> ${formData.agreesToReportMissingFeatures}</li>
-  <li><strong>Agrees to suggest improvements:</strong> ${formData.agreesToReportImprovements}</li>
-  <li><strong>Agrees to test new features:</strong> ${formData.agreesToTestNewFeatures}</li>
 </ul>
     `.trim();
 
@@ -173,8 +147,7 @@ export async function POST(req: NextRequest) {
           user_id: userId,
           email: userEmail,
           submission_id: submissionId,
-          github_handle: formData.githubHandle,
-          bounty_link: formData.bountyLink,
+          full_name: formData.fullName,
           whatsapp: formData.whatsappNumber,
         },
       });
