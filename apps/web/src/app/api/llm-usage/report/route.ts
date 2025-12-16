@@ -92,6 +92,7 @@ export async function POST(request: Request) {
       model,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
+      source: 'desktop_report',
     });
 
     if (insertError) {
