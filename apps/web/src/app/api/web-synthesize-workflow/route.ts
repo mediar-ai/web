@@ -393,11 +393,12 @@ Note: This data comes from web-based screen capture and activity analysis.`;
           sessionStorage.set(`${debugSessionId}_timeout`, timeoutResults);
         },
         maxRetries: 3, // More retries for synthesis due to complexity
-        retryDelayMs: 2000 // 2 second initial delay
+        retryDelayMs: 2000, // 2 second initial delay
+        trackingSource: 'workflow_synthesis' as const
       };
-      
+
       const startTime = Date.now();
-      
+
       const result = await callVertexWithStructuredOutput(
         prompt,
         {},
@@ -489,7 +490,8 @@ Note: This data comes from web-based screen capture and activity analysis.`;
         modelName,
         WORKFLOW_SYNTHESIS_SCHEMA,
         "application/json",
-        true
+        true,
+        { trackingSource: 'workflow_synthesis' as const }
       );
 
       return NextResponse.json({
