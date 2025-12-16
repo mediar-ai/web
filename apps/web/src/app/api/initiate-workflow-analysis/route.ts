@@ -177,10 +177,13 @@ export async function POST(req: NextRequest) {
         // Step 1: Initial Workflow Identification with structured output
         controller.enqueue(toSSE({ status: 'Identifying initial workflows...', progress: 25 }));
         const initialIdentification = await callVertexWithStructuredOutput(
-          WORKFLOW_IDENTIFICATION_PROMPT, 
-          context, 
-          model, 
-          WORKFLOW_IDENTIFICATION_SCHEMA
+          WORKFLOW_IDENTIFICATION_PROMPT,
+          context,
+          model,
+          WORKFLOW_IDENTIFICATION_SCHEMA,
+          "application/json",
+          false,
+          { trackingSource: 'workflow_analysis' as const }
         );
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
@@ -188,10 +191,13 @@ export async function POST(req: NextRequest) {
         // Step 2: Initial Context Synthesis with structured output
         controller.enqueue(toSSE({ status: 'Synthesizing user context...', progress: 50 }));
         let workflowContext = await callVertexWithStructuredOutput(
-          PROMPT_SYNTHESIZE_CONTEXT, 
-          context, 
-          model, 
-          CONTEXT_SYNTHESIS_SCHEMA
+          PROMPT_SYNTHESIZE_CONTEXT,
+          context,
+          model,
+          CONTEXT_SYNTHESIS_SCHEMA,
+          "application/json",
+          false,
+          { trackingSource: 'workflow_analysis' as const }
         );
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
 
@@ -199,14 +205,17 @@ export async function POST(req: NextRequest) {
         controller.enqueue(toSSE({ status: 'Refining workflows with context (2 cycles)...', progress: 75 }));
         for (let i = 0; i < 2; i++) {
           const refinementResult = await callVertexWithStructuredOutput(
-            PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, 
+            PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
             {
               ...context,
-            workflow_context: workflowContext,
-            workflow_names: workflowNames,
-            }, 
-            model, 
-            WORKFLOW_REFINEMENT_SCHEMA
+              workflow_context: workflowContext,
+              workflow_names: workflowNames,
+            },
+            model,
+            WORKFLOW_REFINEMENT_SCHEMA,
+            "application/json",
+            false,
+            { trackingSource: 'workflow_analysis' as const }
           );
 
           // Update context with all fields from refinement
