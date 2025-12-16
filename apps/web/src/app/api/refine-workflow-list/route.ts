@@ -136,10 +136,13 @@ export async function POST(req: NextRequest) {
 
     // Use structured output for refinement
     const refinementResult = await callVertexWithStructuredOutput(
-      PROMPT_REFINE_WORKFLOWS_AND_CONTEXT, 
-      context, 
+      PROMPT_REFINE_WORKFLOWS_AND_CONTEXT,
+      context,
       model,
-      WORKFLOW_REFINEMENT_SCHEMA
+      WORKFLOW_REFINEMENT_SCHEMA,
+      "application/json",
+      false,
+      { trackingSource: 'workflow_analysis' as const }
     );
 
     const refined_workflow_names = refinementResult.refined_workflow_names;
