@@ -852,7 +852,7 @@ export async function POST(request: NextRequest) {
               total_versions: 1,
               // Default to primary Mediar organization for all workflows created from GitHub
               organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
-              created_by: 'louis@mediar.ai', // GitHub-synced workflows attributed to Louis
+              created_by: 'user_2yyhRNo8PGd4auOymFud4UTHInK', // Louis's Clerk ID - GitHub-synced workflows
             })
             .select()
             .single();
