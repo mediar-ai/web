@@ -13,7 +13,8 @@ export type LLMSource =
   | 'label_suggestion'
   | 'workflow_edit'
   | 'step_processing'
-  | 'parser_validation';
+  | 'parser_validation'
+  | 'desktop_report';
 
 interface TrackLLMUsageParams {
   userId?: string;  // Optional - defaults to 'system' for internal routes
