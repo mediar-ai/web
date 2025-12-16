@@ -24,64 +24,27 @@ interface FreeEligibilitySurveyModalProps {
 }
 
 interface FormData {
-  isOpenSourceContributor: 'Yes' | 'No' | '';
-  githubHandle: string;
-  isWorkingOnBounty: 'Yes' | 'No' | '';
-  bountyLink: string;
-  needsWorkflowsForOthers: 'Yes' | 'No' | '';
+  fullName: string;
   whatsappNumber: string;
   agreesToProvideFeedback: 'Yes' | 'No' | '';
   agreesToRaiseIssues: 'Yes' | 'No' | '';
-  agreesToReportMissingFeatures: 'Yes' | 'No' | '';
-  agreesToReportImprovements: 'Yes' | 'No' | '';
-  agreesToTestNewFeatures: 'Yes' | 'No' | '';
-  agreesToJoinWhatsAppChannel: 'Yes' | 'No' | '';
-  fullName: string;
 }
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 4;
 const STORAGE_KEY_FORM_DATA = 'freeEligibilityFormData';
 const STORAGE_KEY_CURRENT_STEP = 'freeEligibilityCurrentStep';
 const STORAGE_KEY_SUBMISSION_ID = 'freeEligibilitySubmissionId';
 
 // Validation patterns
-const GITHUB_PATTERN = /^(https?:\/\/)?(www\.)?github\.com\/[\w-]+\/?$/i;
-const URL_PATTERN = /^https?:\/\/.+\..+/i;
 const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 const QUESTIONS = [
   {
-    id: 'isOpenSourceContributor',
-    question: 'Are you an open source contributor?',
-    type: 'yesno' as const,
-    errorMessage: 'We offer free access only to open source contributors.',
-  },
-  {
-    id: 'githubHandle',
-    question: "What's your GitHub profile URL?",
+    id: 'fullName',
+    question: "What's your name?",
     type: 'text' as const,
-    placeholder: 'e.g., github.com/username',
-    errorMessage: 'Please provide your GitHub profile URL.',
-    validation: GITHUB_PATTERN,
-    validationError: 'Please enter a valid GitHub profile URL (e.g., github.com/username)',
-  },
-  {
-    id: 'isWorkingOnBounty',
-    question: 'Are you working on a bounty?',
-    type: 'yesno' as const,
-    hasTextField: true,
-    textFieldId: 'bountyLink',
-    textFieldPlaceholder: 'Link to the bounty (e.g., https://...)',
-    textFieldLabel: 'Bounty link',
-    textFieldValidation: URL_PATTERN,
-    textFieldValidationError: 'Please enter a valid URL (e.g., https://github.com/org/repo/issues/123)',
-    errorMessage: 'Free access is available for bounty work.',
-  },
-  {
-    id: 'needsWorkflowsForOthers',
-    question: 'Do you need to create workflows for others?',
-    type: 'yesno' as const,
-    errorMessage: 'Free access is for those building workflows for others.',
+    placeholder: 'e.g., John Smith',
+    errorMessage: 'Please provide your name.',
   },
   {
     id: 'whatsappNumber',
@@ -97,44 +60,13 @@ const QUESTIONS = [
     id: 'agreesToProvideFeedback',
     question: 'Do you agree to provide feedback about app usage?',
     type: 'yesno' as const,
-    errorMessage: 'Free access requires commitment to provide feedback.',
+    errorMessage: 'Free trial requires commitment to provide feedback.',
   },
   {
     id: 'agreesToRaiseIssues',
     question: 'Do you agree to proactively raise issues/bugs?',
     type: 'yesno' as const,
-    errorMessage: 'Free access requires commitment to report bugs.',
-  },
-  {
-    id: 'agreesToReportMissingFeatures',
-    question: 'Do you agree to tell us what things are missing in the app?',
-    type: 'yesno' as const,
-    errorMessage: 'Free access requires commitment to report missing features.',
-  },
-  {
-    id: 'agreesToReportImprovements',
-    question: 'Do you agree to tell us which things could be better in the app?',
-    type: 'yesno' as const,
-    errorMessage: 'Free access requires commitment to suggest improvements.',
-  },
-  {
-    id: 'agreesToTestNewFeatures',
-    question: 'Do you agree to test new features if asked?',
-    type: 'yesno' as const,
-    errorMessage: 'Free access requires commitment to test new features.',
-  },
-  {
-    id: 'agreesToJoinWhatsAppChannel',
-    question: 'Do you agree to be added to the Mediar WhatsApp feedback channel?',
-    type: 'yesno' as const,
-    errorMessage: 'Free access requires joining the WhatsApp feedback channel.',
-  },
-  {
-    id: 'fullName',
-    question: "What's your name?",
-    type: 'text' as const,
-    placeholder: 'e.g., John Smith',
-    errorMessage: 'Please provide your name.',
+    errorMessage: 'Free trial requires commitment to report bugs.',
   },
 ];
 
@@ -147,19 +79,10 @@ export function FreeEligibilitySurveyModal({
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
-    isOpenSourceContributor: '',
-    githubHandle: '',
-    isWorkingOnBounty: '',
-    bountyLink: '',
-    needsWorkflowsForOthers: '',
+    fullName: '',
     whatsappNumber: '',
     agreesToProvideFeedback: '',
     agreesToRaiseIssues: '',
-    agreesToReportMissingFeatures: '',
-    agreesToReportImprovements: '',
-    agreesToTestNewFeatures: '',
-    agreesToJoinWhatsAppChannel: '',
-    fullName: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -260,21 +183,6 @@ export function FreeEligibilitySurveyModal({
       if (value === 'No') {
         setError(currentQuestion.errorMessage);
         return false;
-      }
-      // If Yes and has text field, validate it
-      if (currentQuestion.hasTextField && currentQuestion.textFieldId) {
-        const textValue = updatedFormData[currentQuestion.textFieldId as keyof FormData];
-        if (!textValue || (typeof textValue === 'string' && !textValue.trim())) {
-          setError(`Please provide the ${currentQuestion.textFieldLabel?.toLowerCase() || 'details'}.`);
-          return false;
-        }
-        // Check pattern validation for text field if defined
-        if ('textFieldValidation' in currentQuestion && currentQuestion.textFieldValidation && typeof textValue === 'string') {
-          if (!currentQuestion.textFieldValidation.test(textValue.trim())) {
-            setError(currentQuestion.textFieldValidationError || 'Invalid format');
-            return false;
-          }
-        }
       }
     } else if (currentQuestion.type === 'text' || currentQuestion.type === 'phone') {
       const value = updatedFormData[currentQuestion.id as keyof FormData];
@@ -380,10 +288,10 @@ export function FreeEligibilitySurveyModal({
       <DialogContent className="sm:max-w-[500px] border-2 border-black">
         <DialogHeader>
           <DialogTitle className="font-mono font-bold text-xl">
-            FREE ACCESS ELIGIBILITY
+            FREE TRIAL
           </DialogTitle>
           <DialogDescription className="text-gray-600">
-            Answer a few questions to check if you qualify for free access.
+            Answer a few quick questions to get started.
           </DialogDescription>
         </DialogHeader>
 
@@ -429,31 +337,6 @@ export function FreeEligibilitySurveyModal({
                   </Label>
                 </div>
               </RadioGroup>
-
-              {/* Conditional text field for bounty link */}
-              {currentQuestion.hasTextField &&
-                formData[currentQuestion.id as keyof FormData] === 'Yes' && (
-                  <div className="mt-4">
-                    <Label
-                      htmlFor={currentQuestion.textFieldId}
-                      className="text-sm font-mono text-gray-600 mb-2 block"
-                    >
-                      {currentQuestion.textFieldLabel}
-                    </Label>
-                    <Input
-                      id={currentQuestion.textFieldId}
-                      name={currentQuestion.textFieldId}
-                      value={
-                        (formData[
-                          currentQuestion.textFieldId as keyof FormData
-                        ] as string) || ''
-                      }
-                      onChange={handleInputChange}
-                      placeholder={currentQuestion.textFieldPlaceholder}
-                      className="border-2 border-black font-mono"
-                    />
-                  </div>
-                )}
             </div>
           ) : (
             <div>
