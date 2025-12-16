@@ -387,7 +387,8 @@ Note: Each event contains embedded labels where available.`;
           sessionStorage.set(`${debugSessionId}_timeout`, timeoutResults);
         },
         maxRetries: 3, // More retries for synthesis due to complexity
-        retryDelayMs: 2000 // 2 second initial delay
+        retryDelayMs: 2000, // 2 second initial delay
+        trackingSource: 'workflow_synthesis' as const
       };
       
       const startTime = Date.now();
