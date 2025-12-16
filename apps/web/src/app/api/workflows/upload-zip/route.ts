@@ -420,7 +420,7 @@ export async function POST(request: NextRequest) {
         cron_expression: extractCronConfigFromYAML(workflowContent)?.expression || null,
         cron_timezone: extractCronConfigFromYAML(workflowContent)?.timezone || 'UTC',
         cron_enabled: extractCronConfigFromYAML(workflowContent)?.enabled || false,
-        created_by: authenticatedUserId || userEmail || null, // Store userId first for consistent ownership checks
+        created_by: authenticatedUserId || null, // Store Clerk user ID for ownership checks
         organization_id: orgId || null,   // Set the organization
         total_versions: 1,
       };
