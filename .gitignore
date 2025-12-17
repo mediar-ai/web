@@ -27,6 +27,7 @@ node_modules
 .DS_Store
 *.pem
 .history/
+nul
 
 # debug
 npm-debug.log*
