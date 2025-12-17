@@ -258,9 +258,10 @@ export async function GET(request: NextRequest) {
         )
         .in('id', workflowIds);
 
-      // Lookup user emails for author display
+      // Lookup user emails and names for author display
       // created_by can be either a user_id (e.g., user_2yyb...) or email (for legacy/deleted users)
       const userIdToEmail: Record<string, string> = {};
+      const userIdToName: Record<string, string> = {};
       if (!cronError && cronWorkflows) {
         const userIds = cronWorkflows
           .map(cw => cw.created_by)
@@ -269,12 +270,13 @@ export async function GET(request: NextRequest) {
         if (userIds.length > 0) {
           const { data: users } = await supabase
             .from('mediar_users')
-            .select('user_id, email')
+            .select('user_id, email, name')
             .in('user_id', [...new Set(userIds)]);
 
           if (users) {
             users.forEach(u => {
               if (u.email) userIdToEmail[u.user_id] = u.email;
+              if (u.name) userIdToName[u.user_id] = u.name;
             });
           }
         }
@@ -295,13 +297,13 @@ export async function GET(request: NextRequest) {
               cw.cron_enabled
             );
           }
-          // Resolve author email: if created_by is a user_id, look up email
-          const authorEmail = cw.created_by?.startsWith('user_')
-            ? userIdToEmail[cw.created_by] || 'Deleted User'
+          // Resolve author display: prefer email, fallback to name, then 'Unknown User'
+          const authorDisplay = cw.created_by?.startsWith('user_')
+            ? userIdToEmail[cw.created_by] || userIdToName[cw.created_by] || 'Unknown User'
             : cw.created_by;
           cronData[cw.id] = {
             organization_id: cw.organization_id,
-            created_by: authorEmail, // Store resolved email for display
+            created_by: authorDisplay, // Store resolved author for display
             estimated_duration_seconds: cw.estimated_duration_seconds,
             cron_expression: cw.cron_expression,
             cron_timezone: cw.cron_timezone,
