@@ -61,11 +61,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Verify ownership - normalize DB org ID to handle dev/prod Clerk ID mismatch
-    const { mapClerkIdToDbId } = await import('@/lib/orgIdMapping');
-    const normalizedDbOrgId = mapClerkIdToDbId(workflow.organization_id);
-    if (normalizedDbOrgId !== effectiveOrgId) {
-      console.log(`[sync-status] Access denied: effectiveOrgId=${effectiveOrgId}, dbOrgId=${workflow.organization_id}, normalized=${normalizedDbOrgId}`);
+    // Verify ownership
+    if (workflow.organization_id !== effectiveOrgId) {
       return NextResponse.json(
         { error: 'Not authorized' },
         { status: 403 }
