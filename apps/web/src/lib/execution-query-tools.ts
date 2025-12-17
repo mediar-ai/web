@@ -7,7 +7,7 @@ export interface StepExecution {
   index: number;
   tool_name: string;
   step_id?: string;
-  status: 'success' | 'failed' | 'skipped';
+  status: 'executed_without_error' | 'execution_error' | 'skipped';
   duration_ms?: number;
   logs?: string[];
   server_logs?: any[];
@@ -203,7 +203,7 @@ export function listSteps(data: any): StepSummary[] {
     status: r.status || 'unknown',
     duration_ms: r.duration_ms || 0,
     hasLogs: !!(r.logs && r.logs.length > 0),
-    hasError: r.status === 'failed' || !!r.error,
+    hasError: r.status === 'execution_error' || !!r.error,
     logCount: (r.logs?.length || 0) + (r.server_logs?.length || 0)
   }));
 }
@@ -219,7 +219,7 @@ export function getErrors(data: any, limit: number = 50): ErrorDetail[] {
   for (const result of data.results) {
     if (errors.length >= limit) break;
 
-    if (result.status === 'failed' || result.error) {
+    if (result.status === 'execution_error' || result.error) {
       errors.push({
         stepIndex: result.index || 0,
         stepName: result.tool_name || result.step_id || 'unknown',
