@@ -29,21 +29,19 @@ const getReverseOrgIdMapping = () => {
 };
 
 /**
- * Converts Clerk dev org ID to database production org ID
- * Only applies mapping in development environment
+ * Converts Clerk dev org ID to database production org ID.
+ * Always applies mapping to ensure consistent org IDs in database.
+ * This normalizes at write time so DB always has canonical (prod) org IDs.
  */
 export function mapClerkIdToDbId(clerkOrgId: string): string {
-  // Only map in development environment
-  if (process.env.NODE_ENV === 'development') {
-    const mapping = getOrgIdMapping();
-    const mappedId = mapping[clerkOrgId];
-    
-    if (mappedId) {
-      console.log(`[orgIdMapping] Mapping Clerk ID ${clerkOrgId} -> DB ID ${mappedId}`);
-      return mappedId;
-    }
+  const mapping = getOrgIdMapping();
+  const mappedId = mapping[clerkOrgId];
+
+  if (mappedId) {
+    console.log(`[orgIdMapping] Mapping Clerk ID ${clerkOrgId} -> DB ID ${mappedId}`);
+    return mappedId;
   }
-  
+
   return clerkOrgId;
 }
 
