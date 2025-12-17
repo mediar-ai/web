@@ -13,6 +13,7 @@ interface LLMUsageReport {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
 }
 
 /**
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
 
     // Parse request body
     const body: LLMUsageReport = await request.json();
-    const { userId, orgId, model, inputTokens, outputTokens } = body;
+    const { userId, orgId, model, inputTokens, outputTokens, cachedTokens } = body;
 
     // Validate required fields
     if (!userId || !orgId || !model) {
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       model,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
+      cached_tokens: cachedTokens || 0,
       source: 'desktop_report',
     });
 

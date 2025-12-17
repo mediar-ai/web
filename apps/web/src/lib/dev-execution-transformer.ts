@@ -33,7 +33,7 @@ export interface ProductionStepExecution {
   index: number;
   tool_name: string;
   step_id?: string;
-  status: 'success' | 'failed' | 'skipped';
+  status: 'executed_without_error' | 'execution_error' | 'skipped';
   duration_ms?: number;
   logs?: string[];
   server_logs?: any[];
@@ -62,9 +62,9 @@ export function transformDesktopToProduction(
     const index = parseInt(indexStr);
 
     // Determine status
-    let status: 'success' | 'failed' | 'skipped' = 'success';
+    let status: 'executed_without_error' | 'execution_error' | 'skipped' = 'executed_without_error';
     if (stepLog.error || stepLog.result?.error || stepLog.result?.success === false) {
-      status = 'failed';
+      status = 'execution_error';
     }
 
     // Calculate duration

@@ -111,7 +111,7 @@ function getParserMessage(formattedResult: any, execution: Execution): string {
   const isFailed =
     execution.status === 'error' ||
     execution.status === 'failed' ||
-    formattedResult?.status === 'failed' ||
+    formattedResult?.status === 'execution_error' ||
     formattedResult?.error != null;
   if (isFailed && execution.error_message) {
     return execution.error_message;
@@ -212,10 +212,10 @@ function getExecutionStatus(
 
   // Priority 1: New format - check status field directly (from rust-executor)
   // This is the authoritative source for workflow-level success/failure
-  if (formattedResult?.status === 'failed') {
+  if (formattedResult?.status === 'execution_error') {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }
-  if (formattedResult?.status === 'success') {
+  if (formattedResult?.status === 'executed_without_error') {
     return { badge: 'COMPLETED', badgeColor: 'bg-white border-2 border-black' };
   }
   if (formattedResult?.status === 'cancelled') {
