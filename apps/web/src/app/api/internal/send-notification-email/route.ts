@@ -204,7 +204,7 @@ function getExecutionStatus(alert: any, formattedResult: any): { badge: string; 
   }
 
   // Check parser-determined status
-  if (formattedResult?.meta_type === 'failed' || formattedResult?.status === 'failed') {
+  if (formattedResult?.meta_type === 'failed' || formattedResult?.status === 'execution_error') {
     return { badge: 'FAILED', badgeColor: 'bg-black text-white font-bold' };
   }
 
