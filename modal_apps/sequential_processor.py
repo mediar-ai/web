@@ -16,7 +16,7 @@ import threading
 import atexit
 
 app = modal.App("sequential-workflow-processor")
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
+app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests", "cbor2")
 
 # --- FEATURE FLAGS ---
 # WARNING: Disabling screenshots will significantly reduce context quality for the LLM.
