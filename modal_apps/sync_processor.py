@@ -7,6 +7,11 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+# --- PROCESSING CUTOFF ---
+# Only process events created on or after this date (ISO format)
+PROCESSING_CUTOFF_DATE = '2025-12-17'
+# --- END PROCESSING CUTOFF ---
+
 # Create Modal app
 app = modal.App("sync-processor")
 
@@ -166,11 +171,12 @@ async def backup_sync_and_metadata_processor():
         conn = get_database_connection()
         cursor = conn.cursor()
         
-        # Get unprocessed events (back to 25)
-        cursor.execute("""
-            SELECT id, payload 
-            FROM low_level_events 
+        # Get unprocessed events (back to 25) - only from cutoff date
+        cursor.execute(f"""
+            SELECT id, payload
+            FROM low_level_events
             WHERE id NOT IN (SELECT event_id FROM low_level_events_metadata)
+              AND created_at >= '{PROCESSING_CUTOFF_DATE}'
             LIMIT 25
         """)
         
