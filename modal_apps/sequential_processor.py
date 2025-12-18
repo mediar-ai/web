@@ -24,6 +24,12 @@ app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests",
 INCLUDE_SCREENSHOTS_IN_CONTEXT = False
 # --- END FEATURE FLAGS ---
 
+# --- PROCESSING CUTOFF ---
+# Only process events created on or after this date (ISO format)
+# Events before this date will be left unprocessed
+PROCESSING_CUTOFF_DATE = '2025-12-17'
+# --- END PROCESSING CUTOFF ---
+
 # --- CANCELLATION PREVENTION NOTES ---
 # Modal cancellation requests occur when:
 # 1. Scheduled functions overlap due to long-running processors (2hr timeout) vs short schedule (15min)
@@ -344,22 +350,23 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
         print(f"🔍 DEBUG: User {user_id} has {locked_events} locked events")
         
         # ENHANCED DEBUG: The main query with detailed logging
-        query = """
+        query = f"""
             SELECT id, user_id, session_id, created_at, payload
             FROM low_level_events_enriched
             WHERE user_id = %s
               AND event_type = 'ui_tree'
+              AND created_at >= '{PROCESSING_CUTOFF_DATE}'
               AND id NOT IN (
-                  SELECT event_id FROM processing_locks 
+                  SELECT event_id FROM processing_locks
                   WHERE user_id = %s AND (
-                      status = 'in_progress' OR 
+                      status = 'in_progress' OR
                       (status = 'completed' AND expires_at > NOW())
                   )
               )
               AND id NOT IN (
-                  SELECT DISTINCT source_ui_tree_event_id 
-                  FROM low_level_workflow_analyses 
-                  WHERE user_id = %s 
+                  SELECT DISTINCT source_ui_tree_event_id
+                  FROM low_level_workflow_analyses
+                  WHERE user_id = %s
                   AND source_ui_tree_event_id IS NOT NULL
               )
               AND NOT EXISTS (
@@ -409,15 +416,16 @@ def get_next_unprocessed_event_with_lock(cur, conn, user_id, processor_id):
 
 def get_next_unprocessed_event(cur, user_id):
     """Get the next unprocessed UI tree event for a user"""
-    cur.execute("""
+    cur.execute(f"""
         SELECT id, user_id, session_id, created_at, payload
         FROM low_level_events_enriched
         WHERE user_id = %s
           AND event_type = 'ui_tree'
+          AND created_at >= '{PROCESSING_CUTOFF_DATE}'
           AND id NOT IN (
-              SELECT DISTINCT source_ui_tree_event_id 
-              FROM low_level_workflow_analyses 
-              WHERE user_id = %s 
+              SELECT DISTINCT source_ui_tree_event_id
+              FROM low_level_workflow_analyses
+              WHERE user_id = %s
               AND source_ui_tree_event_id IS NOT NULL
           )
           AND NOT EXISTS (
@@ -1031,11 +1039,12 @@ def build_fresh_context(cur, user_id, current_event):
 
 def has_more_unprocessed_events(cur, user_id):
     """Check if user has more unprocessed events"""
-    cur.execute("""
+    cur.execute(f"""
         SELECT COUNT(*)
         FROM low_level_events_enriched
         WHERE user_id = %s
           AND event_type = 'ui_tree'
+          AND created_at >= '{PROCESSING_CUTOFF_DATE}'
           AND NOT EXISTS (
               SELECT 1 FROM low_level_workflow_analyses llwa
               WHERE llwa.user_id = low_level_events_enriched.user_id
@@ -1668,14 +1677,15 @@ def trigger_full_parallel_processing():
             print(f"🔧 Total simple cleanup: {total_cleaned} locks removed")
         
         # Find ALL users with unprocessed events using a more robust count comparison
-        cur.execute("""
+        cur.execute(f"""
             WITH user_events AS (
-                -- Count all UI tree events for each user
+                -- Count all UI tree events for each user (only from cutoff date)
                 SELECT
                     user_id,
                     COUNT(id) AS total_events
                 FROM low_level_events_enriched
                 WHERE event_type = 'ui_tree'
+                  AND created_at >= '{PROCESSING_CUTOFF_DATE}'
                 GROUP BY user_id
             ),
             user_analyses AS (
@@ -1825,12 +1835,13 @@ def get_processing_status():
             }
         
         # Get unprocessed events count (using fast enriched view and same logic as coordinator)
-        cur.execute("""
+        cur.execute(f"""
             SELECT COUNT(DISTINCT user_id) as users_with_unprocessed
             FROM low_level_events_enriched e
             WHERE event_type = 'ui_tree'
+              AND created_at >= '{PROCESSING_CUTOFF_DATE}'
               AND NOT EXISTS (
-                  SELECT 1 FROM low_level_workflow_analyses llwa 
+                  SELECT 1 FROM low_level_workflow_analyses llwa
                   WHERE llwa.user_id = e.user_id
                     AND llwa.client_timestamp = e.created_at
               )
