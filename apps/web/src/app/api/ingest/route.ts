@@ -3,6 +3,11 @@ import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 
+// Route segment config for large payloads (UI trees can exceed 10MB)
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -32,6 +37,10 @@ function createUITreeHash(uiTree: string, clientTimestamp: string, userId: strin
 
 export async function POST(request: NextRequest) {
   try {
+    // Log request size for debugging large payloads
+    const contentLength = request.headers.get('content-length');
+    console.log(`[INGEST] Request received - Content-Length: ${contentLength || 'unknown'} bytes`);
+
     // Extract and validate Authorization header
     const authHeader = request.headers.get('authorization');
 
