@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // No duplicates found, proceed with normal insert
     // Handle Clerk user IDs vs UUID user IDs
-    let userIdForDB = null;
+    let userIdForDB: string | null = null;
     let payloadToStore = body;
 
     if (user_id) {
@@ -152,10 +152,11 @@ export async function POST(request: NextRequest) {
       if (uuidRegex.test(user_id)) {
         // It's a valid UUID, use it directly
         userIdForDB = user_id;
+        console.log(`[INGEST] UUID user_id detected: ${user_id}`);
       } else {
         // It's a Clerk user ID or other format
         // Store the Clerk ID in the payload and use NULL for the UUID column
-        console.log(`[INGEST] Non-UUID user_id detected (${user_id}), storing in payload.clerk_user_id`);
+        console.log(`[INGEST] Non-UUID user_id detected (${user_id}), storing in payload.clerk_user_id, userIdForDB will be null`);
         userIdForDB = null;
 
         // Ensure the Clerk user_id is preserved in the payload
@@ -166,15 +167,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Debug log to verify actual value being inserted
+    console.log(`[INGEST] Inserting event with user_id=${userIdForDB === null ? 'NULL' : userIdForDB}, session_id=${session_id}`);
+
+    // Build insert object - only include user_id if it's a valid UUID
+    const insertData: {
+      session_id: string;
+      user_id?: string;
+      payload: typeof payloadToStore;
+      source: string;
+    } = {
+      session_id,
+      payload: payloadToStore,
+      source: 'windows_app'
+    };
+
+    // Only add user_id if it's not null (valid UUID)
+    if (userIdForDB !== null) {
+      insertData.user_id = userIdForDB;
+    }
+
     const { error } = await supabaseAdmin
       .from('low_level_events')
-      .insert({
-        session_id,
-        user_id: userIdForDB,  // Use the processed user_id (UUID or NULL)
-        payload: payloadToStore,  // Store entire request body including clerk_user_id if needed
-        source: 'windows_app'
-        // created_at will default to now() for proper server-time based queries
-      });
+      .insert(insertData);
 
     if (error) {
       console.error('[INGEST] Error saving raw event:', error);
