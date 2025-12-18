@@ -205,5 +205,6 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Exclude /api/ingest from middleware - it handles large payloads (>10MB) and has its own auth
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/ingest).*)'],
 };

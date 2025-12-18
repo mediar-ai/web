@@ -102,6 +102,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
   
   const viewClearedRef = useRef(false);
   const storageRef = useRef(getRawEventsStorage(use(params).userId));
+  const displayEventsRef = useRef<LowLevelEvent[]>([]); // Ref to avoid callback dependency cycles
   const { userId } = use(params);
 
   // Configuration constants
@@ -269,10 +270,11 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
     }
   }, [userId, timeBoundary, selectedEventType, sortOrder]);
 
-  // Update memory usage when display events change
+  // Update memory usage and ref when display events change
   useEffect(() => {
     const usage = estimateMemoryUsage(displayEvents);
     setMemoryUsage(usage);
+    displayEventsRef.current = displayEvents; // Keep ref in sync
   }, [displayEvents]);
 
   useEffect(() => {
@@ -426,7 +428,8 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
       if (isPollingUpdate) {
         // NOTE: Smart polling now handles this directly, so we don't need the old refresh logic
         // The expensive loadEventsForDisplay() call has been replaced with direct array updates
-        const existingEventIds = new Set(displayEvents.map((e: LowLevelEvent) => e.id));
+        // Use ref to avoid callback dependency on displayEvents (prevents re-render cycles)
+        const existingEventIds = new Set(displayEventsRef.current.map((e: LowLevelEvent) => e.id));
         const newEvents = sortedEvents.filter((e: LowLevelEvent) => !existingEventIds.has(e.id));
         
         if (newEvents.length > 0) {
@@ -468,7 +471,7 @@ export default function RawLowLevelEventsPage({ params }: { params: Promise<{ us
         setLoadingMore(false);
       }
     }
-  }, [userId, sortOrder, selectedEventType, displayEvents, currentDisplayLimit, loadEventsForDisplay, addNewEventsToUI]);
+  }, [userId, sortOrder, selectedEventType, currentDisplayLimit, loadEventsForDisplay, addNewEventsToUI]);
 
   // Auto-load more data progressively
   const autoLoadMore = useCallback(async (currentCount: number) => {

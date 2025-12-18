@@ -8,7 +8,7 @@ import uuid
 import time
 
 app = modal.App("labeling-data-processor")
-app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests")
+app.image = modal.Image.debian_slim().pip_install("psycopg2-binary", "requests", "cbor2")
 
 # --- CANCELLATION PREVENTION NOTES ---
 # Modal cancellation requests can occur when:
