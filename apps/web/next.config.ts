@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ['@mastra/*'],
   experimental: {
+    serverActions: {
+      bodySizeLimit: '100mb',
+    },
     optimizePackageImports: [
       'lucide-react',
       '@radix-ui/react-accordion',
