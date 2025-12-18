@@ -43,28 +43,14 @@ export async function GET(
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
   }
 
-  // Check if userId is a Clerk ID (starts with "user_") vs UUID
-  const isClerkUserId = userId.startsWith('user_');
-  console.log(`[API/low-level] Query for userId: ${userId}, isClerkId: ${isClerkUserId}`);
+  console.log(`[API/low-level] Query for userId: ${userId}`);
 
   try {
-    // Build query with optional session filter and pagination
-    // For Clerk IDs, we need to query by payload->>'clerk_user_id' since user_id column is null
-    // For UUIDs, we query by user_id column directly
-    let query;
-    if (isClerkUserId) {
-      // Query base table with JSONB filter for Clerk user IDs
-      query = supabaseAdmin
-        .from('low_level_events')
-        .select('*')
-        .filter('payload->>clerk_user_id', 'eq', userId);
-    } else {
-      // Query enriched view for UUID user IDs
-      query = supabaseAdmin
-        .from('low_level_events_enriched')
-        .select('*')
-        .eq('user_id', userId);
-    }
+    // user_id is now TEXT and stores Clerk IDs directly - query by user_id column
+    let query = supabaseAdmin
+      .from('low_level_events_enriched')
+      .select('*')
+      .eq('user_id', userId);
 
     // Add session filter if provided
     if (sessionId) {
@@ -124,16 +110,16 @@ export async function GET(
     let sessionCountData = 0;
     if (!sessionId) {
       const { data: countData, error: countError } = await supabaseAdmin
-          .rpc('count_distinct_sessions', { p_user_id: userId });
+        .rpc('count_distinct_sessions', { p_user_id: userId });
 
       if (countError) {
-          console.error('[API/low-level] Error counting sessions:', countError);
-          throw countError;
+        console.error('[API/low-level] Error counting sessions:', countError);
+        throw countError;
       }
       sessionCountData = countData || 0;
     }
 
-    // --- New: Get the total event count for the user ---
+    // Get the total event count for the user from session_metadata
     const { data: totalCountData, error: totalCountError } = await supabaseAdmin
       .from('session_metadata')
       .select('event_count')
@@ -143,10 +129,9 @@ export async function GET(
       console.error('[API/low-level] Error fetching total event count:', totalCountError);
       throw totalCountError;
     }
-    
     const totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
 
-    // --- New: Get the total number of UI tree events (steps) ---
+    // Get the total number of UI tree events (steps)
     const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
       .from('low_level_events_enriched')
       .select('*', { count: 'exact', head: true })
@@ -161,7 +146,7 @@ export async function GET(
     return NextResponse.json({
         events: allFetchedEvents,
         totalEventCount,
-        totalStepsCount,
+        totalStepsCount: totalStepsCount || 0,
         sessionCount: sessionCountData,
         hasMore: hasMoreData,
         offset: offset,

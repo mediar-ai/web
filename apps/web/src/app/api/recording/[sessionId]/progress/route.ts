@@ -69,18 +69,30 @@ export async function GET(
     }
 
     // Get accurate counts using RPC functions (same logic as workflow-status)
-    const { data: pendingCount, error: pendingError } = await supabaseAdmin
-      .rpc('count_unprocessed_events_by_timestamp', { p_user_id: session.user_id });
+    // Skip if user_id is null (legacy sessions before Clerk ID migration)
+    let pendingCount = 0;
+    let processedCount = 0;
 
-    if (pendingError) {
-      console.warn('[recording/progress] Error fetching pending count:', pendingError);
-    }
+    if (session.user_id) {
+      const { data: pending, error: pendingError } = await supabaseAdmin
+        .rpc('count_unprocessed_events_by_timestamp', { p_user_id: session.user_id });
 
-    const { data: processedCount, error: processedError } = await supabaseAdmin
-      .rpc('count_processed_events_by_timestamp', { p_user_id: session.user_id });
+      if (pendingError) {
+        console.warn('[recording/progress] Error fetching pending count:', pendingError);
+      } else {
+        pendingCount = pending || 0;
+      }
 
-    if (processedError) {
-      console.warn('[recording/progress] Error fetching processed count:', processedError);
+      const { data: processed, error: processedError } = await supabaseAdmin
+        .rpc('count_processed_events_by_timestamp', { p_user_id: session.user_id });
+
+      if (processedError) {
+        console.warn('[recording/progress] Error fetching processed count:', processedError);
+      } else {
+        processedCount = processed || 0;
+      }
+    } else {
+      console.log('[recording/progress] Skipping RPC calls - session has no user_id (legacy session)');
     }
 
     const totalUiTrees = (pendingCount || 0) + (processedCount || 0);
