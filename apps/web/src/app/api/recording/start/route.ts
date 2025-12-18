@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
     console.log(`[recording/start] Starting recording for user ${userId}, session ${sessionId}`);
 
     // 1. Create/update session_metadata record
+    console.log('[recording/start] Upserting session_metadata...');
     const { error: upsertError } = await supabaseAdmin
       .from('session_metadata')
       .upsert({
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
         processed_event_count: 0,
         stopped: false,
         first_event_timestamp: new Date().toISOString(),
+        session_type: 'low-level',
       }, {
         onConflict: 'session_id'
       });
