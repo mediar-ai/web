@@ -25,22 +25,23 @@ For any modification:
 **Use this pattern for ALL queries to avoid bash escaping issues:**
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 # Your query here
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name&limit=5" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
-**Environment variables (loaded from `.env.development`):**
+**Environment variables (loaded from `.env.local`):**
 - `SUPABASE_URL` - API base URL
-- `SUPABASE_SERVICE_KEY` - Service role key (bypasses RLS)
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (bypasses RLS)
 
 ---
 
@@ -165,12 +166,38 @@ bash /tmp/query_supabase.sh
 - `avg_execution_time_seconds` (number)
 - `created_at`, `updated_at`, `created_by` (timestamp/text)
 
-**✅ `users`** - User accounts
-- `id` (number) - Primary key
+**✅ `users`** - User accounts (legacy, may not have all users)
+- `id` (uuid) - Primary key
 - `clerk_id` (text) - Clerk user ID
 - `email` (text) - User email
-- `credits` (number) - Available credits
+- `credits` (number) - Legacy credits column (use `user_credits` table instead)
 - `stripe_connected` (boolean) - Stripe integration status
+- `created_at` (timestamp)
+
+**✅ `mediar_users`** - Clerk user mapping (USE THIS to find users by email)
+- `user_id` (text) - Clerk user ID (e.g., "user_REDACTED")
+- `name` (text) - User display name
+- `email` (text) - User email
+- `organization_id` (text) - Clerk organization ID
+- `created_at` (timestamp)
+
+**✅ `user_credits`** - User credit balances (NEW credit system)
+- `id` (uuid) - Primary key
+- `user_id` (text) - Clerk user ID (NOT email!)
+- `balance` (integer) - Current credit balance
+- `lifetime_earned` (integer) - Total credits ever earned
+- `lifetime_spent` (integer) - Total credits ever spent
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+**✅ `credit_transactions`** - Credit audit trail
+- `id` (uuid) - Primary key
+- `user_id` (text) - Clerk user ID
+- `amount` (integer) - +positive for credits, -negative for debits
+- `type` (text) - 'purchase', 'vm_launch', 'vm_usage', 'refund', 'bonus', 'onboarding', 'manual'
+- `description` (text) - Human-readable description
+- `reference_id` (text) - Stripe session ID, machine ID, etc.
+- `balance_after` (integer) - Balance after transaction
 - `created_at` (timestamp)
 
 **❌ `workflows`** - DOES NOT EXIST (use `deployed_workflows` instead)
@@ -186,190 +213,312 @@ bash /tmp/query_supabase.sh
 ### 1. List All Workflows
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder,status,total_executions&order=created_at.desc&limit=20" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.total_executions) runs (\(.status))"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 2. Get Workflow by ID
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 WORKFLOW_ID=239  # Replace with actual ID
 
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=*&id=eq.${WORKFLOW_ID}" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[0]'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 3. Search Workflows by Name
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 SEARCH_TERM="onedrive"  # Replace with search term
 
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder&name=ilike.*${SEARCH_TERM}*" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 4. Recent Executions
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,status,started_at,completed_at,executor_type&order=started_at.desc&limit=10" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.status) | Workflow \(.workflow_id) | \(.executor_type) | \(.started_at)"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 5. Failed Executions with Errors
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,error_message,started_at&status=eq.failed&order=started_at.desc&limit=5" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | {id, workflow_id, error: .error_message}'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 6. List All Remote Machines
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/remote_machines?select=id,name,mcp_endpoint,status,health_status,machine_type,total_executions&order=name" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.status)/\(.health_status) - \(.total_executions) runs"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 7. Get Machine by ID or Name
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 MACHINE_ID=18  # Replace with ID or use name filter
 
 curl -s "${SUPABASE_URL}/rest/v1/remote_machines?select=*&id=eq.${MACHINE_ID}" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[0]'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 8. Running Executions
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=id,workflow_id,progress_percentage,current_step_index,total_steps,assigned_machine_id&status=eq.running&order=started_at.desc" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | "[\(.id)] \(.progress_percentage)% - Step \(.current_step_index)/\(.total_steps) - Machine #\(.assigned_machine_id)"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 9. Execution Status Summary
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/workflow_executions?select=status" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq 'group_by(.status) | map({status: .[0].status, count: length})'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 10. Get Table Schema (Columns)
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 TABLE_NAME="workflow_executions"  # Replace: deployed_workflows, remote_machines, users
 
 curl -s "${SUPABASE_URL}/rest/v1/${TABLE_NAME}?select=*&limit=1" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r 'if length > 0 then .[0] | keys | sort | join(", ") else "Table empty or not found" end'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 11. Scheduled Workflows (Cron-Enabled)
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,cron_expression,cron_timezone,next_scheduled_execution&cron_enabled=eq.true&order=next_scheduled_execution" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - \(.cron_expression) (\(.cron_timezone)) - Next: \(.next_scheduled_execution)"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
 
 ### 12. TypeScript Workflows
 
 ```bash
-cat > /tmp/query_supabase.sh << 'EOF'
+cat > /tmp/query_supabase.sh << 'SCRIPT'
 #!/bin/bash
-SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.development | cut -d '=' -f2 | tr -d '"')
-SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_KEY=" .env.development | cut -d '=' -f2 | tr -d '"')
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
 
 curl -s "${SUPABASE_URL}/rest/v1/deployed_workflows?select=id,name,github_folder,requires_files&preferred_format=eq.typescript&order=name" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" | jq -r '.[] | "[\(.id)] \(.name) - Files: \(.requires_files)"'
-EOF
+SCRIPT
 bash /tmp/query_supabase.sh
 ```
+
+---
+
+## Credit System Queries
+
+### 13. Find User by Email (to get Clerk ID)
+
+```bash
+cat > /tmp/query_supabase.sh << 'SCRIPT'
+#!/bin/bash
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
+
+EMAIL="user@example.com"  # Replace with email to search
+
+curl -s "${SUPABASE_URL}/rest/v1/mediar_users?select=*&email=ilike.*${EMAIL}*" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
+SCRIPT
+bash /tmp/query_supabase.sh
+```
+
+### 14. Check User Credits
+
+```bash
+cat > /tmp/query_supabase.sh << 'SCRIPT'
+#!/bin/bash
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
+
+USER_ID="user_xxxxx"  # Replace with Clerk user ID
+
+curl -s "${SUPABASE_URL}/rest/v1/user_credits?select=*&user_id=eq.${USER_ID}" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.'
+SCRIPT
+bash /tmp/query_supabase.sh
+```
+
+### 15. Add Credits to User (uses RPC function)
+
+```bash
+cat > /tmp/query_supabase.sh << 'SCRIPT'
+#!/bin/bash
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
+
+USER_ID="user_xxxxx"  # Replace with Clerk user ID
+AMOUNT=100            # Credits to add
+
+curl -s "${SUPABASE_URL}/rest/v1/rpc/add_credits" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"p_user_id\": \"${USER_ID}\",
+    \"p_amount\": ${AMOUNT},
+    \"p_type\": \"manual\",
+    \"p_description\": \"Manual top-up by admin\"
+  }" | jq '.'
+SCRIPT
+bash /tmp/query_supabase.sh
+```
+
+### 16. View Credit Transactions for User
+
+```bash
+cat > /tmp/query_supabase.sh << 'SCRIPT'
+#!/bin/bash
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
+
+USER_ID="user_xxxxx"  # Replace with Clerk user ID
+
+curl -s "${SUPABASE_URL}/rest/v1/credit_transactions?select=*&user_id=eq.${USER_ID}&order=created_at.desc&limit=20" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | {type, amount, description, balance_after, created_at}'
+SCRIPT
+bash /tmp/query_supabase.sh
+```
+
+### 17. List All Users with Credits
+
+```bash
+cat > /tmp/query_supabase.sh << 'SCRIPT'
+#!/bin/bash
+cd /c/Users/louis030195/Documents/mediar-web-app
+SUPABASE_URL=$(grep "^SUPABASE_URL=" .env.local | cut -d '=' -f2 | tr -d '"')
+SUPABASE_KEY=$(grep "^SUPABASE_SERVICE_ROLE_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d '\n' | tr -d '\\')
+
+curl -s "${SUPABASE_URL}/rest/v1/user_credits?select=*&order=balance.desc" \
+  -H "apikey: ${SUPABASE_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_KEY}" | jq '.[] | {user_id, balance, lifetime_earned, lifetime_spent}'
+SCRIPT
+bash /tmp/query_supabase.sh
+```
+
+---
+
+## RPC Functions
+
+The credit system uses these PostgreSQL functions:
+
+- **`add_credits(p_user_id, p_amount, p_type, p_description, p_reference_id)`** - Add credits (creates user record if doesn't exist)
+- **`deduct_credits(p_user_id, p_amount, p_type, p_description, p_reference_id)`** - Deduct credits with validation
+- **`get_user_credits(p_user_id)`** - Get current balance
 
 ---
 
@@ -430,10 +579,14 @@ bash /tmp/query_supabase.sh
 
 ## Important Notes
 
-1. **Correct table names:** `deployed_workflows`, `workflow_executions`, `remote_machines`, `users`
+1. **Correct table names:** `deployed_workflows`, `workflow_executions`, `remote_machines`, `mediar_users`, `user_credits`, `credit_transactions`
 2. **Always use script pattern:** Avoids bash escaping issues
 3. **No organizations table:** Use `organization_id` in workflows (Clerk IDs)
 4. **No workflow_versions table:** Version tracking is embedded in `deployed_workflows`
 5. **Service key:** Bypasses Row Level Security (RLS)
 6. **JSON columns:** Use `jq` for parsing
 7. **Large results:** Always use `limit` parameter
+8. **Finding users by email:** Use `mediar_users` table, NOT `users` table
+9. **Credits:** Use `user_credits` table and RPC functions (`add_credits`, `deduct_credits`)
+10. **Clerk user IDs:** Look like `user_REDACTED` - required for credit operations
+11. **Env file:** Use `.env.local` with `SUPABASE_SERVICE_ROLE_KEY` (not `.env.development`)
