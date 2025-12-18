@@ -32,7 +32,7 @@ CREATE OR REPLACE FUNCTION public.update_session_metadata_on_event()
 RETURNS TRIGGER AS $$
 DECLARE
     v_session_id TEXT;
-    v_user_id TEXT;
+    v_user_id UUID;  -- Must be UUID to match session_metadata.user_id column type
     v_clerk_user_id TEXT;
     v_event_timestamp TIMESTAMPTZ;
     v_session_type TEXT;
