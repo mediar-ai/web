@@ -43,12 +43,28 @@ export async function GET(
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
   }
 
+  // Check if userId is a Clerk ID (starts with "user_") vs UUID
+  const isClerkUserId = userId.startsWith('user_');
+  console.log(`[API/low-level] Query for userId: ${userId}, isClerkId: ${isClerkUserId}`);
+
   try {
     // Build query with optional session filter and pagination
-    let query = supabaseAdmin
-      .from('low_level_events_enriched') // Use the enriched view
-      .select('*')
-      .eq('user_id', userId);
+    // For Clerk IDs, we need to query by payload->>'clerk_user_id' since user_id column is null
+    // For UUIDs, we query by user_id column directly
+    let query;
+    if (isClerkUserId) {
+      // Query base table with JSONB filter for Clerk user IDs
+      query = supabaseAdmin
+        .from('low_level_events')
+        .select('*')
+        .filter('payload->>clerk_user_id', 'eq', userId);
+    } else {
+      // Query enriched view for UUID user IDs
+      query = supabaseAdmin
+        .from('low_level_events_enriched')
+        .select('*')
+        .eq('user_id', userId);
+    }
 
     // Add session filter if provided
     if (sessionId) {
