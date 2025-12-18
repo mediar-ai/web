@@ -43,28 +43,14 @@ export async function GET(
     return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
   }
 
-  // Check if userId is a Clerk ID (starts with "user_") vs UUID
-  const isClerkUserId = userId.startsWith('user_');
-  console.log(`[API/low-level] Query for userId: ${userId}, isClerkId: ${isClerkUserId}`);
+  console.log(`[API/low-level] Query for userId: ${userId}`);
 
   try {
-    // Build query with optional session filter and pagination
-    // For Clerk IDs, we need to query by payload->>'clerk_user_id' since user_id column is null
-    // For UUIDs, we query by user_id column directly
-    let query;
-    if (isClerkUserId) {
-      // Query base table with JSONB filter for Clerk user IDs
-      query = supabaseAdmin
-        .from('low_level_events')
-        .select('*')
-        .filter('payload->>clerk_user_id', 'eq', userId);
-    } else {
-      // Query enriched view for UUID user IDs
-      query = supabaseAdmin
-        .from('low_level_events_enriched')
-        .select('*')
-        .eq('user_id', userId);
-    }
+    // user_id is now TEXT and stores Clerk IDs directly - query by user_id column
+    let query = supabaseAdmin
+      .from('low_level_events_enriched')
+      .select('*')
+      .eq('user_id', userId);
 
     // Add session filter if provided
     if (sessionId) {
@@ -123,79 +109,34 @@ export async function GET(
     // Only fetch session count if no specific session is requested
     let sessionCountData = 0;
     if (!sessionId) {
-      if (isClerkUserId) {
-        // For Clerk IDs, count distinct sessions from low_level_events by payload
-        const { data: sessionData, error: sessionError } = await supabaseAdmin
-          .from('low_level_events')
-          .select('session_id')
-          .filter('payload->>clerk_user_id', 'eq', userId);
+      const { data: countData, error: countError } = await supabaseAdmin
+        .rpc('count_distinct_sessions', { p_user_id: userId });
 
-        if (sessionError) {
-          console.error('[API/low-level] Error counting sessions for Clerk user:', sessionError);
-        } else {
-          const uniqueSessions = new Set(sessionData?.map(e => e.session_id) || []);
-          sessionCountData = uniqueSessions.size;
-        }
-      } else {
-        const { data: countData, error: countError } = await supabaseAdmin
-            .rpc('count_distinct_sessions', { p_user_id: userId });
-
-        if (countError) {
-            console.error('[API/low-level] Error counting sessions:', countError);
-            throw countError;
-        }
-        sessionCountData = countData || 0;
+      if (countError) {
+        console.error('[API/low-level] Error counting sessions:', countError);
+        throw countError;
       }
+      sessionCountData = countData || 0;
     }
 
-    // --- Get the total event count for the user ---
-    let totalEventCount = 0;
-    if (isClerkUserId) {
-      // For Clerk IDs, query session_metadata by clerk_user_id
-      const { data: totalCountData, error: totalCountError } = await supabaseAdmin
-        .from('session_metadata')
-        .select('event_count')
-        .eq('clerk_user_id', userId);
+    // Get the total event count for the user from session_metadata
+    const { data: totalCountData, error: totalCountError } = await supabaseAdmin
+      .from('session_metadata')
+      .select('event_count')
+      .eq('user_id', userId);
 
-      if (totalCountError) {
-        console.error('[API/low-level] Error fetching total event count for Clerk user:', totalCountError);
-      } else {
-        totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
-      }
-    } else {
-      const { data: totalCountData, error: totalCountError } = await supabaseAdmin
-        .from('session_metadata')
-        .select('event_count')
-        .eq('user_id', userId);
-
-      if (totalCountError) {
-        console.error('[API/low-level] Error fetching total event count:', totalCountError);
-        throw totalCountError;
-      }
-      totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
+    if (totalCountError) {
+      console.error('[API/low-level] Error fetching total event count:', totalCountError);
+      throw totalCountError;
     }
+    const totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
 
-    // --- Get the total number of UI tree events (steps) ---
-    let totalStepsCount = 0;
-    let stepsCountError = null;
-    if (isClerkUserId) {
-      // For Clerk IDs, count from base table with payload filter
-      const { count, error } = await supabaseAdmin
-        .from('low_level_events')
-        .select('*', { count: 'exact', head: true })
-        .filter('payload->>clerk_user_id', 'eq', userId)
-        .filter('payload->>type', 'eq', 'meaningful_event');
-      totalStepsCount = count || 0;
-      stepsCountError = error;
-    } else {
-      const { count, error } = await supabaseAdmin
-        .from('low_level_events_enriched')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('event_type', 'ui_tree');
-      totalStepsCount = count || 0;
-      stepsCountError = error;
-    }
+    // Get the total number of UI tree events (steps)
+    const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
+      .from('low_level_events_enriched')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('event_type', 'ui_tree');
 
     if (stepsCountError) {
       console.error('[API/low-level] Error fetching total steps count:', stepsCountError);
@@ -205,7 +146,7 @@ export async function GET(
     return NextResponse.json({
         events: allFetchedEvents,
         totalEventCount,
-        totalStepsCount,
+        totalStepsCount: totalStepsCount || 0,
         sessionCount: sessionCountData,
         hasMore: hasMoreData,
         offset: offset,
