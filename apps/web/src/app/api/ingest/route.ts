@@ -65,25 +65,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[INGEST] Authenticated request from user: ${validation.email}`);
+    console.log(`[INGEST] Authenticated request from user: ${validation.email}, userId: ${validation.userId}`);
 
     const body = await request.json();
-    const { session_id, user_id, payload } = body;
+    const { session_id, user_id: payloadUserId, payload } = body;
 
     if (!session_id || !payload || !payload.type) {
       return NextResponse.json({ error: 'session_id and payload with a type are required' }, { status: 400 });
     }
 
-    // Verify user_id matches token (if user_id is provided)
-    if (user_id && user_id !== validation.userId) {
-      console.log(`[INGEST] user_id mismatch - token: ${validation.userId}, payload: ${user_id}`);
+    // Use token's userId as the authoritative source (Clerk ID from validated token)
+    // If payload provides user_id, validate it matches; otherwise use token's userId
+    const effectiveUserId = validation.userId;
+
+    if (payloadUserId && payloadUserId !== effectiveUserId) {
+      console.log(`[INGEST] user_id mismatch - token: ${effectiveUserId}, payload: ${payloadUserId}`);
       return NextResponse.json(
         { error: 'Unauthorized - user_id does not match authentication token' },
         { status: 403 }
       );
     }
 
-    console.log(`[INGEST] Processing event for session ${session_id}, type: ${payload.type}`);
+    console.log(`[INGEST] Processing event for session ${session_id}, user: ${effectiveUserId}, type: ${payload.type}`);
 
     // [PROTECTION] TARGETED UI TREE DUPLICATE PREVENTION
     // Only apply duplicate detection to UI tree events (meaningful_event)
@@ -93,18 +96,18 @@ export async function POST(request: NextRequest) {
 
       if (uiTree && clientTimestamp) {
         // Create targeted hash: UI tree + client timestamp + context
-        const uiTreeHash = createUITreeHash(uiTree, clientTimestamp, user_id, session_id);
-        
+        const uiTreeHash = createUITreeHash(uiTree, clientTimestamp, effectiveUserId || '', session_id);
+
         console.log(`[INGEST] UI tree event - hash: ${uiTreeHash.substring(0, 8)}..., timestamp: ${clientTimestamp}`);
 
         // Check for identical UI tree + timestamp combinations in recent events
         // Use a shorter 10-second window for UI tree duplicates since we're matching exact timestamps
         const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
-        
+
         const { data: recentEvents, error: checkError } = await supabaseAdmin
           .from('low_level_events')
           .select('id, payload')
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .eq('session_id', session_id)
           .gte('created_at', tenSecondsAgo)
           .limit(10); // Check more events since we're being more specific
@@ -124,7 +127,7 @@ export async function POST(request: NextRequest) {
               const recentClientTimestamp = recentPayload?.timestamp;
               
               if (recentUITree && recentClientTimestamp) {
-                const recentUITreeHash = createUITreeHash(recentUITree, recentClientTimestamp, user_id, session_id);
+                const recentUITreeHash = createUITreeHash(recentUITree, recentClientTimestamp, effectiveUserId || '', session_id);
                 
                 console.log(`[INGEST] Comparing UI tree with event ${recentEvent.id}, hash: ${recentUITreeHash.substring(0, 8)}...`);
                 
@@ -150,55 +153,18 @@ export async function POST(request: NextRequest) {
       console.log(`[INGEST] Non-UI tree event (${payload.type}) - no duplicate detection applied`);
     }
 
-    // No duplicates found, proceed with normal insert
-    // Handle Clerk user IDs vs UUID user IDs
-    let userIdForDB: string | null = null;
-    let payloadToStore = body;
-
-    if (user_id) {
-      // Check if it's a valid UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(user_id)) {
-        // It's a valid UUID, use it directly
-        userIdForDB = user_id;
-        console.log(`[INGEST] UUID user_id detected: ${user_id}`);
-      } else {
-        // It's a Clerk user ID or other format
-        // Store the Clerk ID in the payload and use NULL for the UUID column
-        console.log(`[INGEST] Non-UUID user_id detected (${user_id}), storing in payload.clerk_user_id, userIdForDB will be null`);
-        userIdForDB = null;
-
-        // Ensure the Clerk user_id is preserved in the payload
-        payloadToStore = {
-          ...body,
-          clerk_user_id: user_id  // Preserve Clerk user ID in the payload
-        };
-      }
-    }
-
-    // Debug log to verify actual value being inserted
-    console.log(`[INGEST] Inserting event with user_id=${userIdForDB === null ? 'NULL' : userIdForDB}, session_id=${session_id}`);
-
-    // Build insert object - only include user_id if it's a valid UUID
-    const insertData: {
-      session_id: string;
-      user_id?: string;
-      payload: typeof payloadToStore;
-      source: string;
-    } = {
-      session_id,
-      payload: payloadToStore,
-      source: 'windows_app'
-    };
-
-    // Only add user_id if it's not null (valid UUID)
-    if (userIdForDB !== null) {
-      insertData.user_id = userIdForDB;
-    }
+    // No duplicates found, proceed with insert
+    // user_id column is TEXT, so we can store Clerk IDs directly
+    console.log(`[INGEST] Inserting event with user_id=${effectiveUserId}, session_id=${session_id}`);
 
     const { error } = await supabaseAdmin
       .from('low_level_events')
-      .insert(insertData);
+      .insert({
+        session_id,
+        user_id: effectiveUserId,
+        payload: body,
+        source: 'windows_app'
+      });
 
     if (error) {
       console.error('[INGEST] Error saving raw event:', error);
