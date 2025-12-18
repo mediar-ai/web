@@ -123,35 +123,79 @@ export async function GET(
     // Only fetch session count if no specific session is requested
     let sessionCountData = 0;
     if (!sessionId) {
-      const { data: countData, error: countError } = await supabaseAdmin
-          .rpc('count_distinct_sessions', { p_user_id: userId });
+      if (isClerkUserId) {
+        // For Clerk IDs, count distinct sessions from low_level_events by payload
+        const { data: sessionData, error: sessionError } = await supabaseAdmin
+          .from('low_level_events')
+          .select('session_id')
+          .filter('payload->>clerk_user_id', 'eq', userId);
 
-      if (countError) {
-          console.error('[API/low-level] Error counting sessions:', countError);
-          throw countError;
+        if (sessionError) {
+          console.error('[API/low-level] Error counting sessions for Clerk user:', sessionError);
+        } else {
+          const uniqueSessions = new Set(sessionData?.map(e => e.session_id) || []);
+          sessionCountData = uniqueSessions.size;
+        }
+      } else {
+        const { data: countData, error: countError } = await supabaseAdmin
+            .rpc('count_distinct_sessions', { p_user_id: userId });
+
+        if (countError) {
+            console.error('[API/low-level] Error counting sessions:', countError);
+            throw countError;
+        }
+        sessionCountData = countData || 0;
       }
-      sessionCountData = countData || 0;
     }
 
-    // --- New: Get the total event count for the user ---
-    const { data: totalCountData, error: totalCountError } = await supabaseAdmin
-      .from('session_metadata')
-      .select('event_count')
-      .eq('user_id', userId);
+    // --- Get the total event count for the user ---
+    let totalEventCount = 0;
+    if (isClerkUserId) {
+      // For Clerk IDs, query session_metadata by clerk_user_id
+      const { data: totalCountData, error: totalCountError } = await supabaseAdmin
+        .from('session_metadata')
+        .select('event_count')
+        .eq('clerk_user_id', userId);
 
-    if (totalCountError) {
-      console.error('[API/low-level] Error fetching total event count:', totalCountError);
-      throw totalCountError;
+      if (totalCountError) {
+        console.error('[API/low-level] Error fetching total event count for Clerk user:', totalCountError);
+      } else {
+        totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
+      }
+    } else {
+      const { data: totalCountData, error: totalCountError } = await supabaseAdmin
+        .from('session_metadata')
+        .select('event_count')
+        .eq('user_id', userId);
+
+      if (totalCountError) {
+        console.error('[API/low-level] Error fetching total event count:', totalCountError);
+        throw totalCountError;
+      }
+      totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
     }
-    
-    const totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
 
-    // --- New: Get the total number of UI tree events (steps) ---
-    const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
-      .from('low_level_events_enriched')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('event_type', 'ui_tree');
+    // --- Get the total number of UI tree events (steps) ---
+    let totalStepsCount = 0;
+    let stepsCountError = null;
+    if (isClerkUserId) {
+      // For Clerk IDs, count from base table with payload filter
+      const { count, error } = await supabaseAdmin
+        .from('low_level_events')
+        .select('*', { count: 'exact', head: true })
+        .filter('payload->>clerk_user_id', 'eq', userId)
+        .filter('payload->>type', 'eq', 'meaningful_event');
+      totalStepsCount = count || 0;
+      stepsCountError = error;
+    } else {
+      const { count, error } = await supabaseAdmin
+        .from('low_level_events_enriched')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('event_type', 'ui_tree');
+      totalStepsCount = count || 0;
+      stepsCountError = error;
+    }
 
     if (stepsCountError) {
       console.error('[API/low-level] Error fetching total steps count:', stepsCountError);
