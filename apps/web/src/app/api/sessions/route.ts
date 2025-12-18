@@ -64,9 +64,12 @@ export async function GET(request: Request) {
       const now = Date.now();
       const isLive = (now - lastEventTimestamp) < 60000;
 
+      // Use clerk_user_id when user_id is null (Clerk authentication)
+      const effectiveUserId = session.user_id || session.clerk_user_id || 'unknown_user';
+
       return {
         id: session.session_id,
-        userId: session.user_id || 'unknown_user',
+        userId: effectiveUserId,
         type: session.session_type,
         timestamp: session.last_event_timestamp,
         eventCount: session.event_count,
