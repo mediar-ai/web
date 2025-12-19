@@ -55,9 +55,14 @@ RELEASE_LOCK_SQL = """
 
 def get_db_connection():
     """Get database connection using environment variables"""
-    conn_string = os.environ.get('SUPABASE_CONN_STRING')
+    conn_string = (
+        os.environ.get('SUPABASE_CONN_STRING')
+        or os.environ.get('SUPABASE_DB_URL')
+        or os.environ.get('DATABASE_URL')
+    )
     if not conn_string:
-        raise Exception("SUPABASE_CONN_STRING environment variable not set")
+        raise Exception("SUPABASE_CONN_STRING or SUPABASE_DB_URL environment variable not set")
+    print(f"[db] Connecting to database...")
     return psycopg2.connect(conn_string)
 
 def extract_image_data(payload: Dict) -> Tuple[Optional[str], Optional[str]]:
@@ -165,7 +170,7 @@ def upload_image_to_supabase(image_data_url: str, storage_path: str) -> Tuple[bo
     ],
     # Using the new parameter name as recommended by Modal's deprecation warning.
     max_containers=5,
-    timeout=300
+    timeout=600
 )
 def process_screenshots(batch_size: int = 10):
     """
@@ -314,7 +319,7 @@ def scheduled_screenshot_processing():
         print(f"Found {pending_count} unprocessed screenshot events. Starting processing...")
         
         # Process in batches - use larger batch size for scheduled processing
-        batch_size = 25
+        batch_size = 5
         result = process_screenshots.remote(batch_size=batch_size)
         
         print(f"Scheduled processing completed: {result}")

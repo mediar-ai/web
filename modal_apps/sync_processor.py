@@ -132,7 +132,7 @@ def continuous_sync_processor():
 @app.function(
     image=image,
     secrets=[modal.Secret.from_name("supabase-secret")],
-    # schedule=modal.Period(seconds=2),  # MOVED to high_frequency_processor.py
+    schedule=modal.Period(seconds=2),  # Re-enabled for metadata processing
     timeout=90,  # 90 seconds max per run (increased for database load)
     retries=0,  # No retries to prevent queueing
     max_containers=5,  # INCREASED PARALLELISM

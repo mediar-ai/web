@@ -381,7 +381,7 @@ arguments:
     }
 
     const navResult = results[0];
-    const success = navResult?.success || navResult?.status === 'success';
+    const success = navResult?.success || navResult?.status === 'success' || navResult?.status === 'executed_without_error';
 
     return {
       success: success,
@@ -548,7 +548,7 @@ arguments:
 
     // Check for form submission errors
     const lastResult = results[results.length - 1];
-    const hasError = lastResult?.error || lastResult?.status === 'failed';
+    const hasError = lastResult?.error || lastResult?.status === 'failed' || lastResult?.status === 'executed_with_error';
 
     // Validation checks
     const validation = {

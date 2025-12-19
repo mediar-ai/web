@@ -131,6 +131,48 @@ export async function POST(
 
             console.log('[recording/synthesize] Modal synthesis completed');
 
+            // Auto-save synthesis result to database
+            let savedSynthesisId = null;
+            if (result && result.success && result.final_data) {
+              console.log('[recording/synthesize] Auto-saving synthesis to database...');
+
+              const synthesisTitle = `Recording ${sessionId.substring(0, 8)} - ${new Date().toLocaleDateString()}`;
+
+              const { data: savedSynthesis, error: saveError } = await supabaseAdmin
+                .from('saved_workflow_syntheses')
+                .insert({
+                  user_id: userId,
+                  title: synthesisTitle,
+                  description: `Auto-generated from recording session ${sessionId}`,
+                  workflow_context: result.final_data.workflowContext || null,
+                  identified_workflow_names: result.final_data.identifiedWorkflowNames || [],
+                  workflow_boundaries: result.final_data.workflowBoundaries || {},
+                  synthesis_results: result.final_data.synthesizedWorkflows || [],
+                  synthesis_process_data: {
+                    session_id: sessionId,
+                    start_date: session.first_event_timestamp,
+                    end_date: session.last_event_timestamp,
+                    step_results: result.step_results || {},
+                    timeline_annotations: result.final_data.timelineAnnotations || []
+                  },
+                  models_used: [model],
+                  synthesis_duration_seconds: result.duration_seconds || null,
+                  synthesis_started_at: result.start_time || new Date().toISOString(),
+                  synthesis_completed_at: new Date().toISOString(),
+                  is_active: true,
+                  version: 1
+                })
+                .select('id')
+                .single();
+
+              if (saveError) {
+                console.error('[recording/synthesize] Failed to auto-save synthesis:', saveError);
+              } else {
+                savedSynthesisId = savedSynthesis?.id;
+                console.log('[recording/synthesize] Synthesis auto-saved with ID:', savedSynthesisId);
+              }
+            }
+
             // Mark session as complete
             await supabaseAdmin
               .from('session_metadata')
@@ -144,7 +186,8 @@ export async function POST(
               status: 'Synthesis complete!',
               progress: 100,
               step: 5,
-              result
+              result,
+              savedSynthesisId
             }));
 
           } catch (error) {

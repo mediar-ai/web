@@ -1044,7 +1044,7 @@ def log_mcp_execution_breakdown(mcp_content: Dict[str, Any]) -> None:
                     step_duration,
                 )
 
-                if step_status == "error":
+                if step_status == "error" or step_status == "executed_with_error":
                     error_payload = step.get("error")
                     logger.error(
                         "        Error in %s: %s",
@@ -1181,10 +1181,11 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             logger.info(" No parsed_output found, using execution status")
 
             # No parser - use execution status as fallback
-            # Consider "success", "completed_with_errors", and "partial_success" as successful execution
+            # Consider "success", "executed_without_error", "completed_with_errors", and "partial_success" as successful execution
+            # "executed_without_error" is the new status from terminator MCP agent
             # "completed_with_errors" means the workflow ran to completion but had non-critical issues
             # "partial_success" means the workflow completed but may not have achieved full business goal
-            result["success"] = execution_status in ["success", "completed_with_errors", "partial_success"]
+            result["success"] = execution_status in ["success", "executed_without_error", "completed_with_errors", "partial_success", "executed_with_partial_errors"]
             result["skipped"] = False  # Without parser output, we can't determine if skipped
             result["state"] = "success" if result["success"] else "failure"
             result["message"] = f"Workflow {execution_status}"
@@ -1193,7 +1194,7 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             # Add basic validation info
             result["validation"] = {
                 "execution_completed": execution_status
-                in ["success", "completed_with_errors", "partial_success"],
+                in ["success", "executed_without_error", "completed_with_errors", "partial_success", "executed_with_partial_errors"],
                 "tools_executed": executed_tools,
             }
 
@@ -1300,7 +1301,7 @@ def extract_legacy_quotes_from_mcp_response(
                 )
 
                 # Check if this is the "Set Coverage and Generate Quote" group
-                if step_result.get("status") == "success" and "results" in step_result:
+                if step_result.get("status") in ["success", "executed_without_error"] and "results" in step_result:
                     logger.info(
                         " DEBUG: Found %d sub-results in step %d",
                         len(step_result["results"]),
@@ -2101,21 +2102,21 @@ async def execute_mcp_workflow(
                                 "duration_ms": step.get("duration_ms", 0),
                                 "result": step_result,
                                 "logs": all_logs,
-                                "error": step_result.get("error") if step.get("status") == "error" else None
+                                "error": step_result.get("error") if step.get("status") in ["error", "executed_with_error"] else None
                             }
                             execution_log.append(log_entry)
 
                             # Track metrics
-                            if step.get("status") == "success":
+                            if step.get("status") in ["success", "executed_without_error"]:
                                 successful_steps += 1
-                            elif step.get("status") == "error":
+                            elif step.get("status") in ["error", "executed_with_error"]:
                                 failed_steps += 1
 
                             # Also add to executed_steps for compatibility
                             step_info = {
                                 "index": step_idx,
                                 "duration_ms": step.get("duration_ms", 0),
-                                "success": step.get("status") == "success",
+                                "success": step.get("status") in ["success", "executed_without_error"],
                             }
                             executed_steps.append(step_info)
 
@@ -2696,9 +2697,9 @@ def execute_workflow(
                         # Results already contains the parsed workflow execution data
                         mcp_result = results
 
-                        if mcp_result.get("status") != "success":
+                        if mcp_result.get("status") not in ["success", "executed_without_error"]:
                             failed_step = None
-                            # Find the first step with a status of 'error'
+                            # Find the first step with a status of 'error' or 'executed_with_error'
                             if "results" in mcp_result and isinstance(
                                 mcp_result["results"], list
                             ):
@@ -2707,7 +2708,7 @@ def execute_workflow(
                                         group["results"], list
                                     ):
                                         for step in group["results"]:
-                                            if step.get("status") == "error":
+                                            if step.get("status") in ["error", "executed_with_error"]:
                                                 failed_step = step
                                                 break
                                     if failed_step:
