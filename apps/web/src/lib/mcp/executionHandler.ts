@@ -134,7 +134,7 @@ export class ExecutionHandler {
 
   private formatSyncResult(result: APIResponse, cachedTool: CachedTool): ExecutionResult {
     // Check if the result indicates an error
-    if (result.error || result.status === 'error' || result.status === 'failed') {
+    if (result.error || result.status === 'error' || result.status === 'failed' || result.status === 'executed_with_error') {
       return {
         type: 'error',
         workflow_id: cachedTool.workflow.id,

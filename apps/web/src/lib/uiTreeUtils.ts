@@ -57,15 +57,30 @@ export const generateSimplifiedUiTreeString = (treeString: string | null | undef
   if (!treeString) {
     return null;
   }
-  try {
-    const tree: UITreeNode = JSON.parse(treeString);
-    const stringArray = buildSimplifiedNodeString(tree, 1, { count: 1 }); // Initialize counter here
-    return stringArray.join('\n');
-  } catch (error) {
-    console.error("Error parsing or simplifying UI Tree:", error);
-    // For LLM context, it might be better to return a note about the error 
-    // or the raw string if it's not too large, rather than null.
-    // However, for now, returning null to indicate failure.
-    return "Error parsing UI Tree."; 
+
+  const trimmed = treeString.trim();
+
+  // Check if it's already in CompactYaml format (starts with "- [" which is the tree text format)
+  // CompactYaml format: "- [Window] name (attributes)\n  - [Pane] ..."
+  if (trimmed.startsWith('- [') || trimmed.startsWith('#')) {
+    // Already in simplified text format, return as-is
+    console.log('[uiTreeUtils] CompactYaml format detected, returning as-is');
+    return treeString;
   }
+
+  // Try to parse as JSON (legacy format)
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const tree: UITreeNode = JSON.parse(treeString);
+      const stringArray = buildSimplifiedNodeString(tree, 1, { count: 1 });
+      return stringArray.join('\n');
+    } catch (error) {
+      console.error("[uiTreeUtils] Error parsing JSON UI Tree:", error);
+      return "Error parsing UI Tree.";
+    }
+  }
+
+  // Unknown format, return as-is
+  console.log('[uiTreeUtils] Unknown format, returning as-is');
+  return treeString;
 };
