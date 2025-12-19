@@ -79,6 +79,17 @@ export async function POST(req: NextRequest) {
       paymentStatus: session.payment_status,
     });
 
+    // Skip if this isn't a mediar-web-app purchase (e.g., screenpipe credits)
+    // Mediar purchases always have userId set; screenpipe purchases have 'credits' in metadata
+    if (!userId && !purchaseType) {
+      console.log('stripe webhook: skipping non-mediar purchase (no userId or purchaseType)', {
+        sessionId: session.id,
+        email,
+        metadata: session.metadata,
+      });
+      return NextResponse.json({ received: true, skipped: 'not-mediar-purchase' });
+    }
+
     if (session.payment_status === 'paid') {
       try {
         const supabase = createServerClient();
