@@ -20,7 +20,7 @@ pub struct ExecutionError {
 /// Clean, flat execution output format
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FormattedOutput {
-    /// Execution status: "success", "failed", "cancelled", "skipped"
+    /// Execution status: "executed_without_error", "executed_with_error", "cancelled", "skipped"
     pub status: String,
     /// Structured error info (only present on failure)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,9 +82,9 @@ pub fn extract_workflow_status(mcp_data: Option<&Value>, workflow_success: bool)
         })
         .unwrap_or_else(|| {
             if workflow_success {
-                "success".to_string()
+                "executed_without_error".to_string()
             } else {
-                "failed".to_string()
+                "executed_with_error".to_string()
             }
         })
 }
