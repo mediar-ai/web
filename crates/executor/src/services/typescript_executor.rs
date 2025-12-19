@@ -429,7 +429,7 @@ impl<'a> TypeScriptExecutor<'a> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown");
 
-                    if status == "failed" || status == "error" || step_obj.get("error").is_some() {
+                    if status == "failed" || status == "error" || status == "executed_with_error" || step_obj.get("error").is_some() {
                         return false;
                     }
                 }
@@ -445,7 +445,7 @@ impl<'a> TypeScriptExecutor<'a> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
 
-                    if status == "failed" || status == "error" || step_obj.get("error").is_some() {
+                    if status == "failed" || status == "error" || status == "executed_with_error" || step_obj.get("error").is_some() {
                         return false;
                     }
                 }
