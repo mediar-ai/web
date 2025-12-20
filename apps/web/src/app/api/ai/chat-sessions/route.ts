@@ -123,7 +123,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
 
-    const { workflowId, redisSessionId, messages, title } = await request.json();
+    // Read body as text first for better error handling
+    const bodyText = await request.text();
+    const contentLength = request.headers.get('content-length');
+    console.log(`[Chat Sessions] Received body: ${bodyText.length} chars (Content-Length header: ${contentLength})`);
+
+    if (!bodyText || bodyText.trim() === '') {
+      console.error('[Chat Sessions] Empty request body received');
+      return NextResponse.json(
+        { error: 'Empty request body' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    let body;
+    try {
+      body = JSON.parse(bodyText);
+    } catch (parseError) {
+      console.error(`[Chat Sessions] JSON parse error. Body preview: ${bodyText.substring(0, 200)}...`);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const { workflowId, redisSessionId, messages, title } = body;
 
     if (!workflowId || !redisSessionId) {
       return NextResponse.json(
