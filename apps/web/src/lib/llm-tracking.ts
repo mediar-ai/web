@@ -14,7 +14,12 @@ export type LLMSource =
   | 'workflow_edit'
   | 'step_processing'
   | 'parser_validation'
-  | 'desktop_report';
+  | 'desktop_report'
+  | 'stream_proxy'
+  | 'workflow_event'
+  | 'workflow_list_edit'
+  | 'workflow_export'
+  | 'activity_analysis';
 
 interface TrackLLMUsageParams {
   userId?: string;  // Optional - defaults to 'system' for internal routes
