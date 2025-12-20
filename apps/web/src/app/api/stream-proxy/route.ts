@@ -13,6 +13,7 @@ import { GoogleGenAI, Content, FunctionDeclaration, Part } from '@google/genai';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { convertMcpToolToVertex } from '@/lib/vertex-schema-converter';
 import { getCorsHeaders } from '@/lib/cors';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 const API_PASSWORD = process.env.AI_API_PASSWORD || 'your-secret-password-here';
 
@@ -140,9 +141,16 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         // Track emitted function calls to prevent duplicates
         const emittedFunctionCalls = new Set<string>();
+        // Track usage metadata for token tracking (populated in final chunk)
+        let lastUsageMetadata: { promptTokenCount?: number; candidatesTokenCount?: number } | null = null;
 
         try {
           for await (const chunk of result) {
+            // Capture usageMetadata (available in final chunk)
+            if (chunk.usageMetadata) {
+              lastUsageMetadata = chunk.usageMetadata;
+            }
+
             // Extract text from new SDK format
             const candidates = chunk.candidates;
             if (!candidates || candidates.length === 0) continue;
@@ -196,9 +204,30 @@ export async function POST(req: NextRequest) {
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ type: 'tool_wait' })}\n\n`)
                 );
+                // Track LLM usage before breaking (fire-and-forget)
+                if (lastUsageMetadata) {
+                  console.log(`[STREAM-PROXY] tracking usage: in=${lastUsageMetadata.promptTokenCount}, out=${lastUsageMetadata.candidatesTokenCount}`);
+                  trackLLMUsageAsync({
+                    model: modelName,
+                    inputTokens: lastUsageMetadata.promptTokenCount || 0,
+                    outputTokens: lastUsageMetadata.candidatesTokenCount || 0,
+                    source: 'stream_proxy',
+                  });
+                }
                 break; // Stop streaming, wait for tool results
               }
             }
+          }
+
+          // Track LLM usage after stream completes (fire-and-forget)
+          if (lastUsageMetadata) {
+            console.log(`[STREAM-PROXY] tracking usage: in=${lastUsageMetadata.promptTokenCount}, out=${lastUsageMetadata.candidatesTokenCount}`);
+            trackLLMUsageAsync({
+              model: modelName,
+              inputTokens: lastUsageMetadata.promptTokenCount || 0,
+              outputTokens: lastUsageMetadata.candidatesTokenCount || 0,
+              source: 'stream_proxy',
+            });
           }
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
