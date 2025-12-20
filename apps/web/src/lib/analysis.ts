@@ -1,5 +1,6 @@
 import { getVertexGenAI } from '@/lib/vertexai';
 import type { Part } from '@google/genai';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 const MODEL_NAME = "gemini-2.5-flash";
 
@@ -41,10 +42,22 @@ export async function generateMultiActivityEventAnalysis(
     };
 
     try {
-    const result = await model.generateContent({ 
-        contents: [{ role: "user", parts: [{ text: multiActivityPrompt }] }], 
+    const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: multiActivityPrompt }] }],
         generationConfig,
     });
+
+    // Track LLM usage (fire-and-forget)
+    const usageMetadata = result.response?.usageMetadata;
+    if (usageMetadata) {
+      console.log(`[ACTIVITY-ANALYSIS] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+      trackLLMUsageAsync({
+        model: MODEL_NAME,
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0,
+        source: 'activity_analysis',
+      });
+    }
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -153,9 +166,21 @@ ${uiDiffSchemaPrompt}`;
             contents: [{ role: "user", parts }],
             generationConfig,
         });
-    
-    const response = result.response;
-    if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+
+        // Track LLM usage (fire-and-forget)
+        const usageMetadata = result.response?.usageMetadata;
+        if (usageMetadata) {
+          console.log(`[UI-DIFF-ANALYSIS] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+          trackLLMUsageAsync({
+            model: MODEL_NAME,
+            inputTokens: usageMetadata.promptTokenCount || 0,
+            outputTokens: usageMetadata.candidatesTokenCount || 0,
+            source: 'activity_analysis',
+          });
+        }
+
+        const response = result.response;
+        if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             let responseText = response.candidates[0].content.parts[0].text;
             // Remove markdown code blocks if present
             responseText = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
@@ -241,6 +266,18 @@ ${mainAnalysisSchemaPrompt}`;
             contents: [{ role: "user", parts }],
             generationConfig,
     });
+
+    // Track LLM usage (fire-and-forget)
+    const usageMetadata = result.response?.usageMetadata;
+    if (usageMetadata) {
+      console.log(`[MAIN-ANALYSIS] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+      trackLLMUsageAsync({
+        model: MODEL_NAME,
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0,
+        source: 'activity_analysis',
+      });
+    }
 
     const response = result.response;
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
