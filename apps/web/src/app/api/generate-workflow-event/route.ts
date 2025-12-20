@@ -4,6 +4,7 @@ import { getVertexGenAI } from '@/lib/vertexai';
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { WORKFLOW_STEP_ANALYSIS_V2_PROMPT } from '@/lib/prompts';
 import { createClient } from '@supabase/supabase-js';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 // import { v2AnalysisSchema } from '@/lib/llmSchemas';
 
 // const getGenAI = () => {
@@ -251,6 +252,18 @@ Please respond with a JSON object in this exact format:
         baseDelayMs: 1000,
       }
     );
+
+    // Track LLM usage (fire-and-forget)
+    const usageMetadata = result.response?.usageMetadata;
+    if (usageMetadata) {
+      console.log(`[WORKFLOW-EVENT] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+      trackLLMUsageAsync({
+        model: modelName,
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0,
+        source: 'workflow_event',
+      });
+    }
 
     // 🔥 VERTEX AI RESPONSE HANDLING 🔥
     const response = result.response;
