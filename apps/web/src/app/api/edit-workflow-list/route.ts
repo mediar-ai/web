@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getVertexGenAI } from '@/lib/vertexai';
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { WORKFLOW_LIST_EDIT_PROMPT } from '@/lib/prompts';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 // function getGenAI() {
 //   const apiKey = process.env.GEMINI_API_KEY;
@@ -62,6 +63,18 @@ Please respond with a JSON object in this exact format:
 }`;
 
     const result = await model.generateContent(prompt);
+
+    // Track LLM usage (fire-and-forget)
+    const usageMetadata = result.response?.usageMetadata;
+    if (usageMetadata) {
+      console.log(`[WORKFLOW-LIST-EDIT] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+      trackLLMUsageAsync({
+        model: modelName,
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0,
+        source: 'workflow_list_edit',
+      });
+    }
 
     // 🔥 VERTEX AI RESPONSE HANDLING 🔥
     const response = result.response;
