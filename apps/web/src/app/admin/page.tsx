@@ -13,6 +13,7 @@ import {
   Clock,
   Building2,
   ArrowRight,
+  Coins,
 } from 'lucide-react';
 
 interface QuickStats {
@@ -64,6 +65,12 @@ const quickLinks = [
     href: '/admin/vm-timeline',
     icon: Clock,
     description: 'VM operations history and audit log',
+  },
+  {
+    title: 'User Tokens',
+    href: '/admin/user-tokens',
+    icon: Coins,
+    description: 'Token consumption by user (last 7 days)',
   },
 ];
 
