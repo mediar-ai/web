@@ -54,10 +54,10 @@ const quickLinks = [
     description: 'Customer usage metrics and invoicing',
   },
   {
-    title: 'Observability',
+    title: 'Sentry traces by hostname',
     href: '/admin/observability',
     icon: Activity,
-    description: 'Logs, traces, and system metrics',
+    description: 'Total spans for: terminator::new',
   },
   {
     title: 'VM Timeline',
