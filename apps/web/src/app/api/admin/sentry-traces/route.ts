@@ -1,10 +1,28 @@
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 const SENTRY_AUTH_TOKEN = process.env.SENTRY_AUTH_TOKEN;
 const SENTRY_ORG = 'mediar-n5';
 
 export async function GET(request: Request) {
   console.log('[sentry-traces] API route called');
+
+  // Auth check - same as other admin routes
+  const { userId, orgId } = await auth();
+  if (!userId || !orgId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const user = await currentUser();
+  const isMediarAdmin = user?.emailAddresses?.some(
+    email => email.emailAddress.toLowerCase().endsWith('@mediar.ai')
+  ) || false;
+  const isMediarOrg = MEDIAR_ORG_IDS.includes(orgId);
+
+  if (!isMediarAdmin && !isMediarOrg) {
+    return NextResponse.json({ error: 'Access denied - Mediar admin only' }, { status: 403 });
+  }
 
   if (!SENTRY_AUTH_TOKEN) {
     console.log('[sentry-traces] Missing SENTRY_AUTH_TOKEN');
