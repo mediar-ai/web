@@ -60,10 +60,10 @@ export default function ObservabilityPage() {
         <div>
           <h1 className="font-mono font-bold text-2xl flex items-center gap-2">
             <Activity className="w-6 h-6" />
-            OBSERVABILITY
+            SENTRY TRACES BY HOSTNAME
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
-            Sentry traces by hostname
+            Total spans for: terminator::new
           </p>
         </div>
         <div className="flex items-center gap-2">
