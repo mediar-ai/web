@@ -14,6 +14,7 @@ import {
   Building2,
   ArrowRight,
   Coins,
+  BarChart3,
 } from 'lucide-react';
 
 interface QuickStats {
@@ -71,6 +72,12 @@ const quickLinks = [
     href: '/admin/user-tokens',
     icon: Coins,
     description: 'Token consumption by user (last 7 days)',
+  },
+  {
+    title: 'PostHog Funnel',
+    href: '/admin/posthog-funnel',
+    icon: BarChart3,
+    description: 'Product funnel, expenses, pageviews',
   },
 ];
 
