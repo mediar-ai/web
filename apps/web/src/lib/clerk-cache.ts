@@ -1,4 +1,5 @@
 import { createClerkClient } from '@clerk/nextjs/server';
+import { mapDbIdToClerkId } from './orgIdMapping';
 
 const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY,
@@ -37,11 +38,16 @@ export async function getOrganizationName(orgId: string): Promise<string | null>
   // Create new fetch promise
   const fetchPromise = (async () => {
     try {
+      // In dev mode, map DB org IDs to dev Clerk org IDs
+      const clerkOrgId = mapDbIdToClerkId(orgId);
+      console.log(`[ClerkCache] Fetching org ${orgId} -> clerkId ${clerkOrgId}`);
+
       const org = await clerkClient.organizations.getOrganization({
-        organizationId: orgId,
+        organizationId: clerkOrgId,
       });
 
       if (org && org.name) {
+        // Cache by original orgId so callers get results keyed by what they passed
         orgNameCache.set(orgId, {
           name: org.name,
           timestamp: Date.now(),
