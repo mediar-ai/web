@@ -76,10 +76,10 @@ export async function POST(req: NextRequest) {
 
     console.log('[Cal Webhook] Processing booking for email:', bookerEmail);
 
-    // Find user by email in mediar_users
+    // Find user by email in mediar_users (user_id is the clerk user id)
     const { data: user, error: findError } = await supabase
       .from('mediar_users')
-      .select('id, clerk_user_id, email')
+      .select('user_id, email')
       .ilike('email', bookerEmail)
       .single();
 
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, userFound: false });
     }
 
-    console.log('[Cal Webhook] Found user:', user.clerk_user_id);
+    console.log('[Cal Webhook] Found user:', user.user_id);
 
     // Update user's booked_cal_call status
     const { error: updateError } = await supabase
@@ -98,19 +98,19 @@ export async function POST(req: NextRequest) {
         booked_cal_call: true,
         booked_cal_call_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('user_id', user.user_id);
 
     if (updateError) {
       console.error('[Cal Webhook] Failed to update user:', updateError);
       return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
     }
 
-    console.log('[Cal Webhook] Successfully marked user as booked:', user.clerk_user_id);
+    console.log('[Cal Webhook] Successfully marked user as booked:', user.user_id);
 
     return NextResponse.json({
       received: true,
       userFound: true,
-      userId: user.clerk_user_id,
+      userId: user.user_id,
     });
   } catch (error) {
     console.error('[Cal Webhook] Error processing webhook:', error);

@@ -63,11 +63,11 @@ export async function GET(request: NextRequest) {
 
     console.log('[Cal Booking Check] Checking for user:', userId);
 
-    // Look up user in mediar_users by clerk_user_id
+    // Look up user in mediar_users by user_id (which is the clerk user id)
     const { data: user, error: fetchError } = await supabase
       .from('mediar_users')
-      .select('id, email, booked_cal_call, booked_cal_call_at')
-      .eq('clerk_user_id', userId)
+      .select('user_id, email, booked_cal_call, booked_cal_call_at')
+      .eq('user_id', userId)
       .single();
 
     if (fetchError) {
