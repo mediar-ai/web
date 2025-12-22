@@ -13,6 +13,8 @@ import {
   Clock,
   Building2,
   ArrowRight,
+  Coins,
+  BarChart3,
 } from 'lucide-react';
 
 interface QuickStats {
@@ -54,16 +56,28 @@ const quickLinks = [
     description: 'Customer usage metrics and invoicing',
   },
   {
-    title: 'Observability',
+    title: 'Sentry traces by hostname',
     href: '/admin/observability',
     icon: Activity,
-    description: 'Logs, traces, and system metrics',
+    description: 'Total spans for: terminator::new',
   },
   {
     title: 'VM Timeline',
     href: '/admin/vm-timeline',
     icon: Clock,
     description: 'VM operations history and audit log',
+  },
+  {
+    title: 'User Tokens',
+    href: '/admin/user-tokens',
+    icon: Coins,
+    description: 'Token consumption by user (last 7 days)',
+  },
+  {
+    title: 'PostHog Funnel',
+    href: '/admin/posthog-funnel',
+    icon: BarChart3,
+    description: 'Product funnel, expenses, pageviews',
   },
 ];
 
