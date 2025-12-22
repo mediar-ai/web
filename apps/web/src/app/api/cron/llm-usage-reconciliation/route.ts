@@ -55,17 +55,21 @@ async function getGoogleAccessToken(): Promise<string> {
   return tokenData.access_token;
 }
 
-async function queryGoogleTokens(accessToken: string, periodMs: number): Promise<number> {
-  const endTime = new Date().toISOString();
-  const startTime = new Date(Date.now() - periodMs).toISOString();
+async function queryGoogleTokens(accessToken: string, days: number): Promise<number> {
+  // Use complete UTC day boundaries (same approach as admin dashboard)
+  const now = new Date();
+  const endTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const startTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days, 0, 0, 0));
+
+  console.log(`[Reconciliation] Query range: ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
   const filter = `metric.type="aiplatform.googleapis.com/publisher/online_serving/token_count"`;
   const url =
     `https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries?` +
     `filter=${encodeURIComponent(filter)}` +
-    `&interval.startTime=${startTime}` +
-    `&interval.endTime=${endTime}` +
-    `&aggregation.alignmentPeriod=${Math.floor(periodMs / 1000)}s` +
+    `&interval.startTime=${startTime.toISOString()}` +
+    `&interval.endTime=${endTime.toISOString()}` +
+    `&aggregation.alignmentPeriod=86400s` +
     `&aggregation.perSeriesAligner=ALIGN_SUM`;
 
   const response = await fetch(url, {
@@ -179,20 +183,25 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const periodMs = 24 * 60 * 60 * 1000; // 24 hours
+    const days = 1; // 1 complete day (yesterday)
     const periodHours = 24;
-    console.log('[Reconciliation] Running daily check for last 24 hours');
+
+    // Use complete UTC day boundaries (yesterday 00:00 to today 00:00)
+    const now = new Date();
+    const endTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const startTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days, 0, 0, 0));
+    console.log(`[Reconciliation] Running daily check for complete day: ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
     // 1. Get tokens from Google Cloud Monitoring
     const accessToken = await getGoogleAccessToken();
-    const googleTokens = await queryGoogleTokens(accessToken, periodMs);
+    const googleTokens = await queryGoogleTokens(accessToken, days);
 
-    // 2. Get tokens from our database (last hour)
-    const oneHourAgo = new Date(Date.now() - periodMs).toISOString();
+    // 2. Get tokens from our database (same UTC day boundaries)
     const { data: dbRows, error: dbError } = await supabase
       .from('mediar_llm_traces')
       .select('input_tokens, output_tokens')
-      .gte('created_at', oneHourAgo);
+      .gte('created_at', startTime.toISOString())
+      .lt('created_at', endTime.toISOString());
 
     if (dbError) {
       throw new Error(`Database query failed: ${dbError.message}`);

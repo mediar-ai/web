@@ -45,7 +45,9 @@ export async function OPTIONS(request: NextRequest) {
 
 /**
  * GET /api/ai/chat-sessions?workflowId=123
- * List all chat sessions for a workflow (for current user)
+ * List chat sessions for current user
+ * - If workflowId provided: filter by that workflow
+ * - If no workflowId: return ALL sessions for user (global history)
  */
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
@@ -60,33 +62,33 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const workflowId = searchParams.get('workflowId');
 
-    if (!workflowId) {
-      return NextResponse.json(
-        { error: 'workflowId is required' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
-
-    // Resolve workflow ID (supports both numeric ID and UUID)
-    const resolved = await resolveWorkflowId(supabase, workflowId);
-
-    if (resolved.error || !resolved.workflow) {
-      return NextResponse.json(
-        { error: resolved.error || `Workflow ${workflowId} not found` },
-        { status: 404, headers: corsHeaders }
-      );
-    }
-
-    const workflowIdNum = resolved.workflow.id;
-
-    const { data: sessions, error } = await supabase
+    // Build query - always filter by user, optionally by workflow
+    let query = supabase
       .from('workflow_chat_sessions')
-      .select('id, redis_session_id, title, message_count, created_at, updated_at')
-      .eq('workflow_id', workflowIdNum)
+      .select('id, workflow_id, redis_session_id, title, message_count, created_at, updated_at')
       .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(50); // Limit for performance
+
+    if (workflowId) {
+      // Filter by specific workflow
+      console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
+      const resolved = await resolveWorkflowId(supabase, workflowId);
+
+      if (resolved.error || !resolved.workflow) {
+        return NextResponse.json(
+          { error: resolved.error || `Workflow ${workflowId} not found` },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+
+      query = query.eq('workflow_id', resolved.workflow.id);
+    } else {
+      // Return all sessions for user (global history)
+      console.log(`[Chat Sessions] Loading ALL sessions for user ${userId}`);
+    }
+
+    const { data: sessions, error } = await query;
 
     if (error) {
       console.error('[Chat Sessions] Error loading:', error);
@@ -111,7 +113,8 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/ai/chat-sessions
  * Save/create a chat session
- * Body: { workflowId, redisSessionId, messages, title? }
+ * Body: { redisSessionId, messages, title?, workflowId? }
+ * workflowId is optional - null for global/homepage sessions
  */
 export async function POST(request: NextRequest) {
   const origin = request.headers.get('origin');
@@ -149,30 +152,29 @@ export async function POST(request: NextRequest) {
 
     const { workflowId, redisSessionId, messages, title } = body;
 
-    if (!workflowId || !redisSessionId) {
+    if (!redisSessionId) {
       return NextResponse.json(
-        { error: 'workflowId and redisSessionId are required' },
+        { error: 'redisSessionId is required' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
+    // Resolve workflow ID if provided (optional - null for global sessions)
+    let workflowIdNum: number | null = null;
+    if (workflowId) {
+      console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
+      const resolved = await resolveWorkflowId(supabase, String(workflowId));
 
-    // Resolve workflow ID (supports both numeric ID and UUID)
-    const resolved = await resolveWorkflowId(supabase, String(workflowId));
-
-    if (resolved.error || !resolved.workflow) {
-      return NextResponse.json(
-        { error: resolved.error || `Workflow ${workflowId} not found` },
-        { status: 404, headers: corsHeaders }
-      );
+      if (resolved.error || !resolved.workflow) {
+        return NextResponse.json(
+          { error: resolved.error || `Workflow ${workflowId} not found` },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+      workflowIdNum = resolved.workflow.id;
+    } else {
+      console.log(`[Chat Sessions] Saving global session ${redisSessionId} for user ${userId}`);
     }
-
-    const workflowIdNum = resolved.workflow.id;
-
-    // Note: No ownership check - any logged-in user can save chat sessions to any workflow
-    // Chat sessions are scoped by user_id anyway, so each user only sees their own sessions
-    console.log(`[Chat Sessions] Saving to workflow ${workflowIdNum} for user ${userId}`);
 
     // Check if session already exists
     const { data: existing } = await supabase
@@ -184,10 +186,11 @@ export async function POST(request: NextRequest) {
 
     let result;
     if (existing) {
-      // Update existing
+      // Update existing - also update workflow_id if it changed
       const { data, error } = await supabase
         .from('workflow_chat_sessions')
         .update({
+          workflow_id: workflowIdNum,
           messages: messages || [],
           message_count: messages?.length || 0,
           title: title || null,
