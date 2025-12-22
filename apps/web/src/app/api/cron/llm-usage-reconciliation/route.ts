@@ -179,8 +179,9 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const periodMs = 60 * 60 * 1000; // 1 hour
-    const periodHours = 1;
+    const periodMs = 24 * 60 * 60 * 1000; // 24 hours
+    const periodHours = 24;
+    console.log('[Reconciliation] Running daily check for last 24 hours');
 
     // 1. Get tokens from Google Cloud Monitoring
     const accessToken = await getGoogleAccessToken();
