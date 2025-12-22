@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
 import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
+import { mapClerkUserIdToDbUserId } from '@/lib/orgIdMapping';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,10 +55,13 @@ export async function GET(request: NextRequest) {
   const corsHeaders = getCorsHeaders(origin);
 
   try {
-    const { userId, error: authError } = await authenticateRequest(request);
-    if (!userId) {
+    const { userId: clerkUserId, error: authError } = await authenticateRequest(request);
+    if (!clerkUserId) {
       return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
+
+    // Map Clerk dev user ID to production DB user ID (handles dev/prod mismatch)
+    const dbUserId = mapClerkUserIdToDbUserId(clerkUserId);
 
     const searchParams = request.nextUrl.searchParams;
     const workflowId = searchParams.get('workflowId');
@@ -66,13 +70,13 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('workflow_chat_sessions')
       .select('id, workflow_id, redis_session_id, title, message_count, created_at, updated_at')
-      .eq('user_id', userId)
+      .eq('user_id', dbUserId)
       .order('updated_at', { ascending: false })
       .limit(50); // Limit for performance
 
     if (workflowId) {
       // Filter by specific workflow
-      console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${userId}`);
+      console.log(`[Chat Sessions] Loading for workflow ${workflowId}, user ${dbUserId} (clerk: ${clerkUserId})`);
       const resolved = await resolveWorkflowId(supabase, workflowId);
 
       if (resolved.error || !resolved.workflow) {
@@ -85,7 +89,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('workflow_id', resolved.workflow.id);
     } else {
       // Return all sessions for user (global history)
-      console.log(`[Chat Sessions] Loading ALL sessions for user ${userId}`);
+      console.log(`[Chat Sessions] Loading ALL sessions for user ${dbUserId} (clerk: ${clerkUserId})`);
     }
 
     const { data: sessions, error } = await query;
@@ -121,10 +125,13 @@ export async function POST(request: NextRequest) {
   const corsHeaders = getCorsHeaders(origin);
 
   try {
-    const { userId, error: authError } = await authenticateRequest(request);
-    if (!userId) {
+    const { userId: clerkUserId, error: authError } = await authenticateRequest(request);
+    if (!clerkUserId) {
       return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
+
+    // Map Clerk dev user ID to production DB user ID (handles dev/prod mismatch)
+    const dbUserId = mapClerkUserIdToDbUserId(clerkUserId);
 
     // Read body as text first for better error handling
     const bodyText = await request.text();
@@ -162,7 +169,7 @@ export async function POST(request: NextRequest) {
     // Resolve workflow ID if provided (optional - null for global sessions)
     let workflowIdNum: number | null = null;
     if (workflowId) {
-      console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${userId}`);
+      console.log(`[Chat Sessions] Saving session ${redisSessionId} for workflow ${workflowId}, user ${dbUserId}`);
       const resolved = await resolveWorkflowId(supabase, String(workflowId));
 
       if (resolved.error || !resolved.workflow) {
@@ -173,7 +180,7 @@ export async function POST(request: NextRequest) {
       }
       workflowIdNum = resolved.workflow.id;
     } else {
-      console.log(`[Chat Sessions] Saving global session ${redisSessionId} for user ${userId}`);
+      console.log(`[Chat Sessions] Saving global session ${redisSessionId} for user ${dbUserId}`);
     }
 
     // Check if session already exists
@@ -181,7 +188,7 @@ export async function POST(request: NextRequest) {
       .from('workflow_chat_sessions')
       .select('id')
       .eq('redis_session_id', redisSessionId)
-      .eq('user_id', userId)
+      .eq('user_id', dbUserId)
       .single();
 
     let result;
@@ -208,7 +215,7 @@ export async function POST(request: NextRequest) {
         .from('workflow_chat_sessions')
         .insert({
           workflow_id: workflowIdNum,
-          user_id: userId,
+          user_id: dbUserId,
           redis_session_id: redisSessionId,
           messages: messages || [],
           message_count: messages?.length || 0,
@@ -250,10 +257,13 @@ export async function DELETE(request: NextRequest) {
   const corsHeaders = getCorsHeaders(origin);
 
   try {
-    const { userId, error: authError } = await authenticateRequest(request);
-    if (!userId) {
+    const { userId: clerkUserId, error: authError } = await authenticateRequest(request);
+    if (!clerkUserId) {
       return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401, headers: corsHeaders });
     }
+
+    // Map Clerk dev user ID to production DB user ID (handles dev/prod mismatch)
+    const dbUserId = mapClerkUserIdToDbUserId(clerkUserId);
 
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('sessionId');
@@ -265,13 +275,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    console.log(`[Chat Sessions] Deleting session ${sessionId}, user ${userId}`);
+    console.log(`[Chat Sessions] Deleting session ${sessionId}, user ${dbUserId}`);
 
     const { error } = await supabase
       .from('workflow_chat_sessions')
       .delete()
       .eq('id', parseInt(sessionId))
-      .eq('user_id', userId);
+      .eq('user_id', dbUserId);
 
     if (error) {
       console.error('[Chat Sessions] Delete error:', error);
