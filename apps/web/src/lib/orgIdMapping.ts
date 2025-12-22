@@ -87,3 +87,60 @@ export function debugOrgIdMapping() {
     console.log('Prod -> Dev mappings:', getReverseOrgIdMapping());
   }
 }
+
+// =============================================================================
+// User ID Mapping (for chat sessions and other user-specific data)
+// =============================================================================
+
+// Environment-specific user ID mappings
+// Dev Clerk User ID -> Production Database User ID
+const getUserIdMapping = () => {
+  return {
+    // Matt's dev user -> prod user
+    [process.env.MEDIAR_DEV_USER_ID || 'user_2yydIYhbpBpCzfgOIiNhOPFFhc4']:
+      process.env.MEDIAR_PROD_USER_ID || 'user_2yynnCT0NQKgSvqMlHJHzBNg3Yo',
+  };
+};
+
+// Reverse mapping for display purposes
+// Production Database User ID -> Dev Clerk User ID
+const getReverseUserIdMapping = () => {
+  return {
+    [process.env.MEDIAR_PROD_USER_ID || 'user_2yynnCT0NQKgSvqMlHJHzBNg3Yo']:
+      process.env.MEDIAR_DEV_USER_ID || 'user_2yydIYhbpBpCzfgOIiNhOPFFhc4',
+  };
+};
+
+/**
+ * Converts Clerk dev user ID to database production user ID.
+ * Always applies mapping to ensure consistent user IDs in database queries.
+ */
+export function mapClerkUserIdToDbUserId(clerkUserId: string): string {
+  const mapping = getUserIdMapping();
+  const mappedId = mapping[clerkUserId];
+
+  if (mappedId) {
+    console.log(`[userIdMapping] Mapping Clerk User ${clerkUserId} -> DB User ${mappedId}`);
+    return mappedId;
+  }
+
+  return clerkUserId;
+}
+
+/**
+ * Converts database production user ID back to Clerk dev user ID
+ * Only applies mapping in development environment
+ */
+export function mapDbUserIdToClerkUserId(dbUserId: string): string {
+  if (process.env.NODE_ENV === 'development') {
+    const reverseMapping = getReverseUserIdMapping();
+    const mappedId = reverseMapping[dbUserId];
+
+    if (mappedId) {
+      console.log(`[userIdMapping] Reverse mapping DB User ${dbUserId} -> Clerk User ${mappedId}`);
+      return mappedId;
+    }
+  }
+
+  return dbUserId;
+}
