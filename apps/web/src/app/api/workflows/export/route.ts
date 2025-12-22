@@ -3,6 +3,7 @@ import { getVertexGenAI } from '@/lib/vertexai';
 import { generateEnhancedWorkflowYAML } from '@/lib/workflowExportHelpers';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { trackLLMUsageAsync } from '@/lib/llm-tracking';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -262,13 +263,25 @@ Please generate an enhanced YAML workflow sequence based on this data and the sa
     });
 
     const llmStartTime = Date.now();
-    const result = await model.generateContent({ 
-      contents: [{ role: "user", parts: [{ text: prompt }] }], 
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3 }
     });
 
     const llmTime = Date.now() - llmStartTime;
     const response = result.response;
+
+    // Track LLM usage (fire-and-forget)
+    const usageMetadata = response?.usageMetadata;
+    if (usageMetadata) {
+      console.log(`[WORKFLOW-EXPORT] tracking usage: in=${usageMetadata.promptTokenCount}, out=${usageMetadata.candidatesTokenCount}`);
+      trackLLMUsageAsync({
+        model: 'gemini-2.5-pro',
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0,
+        source: 'workflow_export',
+      });
+    }
     
     if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
       const enhancedYaml = response.candidates[0].content.parts[0].text;

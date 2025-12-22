@@ -105,7 +105,7 @@ async function sendDiscrepancyAlert(details: {
   }
 
   const recipients = ['matt@mediar.ai', 'louis@mediar.ai'];
-  const subject = `⚠️ LLM Token Usage Discrepancy Alert (${details.discrepancyPercent.toFixed(1)}%)`;
+  const subject = `LLM Token Discrepancy: API ${(details.googleTokens/1e6).toFixed(1)}M vs Traced ${(details.dbTokens/1e6).toFixed(1)}M (${details.discrepancyPercent.toFixed(1)}% diff)`;
   const body = `
 LLM token usage reconciliation detected a significant discrepancy:
 
