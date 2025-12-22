@@ -37,9 +37,10 @@ async function authenticateRequest(request: NextRequest): Promise<{ userId: stri
  * OPTIONS (CORS preflight)
  */
 export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
   return new NextResponse(null, {
     status: 204,
-    headers: getCorsHeaders(request),
+    headers: getCorsHeaders(origin),
   });
 }
 
@@ -49,7 +50,8 @@ export async function OPTIONS(request: NextRequest) {
  * Used by desktop app for polling after opening Cal.com
  */
 export async function GET(request: NextRequest) {
-  const corsHeaders = getCorsHeaders(request);
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
 
   try {
     const { userId, email, error } = await authenticateRequest(request);
