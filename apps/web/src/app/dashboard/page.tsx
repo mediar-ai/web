@@ -26,7 +26,6 @@ import {
   Search,
   Eye,
   EyeOff,
-  Wand2,
   Tag,
   X,
   Monitor,
@@ -1588,24 +1587,6 @@ function DashboardContent() {
                       K
                     </kbd>
                   </button>
-
-                  <a
-                    href="https://mediar.ai/turnkey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => {
-                      posthog?.capture('dashboard_turnkey_automation_click', {
-                        timestamp: new Date().toISOString(),
-                      });
-                    }}
-                    className="px-4 py-2 bg-white border-2 border-black hover:bg-black hover:text-white transition-all flex items-center gap-2 text-sm min-h-[42px]"
-                    aria-label="Turn recording into automation"
-                  >
-                    <Wand2 className="w-4 h-4" />
-                    <span className="font-mono text-xs uppercase">
-                      Turnkey Automation
-                    </span>
-                  </a>
                 </div>
               </div>
 
