@@ -76,41 +76,47 @@ export async function POST(req: NextRequest) {
 
     console.log('[Cal Webhook] Processing booking for email:', bookerEmail);
 
-    // Find user by email in mediar_users (user_id is the clerk user id)
-    const { data: user, error: findError } = await supabase
+    // Find ALL users by email in mediar_users (handles Clerk dev/prod user ID differences)
+    const { data: users, error: findError } = await supabase
       .from('mediar_users')
       .select('user_id, email')
-      .ilike('email', bookerEmail)
-      .single();
+      .ilike('email', bookerEmail);
 
-    if (findError || !user) {
-      console.warn('[Cal Webhook] User not found for email:', bookerEmail, findError?.message);
+    if (findError) {
+      console.error('[Cal Webhook] Error finding users:', findError);
+      return NextResponse.json({ error: 'Database error' }, { status: 500 });
+    }
+
+    if (!users || users.length === 0) {
+      console.warn('[Cal Webhook] No users found for email:', bookerEmail);
       // Still return 200 - booking is valid, user just not in our system yet
       return NextResponse.json({ received: true, userFound: false });
     }
 
-    console.log('[Cal Webhook] Found user:', user.user_id);
+    console.log('[Cal Webhook] Found', users.length, 'user(s) with email:', bookerEmail);
 
-    // Update user's booked_cal_call status
-    const { error: updateError } = await supabase
+    // Update ALL users with matching email (handles Clerk dev/prod duplicates)
+    const { error: updateError, count } = await supabase
       .from('mediar_users')
       .update({
         booked_cal_call: true,
         booked_cal_call_at: new Date().toISOString(),
       })
-      .eq('user_id', user.user_id);
+      .ilike('email', bookerEmail);
 
     if (updateError) {
-      console.error('[Cal Webhook] Failed to update user:', updateError);
-      return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
+      console.error('[Cal Webhook] Failed to update users:', updateError);
+      return NextResponse.json({ error: 'Failed to update users' }, { status: 500 });
     }
 
-    console.log('[Cal Webhook] Successfully marked user as booked:', user.user_id);
+    const userIds = users.map(u => u.user_id);
+    console.log('[Cal Webhook] Successfully marked', users.length, 'user(s) as booked:', userIds.join(', '));
 
     return NextResponse.json({
       received: true,
       userFound: true,
-      userId: user.user_id,
+      usersUpdated: users.length,
+      userIds,
     });
   } catch (error) {
     console.error('[Cal Webhook] Error processing webhook:', error);

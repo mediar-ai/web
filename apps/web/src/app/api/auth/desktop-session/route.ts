@@ -125,6 +125,22 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to create desktop session token');
     }
 
+    // Ensure user exists in mediar_users with correct email (handles Clerk dev/prod ID differences)
+    console.log('[Desktop Session] Upserting user to mediar_users:', userId, email);
+    const { error: userUpsertError } = await supabase
+      .from('mediar_users')
+      .upsert({
+        user_id: userId,
+        email: email,
+      }, { onConflict: 'user_id' });
+
+    if (userUpsertError) {
+      // Log but don't fail - session creation succeeded
+      console.error('[Desktop Session] Failed to sync user to mediar_users:', userUpsertError);
+    } else {
+      console.log('[Desktop Session] User synced to mediar_users successfully');
+    }
+
     // Store session for polling (temporary, expires in 5 minutes)
     const sessionExpiresAt = new Date();
     sessionExpiresAt.setMinutes(
