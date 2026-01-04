@@ -74,13 +74,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No attendee email' }, { status: 400 });
     }
 
-    console.log('[Cal Webhook] Processing booking for email:', bookerEmail);
+    // Extract user_id from booking responses (custom field for 100% reliable matching)
+    const responses = payload.payload?.responses || {};
+    const userId = responses.user_id?.value || responses.user_id; // Handle both object and string formats
 
-    // Find ALL users by email in mediar_users (handles Clerk dev/prod user ID differences)
-    const { data: users, error: findError } = await supabase
-      .from('mediar_users')
-      .select('user_id, email')
-      .ilike('email', bookerEmail);
+    console.log('[Cal Webhook] Processing booking - email:', bookerEmail, 'user_id:', userId || 'not provided');
+
+    let users = null;
+    let findError = null;
+    let matchedBy = 'none';
+
+    // STRATEGY 1: Match by user_id (most reliable - prevents email mismatch issues)
+    if (userId) {
+      const result = await supabase
+        .from('mediar_users')
+        .select('user_id, email')
+        .eq('user_id', userId);
+
+      users = result.data;
+      findError = result.error;
+
+      if (users && users.length > 0) {
+        matchedBy = 'user_id';
+        console.log('[Cal Webhook] ✓ Matched by user_id:', userId, '(', users.length, 'user(s))');
+      } else {
+        console.warn('[Cal Webhook] No user found for user_id:', userId, '- falling back to email');
+      }
+    }
+
+    // STRATEGY 2: Fall back to email matching (backward compatibility)
+    if (!users || users.length === 0) {
+      const result = await supabase
+        .from('mediar_users')
+        .select('user_id, email')
+        .ilike('email', bookerEmail);
+
+      users = result.data;
+      findError = result.error;
+
+      if (users && users.length > 0) {
+        matchedBy = 'email';
+        console.log('[Cal Webhook] ✓ Matched by email:', bookerEmail, '(', users.length, 'user(s))');
+      }
+    }
 
     if (findError) {
       console.error('[Cal Webhook] Error finding users:', findError);
@@ -88,21 +124,36 @@ export async function POST(req: NextRequest) {
     }
 
     if (!users || users.length === 0) {
-      console.warn('[Cal Webhook] No users found for email:', bookerEmail);
+      console.warn('[Cal Webhook] ✗ No users found - tried user_id:', userId || 'none', 'email:', bookerEmail);
       // Still return 200 - booking is valid, user just not in our system yet
       return NextResponse.json({ received: true, userFound: false });
     }
 
-    console.log('[Cal Webhook] Found', users.length, 'user(s) with email:', bookerEmail);
+    // Update ALL matched users (handles Clerk dev/prod duplicates)
+    const updateCondition = matchedBy === 'user_id'
+      ? { user_id: userId }
+      : {}; // Will use ilike below for email
 
-    // Update ALL users with matching email (handles Clerk dev/prod duplicates)
-    const { error: updateError, count } = await supabase
-      .from('mediar_users')
-      .update({
-        booked_cal_call: true,
-        booked_cal_call_at: new Date().toISOString(),
-      })
-      .ilike('email', bookerEmail);
+    let updateResult;
+    if (matchedBy === 'user_id') {
+      updateResult = await supabase
+        .from('mediar_users')
+        .update({
+          booked_cal_call: true,
+          booked_cal_call_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+    } else {
+      updateResult = await supabase
+        .from('mediar_users')
+        .update({
+          booked_cal_call: true,
+          booked_cal_call_at: new Date().toISOString(),
+        })
+        .ilike('email', bookerEmail);
+    }
+
+    const { error: updateError } = updateResult;
 
     if (updateError) {
       console.error('[Cal Webhook] Failed to update users:', updateError);
@@ -110,13 +161,14 @@ export async function POST(req: NextRequest) {
     }
 
     const userIds = users.map(u => u.user_id);
-    console.log('[Cal Webhook] Successfully marked', users.length, 'user(s) as booked:', userIds.join(', '));
+    console.log('[Cal Webhook] ✓ Successfully marked', users.length, 'user(s) as booked (matched by', matchedBy + '):', userIds.join(', '));
 
     return NextResponse.json({
       received: true,
       userFound: true,
       usersUpdated: users.length,
       userIds,
+      matchedBy, // Include matching strategy for debugging
     });
   } catch (error) {
     console.error('[Cal Webhook] Error processing webhook:', error);
