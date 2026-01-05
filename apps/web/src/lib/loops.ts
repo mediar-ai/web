@@ -59,6 +59,18 @@ export async function addToLoops(
 
       const greeting = firstName ? `Hey ${firstName}` : "Hey";
 
+      const emailBody = `${greeting},
+
+Thanks for signing up for Mediar! Here's how to get started:
+
+1. Download the desktop app: https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64
+2. Sign in with your account
+3. Create your first workflow
+
+Reply to this email if you need any help getting set up.
+
+- Matt, founder`;
+
       const emailResponse = await fetch("https://app.loops.so/api/v1/transactional", {
         method: "POST",
         headers: {
@@ -69,9 +81,9 @@ export async function addToLoops(
           transactionalId: LOOPS_TRANSACTIONAL_ID,
           email,
           dataVariables: {
-            subject: "Did it work for you?",
-            email_preview: "Quick question from the founder",
-            body: `${greeting}, founder here - Matt. I saw you signed up for the app, did it work for you?`,
+            subject: "Get started with Mediar",
+            email_preview: "Download the desktop app to create your first workflow",
+            body: emailBody,
             sender_name: "Matt from Mediar",
             reply_to: "matt@mediar.ai",
           },
