@@ -325,6 +325,38 @@ Write-Host 'Starting MCP with OTEL telemetry (ProcessStartInfo method)...'
 Get-Process terminator* -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
 
+# Set display resolution to 1920x1080 for better VNC experience
+Write-Host 'Setting display resolution to 1920x1080...'
+try {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class DisplaySettings {
+    [DllImport("user32.dll")] public static extern int ChangeDisplaySettings(ref DEVMODE dm, int flags);
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
+    public struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmDeviceName;
+        public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmFormName;
+        public short dmLogPixels, dmBitsPerPel;
+        public int dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+        public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+    }
+}
+"@
+    \$dm = New-Object DisplaySettings+DEVMODE
+    \$dm.dmSize = [System.Runtime.InteropServices.Marshal]::SizeOf(\$dm)
+    \$dm.dmPelsWidth = 1920
+    \$dm.dmPelsHeight = 1080
+    \$dm.dmFields = 0x180000
+    [DisplaySettings]::ChangeDisplaySettings([ref]\$dm, 0) | Out-Null
+    Write-Host 'Display resolution set to 1920x1080'
+} catch {
+    Write-Host "Could not set resolution: \$_"
+}
+
 # Mount S3 Drive (must happen in user session)
 Write-Host 'Mounting S3 drive...'
 & C:\\Scripts\\mount-s3.ps1
