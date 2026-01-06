@@ -244,12 +244,12 @@ export default function ContactAdminSection({
                     We build the automation for you
                   </p>
                   <a
-                    href="https://mediar.ai/turnkey"
+                    href="https://mediar.ai/pricing"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
                     <Button className="w-full bg-white text-black border-2 border-black hover:bg-black hover:text-white transition-colors">
-                      REQUEST CONSULTATION
+                      VIEW PRICING
                     </Button>
                   </a>
                 </div>
