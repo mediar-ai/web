@@ -96,7 +96,9 @@ export async function GET() {
           'user_created',
           'desktop_app_download_clicked',
           'desktop_app_started',
-          'desktop_user_authenticated'
+          'desktop_user_authenticated',
+          'desktop_onboarding_completed',
+          'cal_booking_completed'
         )
         AND timestamp >= today() - 60
         GROUP BY event
@@ -187,11 +189,13 @@ export async function GET() {
     }
 
     // Get counts for conversion rate calculations
-    // Funnel order: Pageview → Download → App Started → User Created → Authenticated
+    // Funnel order: Pageview → Download → User Created → App Started → Authenticated → Onboarding → Cal Booking
     const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
-    const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const calBooking = funnelEvents.get('cal_booking_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
     // Event definitions with sort order and conversion rate logic
     const eventDefs = [
@@ -203,44 +207,56 @@ export async function GET() {
         convRate30d: pageview30d > 0 ? `${Math.round((download.count30d / pageview30d) * 100)}% vs. Pageview` : '',
       },
       {
-        event: 'desktop_app_started',
-        label: 'App Started',
-        sortOrder: 12,
-        convRate7d: download.count7d > 0 ? `${Math.round((appStarted.count7d / download.count7d) * 100)}% vs. Download` : '',
-        convRate30d: download.count30d > 0 ? `${Math.round((appStarted.count30d / download.count30d) * 100)}% vs. Download` : '',
-      },
-      {
         event: 'user_created',
         label: 'User Created',
+        sortOrder: 12,
+        convRate7d: download.count7d > 0 ? `${Math.round((userCreated.count7d / download.count7d) * 100)}% vs. Download` : '',
+        convRate30d: download.count30d > 0 ? `${Math.round((userCreated.count30d / download.count30d) * 100)}% vs. Download` : '',
+      },
+      {
+        event: 'desktop_app_started',
+        label: 'App Started',
         sortOrder: 13,
-        convRate7d: appStarted.count7d > 0 ? `${Math.round((userCreated.count7d / appStarted.count7d) * 100)}% vs. App Started` : '',
-        convRate30d: appStarted.count30d > 0 ? `${Math.round((userCreated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((appStarted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((appStarted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
       },
       {
         event: 'desktop_user_authenticated',
         label: 'User Authenticated',
         sortOrder: 14,
-        convRate7d: userCreated.count7d > 0 ? `${Math.round((authenticated.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
-        convRate30d: userCreated.count30d > 0 ? `${Math.round((authenticated.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
+        convRate7d: appStarted.count7d > 0 ? `${Math.round((authenticated.count7d / appStarted.count7d) * 100)}% vs. App Started` : '',
+        convRate30d: appStarted.count30d > 0 ? `${Math.round((authenticated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
+      },
+      {
+        event: 'desktop_onboarding_completed',
+        label: 'Onboarding Done',
+        sortOrder: 15,
+        convRate7d: authenticated.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / authenticated.count7d) * 100)}% vs. Authenticated` : '',
+        convRate30d: authenticated.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / authenticated.count30d) * 100)}% vs. Authenticated` : '',
+      },
+      {
+        event: 'cal_booking_completed',
+        label: 'Cal Booking',
+        sortOrder: 16,
+        convRate7d: onboardingCompleted.count7d > 0 ? `${Math.round((calBooking.count7d / onboardingCompleted.count7d) * 100)}% vs. Onboarding` : '',
+        convRate30d: onboardingCompleted.count30d > 0 ? `${Math.round((calBooking.count30d / onboardingCompleted.count30d) * 100)}% vs. Onboarding` : '',
       },
     ];
 
     for (const def of eventDefs) {
-      const data = funnelEvents.get(def.event);
-      if (data) {
-        const change7d = data.prev7d > 0 ? ((data.count7d - data.prev7d) / data.prev7d * 100) : null;
-        const change30d = data.prev30d > 0 ? ((data.count30d - data.prev30d) / data.prev30d * 100) : null;
-        rows.push({
-          event: def.label,
-          value7d: `${data.count7d} (${formatChange(change7d)})`,
-          change7d,
-          convRate7d: def.convRate7d,
-          value30d: `${data.count30d} (${formatChange(change30d)})`,
-          change30d,
-          convRate30d: def.convRate30d,
-          sortOrder: def.sortOrder,
-        });
-      }
+      const data = funnelEvents.get(def.event) || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+      const change7d = data.prev7d > 0 ? ((data.count7d - data.prev7d) / data.prev7d * 100) : null;
+      const change30d = data.prev30d > 0 ? ((data.count30d - data.prev30d) / data.prev30d * 100) : null;
+      rows.push({
+        event: def.label,
+        value7d: `${data.count7d} (${formatChange(change7d)})`,
+        change7d,
+        convRate7d: def.convRate7d,
+        value30d: `${data.count30d} (${formatChange(change30d)})`,
+        change30d,
+        convRate30d: def.convRate30d,
+        sortOrder: def.sortOrder,
+      });
     }
 
     // Sort by sortOrder
