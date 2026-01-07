@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Users,
@@ -28,7 +28,7 @@ interface Member {
   createdAt: string;
 }
 
-export default function AdminMembersPage() {
+function AdminMembersContent() {
   const searchParams = useSearchParams();
   const viewOrgId = searchParams.get('viewOrgId');
 
@@ -232,5 +232,13 @@ export default function AdminMembersPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminMembersPage() {
+  return (
+    <Suspense fallback={<div className="p-6 font-mono">Loading...</div>}>
+      <AdminMembersContent />
+    </Suspense>
   );
 }

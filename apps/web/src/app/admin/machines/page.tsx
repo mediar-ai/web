@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Server, RefreshCw, Plus, Activity, Eye, EyeOff, Zap } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Server, Plus, Activity, Eye, EyeOff, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { MachineCard } from '@/components/admin/MachineCard';
 import { ProvisionVmDialog } from '@/components/admin/ProvisionVmDialog';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
 
 interface Machine {
   id: number;
@@ -24,9 +26,9 @@ interface Machine {
   uptime_percentage?: number;
 }
 
+const REFRESH_INTERVAL = 15000; // 15 seconds for machine health
+
 export default function AdminMachinesPage() {
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [showAddMachine, setShowAddMachine] = useState(false);
   const [newMachine, setNewMachine] = useState({
@@ -39,49 +41,59 @@ export default function AdminMachinesPage() {
   const [adding, setAdding] = useState(false);
   const [showProvisionDialog, setShowProvisionDialog] = useState(false);
 
-  const fetchMachines = useCallback(async () => {
-    try {
-      const res = await fetch('/api/machines?status=all&show_all=true&include_load=true');
-      if (res.ok) {
-        const data = await res.json();
-        // Sort: healthy+active first, then by recent health check
-        const sorted = (data.machines || []).sort((a: Machine, b: Machine) => {
-          // Primary: health status
-          const healthOrder: Record<string, number> = {
-            healthy: 0,
-            unhealthy: 1,
-            unknown: 2,
-          };
-          const healthDiff = (healthOrder[a.health_status] ?? 2) - (healthOrder[b.health_status] ?? 2);
-          if (healthDiff !== 0) return healthDiff;
-
-          // Secondary: status (active > inactive > maintenance)
-          const statusOrder: Record<string, number> = {
-            active: 0,
-            inactive: 1,
-            maintenance: 2,
-          };
-          const statusDiff = (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1);
-          if (statusDiff !== 0) return statusDiff;
-
-          // Tertiary: last health check (most recent first)
-          const aTime = a.last_health_check ? new Date(a.last_health_check).getTime() : 0;
-          const bTime = b.last_health_check ? new Date(b.last_health_check).getTime() : 0;
-          return bTime - aTime;
-        });
-        setMachines(sorted);
-      }
-    } catch (error) {
-      console.error('Failed to fetch machines:', error);
-      toast.error('Failed to load machines');
-    } finally {
-      setLoading(false);
+  const fetchMachines = useCallback(async (): Promise<Machine[]> => {
+    console.log('[machines-page] Fetching machines...');
+    const res = await fetch('/api/machines?status=all&show_all=true&include_load=true');
+    if (!res.ok) {
+      throw new Error('Failed to fetch machines');
     }
+    const data = await res.json();
+    // Sort: healthy+active first, then by recent health check
+    const sorted = (data.machines || []).sort((a: Machine, b: Machine) => {
+      // Primary: health status
+      const healthOrder: Record<string, number> = {
+        healthy: 0,
+        unhealthy: 1,
+        unknown: 2,
+      };
+      const healthDiff = (healthOrder[a.health_status] ?? 2) - (healthOrder[b.health_status] ?? 2);
+      if (healthDiff !== 0) return healthDiff;
+
+      // Secondary: status (active > inactive > maintenance)
+      const statusOrder: Record<string, number> = {
+        active: 0,
+        inactive: 1,
+        maintenance: 2,
+      };
+      const statusDiff = (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1);
+      if (statusDiff !== 0) return statusDiff;
+
+      // Tertiary: last health check (most recent first)
+      const aTime = a.last_health_check ? new Date(a.last_health_check).getTime() : 0;
+      const bTime = b.last_health_check ? new Date(b.last_health_check).getTime() : 0;
+      return bTime - aTime;
+    });
+    return sorted;
   }, []);
 
-  useEffect(() => {
-    fetchMachines();
-  }, [fetchMachines]);
+  const {
+    data: machines,
+    loading,
+    isRefreshing,
+    autoRefreshEnabled,
+    toggleAutoRefresh,
+    refresh,
+    lastUpdatedAgo,
+    error,
+  } = useAutoRefresh(fetchMachines, {
+    interval: REFRESH_INTERVAL,
+    storageKey: 'admin-machines-auto-refresh',
+  });
+
+  // Show error toast when fetch fails
+  if (error) {
+    toast.error(error);
+  }
 
   const addMachine = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,7 +126,7 @@ export default function AdminMachinesPage() {
           azure_resource_id: '',
           terraform_key: '',
         });
-        fetchMachines();
+        refresh();
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to add machine');
@@ -126,14 +138,15 @@ export default function AdminMachinesPage() {
     }
   };
 
-  const healthyCount = machines.filter(m => m.health_status === 'healthy').length;
-  const activeCount = machines.filter(m => m.status === 'active').length;
-  const inactiveCount = machines.filter(m => m.status !== 'active').length;
+  const machineList = machines || [];
+  const healthyCount = machineList.filter(m => m.health_status === 'healthy').length;
+  const activeCount = machineList.filter(m => m.status === 'active').length;
+  const inactiveCount = machineList.filter(m => m.status !== 'active').length;
 
   // Filter machines based on showInactive toggle
   const displayedMachines = showInactive
-    ? machines
-    : machines.filter(m => m.status === 'active' || m.health_status === 'healthy');
+    ? machineList
+    : machineList.filter(m => m.status === 'active' || m.health_status === 'healthy');
 
   return (
     <div className="p-6">
@@ -177,15 +190,15 @@ export default function AdminMachinesPage() {
           >
             <Plus className="w-4 h-4" />
           </button>
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchMachines();
-            }}
-            className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <AutoRefreshControls
+            loading={loading}
+            isRefreshing={isRefreshing}
+            autoRefreshEnabled={autoRefreshEnabled}
+            lastUpdatedAgo={lastUpdatedAgo}
+            intervalSeconds={REFRESH_INTERVAL / 1000}
+            onRefresh={refresh}
+            onToggleAutoRefresh={toggleAutoRefresh}
+          />
         </div>
       </div>
 
@@ -193,7 +206,7 @@ export default function AdminMachinesPage() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="border-2 border-black p-3">
           <div className="font-mono text-xs text-gray-600 uppercase">Total</div>
-          <div className="font-mono font-bold text-xl">{machines.length}</div>
+          <div className="font-mono font-bold text-xl">{machineList.length}</div>
         </div>
         <div className="border-2 border-black p-3">
           <div className="font-mono text-xs text-gray-600 uppercase">Active</div>
@@ -285,11 +298,11 @@ export default function AdminMachinesPage() {
       )}
 
       {/* Machine List */}
-      {loading ? (
+      {loading && !machines ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black" />
         </div>
-      ) : machines.length === 0 ? (
+      ) : machineList.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed border-gray-400">
           <Server className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p className="font-mono text-gray-600">No machines registered</p>
@@ -318,7 +331,7 @@ export default function AdminMachinesPage() {
               <MachineCard
                 key={machine.id}
                 machine={machine}
-                onRefresh={fetchMachines}
+                onRefresh={refresh}
                 compact={machine.status !== 'active' && machine.health_status !== 'healthy'}
               />
             ))}
@@ -330,7 +343,7 @@ export default function AdminMachinesPage() {
       <ProvisionVmDialog
         isOpen={showProvisionDialog}
         onClose={() => setShowProvisionDialog(false)}
-        onSuccess={fetchMachines}
+        onSuccess={refresh}
       />
     </div>
   );
