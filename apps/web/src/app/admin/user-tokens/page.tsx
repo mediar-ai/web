@@ -81,7 +81,7 @@ export default function UserTokensPage() {
             USER TOKEN CONSUMPTION
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
-            Last 7 days - Vertex AI token usage by user
+            Last 3 days - Vertex AI token usage by user
           </p>
         </div>
         <AutoRefreshControls
@@ -127,111 +127,125 @@ export default function UserTokensPage() {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table - Total first, then last 3 days (most recent first) */}
           <div className="border-2 border-black overflow-x-auto">
-            <table className="w-full min-w-[600px]">
-              <thead>
-                <tr className="border-b-2 border-black bg-gray-50">
-                  <th className="text-left p-3 font-mono text-sm font-bold sticky left-0 bg-gray-50">
-                    User
-                  </th>
-                  {data.dates.map(date => (
-                    <th key={date} className="text-right p-3 font-mono text-sm font-bold min-w-[80px]">
-                      {formatDate(date)}
-                    </th>
-                  ))}
-                  <th className="text-right p-3 font-mono text-sm font-bold min-w-[80px] border-l-2 border-black">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.users.map((user) => {
-                  const total = user.dailyTokens.reduce((sum, t) => sum + t, 0);
-                  const maxDaily = Math.max(...user.dailyTokens, 1);
+            {(() => {
+              // Get last 3 days, reversed (most recent first)
+              const last3Dates = data.dates.slice(-3).reverse();
+              const dateIndices = last3Dates.map(d => data.dates.indexOf(d));
+              console.log('[user-tokens-page] Showing dates:', last3Dates);
 
-                  return (
-                    <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="p-3 font-mono text-sm sticky left-0 bg-white max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">
-                        {user.label}
+              return (
+                <table className="w-full min-w-[600px]">
+                  <thead>
+                    <tr className="border-b-2 border-black bg-gray-50">
+                      <th className="text-left p-3 font-mono text-sm font-bold sticky left-0 bg-gray-50">
+                        User
+                      </th>
+                      <th className="text-right p-3 font-mono text-sm font-bold min-w-[80px] border-l-2 border-black">
+                        Total
+                      </th>
+                      {last3Dates.map(date => (
+                        <th key={date} className="text-right p-3 font-mono text-sm font-bold min-w-[80px]">
+                          {formatDate(date)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.users.map((user) => {
+                      const total = user.dailyTokens.reduce((sum, t) => sum + t, 0);
+                      const last3Tokens = dateIndices.map(i => user.dailyTokens[i] || 0);
+                      const maxDaily = Math.max(...last3Tokens, 1);
+
+                      return (
+                        <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
+                          <td className="p-3 font-mono text-sm sticky left-0 bg-white max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">
+                            {user.label}
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
+                            {formatTokens(total)}
+                          </td>
+                          {last3Tokens.map((tokens, i) => {
+                            const intensity = tokens / maxDaily;
+                            return (
+                              <td
+                                key={i}
+                                className="text-right p-3 font-mono text-sm"
+                                style={{
+                                  backgroundColor: tokens > 0 ? `rgba(0, 0, 0, ${intensity * 0.1})` : 'transparent',
+                                }}
+                              >
+                                {tokens > 0 ? formatTokens(tokens) : '-'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    {/* Traced Total Row */}
+                    <tr className="border-t-2 border-black bg-gray-50">
+                      <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-50">
+                        Traced Total
                       </td>
-                      {user.dailyTokens.map((tokens, i) => {
-                        const intensity = tokens / maxDaily;
+                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
+                        {formatTokens(data.tracedTotal)}
+                      </td>
+                      {dateIndices.map((idx, i) => (
+                        <td key={i} className="text-right p-3 font-mono text-sm font-bold">
+                          {formatTokens(data.tracedDailyTokens[idx] || 0)}
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Vertex AI Total Row */}
+                    <tr className="bg-gray-100">
+                      <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-100">
+                        Vertex AI Total
+                      </td>
+                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-green-700">
+                        {formatTokens(data.vertexTotal)}
+                      </td>
+                      {dateIndices.map((idx, i) => {
+                        const tokens = data.vertexDailyTokens[idx] || 0;
                         return (
-                          <td
-                            key={i}
-                            className="text-right p-3 font-mono text-sm"
-                            style={{
-                              backgroundColor: tokens > 0 ? `rgba(0, 0, 0, ${intensity * 0.1})` : 'transparent',
-                            }}
-                          >
+                          <td key={i} className="text-right p-3 font-mono text-sm font-bold text-green-700">
                             {tokens > 0 ? formatTokens(tokens) : '-'}
                           </td>
                         );
                       })}
-                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
-                        {formatTokens(total)}
-                      </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                {/* Traced Total Row */}
-                <tr className="border-t-2 border-black bg-gray-50">
-                  <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-50">
-                    Traced Total
-                  </td>
-                  {data.tracedDailyTokens.map((tokens, i) => (
-                    <td key={i} className="text-right p-3 font-mono text-sm font-bold">
-                      {formatTokens(tokens)}
-                    </td>
-                  ))}
-                  <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
-                    {formatTokens(data.tracedTotal)}
-                  </td>
-                </tr>
 
-                {/* Vertex AI Total Row */}
-                <tr className="bg-gray-100">
-                  <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-100">
-                    Vertex AI Total
-                  </td>
-                  {data.vertexDailyTokens.map((tokens, i) => (
-                    <td key={i} className="text-right p-3 font-mono text-sm font-bold text-green-700">
-                      {tokens > 0 ? formatTokens(tokens) : '-'}
-                    </td>
-                  ))}
-                  <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-green-700">
-                    {formatTokens(data.vertexTotal)}
-                  </td>
-                </tr>
-
-                {/* Untraced Row */}
-                <tr className="bg-orange-50">
-                  <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-orange-50 text-orange-600">
-                    Untraced
-                  </td>
-                  {data.vertexDailyTokens.map((vertexTokens, i) => {
-                    const tracedTokens = data.tracedDailyTokens[i] || 0;
-                    const discrepancy = vertexTokens - tracedTokens;
-                    return (
-                      <td
-                        key={i}
-                        className={`text-right p-3 font-mono text-sm font-bold ${
-                          discrepancy > 0 ? 'text-orange-600' : discrepancy < 0 ? 'text-blue-600' : 'text-gray-400'
-                        }`}
-                      >
-                        {vertexTokens > 0 ? (discrepancy < 0 ? '-' : '') + formatTokens(Math.abs(discrepancy)) : '-'}
+                    {/* Untraced Row */}
+                    <tr className="bg-orange-50">
+                      <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-orange-50 text-orange-600">
+                        Untraced
                       </td>
-                    );
-                  })}
-                  <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-orange-600">
-                    {formatTokens(data.vertexTotal - data.tracedTotal)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-orange-600">
+                        {formatTokens(data.vertexTotal - data.tracedTotal)}
+                      </td>
+                      {dateIndices.map((idx, i) => {
+                        const vertexTokens = data.vertexDailyTokens[idx] || 0;
+                        const tracedTokens = data.tracedDailyTokens[idx] || 0;
+                        const discrepancy = vertexTokens - tracedTokens;
+                        return (
+                          <td
+                            key={i}
+                            className={`text-right p-3 font-mono text-sm font-bold ${
+                              discrepancy > 0 ? 'text-orange-600' : discrepancy < 0 ? 'text-blue-600' : 'text-gray-400'
+                            }`}
+                          >
+                            {vertexTokens > 0 ? (discrepancy < 0 ? '-' : '') + formatTokens(Math.abs(discrepancy)) : '-'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
           </div>
         </>
       )}
