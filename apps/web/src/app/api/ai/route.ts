@@ -11,25 +11,15 @@ import {
 import { SignJWT, importPKCS8 } from 'jose';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from 'redis';
+// Redis removed - desktop app uses Rust backend directly, this route is only for testing
 import { handleAnthropicChat } from './providers/anthropic';
 import type { AIProviderRequest } from './providers/types';
 import { analyzeToolResults, checkTokenLimit, logProviderDiagnostics } from './providers/utils';
 import { getVertexModelName } from '@/lib/vertexai';
 import type { FunctionDeclaration, Content, Part } from './types/vertex';
 
-// Redis client initialization
-const getRedisClient = async () => {
-  const client = createClient({
-    url: process.env.REDIS_URL,
-  });
-
-  if (!client.isOpen) {
-    await client.connect();
-  }
-
-  return client;
-};
+// Redis removed - route is now stateless (each call independent)
+// Desktop app uses Rust backend → Vertex AI directly, not this route
 
 // LLM usage tracking - insert into mediar_llm_traces table (v2 - with source field)
 async function trackLLMUsage(params: {
@@ -240,8 +230,8 @@ function createSSEEmitter(controller: ReadableStreamDefaultController<Uint8Array
   };
 }
 
-const KV_SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
-const KV_SESSION_PREFIX = 'ai-session:';
+// Session storage removed - route is stateless
+const KV_SESSION_TTL = 0; // Unused - kept for compatibility
 
 // Helpers ------------------------------------------------------------
 async function authenticate(request: NextRequest): Promise<{
@@ -338,42 +328,20 @@ function isAnthropicModel(model: string): model is AnthropicModel {
   return (ANTHROPIC_MODELS as readonly string[]).includes(model);
 }
 
-// Redis session management --------------------------------------------
-async function loadSession(sessionId: string): Promise<SessionData | null> {
-  try {
-    const redis = await getRedisClient();
-    const key = `${KV_SESSION_PREFIX}${sessionId}`;
-    const data = await redis.get(key);
-
-    if (data) {
-      const parsed = JSON.parse(data) as SessionData;
-      console.log(
-        `[REDIS] Loaded session ${sessionId} with ${parsed.history.length} messages`
-      );
-      return parsed;
-    }
-    return null;
-  } catch (error) {
-    console.error('[REDIS] Failed to load session:', error);
-    return null;
-  }
+// Session storage removed - route is now stateless
+// Each request must pass full history if multi-turn is needed
+async function loadSession(_sessionId: string): Promise<SessionData | null> {
+  // No-op: sessions not persisted, return null (caller uses passed history)
+  console.log(`[AI API] Session storage disabled - using stateless mode`);
+  return null;
 }
 
 async function saveSession(
-  sessionId: string,
-  data: SessionData
+  _sessionId: string,
+  _data: SessionData
 ): Promise<void> {
-  try {
-    const redis = await getRedisClient();
-    const key = `${KV_SESSION_PREFIX}${sessionId}`;
-    await redis.set(key, JSON.stringify(data), { EX: KV_SESSION_TTL });
-    console.log(
-      `[REDIS] Saved session ${sessionId} with ${data.history.length} messages (TTL: ${KV_SESSION_TTL}s)`
-    );
-  } catch (error) {
-    console.error('[REDIS] Failed to save session:', error);
-    throw error;
-  }
+  // No-op: sessions not persisted
+  // Caller should handle persistence via Supabase workflow_chat_sessions if needed
 }
 
 function createSessionId(): string {
@@ -2169,9 +2137,9 @@ export async function GET(request: NextRequest) {
         status: 'ok',
         format: 'multi-provider',
         streaming: false,
-        stateless: false,
-        sessionStorage: 'redis',
-        sessionTTL: KV_SESSION_TTL,
+        stateless: true, // No Redis - pass history in each request
+        sessionStorage: 'none',
+        sessionTTL: 0,
         availableModels: ALLOWED_MODELS,
         providers: {
           vertex: {
