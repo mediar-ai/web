@@ -225,30 +225,33 @@ export async function GET() {
     const cachedDailyTokens = dates.map(date => cachedDataMap[date] || 0);
     const cachedTotal = cachedDailyTokens.reduce((sum, t) => sum + t, 0);
 
-    // Get chat messages per user (last 3 days)
+    // Get chat messages per user (last 3 days) - count only user messages
     const threeDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 3, 0, 0, 0));
     console.log('[user-tokens] Chat messages query from:', threeDaysAgo.toISOString());
 
     const { data: chatSessions, error: chatError } = await supabase
       .from('workflow_chat_sessions')
-      .select('user_id, message_count')
+      .select('user_id, messages')
       .gte('created_at', threeDaysAgo.toISOString());
 
     if (chatError) {
       console.error('[user-tokens] Chat sessions query error:', chatError);
     }
 
-    // Aggregate chat messages by user
+    // Aggregate user-only chat messages by user
     const chatMessagesMap = new Map<string, number>();
     for (const session of chatSessions || []) {
-      if (session.user_id) {
+      if (session.user_id && Array.isArray(session.messages)) {
+        const userMsgCount = session.messages.filter(
+          (m: { role?: string }) => m.role === 'user'
+        ).length;
         chatMessagesMap.set(
           session.user_id,
-          (chatMessagesMap.get(session.user_id) || 0) + (session.message_count || 0)
+          (chatMessagesMap.get(session.user_id) || 0) + userMsgCount
         );
       }
     }
-    console.log('[user-tokens] Chat messages aggregated for', chatMessagesMap.size, 'users');
+    console.log('[user-tokens] User chat messages aggregated for', chatMessagesMap.size, 'users');
 
     // Get recorded events per user (last 3 days)
     const { data: eventCounts, error: eventsError } = await supabase
