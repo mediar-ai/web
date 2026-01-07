@@ -189,7 +189,7 @@ export async function GET() {
     }
 
     // Get counts for conversion rate calculations
-    // Funnel order: Pageview → Download → User Created → App Started → Authenticated → Onboarding → Cal Booking
+    // Funnel order: Pageview → Download → User Created → App Started → Authenticated → Cal Booking → Onboarding
     const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
@@ -228,18 +228,18 @@ export async function GET() {
         convRate30d: appStarted.count30d > 0 ? `${Math.round((authenticated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
       },
       {
-        event: 'desktop_onboarding_completed',
-        label: 'Onboarding Done',
-        sortOrder: 15,
-        convRate7d: authenticated.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / authenticated.count7d) * 100)}% vs. Authenticated` : '',
-        convRate30d: authenticated.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / authenticated.count30d) * 100)}% vs. Authenticated` : '',
-      },
-      {
         event: 'cal_booking_completed',
         label: 'Cal Booking',
+        sortOrder: 15,
+        convRate7d: authenticated.count7d > 0 ? `${Math.round((calBooking.count7d / authenticated.count7d) * 100)}% vs. Authenticated` : '',
+        convRate30d: authenticated.count30d > 0 ? `${Math.round((calBooking.count30d / authenticated.count30d) * 100)}% vs. Authenticated` : '',
+      },
+      {
+        event: 'desktop_onboarding_completed',
+        label: 'Onboarding Done',
         sortOrder: 16,
-        convRate7d: onboardingCompleted.count7d > 0 ? `${Math.round((calBooking.count7d / onboardingCompleted.count7d) * 100)}% vs. Onboarding` : '',
-        convRate30d: onboardingCompleted.count30d > 0 ? `${Math.round((calBooking.count30d / onboardingCompleted.count30d) * 100)}% vs. Onboarding` : '',
+        convRate7d: calBooking.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / calBooking.count7d) * 100)}% vs. Cal Booking` : '',
+        convRate30d: calBooking.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / calBooking.count30d) * 100)}% vs. Cal Booking` : '',
       },
     ];
 
