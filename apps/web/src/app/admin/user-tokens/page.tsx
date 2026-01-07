@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Users, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
+import { useCallback } from 'react';
+import { Users } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
 
 interface UserData {
   id: string;
@@ -31,43 +32,40 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function UserTokensPage() {
-  const [data, setData] = useState<TokenData | null>(null);
-  const [loading, setLoading] = useState(true);
+const REFRESH_INTERVAL = 60000; // 60 seconds for token data
 
-  const fetchData = useCallback(async () => {
+export default function UserTokensPage() {
+  const fetchData = useCallback(async (): Promise<TokenData> => {
     console.log('[user-tokens-page] Fetching data...');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/user-tokens');
-      if (res.ok) {
-        const d = await res.json();
-        console.log('[user-tokens-page] Data received:', d);
-        setData(d);
-      } else {
-        const error = await res.json();
-        console.error('[user-tokens-page] API error:', error);
-        toast.error(error.error || 'Failed to load token data');
-        setData({ dates: [], users: [], vertexDailyTokens: [], vertexTotal: 0, tracedDailyTokens: [], tracedTotal: 0, error: error.error });
-      }
-    } catch (err) {
-      console.error('[user-tokens-page] Fetch error:', err);
-      toast.error('Failed to fetch token data');
-      setData({ dates: [], users: [], vertexDailyTokens: [], vertexTotal: 0, tracedDailyTokens: [], tracedTotal: 0, error: String(err) });
-    } finally {
-      setLoading(false);
+    const res = await fetch('/api/admin/user-tokens');
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to load token data');
     }
+    const d = await res.json();
+    console.log('[user-tokens-page] Data received:', d);
+    return d;
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const {
+    data,
+    loading,
+    isRefreshing,
+    autoRefreshEnabled,
+    toggleAutoRefresh,
+    refresh,
+    lastUpdatedAgo,
+    error,
+  } = useAutoRefresh(fetchData, {
+    interval: REFRESH_INTERVAL,
+    storageKey: 'admin-user-tokens-auto-refresh',
+  });
 
-  if (data?.error) {
+  if (error) {
     return (
       <div className="p-6">
         <div className="border-2 border-black p-6">
-          <p className="font-mono text-red-600">Error: {data.error}</p>
+          <p className="font-mono text-red-600">Error: {error}</p>
         </div>
       </div>
     );
@@ -86,13 +84,15 @@ export default function UserTokensPage() {
             Last 7 days - Vertex AI token usage by user
           </p>
         </div>
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <AutoRefreshControls
+          loading={loading}
+          isRefreshing={isRefreshing}
+          autoRefreshEnabled={autoRefreshEnabled}
+          lastUpdatedAgo={lastUpdatedAgo}
+          intervalSeconds={REFRESH_INTERVAL / 1000}
+          onRefresh={refresh}
+          onToggleAutoRefresh={toggleAutoRefresh}
+        />
       </div>
 
       {loading && !data ? (
