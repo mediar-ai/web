@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Activity, RefreshCw, Server, Clock } from 'lucide-react';
-import { toast } from 'sonner';
+import { useState, useCallback } from 'react';
+import { Activity, Server, Clock } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
 
 interface TraceData {
   hostname: string;
@@ -18,38 +19,38 @@ interface TracesResponse {
   };
 }
 
-export default function ObservabilityPage() {
-  const [traces, setTraces] = useState<TraceData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statsPeriod, setStatsPeriod] = useState('7d');
-  const [lastFetched, setLastFetched] = useState<string | null>(null);
+const REFRESH_INTERVAL = 30000; // 30 seconds
 
-  const fetchTraces = useCallback(async () => {
+export default function ObservabilityPage() {
+  const [statsPeriod, setStatsPeriod] = useState('7d');
+
+  const fetchTraces = useCallback(async (): Promise<TracesResponse> => {
     console.log('[observability] Fetching traces for period:', statsPeriod);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/sentry-traces?statsPeriod=${statsPeriod}`);
-      if (res.ok) {
-        const data: TracesResponse = await res.json();
-        console.log('[observability] Got', data.traces.length, 'traces');
-        setTraces(data.traces);
-        setLastFetched(data.meta.fetchedAt);
-      } else {
-        const error = await res.json();
-        console.error('[observability] API error:', error);
-        toast.error(error.error || 'Failed to load traces');
-      }
-    } catch (error) {
-      console.error('[observability] Fetch error:', error);
-      toast.error('Failed to fetch traces');
-    } finally {
-      setLoading(false);
+    const res = await fetch(`/api/admin/sentry-traces?statsPeriod=${statsPeriod}`);
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to load traces');
     }
+    const data: TracesResponse = await res.json();
+    console.log('[observability] Got', data.traces.length, 'traces');
+    return data;
   }, [statsPeriod]);
 
-  useEffect(() => {
-    fetchTraces();
-  }, [fetchTraces]);
+  const {
+    data,
+    loading,
+    isRefreshing,
+    autoRefreshEnabled,
+    toggleAutoRefresh,
+    refresh,
+    lastUpdatedAgo,
+  } = useAutoRefresh(fetchTraces, {
+    interval: REFRESH_INTERVAL,
+    storageKey: 'admin-observability-auto-refresh',
+  });
+
+  const traces = data?.traces || [];
+  const lastFetched = data?.meta?.fetchedAt || null;
 
   const totalCount = traces.reduce((sum, t) => sum + t.count, 0);
 
@@ -78,15 +79,15 @@ export default function ObservabilityPage() {
             <option value="14d">Last 14 days</option>
             <option value="30d">Last 30 days</option>
           </select>
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchTraces();
-            }}
-            className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <AutoRefreshControls
+            loading={loading}
+            isRefreshing={isRefreshing}
+            autoRefreshEnabled={autoRefreshEnabled}
+            lastUpdatedAgo={lastUpdatedAgo}
+            intervalSeconds={REFRESH_INTERVAL / 1000}
+            onRefresh={refresh}
+            onToggleAutoRefresh={toggleAutoRefresh}
+          />
         </div>
       </div>
 
@@ -112,7 +113,7 @@ export default function ObservabilityPage() {
       </div>
 
       {/* Traces Table */}
-      {loading ? (
+      {loading && !data ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black" />
         </div>
