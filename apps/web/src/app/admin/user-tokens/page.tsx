@@ -9,6 +9,8 @@ interface UserData {
   id: string;
   label: string;
   dailyTokens: number[];
+  chatMessages: number;
+  recordedEvents: number;
 }
 
 interface TokenData {
@@ -145,6 +147,12 @@ export default function UserTokensPage() {
                       <th className="text-right p-3 font-mono text-sm font-bold min-w-[80px] border-l-2 border-black">
                         Total
                       </th>
+                      <th className="text-right p-3 font-mono text-sm font-bold min-w-[60px]" title="Chat messages (3d)">
+                        Chat
+                      </th>
+                      <th className="text-right p-3 font-mono text-sm font-bold min-w-[60px]" title="Recorded events (3d)">
+                        Events
+                      </th>
                       {last3Dates.map(date => (
                         <th key={date} className="text-right p-3 font-mono text-sm font-bold min-w-[80px]">
                           {formatDate(date)}
@@ -165,6 +173,12 @@ export default function UserTokensPage() {
                           </td>
                           <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
                             {formatTokens(total)}
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm">
+                            {user.chatMessages > 0 ? formatTokens(user.chatMessages) : '-'}
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm">
+                            {user.recordedEvents > 0 ? formatTokens(user.recordedEvents) : '-'}
                           </td>
                           {last3Tokens.map((tokens, i) => {
                             const intensity = tokens / maxDaily;
@@ -193,6 +207,8 @@ export default function UserTokensPage() {
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
                         {formatTokens(data.tracedTotal)}
                       </td>
+                      <td className="p-3"></td>
+                      <td className="p-3"></td>
                       {dateIndices.map((idx, i) => (
                         <td key={i} className="text-right p-3 font-mono text-sm font-bold">
                           {formatTokens(data.tracedDailyTokens[idx] || 0)}
@@ -208,6 +224,8 @@ export default function UserTokensPage() {
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-green-700">
                         {formatTokens(data.vertexTotal)}
                       </td>
+                      <td className="p-3 bg-gray-100"></td>
+                      <td className="p-3 bg-gray-100"></td>
                       {dateIndices.map((idx, i) => {
                         const tokens = data.vertexDailyTokens[idx] || 0;
                         return (
@@ -226,6 +244,8 @@ export default function UserTokensPage() {
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-orange-600">
                         {formatTokens(data.vertexTotal - data.tracedTotal)}
                       </td>
+                      <td className="p-3 bg-orange-50"></td>
+                      <td className="p-3 bg-orange-50"></td>
                       {dateIndices.map((idx, i) => {
                         const vertexTokens = data.vertexDailyTokens[idx] || 0;
                         const tracedTokens = data.tracedDailyTokens[idx] || 0;
