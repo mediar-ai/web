@@ -11,6 +11,41 @@ const supabase = createClient(
 // Cal.com webhook secret for verification (set in Cal.com webhook settings)
 const CAL_WEBHOOK_SECRET = process.env.CAL_WEBHOOK_SECRET;
 
+// PostHog config for server-side tracking
+const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://eu.i.posthog.com';
+
+async function capturePostHogEvent(
+  distinctId: string,
+  event: string,
+  properties: Record<string, unknown>
+): Promise<void> {
+  if (!POSTHOG_KEY) {
+    console.warn('[Cal Webhook] POSTHOG_KEY not set, skipping event');
+    return;
+  }
+  try {
+    const response = await fetch(`${POSTHOG_HOST}/capture/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: POSTHOG_KEY,
+        event,
+        distinct_id: distinctId,
+        properties,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+    if (!response.ok) {
+      console.error(`[Cal Webhook] PostHog error: ${response.status}`);
+    } else {
+      console.log(`[Cal Webhook] PostHog event '${event}' sent for ${distinctId}`);
+    }
+  } catch (error) {
+    console.error('[Cal Webhook] PostHog send error:', error);
+  }
+}
+
 /**
  * Verify Cal.com webhook signature
  * Cal.com uses HMAC-SHA256 for webhook verification
@@ -162,6 +197,15 @@ export async function POST(req: NextRequest) {
 
     const userIds = users.map(u => u.user_id);
     console.log('[Cal Webhook] ✓ Successfully marked', users.length, 'user(s) as booked (matched by', matchedBy + '):', userIds.join(', '));
+
+    // Send PostHog event for each matched user
+    for (const user of users) {
+      await capturePostHogEvent(user.user_id, 'cal_booking_completed', {
+        email: user.email,
+        matched_by: matchedBy,
+        booking_title: payload.payload?.title || 'Unknown',
+      });
+    }
 
     return NextResponse.json({
       received: true,
