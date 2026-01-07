@@ -12,6 +12,17 @@ interface PostHogQueryResult {
   columns?: string[];
 }
 
+interface FunnelRow {
+  event: string;
+  value7d: string;
+  change7d: number | null;
+  convRate7d: string;
+  value30d: string;
+  change30d: number | null;
+  convRate30d: string;
+  sortOrder: number;
+}
+
 async function runHogQLQuery(query: string, personalKey: string): Promise<PostHogQueryResult | null> {
   const response = await fetch(`${POSTHOG_HOST}/api/projects/${POSTHOG_PROJECT_ID}/query`, {
     method: 'POST',
@@ -33,6 +44,16 @@ async function runHogQLQuery(query: string, personalKey: string): Promise<PostHo
   }
 
   return response.json();
+}
+
+function formatMoney(amount: number): string {
+  return '$' + Math.round(amount).toLocaleString();
+}
+
+function formatChange(change: number | null): string {
+  if (change === null) return 'N/A';
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${change.toFixed(1)}%`;
 }
 
 export async function GET() {
@@ -62,7 +83,7 @@ export async function GET() {
   try {
     // Run all queries in parallel
     const [funnelData, brexData, pageviewData] = await Promise.all([
-      // Funnel query
+      // Funnel query - product events
       runHogQLQuery(`
         SELECT
           event as Event,
@@ -72,7 +93,6 @@ export async function GET() {
           uniqIf(person_id, timestamp >= today() - 60 AND timestamp < today() - 30) as count_prev_30d
         FROM events
         WHERE event IN (
-          'survey_completed_redirect_to_app',
           'user_created',
           'desktop_app_download_clicked',
           'desktop_app_started',
@@ -80,10 +100,9 @@ export async function GET() {
         )
         AND timestamp >= today() - 60
         GROUP BY event
-        ORDER BY count_last_7d DESC
       `, personalKey),
 
-      // Brex query
+      // Brex query - card expenses
       runHogQLQuery(`
         WITH brex_daily_deduped AS (
           SELECT
@@ -103,7 +122,7 @@ export async function GET() {
         WHERE rn = 1
       `, personalKey),
 
-      // Pageviews query
+      // Pageviews query - website visitors
       runHogQLQuery(`
         SELECT
           uniqIf(person_id, timestamp >= today() - 7) as visitors_7d,
@@ -117,55 +136,118 @@ export async function GET() {
       `, personalKey),
     ]);
 
-    // Transform funnel data
-    const funnel = (funnelData?.results || []).map(row => {
-      const count7d = Number(row[1]) || 0;
-      const countPrev7d = Number(row[2]) || 0;
-      const count30d = Number(row[3]) || 0;
-      const countPrev30d = Number(row[4]) || 0;
-      return {
-        event: String(row[0]),
-        count7d,
-        countPrev7d,
-        count30d,
-        countPrev30d,
-        change7d: countPrev7d > 0 ? ((count7d - countPrev7d) / countPrev7d * 100) : null,
-        change30d: countPrev30d > 0 ? ((count30d - countPrev30d) / countPrev30d * 100) : null,
-      };
-    });
+    // Build unified rows array
+    const rows: FunnelRow[] = [];
 
-    // Transform brex data
-    let brex = null;
+    // 1. Brex Card Expenses (sort_order: 2)
     if (brexData?.results?.[0]) {
       const [exp7d, expPrev7d, exp30d, expPrev30d] = brexData.results[0].map(v => Number(v) || 0);
-      brex = {
-        expenses7d: exp7d,
-        expensesPrev7d: expPrev7d,
-        expenses30d: exp30d,
-        expensesPrev30d: expPrev30d,
-        change7d: expPrev7d > 0 ? ((exp7d - expPrev7d) / expPrev7d * 100) : null,
-        change30d: expPrev30d > 0 ? ((exp30d - expPrev30d) / expPrev30d * 100) : null,
-      };
+      const change7d = expPrev7d > 0 ? ((exp7d - expPrev7d) / expPrev7d * 100) : null;
+      const change30d = expPrev30d > 0 ? ((exp30d - expPrev30d) / expPrev30d * 100) : null;
+      rows.push({
+        event: 'Card Expenses',
+        value7d: `${formatMoney(exp7d)} (${formatChange(change7d)})`,
+        change7d,
+        convRate7d: '',
+        value30d: `${formatMoney(exp30d)} (${formatChange(change30d)})`,
+        change30d,
+        convRate30d: '',
+        sortOrder: 2,
+      });
     }
 
-    // Transform pageview data
-    let pageviews = null;
+    // 2. Pageview - Total (sort_order: 10)
+    let pageview7d = 0, pageviewPrev7d = 0, pageview30d = 0, pageviewPrev30d = 0;
     if (pageviewData?.results?.[0]) {
-      const [pv7d, pvPrev7d, pv30d, pvPrev30d] = pageviewData.results[0].map(v => Number(v) || 0);
-      pageviews = {
-        visitors7d: pv7d,
-        visitorsPrev7d: pvPrev7d,
-        visitors30d: pv30d,
-        visitorsPrev30d: pvPrev30d,
-        change7d: pvPrev7d > 0 ? ((pv7d - pvPrev7d) / pvPrev7d * 100) : null,
-        change30d: pvPrev30d > 0 ? ((pv30d - pvPrev30d) / pvPrev30d * 100) : null,
-      };
+      [pageview7d, pageviewPrev7d, pageview30d, pageviewPrev30d] = pageviewData.results[0].map(v => Number(v) || 0);
+      const change7d = pageviewPrev7d > 0 ? ((pageview7d - pageviewPrev7d) / pageviewPrev7d * 100) : null;
+      const change30d = pageviewPrev30d > 0 ? ((pageview30d - pageviewPrev30d) / pageviewPrev30d * 100) : null;
+      rows.push({
+        event: 'Pageview - Total',
+        value7d: `${pageview7d} (${formatChange(change7d)})`,
+        change7d,
+        convRate7d: '',
+        value30d: `${pageview30d} (${formatChange(change30d)})`,
+        change30d,
+        convRate30d: '',
+        sortOrder: 10,
+      });
     }
+
+    // Process funnel events with conversion rates
+    const funnelEvents = new Map<string, { count7d: number; prev7d: number; count30d: number; prev30d: number }>();
+    for (const row of (funnelData?.results || [])) {
+      const event = String(row[0]);
+      funnelEvents.set(event, {
+        count7d: Number(row[1]) || 0,
+        prev7d: Number(row[2]) || 0,
+        count30d: Number(row[3]) || 0,
+        prev30d: Number(row[4]) || 0,
+      });
+    }
+
+    // Get counts for conversion rate calculations
+    // Funnel order: Pageview → Download → App Started → User Created → Authenticated
+    const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+    const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+
+    // Event definitions with sort order and conversion rate logic
+    const eventDefs = [
+      {
+        event: 'desktop_app_download_clicked',
+        label: 'Download Clicked',
+        sortOrder: 11,
+        convRate7d: pageview7d > 0 ? `${Math.round((download.count7d / pageview7d) * 100)}% vs. Pageview` : '',
+        convRate30d: pageview30d > 0 ? `${Math.round((download.count30d / pageview30d) * 100)}% vs. Pageview` : '',
+      },
+      {
+        event: 'desktop_app_started',
+        label: 'App Started',
+        sortOrder: 12,
+        convRate7d: download.count7d > 0 ? `${Math.round((appStarted.count7d / download.count7d) * 100)}% vs. Download` : '',
+        convRate30d: download.count30d > 0 ? `${Math.round((appStarted.count30d / download.count30d) * 100)}% vs. Download` : '',
+      },
+      {
+        event: 'user_created',
+        label: 'User Created',
+        sortOrder: 13,
+        convRate7d: appStarted.count7d > 0 ? `${Math.round((userCreated.count7d / appStarted.count7d) * 100)}% vs. App Started` : '',
+        convRate30d: appStarted.count30d > 0 ? `${Math.round((userCreated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
+      },
+      {
+        event: 'desktop_user_authenticated',
+        label: 'User Authenticated',
+        sortOrder: 14,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((authenticated.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((authenticated.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
+      },
+    ];
+
+    for (const def of eventDefs) {
+      const data = funnelEvents.get(def.event);
+      if (data) {
+        const change7d = data.prev7d > 0 ? ((data.count7d - data.prev7d) / data.prev7d * 100) : null;
+        const change30d = data.prev30d > 0 ? ((data.count30d - data.prev30d) / data.prev30d * 100) : null;
+        rows.push({
+          event: def.label,
+          value7d: `${data.count7d} (${formatChange(change7d)})`,
+          change7d,
+          convRate7d: def.convRate7d,
+          value30d: `${data.count30d} (${formatChange(change30d)})`,
+          change30d,
+          convRate30d: def.convRate30d,
+          sortOrder: def.sortOrder,
+        });
+      }
+    }
+
+    // Sort by sortOrder
+    rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
     return NextResponse.json({
-      funnel,
-      brex,
-      pageviews,
+      rows,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
