@@ -225,9 +225,68 @@ export async function GET() {
     const cachedDailyTokens = dates.map(date => cachedDataMap[date] || 0);
     const cachedTotal = cachedDailyTokens.reduce((sum, t) => sum + t, 0);
 
+    // Get chat messages per user (last 3 days)
+    const threeDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 3, 0, 0, 0));
+    console.log('[user-tokens] Chat messages query from:', threeDaysAgo.toISOString());
+
+    const { data: chatSessions, error: chatError } = await supabase
+      .from('workflow_chat_sessions')
+      .select('user_id, message_count')
+      .gte('created_at', threeDaysAgo.toISOString());
+
+    if (chatError) {
+      console.error('[user-tokens] Chat sessions query error:', chatError);
+    }
+
+    // Aggregate chat messages by user
+    const chatMessagesMap = new Map<string, number>();
+    for (const session of chatSessions || []) {
+      if (session.user_id) {
+        chatMessagesMap.set(
+          session.user_id,
+          (chatMessagesMap.get(session.user_id) || 0) + (session.message_count || 0)
+        );
+      }
+    }
+    console.log('[user-tokens] Chat messages aggregated for', chatMessagesMap.size, 'users');
+
+    // Get recorded events per user (last 3 days)
+    const { data: eventCounts, error: eventsError } = await supabase
+      .rpc('get_event_counts_by_user', { start_date: threeDaysAgo.toISOString() });
+
+    const eventsMap = new Map<string, number>();
+    if (eventsError) {
+      console.error('[user-tokens] Events count query error:', eventsError);
+      // Fallback: manual count (slower but works)
+      const { data: events, error: fallbackError } = await supabase
+        .from('low_level_events')
+        .select('user_id')
+        .gte('created_at', threeDaysAgo.toISOString());
+
+      if (!fallbackError && events) {
+        for (const event of events) {
+          if (event.user_id) {
+            eventsMap.set(event.user_id, (eventsMap.get(event.user_id) || 0) + 1);
+          }
+        }
+      }
+    } else if (eventCounts) {
+      for (const row of eventCounts) {
+        eventsMap.set(row.user_id, row.count);
+      }
+    }
+    console.log('[user-tokens] Recorded events aggregated for', eventsMap.size, 'users');
+
+    // Add chat messages and events to users array
+    const usersWithMetrics = users.map(u => ({
+      ...u,
+      chatMessages: chatMessagesMap.get(u.id) || 0,
+      recordedEvents: eventsMap.get(u.id) || 0,
+    }));
+
     return NextResponse.json({
       dates,
-      users,
+      users: usersWithMetrics,
       vertexDailyTokens,
       vertexTotal,
       tracedDailyTokens,
