@@ -23,12 +23,14 @@ export async function GET(request: NextRequest) {
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
+    const authStart = Date.now();
     const {
       orgId,
       isMediarOrg,
       isMediarAdmin,
       actualOrgId: _actualOrgId,
     } = await getEffectiveOrgId(viewOrgId === 'ALL' ? null : viewOrgId);
+    console.log(`[API TIMING] Auth/getEffectiveOrgId: ${Date.now() - authStart}ms`);
 
     if (!orgId) {
       return NextResponse.json(
@@ -206,7 +208,9 @@ export async function GET(request: NextRequest) {
       query = query.eq('category', category);
     }
 
+    const statsQueryStart = Date.now();
     const { data: workflows, error } = await query;
+    console.log(`[API TIMING] Stats view query: ${Date.now() - statsQueryStart}ms`);
 
     if (error) {
       throw new Error(`Database query failed: ${error.message}`);
