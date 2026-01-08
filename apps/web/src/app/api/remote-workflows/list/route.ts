@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
   try {
     // Import the new auth helper
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
@@ -22,12 +23,14 @@ export async function GET(request: NextRequest) {
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
+    const authStart = Date.now();
     const {
       orgId,
       isMediarOrg,
       isMediarAdmin,
       actualOrgId: _actualOrgId,
     } = await getEffectiveOrgId(viewOrgId === 'ALL' ? null : viewOrgId);
+    console.log(`[API TIMING] Auth/getEffectiveOrgId: ${Date.now() - authStart}ms`);
 
     if (!orgId) {
       return NextResponse.json(
@@ -76,50 +79,52 @@ export async function GET(request: NextRequest) {
       // 2. Workflows explicitly shared with them via workflow_organization_access
       // 3. Globally public workflows (is_public = true)
 
-      // Get workflows owned by this org
-      const { data: ownedWorkflows, error: ownedError } = await supabase
-        .from('deployed_workflows')
-        .select('id, organization_id')
-        .eq('organization_id', orgId)
-        .is('parent_workflow_id', null);
+      // PARALLEL: Run all 3 access queries simultaneously
+      const accessQueryStart = Date.now();
+      const [ownedResult, sharedResult, publicResult] = await Promise.all([
+        // Get workflows owned by this org
+        supabase
+          .from('deployed_workflows')
+          .select('id, organization_id')
+          .eq('organization_id', orgId)
+          .is('parent_workflow_id', null),
+        // Get workflows explicitly shared with this org
+        supabase
+          .from('workflow_organization_access')
+          .select('workflow_id')
+          .eq('organization_id', orgId),
+        // Get globally public workflows (is_public = true)
+        supabase
+          .from('deployed_workflows')
+          .select('id')
+          .eq('is_public', true)
+          .is('parent_workflow_id', null),
+      ]);
 
-      if (ownedError) {
+      console.log(`[API TIMING] Access queries (parallel): ${Date.now() - accessQueryStart}ms`);
+
+      if (ownedResult.error) {
         console.error(
           '[Workflows List] Error fetching owned workflows:',
-          ownedError
+          ownedResult.error
         );
       }
-
-      // Get workflows explicitly shared with this org
-      const { data: sharedAccess, error: sharedError } = await supabase
-        .from('workflow_organization_access')
-        .select('workflow_id')
-        .eq('organization_id', orgId);
-
-      if (sharedError) {
+      if (sharedResult.error) {
         console.error(
           '[Workflows List] Error fetching shared workflows:',
-          sharedError
+          sharedResult.error
         );
       }
-
-      // Get globally public workflows (is_public = true)
-      const { data: publicWorkflows, error: publicError } = await supabase
-        .from('deployed_workflows')
-        .select('id')
-        .eq('is_public', true)
-        .is('parent_workflow_id', null);
-
-      if (publicError) {
+      if (publicResult.error) {
         console.error(
           '[Workflows List] Error fetching public workflows:',
-          publicError
+          publicResult.error
         );
       }
 
-      const ownedIds = (ownedWorkflows || []).map(w => w.id);
-      const sharedIds = (sharedAccess || []).map(a => a.workflow_id);
-      const publicIds = (publicWorkflows || []).map(w => w.id);
+      const ownedIds = (ownedResult.data || []).map(w => w.id);
+      const sharedIds = (sharedResult.data || []).map(a => a.workflow_id);
+      const publicIds = (publicResult.data || []).map(w => w.id);
 
       // Combine and deduplicate
       accessibleWorkflowIds = [
@@ -203,7 +208,9 @@ export async function GET(request: NextRequest) {
       query = query.eq('category', category);
     }
 
+    const statsQueryStart = Date.now();
     const { data: workflows, error } = await query;
+    console.log(`[API TIMING] Stats view query: ${Date.now() - statsQueryStart}ms`);
 
     if (error) {
       throw new Error(`Database query failed: ${error.message}`);
@@ -225,38 +232,59 @@ export async function GET(request: NextRequest) {
     }
 
     if (workflowIds.length > 0) {
-      // First, fetch cron data and other config directly from deployed_workflows table
-      // (deployed_workflows_with_sequence view doesn't have all fields)
-      const { data: cronWorkflows, error: cronError } = await supabase
-        .from('deployed_workflows')
-        .select(
+      // PARALLEL: Fetch cron/config data AND sequences simultaneously
+      const dataQueryStart = Date.now();
+      const [cronResult, sequencesResult] = await Promise.all([
+        // Fetch cron data and other config directly from deployed_workflows table
+        supabase
+          .from('deployed_workflows')
+          .select(
+            `
+            id,
+            organization_id,
+            created_by,
+            estimated_duration_seconds,
+            cron_expression,
+            cron_timezone,
+            cron_enabled,
+            last_scheduled_execution,
+            next_scheduled_execution,
+            cron_max_concurrent,
+            cron_retry_on_failure,
+            cron_retry_count,
+            cron_auto_paused,
+            auto_paused_at,
+            auto_pause_reason,
+            consecutive_failures,
+            last_failure_message,
+            preferred_format,
+            typescript_metadata,
+            tags,
+            github_folder,
+            uuid,
+            step_count
           `
-          id,
-          organization_id,
-          created_by,
-          estimated_duration_seconds,
-          cron_expression,
-          cron_timezone,
-          cron_enabled,
-          last_scheduled_execution,
-          next_scheduled_execution,
-          cron_max_concurrent,
-          cron_retry_on_failure,
-          cron_retry_count,
-          cron_auto_paused,
-          auto_paused_at,
-          auto_pause_reason,
-          consecutive_failures,
-          last_failure_message,
-          preferred_format,
-          typescript_metadata,
-          tags,
-          github_folder,
-          uuid,
-          step_count
-        `
-        )
-        .in('id', workflowIds);
+          )
+          .in('id', workflowIds),
+        // Fetch workflow metadata (no automation_sequence - too large, fetched on-demand)
+        supabase
+          .from(viewName)
+          .select(
+            `
+            id,
+            workflow_type,
+            parent_workflow_id,
+            display_order,
+            latest_version_number
+          `
+          )
+          .in('id', workflowIds),
+      ]);
+
+      console.log(`[API TIMING] Cron+sequences queries (parallel): ${Date.now() - dataQueryStart}ms`);
+
+      const { data: cronWorkflows, error: cronError } = cronResult;
+      const { data: sequences, error: sequencesError } = sequencesResult;
 
       // Lookup user emails and names for author display
       // created_by can be either a user_id (e.g., user_2yyb...) or email (for legacy/deleted users)
@@ -346,20 +374,6 @@ export async function GET(request: NextRequest) {
       } else if (cronError) {
         console.error('[API] Error fetching cron data:', cronError);
       }
-
-      // Fetch workflow metadata (no automation_sequence - too large, fetched on-demand via /overview or /schema)
-      const { data: sequences, error: sequencesError } = await supabase
-        .from(viewName)
-        .select(
-          `
-          id,
-          workflow_type,
-          parent_workflow_id,
-          display_order,
-          latest_version_number
-        `
-        )
-        .in('id', workflowIds);
 
       console.log(
         '[API] Fetched automation sequences:',
@@ -651,6 +665,9 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
+    const totalTime = Date.now() - startTime;
+    console.log(`[API TIMING] Total request time: ${totalTime}ms for ${filteredWorkflows.length} workflows`);
+
     // Cache the response for documentation
     await cacheResponse({
       endpointPath: '/api/remote-workflows/list',
@@ -663,7 +680,7 @@ export async function GET(request: NextRequest) {
         limit,
         offset,
       },
-      executionTimeMs: 50, // placeholder
+      executionTimeMs: totalTime,
     });
 
     return NextResponse.json(responseData);

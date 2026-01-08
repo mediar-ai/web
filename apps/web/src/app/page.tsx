@@ -2,16 +2,18 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { UserButton, useOrganizationList } from '@clerk/nextjs';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, Suspense, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, Gift } from 'lucide-react';
-
-// Homepage components
-import { FreeEligibilitySurveyModal } from '@/components/homepage/FreeEligibilitySurveyModal';
-import { OnboardingSection } from '@/components/onboarding/OnboardingSection';
+import Link from 'next/link';
+// COMMENTED OUT: Purchase flow imports
+// import { useSearchParams } from 'next/navigation';
+// import { useCallback } from 'react';
+// import { Loader2, Gift } from 'lucide-react';
+// import { FreeEligibilitySurveyModal } from '@/components/homepage/FreeEligibilitySurveyModal';
+// import { OnboardingSection } from '@/components/onboarding/OnboardingSection';
 
 // Mediar icon SVG component
 const MediarIcon = ({ className = 'w-16 h-16' }: { className?: string }) => (
@@ -61,17 +63,17 @@ function HomePageContent() {
   const { isLoaded, userId, orgId } = useAuth();
   const { userMemberships, setActive, isLoaded: orgListLoaded } = useOrganizationList();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const posthog = usePostHog();
-  const [hasPurchased, setHasPurchased] = useState<boolean | null>(null);
-  const [checkingPurchase, setCheckingPurchase] = useState(true);
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [showFreeEligibilityModal, setShowFreeEligibilityModal] = useState(false);
-  const [forceShowOnboarding, setForceShowOnboarding] = useState(false);
 
-  // Get token from Stripe redirect for validation
-  const purchaseToken = searchParams.get('token');
+  // COMMENTED OUT: Purchase flow state
+  // const searchParams = useSearchParams();
+  // const [hasPurchased, setHasPurchased] = useState<boolean | null>(null);
+  // const [checkingPurchase, setCheckingPurchase] = useState(true);
+  // const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  // const [checkoutLoading, setCheckoutLoading] = useState(false);
+  // const [showFreeEligibilityModal, setShowFreeEligibilityModal] = useState(false);
+  // const [forceShowOnboarding, setForceShowOnboarding] = useState(false);
+  // const purchaseToken = searchParams.get('token');
 
   // Redirect unauthenticated users to sign-in
   useEffect(() => {
@@ -96,6 +98,8 @@ function HomePageContent() {
     }
   }, [orgListLoaded, orgId, userMemberships, setActive]);
 
+  // COMMENTED OUT: Purchase flow effects and handlers
+  /*
   // Check purchase status
   useEffect(() => {
     if (!userId) return;
@@ -145,6 +149,7 @@ function HomePageContent() {
       timestamp: new Date().toISOString(),
     });
   }, [posthog, userId]);
+  */
 
   const handleDownloadClick = () => {
     posthog?.capture('desktop_app_download_clicked', {
@@ -157,6 +162,8 @@ function HomePageContent() {
     });
   };
 
+  // COMMENTED OUT: Purchase checkout handler
+  /*
   const handleCheckout = async () => {
     if (!currentPrice) return;
 
@@ -186,9 +193,10 @@ function HomePageContent() {
       setCheckoutLoading(false);
     }
   };
+  */
 
-  // Show loading while Clerk is initializing or checking purchase
-  if (!isLoaded || !userId || checkingPurchase) {
+  // Show loading while Clerk is initializing
+  if (!isLoaded || !userId) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -223,91 +231,89 @@ function HomePageContent() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 p-4">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* App Access Options */}
-          <div className="flex justify-center">
-            {/* Desktop App */}
-            <Card
-              className={`border-2 border-black hover:shadow-lg transition-shadow flex flex-col relative w-full max-w-sm ${
-                purchaseToken && hasPurchased
-                  ? 'ring-4 ring-black ring-offset-2 shadow-lg'
-                  : ''
-              }`}
-            >
-              {/* Free eligibility button - only show when not purchased */}
-              {!hasPurchased && (
-                <Button
-                  onClick={() => setShowFreeEligibilityModal(true)}
-                  variant="outline"
-                  size="sm"
-                  className="absolute -top-2 -right-2 z-10 bg-white border-2 border-black hover:bg-black hover:text-white font-mono text-xs px-2 py-1 h-auto shadow-md"
-                >
-                  <Gift className="w-3 h-3 mr-1" />
-                  Free trial
-                </Button>
-              )}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="max-w-4xl w-full space-y-6">
+          {/* Welcome section */}
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-black font-mono">
+              Welcome to Mediar
+            </h1>
+          </div>
+
+          {/* 3 Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Web App */}
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
+                    WEB APP
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
+                    Record workflows in your browser
+                  </p>
+                  <Link href="/web">
+                    <Button className="w-full bg-black text-white hover:bg-gray-800">
+                      OPEN WEB APP
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Download App */}
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
+                    DOWNLOAD APP
+                  </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Build automated workflows
                   </p>
-                  {hasPurchased ? (
-                    <a
-                      href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
-                      download
-                      onClick={handleDownloadClick}
-                    >
-                      <Button
-                        className="w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2 animate-shake hover:animate-none"
-                      >
-                        DOWNLOAD APP (Windows)
-                      </Button>
-                    </a>
-                  ) : (
-                    <Button
-                      onClick={handleCheckout}
-                      disabled={checkoutLoading || !currentPrice}
-                      className="w-full bg-black text-white hover:bg-gray-800 whitespace-normal h-auto py-2"
-                    >
-                      {checkoutLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : currentPrice ? (
-                        `BUY NOW - $${currentPrice} CREDITS`
-                      ) : (
-                        'Loading...'
-                      )}
+                  <a
+                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
+                    download
+                    onClick={handleDownloadClick}
+                  >
+                    <Button className="w-full bg-black text-white hover:bg-gray-800">
+                      DOWNLOAD (Windows)
                     </Button>
-                  )}
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Dashboard */}
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <h3 className="text-lg font-bold text-black font-mono mb-4">
+                    DASHBOARD
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
+                    Manage workflows and deployments
+                  </p>
+                  <Link href="/dashboard">
+                    <Button className="w-full bg-black text-white hover:bg-gray-800">
+                      OPEN DASHBOARD
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Onboarding Section */}
-          <OnboardingSection forceShow={forceShowOnboarding} onDismiss={() => setForceShowOnboarding(false)} />
-
-          {/* DEV: Show onboarding button */}
-          {process.env.NODE_ENV === 'development' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setForceShowOnboarding(!forceShowOnboarding)}
-              className="text-xs border-gray-300"
-            >
-              [DEV] {forceShowOnboarding ? 'Hide' : 'Show'} Onboarding
-            </Button>
-          )}
-
         </div>
       </div>
 
-      {/* Free Eligibility Survey Modal */}
+      {/* COMMENTED OUT: Purchase flow modals and onboarding
+      <OnboardingSection forceShow={forceShowOnboarding} onDismiss={() => setForceShowOnboarding(false)} />
       <FreeEligibilitySurveyModal
         isOpen={showFreeEligibilityModal}
         onOpenChange={setShowFreeEligibilityModal}
         onSurveyComplete={handleFreeEligibilitySurveyComplete}
       />
+      */}
 
     </div>
   );
