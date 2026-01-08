@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     // Check authentication
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { orgId: effectiveOrgId } = await getEffectiveOrgId();
+    const { orgId: effectiveOrgId, isMediarAdmin } = await getEffectiveOrgId();
 
     if (!effectiveOrgId) {
       return NextResponse.json(
@@ -61,8 +61,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Verify ownership
-    if (workflow.organization_id !== effectiveOrgId) {
+    // Verify ownership (Mediar admins can access all workflows)
+    console.log(`[sync-status] folderId=${folderId} isMediarAdmin=${isMediarAdmin} workflowOrg=${workflow.organization_id} userOrg=${effectiveOrgId}`);
+    if (!isMediarAdmin && workflow.organization_id !== effectiveOrgId) {
       return NextResponse.json(
         { error: 'Not authorized' },
         { status: 403 }
