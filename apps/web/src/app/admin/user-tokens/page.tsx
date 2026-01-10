@@ -161,6 +161,33 @@ export default function UserTokensPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Totals Row - at top after header */}
+                    {(() => {
+                      const totalChat = data.users.reduce((sum, u) => sum + u.chatMessages, 0);
+                      const totalEvents = data.users.reduce((sum, u) => sum + u.recordedEvents, 0);
+                      console.log('[user-tokens-page] Totals row rendered');
+                      return (
+                        <tr className="border-b-2 border-black bg-gray-100">
+                          <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-100">
+                            TOTAL ({data.users.length} users)
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
+                            {formatTokens(data.tracedTotal)}
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm font-bold">
+                            {totalChat > 0 ? formatTokens(totalChat) : '-'}
+                          </td>
+                          <td className="text-right p-3 font-mono text-sm font-bold">
+                            {totalEvents > 0 ? formatTokens(totalEvents) : '-'}
+                          </td>
+                          {dateIndices.map((idx, i) => (
+                            <td key={i} className="text-right p-3 font-mono text-sm font-bold">
+                              {formatTokens(data.tracedDailyTokens[idx] || 0)}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })()}
                     {data.users.map((user) => {
                       const total = user.dailyTokens.reduce((sum, t) => sum + t, 0);
                       const last3Tokens = dateIndices.map(i => user.dailyTokens[i] || 0);
