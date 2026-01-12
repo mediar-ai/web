@@ -139,7 +139,7 @@ export default function PostHogFunnelPage() {
         <div>
           <h1 className="font-mono font-bold text-2xl flex items-center gap-2">
             <BarChart3 className="w-6 h-6" />
-            FUNNEL STATS
+            POSTHOG DASHBOARD
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
             Product analytics, expenses, and conversions
@@ -167,7 +167,7 @@ export default function PostHogFunnelPage() {
       ) : (
         <div className="space-y-6">
           {/* Main Funnel Table */}
-          {mainRows.length > 0 && renderTable(mainRows, 'Main Funnel')}
+          {mainRows.length > 0 && renderTable(mainRows, 'Main Dashboard')}
 
           {/* Desktop App Events Table */}
           {desktopRows.length > 0 && renderTable(desktopRows, 'Desktop App Events')}
