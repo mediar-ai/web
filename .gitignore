@@ -174,3 +174,4 @@ rust-executor/target/
 
 # Build artifacts
 packages/*/dist/
+tmpclaude-*
