@@ -17,12 +17,19 @@
     },
     "src/app/api/cron/llm-usage-reconciliation/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/cron/reactivation-emails/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/cron/scheduler",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/reactivation-emails",
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/cron/health-check-supabase",
