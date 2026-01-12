@@ -8,6 +8,7 @@ import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+import { Loader2 } from 'lucide-react';
 // COMMENTED OUT: Purchase flow imports
 // import { useSearchParams } from 'next/navigation';
 // import { useCallback } from 'react';
@@ -64,6 +65,8 @@ function HomePageContent() {
   const { userMemberships, setActive, isLoaded: orgListLoaded } = useOrganizationList();
   const router = useRouter();
   const posthog = usePostHog();
+  const [navigatingToDashboard, setNavigatingToDashboard] = useState(false);
+  const [navigatingToWebApp, setNavigatingToWebApp] = useState(false);
 
   // COMMENTED OUT: Purchase flow state
   // const searchParams = useSearchParams();
@@ -252,11 +255,23 @@ function HomePageContent() {
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Record workflows in your browser
                   </p>
-                  <Link href="/web">
-                    <Button className="w-full bg-black text-white hover:bg-gray-800">
-                      OPEN WEB APP
-                    </Button>
-                  </Link>
+                  <Button
+                    className="w-full bg-black text-white hover:bg-gray-800"
+                    disabled={navigatingToWebApp}
+                    onClick={() => {
+                      setNavigatingToWebApp(true);
+                      router.push('/web');
+                    }}
+                  >
+                    {navigatingToWebApp ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        LOADING...
+                      </>
+                    ) : (
+                      'OPEN WEB APP'
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -294,11 +309,23 @@ function HomePageContent() {
                   <p className="text-gray-600 text-sm mb-4 flex-1">
                     Manage workflows and deployments
                   </p>
-                  <Link href="/dashboard">
-                    <Button className="w-full bg-black text-white hover:bg-gray-800">
-                      OPEN DASHBOARD
-                    </Button>
-                  </Link>
+                  <Button
+                    className="w-full bg-black text-white hover:bg-gray-800"
+                    disabled={navigatingToDashboard}
+                    onClick={() => {
+                      setNavigatingToDashboard(true);
+                      router.push('/dashboard');
+                    }}
+                  >
+                    {navigatingToDashboard ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        LOADING...
+                      </>
+                    ) : (
+                      'OPEN DASHBOARD'
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
