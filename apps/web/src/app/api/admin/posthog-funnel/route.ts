@@ -21,6 +21,7 @@ interface FunnelRow {
   change30d: number | null;
   convRate30d: string;
   sortOrder: number;
+  category: 'main' | 'desktop';
 }
 
 async function runHogQLQuery(query: string, personalKey: string): Promise<PostHogQueryResult | null> {
@@ -155,6 +156,7 @@ export async function GET() {
         change30d,
         convRate30d: '',
         sortOrder: 2,
+        category: 'main',
       });
     }
 
@@ -173,6 +175,7 @@ export async function GET() {
         change30d,
         convRate30d: '',
         sortOrder: 10,
+        category: 'main',
       });
     }
 
@@ -198,13 +201,23 @@ export async function GET() {
     const calBooking = funnelEvents.get('cal_booking_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
     // Event definitions with sort order and conversion rate logic
-    const eventDefs = [
+    // Main funnel: Pageview → Download → User Created → Cal Booking → Onboarding
+    // Desktop events (separate table): App Started, User Authenticated
+    const eventDefs: Array<{
+      event: string;
+      label: string;
+      sortOrder: number;
+      convRate7d: string;
+      convRate30d: string;
+      category: 'main' | 'desktop';
+    }> = [
       {
         event: 'desktop_app_download_clicked',
         label: 'Download Clicked',
         sortOrder: 11,
         convRate7d: pageview7d > 0 ? `${Math.round((download.count7d / pageview7d) * 100)}% vs. Pageview` : '',
         convRate30d: pageview30d > 0 ? `${Math.round((download.count30d / pageview30d) * 100)}% vs. Pageview` : '',
+        category: 'main',
       },
       {
         event: 'user_created',
@@ -212,34 +225,40 @@ export async function GET() {
         sortOrder: 12,
         convRate7d: download.count7d > 0 ? `${Math.round((userCreated.count7d / download.count7d) * 100)}% vs. Download` : '',
         convRate30d: download.count30d > 0 ? `${Math.round((userCreated.count30d / download.count30d) * 100)}% vs. Download` : '',
-      },
-      {
-        event: 'desktop_app_started',
-        label: 'App Started',
-        sortOrder: 13,
-        convRate7d: userCreated.count7d > 0 ? `${Math.round((appStarted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
-        convRate30d: userCreated.count30d > 0 ? `${Math.round((appStarted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
-      },
-      {
-        event: 'desktop_user_authenticated',
-        label: 'User Authenticated',
-        sortOrder: 14,
-        convRate7d: appStarted.count7d > 0 ? `${Math.round((authenticated.count7d / appStarted.count7d) * 100)}% vs. App Started` : '',
-        convRate30d: appStarted.count30d > 0 ? `${Math.round((authenticated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
+        category: 'main',
       },
       {
         event: 'cal_booking_completed',
         label: 'Cal Booking',
-        sortOrder: 15,
-        convRate7d: authenticated.count7d > 0 ? `${Math.round((calBooking.count7d / authenticated.count7d) * 100)}% vs. Authenticated` : '',
-        convRate30d: authenticated.count30d > 0 ? `${Math.round((calBooking.count30d / authenticated.count30d) * 100)}% vs. Authenticated` : '',
+        sortOrder: 13,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((calBooking.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((calBooking.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
+        category: 'main',
       },
       {
         event: 'desktop_onboarding_completed',
         label: 'Onboarding Done',
-        sortOrder: 16,
+        sortOrder: 14,
         convRate7d: calBooking.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / calBooking.count7d) * 100)}% vs. Cal Booking` : '',
         convRate30d: calBooking.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / calBooking.count30d) * 100)}% vs. Cal Booking` : '',
+        category: 'main',
+      },
+      // Desktop app events (separate table)
+      {
+        event: 'desktop_app_started',
+        label: 'App Started',
+        sortOrder: 20,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((appStarted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((appStarted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
+        category: 'desktop',
+      },
+      {
+        event: 'desktop_user_authenticated',
+        label: 'User Authenticated',
+        sortOrder: 21,
+        convRate7d: appStarted.count7d > 0 ? `${Math.round((authenticated.count7d / appStarted.count7d) * 100)}% vs. App Started` : '',
+        convRate30d: appStarted.count30d > 0 ? `${Math.round((authenticated.count30d / appStarted.count30d) * 100)}% vs. App Started` : '',
+        category: 'desktop',
       },
     ];
 
@@ -256,6 +275,7 @@ export async function GET() {
         change30d,
         convRate30d: def.convRate30d,
         sortOrder: def.sortOrder,
+        category: def.category,
       });
     }
 
