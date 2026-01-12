@@ -14,6 +14,7 @@ interface FunnelRow {
   change30d: number | null;
   convRate30d: string;
   sortOrder: number;
+  category: 'main' | 'desktop';
 }
 
 interface FunnelData {
@@ -76,6 +77,60 @@ export default function PostHogFunnelPage() {
   }
 
   const rows = data?.rows || [];
+  const mainRows = rows.filter(row => row.category === 'main');
+  const desktopRows = rows.filter(row => row.category === 'desktop');
+
+  const renderTable = (tableRows: FunnelRow[], title?: string) => (
+    <div className="border-2 border-black">
+      {title && (
+        <div className="bg-gray-100 border-b-2 border-black px-3 py-2">
+          <h2 className="font-mono font-bold text-sm uppercase">{title}</h2>
+        </div>
+      )}
+      <table className="w-full">
+        <thead>
+          <tr className="border-b-2 border-black bg-black text-white">
+            <th className="text-left p-3 font-mono text-sm font-bold">Event</th>
+            <th className="text-right p-3 font-mono text-sm font-bold">Last 7 Days</th>
+            <th className="text-right p-3 font-mono text-sm font-bold">Conv. Rate</th>
+            <th className="text-right p-3 font-mono text-sm font-bold">Last 30 Days</th>
+            <th className="text-right p-3 font-mono text-sm font-bold">Conv. Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tableRows.map((row, index) => {
+            const isExpense = row.event === 'Card Expenses';
+            return (
+              <tr
+                key={row.event}
+                className={`border-b border-gray-200 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+              >
+                <td className="p-3 font-mono text-sm font-medium">{row.event}</td>
+                <td className="text-right p-3 font-mono text-sm">
+                  <span className="inline-flex items-center gap-1">
+                    {row.value7d}
+                    <ChangeIndicator change={row.change7d} inverse={isExpense} />
+                  </span>
+                </td>
+                <td className="text-right p-3 font-mono text-sm text-gray-600">
+                  {row.convRate7d || '-'}
+                </td>
+                <td className="text-right p-3 font-mono text-sm">
+                  <span className="inline-flex items-center gap-1">
+                    {row.value30d}
+                    <ChangeIndicator change={row.change30d} inverse={isExpense} />
+                  </span>
+                </td>
+                <td className="text-right p-3 font-mono text-sm text-gray-600">
+                  {row.convRate30d || '-'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div className="p-6">
@@ -110,49 +165,12 @@ export default function PostHogFunnelPage() {
           <p className="font-mono text-gray-600">No data available</p>
         </div>
       ) : (
-        <div className="border-2 border-black">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b-2 border-black bg-black text-white">
-                <th className="text-left p-3 font-mono text-sm font-bold">Event</th>
-                <th className="text-right p-3 font-mono text-sm font-bold">Last 7 Days</th>
-                <th className="text-right p-3 font-mono text-sm font-bold">Conv. Rate</th>
-                <th className="text-right p-3 font-mono text-sm font-bold">Last 30 Days</th>
-                <th className="text-right p-3 font-mono text-sm font-bold">Conv. Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => {
-                const isExpense = row.event === 'Card Expenses';
-                return (
-                  <tr
-                    key={row.event}
-                    className={`border-b border-gray-200 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                  >
-                    <td className="p-3 font-mono text-sm font-medium">{row.event}</td>
-                    <td className="text-right p-3 font-mono text-sm">
-                      <span className="inline-flex items-center gap-1">
-                        {row.value7d}
-                        <ChangeIndicator change={row.change7d} inverse={isExpense} />
-                      </span>
-                    </td>
-                    <td className="text-right p-3 font-mono text-sm text-gray-600">
-                      {row.convRate7d || '-'}
-                    </td>
-                    <td className="text-right p-3 font-mono text-sm">
-                      <span className="inline-flex items-center gap-1">
-                        {row.value30d}
-                        <ChangeIndicator change={row.change30d} inverse={isExpense} />
-                      </span>
-                    </td>
-                    <td className="text-right p-3 font-mono text-sm text-gray-600">
-                      {row.convRate30d || '-'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="space-y-6">
+          {/* Main Funnel Table */}
+          {mainRows.length > 0 && renderTable(mainRows, 'Main Funnel')}
+
+          {/* Desktop App Events Table */}
+          {desktopRows.length > 0 && renderTable(desktopRows, 'Desktop App Events')}
         </div>
       )}
     </div>
