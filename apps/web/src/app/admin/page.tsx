@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Coins,
   BarChart3,
+  MessageSquare,
 } from 'lucide-react';
 
 interface QuickStats {
@@ -74,10 +75,16 @@ const quickLinks = [
     description: 'Token consumption by user (last 7 days)',
   },
   {
-    title: 'PostHog Funnel',
+    title: 'PostHog Stats',
     href: '/admin/posthog-funnel',
     icon: BarChart3,
     description: 'Product funnel, expenses, pageviews',
+  },
+  {
+    title: 'User Consumption',
+    href: '/admin/user-consumption',
+    icon: MessageSquare,
+    description: 'Chat messages and events (3 days / 3 months)',
   },
 ];
 
