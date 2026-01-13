@@ -4,6 +4,7 @@ import { useCallback, useState, useMemo } from 'react';
 import { Activity, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
+import { fetchJson } from '@/lib/fetch-utils';
 
 interface UserData {
   id: string;
@@ -50,12 +51,8 @@ export default function UserStatsPage() {
 
   const fetchData = useCallback(async (): Promise<ConsumptionData> => {
     console.log('[user-stats-page] Fetching data...');
-    const res = await fetch('/api/admin/user-consumption');
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || 'Failed to load stats data');
-    }
-    const d = await res.json();
+    const d = await fetchJson<ConsumptionData>('/api/admin/user-consumption');
+    
     console.log('[user-stats-page] Data received:', d);
     return d;
   }, []);
