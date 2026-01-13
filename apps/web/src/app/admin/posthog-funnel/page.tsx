@@ -22,11 +22,14 @@ interface FunnelStep {
   name: string;
   count: number;
   percent: number;
+  prevCount?: number;
+  change?: number | null;
 }
 
 interface ActivationFunnel {
   steps: FunnelStep[];
   conversionRate: string;
+  prevConversionRate?: string;
 }
 
 interface FunnelData {
@@ -50,16 +53,32 @@ function ChangeIndicator({ change, inverse = false }: { change: number | null; i
   );
 }
 
+function formatChangeText(change: number | null): string {
+  if (change === null) return '';
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${change.toFixed(0)}%`;
+}
+
 function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
   const maxCount = funnel.steps[0]?.count || 1;
+  const convChange = funnel.prevConversionRate
+    ? Number(funnel.conversionRate) - Number(funnel.prevConversionRate)
+    : null;
 
   return (
     <div className="border-2 border-black">
       <div className="bg-gray-100 border-b-2 border-black px-3 py-2 flex items-center justify-between">
-        <h2 className="font-mono font-bold text-sm uppercase">Download → Chat Activation (30d)</h2>
-        <span className="font-mono text-sm bg-black text-white px-2 py-0.5">
-          {funnel.conversionRate}% end-to-end
-        </span>
+        <h2 className="font-mono font-bold text-sm uppercase">Download → Chat Activation (7d)</h2>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm bg-black text-white px-2 py-0.5">
+            {funnel.conversionRate}% end-to-end
+          </span>
+          {convChange !== null && (
+            <span className={`font-mono text-sm px-2 py-0.5 ${convChange >= 0 ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+              {convChange >= 0 ? '+' : ''}{convChange.toFixed(1)}pp vs prev week
+            </span>
+          )}
+        </div>
       </div>
       <div className="p-4">
         <div className="flex items-end gap-2">
@@ -72,8 +91,14 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
 
             return (
               <div key={step.name} className="flex-1 flex flex-col items-center gap-1">
-                <div className="text-xs font-mono text-gray-500">
+                <div className="text-xs font-mono text-gray-500 flex items-center gap-1">
                   {step.count} ({step.percent}%)
+                  {step.change !== null && step.change !== undefined && (
+                    <span className={step.change >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      {step.change >= 0 ? <TrendingUp className="w-3 h-3 inline" /> : <TrendingDown className="w-3 h-3 inline" />}
+                      {formatChangeText(step.change)}
+                    </span>
+                  )}
                 </div>
                 <div className="w-full h-32 flex items-end">
                   <div
@@ -82,6 +107,11 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
                   />
                 </div>
                 <div className="text-xs font-mono font-bold text-center">{step.name}</div>
+                {step.prevCount !== undefined && (
+                  <div className="text-xs font-mono text-gray-400">
+                    prev: {step.prevCount}
+                  </div>
+                )}
                 {i > 0 && dropoff > 0 && (
                   <div className="text-xs font-mono text-red-500">
                     -{dropoff} ({dropoffPercent}% drop)

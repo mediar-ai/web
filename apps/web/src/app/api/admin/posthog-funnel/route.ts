@@ -83,7 +83,7 @@ export async function GET() {
 
   try {
     // Run all queries in parallel
-    const [funnelData, brexData, pageviewData, activationFunnel, windowsDownloads] = await Promise.all([
+    const [funnelData, brexData, pageviewData, activationFunnel7d, activationFunnelPrev7d, windowsDownloads] = await Promise.all([
       // Funnel query - product events
       runHogQLQuery(`
         SELECT
@@ -138,27 +138,57 @@ export async function GET() {
           AND timestamp >= today() - 60
       `, personalKey),
 
-      // Activation funnel - Download → App → Signup → Chat (last 30 days)
+      // Activation funnel - Download → App → Signup → Chat (last 7 days)
       runHogQLQuery(`
         WITH
           downloads AS (
             SELECT DISTINCT person_id, min(timestamp) as download_time
-            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 30
+            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 7
             GROUP BY person_id
           ),
           app_opened AS (
             SELECT DISTINCT person_id, min(timestamp) as app_time
-            FROM events WHERE event = 'desktop_app_started' AND timestamp >= today() - 30
+            FROM events WHERE event = 'desktop_app_started' AND timestamp >= today() - 7
             GROUP BY person_id
           ),
           signups AS (
             SELECT DISTINCT person_id, min(timestamp) as signup_time
-            FROM events WHERE event = 'user_created' AND timestamp >= today() - 30
+            FROM events WHERE event = 'user_created' AND timestamp >= today() - 7
             GROUP BY person_id
           ),
           chat_sent AS (
             SELECT DISTINCT person_id, min(timestamp) as chat_time
-            FROM events WHERE event = 'desktop_chat_message_sent' AND timestamp >= today() - 30
+            FROM events WHERE event = 'desktop_chat_message_sent' AND timestamp >= today() - 7
+            GROUP BY person_id
+          )
+        SELECT
+          (SELECT count() FROM downloads) as total_downloads,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id WHERE a.app_time >= d.download_time) as opened_app,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time) as signed_up,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id JOIN chat_sent c ON d.person_id = c.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time AND c.chat_time >= s.signup_time) as sent_chat
+      `, personalKey),
+
+      // Activation funnel - Download → App → Signup → Chat (prev 7 days for comparison)
+      runHogQLQuery(`
+        WITH
+          downloads AS (
+            SELECT DISTINCT person_id, min(timestamp) as download_time
+            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 14 AND timestamp < today() - 7
+            GROUP BY person_id
+          ),
+          app_opened AS (
+            SELECT DISTINCT person_id, min(timestamp) as app_time
+            FROM events WHERE event = 'desktop_app_started' AND timestamp >= today() - 14 AND timestamp < today() - 7
+            GROUP BY person_id
+          ),
+          signups AS (
+            SELECT DISTINCT person_id, min(timestamp) as signup_time
+            FROM events WHERE event = 'user_created' AND timestamp >= today() - 14 AND timestamp < today() - 7
+            GROUP BY person_id
+          ),
+          chat_sent AS (
+            SELECT DISTINCT person_id, min(timestamp) as chat_time
+            FROM events WHERE event = 'desktop_chat_message_sent' AND timestamp >= today() - 14 AND timestamp < today() - 7
             GROUP BY person_id
           )
         SELECT
@@ -348,18 +378,23 @@ export async function GET() {
     // Sort by sortOrder
     rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
-    // Build activation funnel data
+    // Build activation funnel data with week-over-week comparison
     let activationFunnelData = null;
-    if (activationFunnel?.results?.[0]) {
-      const [downloads, openedApp, signedUp, sentChat] = activationFunnel.results[0].map(v => Number(v) || 0);
+    if (activationFunnel7d?.results?.[0]) {
+      const [downloads, openedApp, signedUp, sentChat] = activationFunnel7d.results[0].map(v => Number(v) || 0);
+      const [prevDownloads, prevOpenedApp, prevSignedUp, prevSentChat] = activationFunnelPrev7d?.results?.[0]?.map(v => Number(v) || 0) || [0, 0, 0, 0];
+
+      const calcChange = (curr: number, prev: number) => prev > 0 ? ((curr - prev) / prev * 100) : null;
+
       activationFunnelData = {
         steps: [
-          { name: 'Downloaded', count: downloads, percent: 100 },
-          { name: 'Opened App', count: openedApp, percent: downloads > 0 ? Math.round((openedApp / downloads) * 100) : 0 },
-          { name: 'Signed Up', count: signedUp, percent: downloads > 0 ? Math.round((signedUp / downloads) * 100) : 0 },
-          { name: 'Sent Chat', count: sentChat, percent: downloads > 0 ? Math.round((sentChat / downloads) * 100) : 0 },
+          { name: 'Downloaded', count: downloads, percent: 100, prevCount: prevDownloads, change: calcChange(downloads, prevDownloads) },
+          { name: 'Opened App', count: openedApp, percent: downloads > 0 ? Math.round((openedApp / downloads) * 100) : 0, prevCount: prevOpenedApp, change: calcChange(openedApp, prevOpenedApp) },
+          { name: 'Signed Up', count: signedUp, percent: downloads > 0 ? Math.round((signedUp / downloads) * 100) : 0, prevCount: prevSignedUp, change: calcChange(signedUp, prevSignedUp) },
+          { name: 'Sent Chat', count: sentChat, percent: downloads > 0 ? Math.round((sentChat / downloads) * 100) : 0, prevCount: prevSentChat, change: calcChange(sentChat, prevSentChat) },
         ],
         conversionRate: downloads > 0 ? ((sentChat / downloads) * 100).toFixed(1) : '0',
+        prevConversionRate: prevDownloads > 0 ? ((prevSentChat / prevDownloads) * 100).toFixed(1) : '0',
       };
     }
 
