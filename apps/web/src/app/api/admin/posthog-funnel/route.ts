@@ -138,12 +138,12 @@ export async function GET() {
           AND timestamp >= today() - 60
       `, personalKey),
 
-      // Activation funnel - Download → App → Signup → Chat (last 7 days)
+      // Activation funnel - Download → App → Signup → Chat (last 7 days, Windows only)
       runHogQLQuery(`
         WITH
           downloads AS (
             SELECT DISTINCT person_id, min(timestamp) as download_time
-            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 7
+            FROM events WHERE event = 'desktop_app_download_clicked' AND properties.$os = 'Windows' AND timestamp >= today() - 7
             GROUP BY person_id
           ),
           app_opened AS (
@@ -168,12 +168,12 @@ export async function GET() {
           (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id JOIN chat_sent c ON d.person_id = c.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time AND c.chat_time >= s.signup_time) as sent_chat
       `, personalKey),
 
-      // Activation funnel - Download → App → Signup → Chat (prev 7 days for comparison)
+      // Activation funnel - Download → App → Signup → Chat (prev 7 days for comparison, Windows only)
       runHogQLQuery(`
         WITH
           downloads AS (
             SELECT DISTINCT person_id, min(timestamp) as download_time
-            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 14 AND timestamp < today() - 7
+            FROM events WHERE event = 'desktop_app_download_clicked' AND properties.$os = 'Windows' AND timestamp >= today() - 14 AND timestamp < today() - 7
             GROUP BY person_id
           ),
           app_opened AS (
