@@ -221,7 +221,7 @@ export async function GET() {
     }
 
     // Get counts for conversion rate calculations
-    // Funnel order: Pageview → Download → User Created → App Started → Authenticated → Cal Booking → Onboarding
+    // Funnel order: Pageview → Download → User Created → Onboarding
     const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
@@ -229,7 +229,7 @@ export async function GET() {
     const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
     // Event definitions with sort order and conversion rate logic
-    // Main funnel: Pageview → Download → User Created → Cal Booking → Onboarding
+    // Main funnel: Pageview → Download → User Created → Onboarding
     // Desktop events (separate table): App Started, User Authenticated
     const eventDefs: Array<{
       event: string;
