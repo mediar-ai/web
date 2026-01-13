@@ -5,7 +5,33 @@ import { MEDIAR_ORG_IDS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
+// Simple in-memory cache
+interface CacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+
+const cache: Map<string, CacheEntry> = new Map();
+const CACHE_TTL_MS = 55 * 1000; // 55 seconds (slightly less than 60s refresh interval)
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+
+  return entry.data as T;
+}
+
+function setCache(key: string, data: unknown): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
 export async function GET() {
+  const startTime = Date.now();
   console.log('[user-consumption] API route called');
 
   // Auth check
@@ -24,6 +50,34 @@ export async function GET() {
     return NextResponse.json({ error: 'Access denied - Mediar admin only' }, { status: 403 });
   }
 
+  // Check cache first
+  const cacheKey = 'user-consumption-data';
+  const cached = getCached<{
+    users: Array<{
+      id: string;
+      email: string;
+      chat3d: number;
+      chat3m: number;
+      events3d: number;
+      events3m: number;
+    }>;
+    totals: {
+      chat3d: number;
+      chat3m: number;
+      events3d: number;
+      events3m: number;
+    };
+  }>(cacheKey);
+
+  if (cached) {
+    console.log(`[user-consumption] Returning cached data (${Date.now() - startTime}ms)`);
+    return NextResponse.json({
+      ...cached,
+      timestamp: new Date().toISOString(),
+      cached: true,
+    });
+  }
+
   try {
     const supabase = createServerClient();
     const now = new Date();
@@ -37,131 +91,92 @@ export async function GET() {
       threeMonthsAgo: threeMonthsAgo.toISOString(),
     });
 
-    // Get all user emails from desktop sessions
-    const { data: sessions, error: sessionsError } = await supabase
-      .from('mediar_desktop_sessions')
-      .select('clerk_user_id, email')
-      .not('email', 'is', null);
+    // Run ALL queries in parallel for maximum performance
+    const [
+      sessionsResult,
+      chat3mResult,
+      chat3dResult,
+      events3mResult,
+      events3dResult,
+    ] = await Promise.all([
+      // Get all user emails from desktop sessions
+      supabase
+        .from('mediar_desktop_sessions')
+        .select('clerk_user_id, email')
+        .not('email', 'is', null),
 
-    if (sessionsError) {
-      console.error('[user-consumption] Sessions query error:', sessionsError);
+      // Get chat message counts for 3 months using RPC
+      supabase.rpc('get_chat_message_counts_by_user', {
+        start_date: threeMonthsAgo.toISOString()
+      }),
+
+      // Get chat message counts for 3 days using RPC
+      supabase.rpc('get_chat_message_counts_by_user', {
+        start_date: threeDaysAgo.toISOString()
+      }),
+
+      // Get event counts for 3 months using RPC
+      supabase.rpc('get_event_counts_by_user', {
+        start_date: threeMonthsAgo.toISOString()
+      }),
+
+      // Get event counts for 3 days using RPC
+      supabase.rpc('get_event_counts_by_user', {
+        start_date: threeDaysAgo.toISOString()
+      }),
+    ]);
+
+    console.log(`[user-consumption] All queries completed in ${Date.now() - startTime}ms`);
+
+    // Log any errors
+    if (sessionsResult.error) {
+      console.error('[user-consumption] Sessions query error:', sessionsResult.error);
+    }
+    if (chat3mResult.error) {
+      console.error('[user-consumption] Chat 3m RPC error:', chat3mResult.error);
+    }
+    if (chat3dResult.error) {
+      console.error('[user-consumption] Chat 3d RPC error:', chat3dResult.error);
+    }
+    if (events3mResult.error) {
+      console.error('[user-consumption] Events 3m RPC error:', events3mResult.error);
+    }
+    if (events3dResult.error) {
+      console.error('[user-consumption] Events 3d RPC error:', events3dResult.error);
     }
 
     // Build email lookup (deduplicate by user_id)
     const emailMap = new Map<string, string>();
-    for (const s of sessions || []) {
+    for (const s of sessionsResult.data || []) {
       if (s.email && !emailMap.has(s.clerk_user_id)) {
         emailMap.set(s.clerk_user_id, s.email);
       }
     }
 
-    // Get chat sessions for last 3 months
-    const { data: chatSessions3m, error: chat3mError } = await supabase
-      .from('workflow_chat_sessions')
-      .select('user_id, messages, created_at')
-      .gte('created_at', threeMonthsAgo.toISOString());
-
-    if (chat3mError) {
-      console.error('[user-consumption] Chat sessions 3m query error:', chat3mError);
-    }
-
-    // Aggregate chat messages by user for 3 days and 3 months
-    const chat3dMap = new Map<string, number>();
+    // Build maps from RPC results
     const chat3mMap = new Map<string, number>();
-
-    for (const session of chatSessions3m || []) {
-      if (session.user_id && Array.isArray(session.messages)) {
-        const userMsgCount = session.messages.filter(
-          (m: { role?: string }) => m.role === 'user'
-        ).length;
-
-        const sessionDate = new Date(session.created_at);
-
-        // Always add to 3 month total
-        chat3mMap.set(
-          session.user_id,
-          (chat3mMap.get(session.user_id) || 0) + userMsgCount
-        );
-
-        // Add to 3 day total if within range
-        if (sessionDate >= threeDaysAgo) {
-          chat3dMap.set(
-            session.user_id,
-            (chat3dMap.get(session.user_id) || 0) + userMsgCount
-          );
-        }
-      }
-    }
-
-    console.log('[user-consumption] Chat aggregated:', {
-      users3d: chat3dMap.size,
-      users3m: chat3mMap.size,
-    });
-
-    // Get events for last 3 months using pagination
-    const events3dMap = new Map<string, number>();
+    const chat3dMap = new Map<string, number>();
     const events3mMap = new Map<string, number>();
+    const events3dMap = new Map<string, number>();
 
-    // Try RPC first for efficiency
-    const { data: eventCounts3m, error: events3mError } = await supabase
-      .rpc('get_event_counts_by_user', { start_date: threeMonthsAgo.toISOString() });
-
-    if (events3mError) {
-      console.error('[user-consumption] Events 3m RPC error:', events3mError);
-      // Fallback: manual count with pagination
-      let offset = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data: events, error: fallbackError } = await supabase
-          .from('low_level_events')
-          .select('user_id, created_at')
-          .gte('created_at', threeMonthsAgo.toISOString())
-          .range(offset, offset + pageSize - 1);
-
-        if (fallbackError) {
-          console.error('[user-consumption] Events fallback error:', fallbackError);
-          break;
-        }
-
-        if (events && events.length > 0) {
-          for (const event of events) {
-            if (event.user_id) {
-              events3mMap.set(event.user_id, (events3mMap.get(event.user_id) || 0) + 1);
-
-              const eventDate = new Date(event.created_at);
-              if (eventDate >= threeDaysAgo) {
-                events3dMap.set(event.user_id, (events3dMap.get(event.user_id) || 0) + 1);
-              }
-            }
-          }
-          offset += events.length;
-          hasMore = events.length === pageSize;
-        } else {
-          hasMore = false;
-        }
-      }
-    } else if (eventCounts3m) {
-      // RPC succeeded - but we need to also get 3 day counts
-      for (const row of eventCounts3m) {
-        events3mMap.set(row.user_id, row.count);
-      }
-
-      // Get 3 day counts separately
-      const { data: eventCounts3d, error: events3dError } = await supabase
-        .rpc('get_event_counts_by_user', { start_date: threeDaysAgo.toISOString() });
-
-      if (!events3dError && eventCounts3d) {
-        for (const row of eventCounts3d) {
-          events3dMap.set(row.user_id, row.count);
-        }
-      }
+    for (const row of chat3mResult.data || []) {
+      chat3mMap.set(row.user_id, Number(row.count) || 0);
+    }
+    for (const row of chat3dResult.data || []) {
+      chat3dMap.set(row.user_id, Number(row.count) || 0);
+    }
+    for (const row of events3mResult.data || []) {
+      events3mMap.set(row.user_id, Number(row.count) || 0);
+    }
+    for (const row of events3dResult.data || []) {
+      events3dMap.set(row.user_id, Number(row.count) || 0);
     }
 
-    console.log('[user-consumption] Events aggregated:', {
-      users3d: events3dMap.size,
-      users3m: events3mMap.size,
+    console.log('[user-consumption] Data aggregated:', {
+      chatUsers3m: chat3mMap.size,
+      chatUsers3d: chat3dMap.size,
+      eventUsers3m: events3mMap.size,
+      eventUsers3d: events3dMap.size,
     });
 
     // Combine all users from all sources
@@ -193,10 +208,16 @@ export async function GET() {
       events3m: Array.from(events3mMap.values()).reduce((sum, v) => sum + v, 0),
     };
 
+    // Cache the result
+    const result = { users, totals };
+    setCache(cacheKey, result);
+
+    console.log(`[user-consumption] Total time: ${Date.now() - startTime}ms`);
+
     return NextResponse.json({
-      users,
-      totals,
+      ...result,
       timestamp: new Date().toISOString(),
+      cached: false,
     });
   } catch (error) {
     console.error('[user-consumption] Error:', error);
