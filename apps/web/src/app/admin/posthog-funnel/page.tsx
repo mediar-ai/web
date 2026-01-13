@@ -55,7 +55,7 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
   return (
     <div className="border-2 border-black">
       <div className="bg-gray-100 border-b-2 border-black px-3 py-2 flex items-center justify-between">
-        <h2 className="font-mono font-bold text-sm uppercase">Signup → Chat Activation (30d)</h2>
+        <h2 className="font-mono font-bold text-sm uppercase">Download → Chat Activation (30d)</h2>
         <span className="font-mono text-sm bg-black text-white px-2 py-0.5">
           {funnel.conversionRate}% end-to-end
         </span>

@@ -138,17 +138,22 @@ export async function GET() {
           AND timestamp >= today() - 60
       `, personalKey),
 
-      // Activation funnel - Signup → App → Chat (last 30 days)
+      // Activation funnel - Download → App → Signup → Chat (last 30 days)
       runHogQLQuery(`
         WITH
-          signups AS (
-            SELECT DISTINCT person_id, min(timestamp) as signup_time
-            FROM events WHERE event = 'user_created' AND timestamp >= today() - 30
+          downloads AS (
+            SELECT DISTINCT person_id, min(timestamp) as download_time
+            FROM events WHERE event = 'desktop_app_download_clicked' AND timestamp >= today() - 30
             GROUP BY person_id
           ),
           app_opened AS (
             SELECT DISTINCT person_id, min(timestamp) as app_time
             FROM events WHERE event = 'desktop_app_started' AND timestamp >= today() - 30
+            GROUP BY person_id
+          ),
+          signups AS (
+            SELECT DISTINCT person_id, min(timestamp) as signup_time
+            FROM events WHERE event = 'user_created' AND timestamp >= today() - 30
             GROUP BY person_id
           ),
           chat_sent AS (
@@ -157,9 +162,10 @@ export async function GET() {
             GROUP BY person_id
           )
         SELECT
-          (SELECT count() FROM signups) as total_signups,
-          (SELECT count() FROM signups s JOIN app_opened a ON s.person_id = a.person_id WHERE a.app_time >= s.signup_time) as opened_app,
-          (SELECT count() FROM signups s JOIN app_opened a ON s.person_id = a.person_id JOIN chat_sent c ON s.person_id = c.person_id WHERE a.app_time >= s.signup_time AND c.chat_time >= a.app_time) as sent_chat
+          (SELECT count() FROM downloads) as total_downloads,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id WHERE a.app_time >= d.download_time) as opened_app,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time) as signed_up,
+          (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id JOIN chat_sent c ON d.person_id = c.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time AND c.chat_time >= s.signup_time) as sent_chat
       `, personalKey),
     ]);
 
@@ -309,14 +315,15 @@ export async function GET() {
     // Build activation funnel data
     let activationFunnelData = null;
     if (activationFunnel?.results?.[0]) {
-      const [signups, openedApp, sentChat] = activationFunnel.results[0].map(v => Number(v) || 0);
+      const [downloads, openedApp, signedUp, sentChat] = activationFunnel.results[0].map(v => Number(v) || 0);
       activationFunnelData = {
         steps: [
-          { name: 'Signed Up', count: signups, percent: 100 },
-          { name: 'Opened App', count: openedApp, percent: signups > 0 ? Math.round((openedApp / signups) * 100) : 0 },
-          { name: 'Sent Chat', count: sentChat, percent: signups > 0 ? Math.round((sentChat / signups) * 100) : 0 },
+          { name: 'Downloaded', count: downloads, percent: 100 },
+          { name: 'Opened App', count: openedApp, percent: downloads > 0 ? Math.round((openedApp / downloads) * 100) : 0 },
+          { name: 'Signed Up', count: signedUp, percent: downloads > 0 ? Math.round((signedUp / downloads) * 100) : 0 },
+          { name: 'Sent Chat', count: sentChat, percent: downloads > 0 ? Math.round((sentChat / downloads) * 100) : 0 },
         ],
-        conversionRate: signups > 0 ? ((sentChat / signups) * 100).toFixed(1) : '0',
+        conversionRate: downloads > 0 ? ((sentChat / downloads) * 100).toFixed(1) : '0',
       };
     }
 
