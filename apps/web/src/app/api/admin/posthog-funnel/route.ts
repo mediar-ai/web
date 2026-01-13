@@ -98,7 +98,6 @@ export async function GET() {
           'desktop_app_download_clicked',
           'desktop_app_started',
           'desktop_user_authenticated',
-          'desktop_onboarding_started',
           'desktop_onboarding_completed'
         )
         AND timestamp >= today() - 60
@@ -265,12 +264,11 @@ export async function GET() {
     }
 
     // Get counts for conversion rate calculations
-    // Funnel order: Pageview → Download → User Created → Onboarding Started → Onboarding Done
+    // Funnel order: Pageview → Download → User Created → Onboarding Done
     const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
-    const onboardingStarted = funnelEvents.get('desktop_onboarding_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
     // Windows-only download counts (by user's OS)
@@ -305,7 +303,7 @@ export async function GET() {
     }
 
     // Event definitions with sort order and conversion rate logic
-    // Main funnel: Pageview → Download → User Created → Onboarding Started → Onboarding Done
+    // Main funnel: Pageview → Download → User Created → Onboarding Done
     // Desktop events (separate table): App Started, User Authenticated
     const eventDefs: Array<{
       event: string;
@@ -324,19 +322,11 @@ export async function GET() {
         category: 'main',
       },
       {
-        event: 'desktop_onboarding_started',
-        label: 'Onboarding Started',
-        sortOrder: 13,
-        convRate7d: userCreated.count7d > 0 ? `${Math.round((onboardingStarted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
-        convRate30d: userCreated.count30d > 0 ? `${Math.round((onboardingStarted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
-        category: 'main',
-      },
-      {
         event: 'desktop_onboarding_completed',
         label: 'Onboarding Done',
-        sortOrder: 14,
-        convRate7d: onboardingStarted.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / onboardingStarted.count7d) * 100)}% vs. Onboarding Started` : '',
-        convRate30d: onboardingStarted.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / onboardingStarted.count30d) * 100)}% vs. Onboarding Started` : '',
+        sortOrder: 13,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
         category: 'main',
       },
       // Desktop app events (separate table)
