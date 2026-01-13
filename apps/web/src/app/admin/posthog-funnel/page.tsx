@@ -17,8 +17,20 @@ interface FunnelRow {
   category: 'main' | 'desktop';
 }
 
+interface FunnelStep {
+  name: string;
+  count: number;
+  percent: number;
+}
+
+interface ActivationFunnel {
+  steps: FunnelStep[];
+  conversionRate: string;
+}
+
 interface FunnelData {
   rows: FunnelRow[];
+  activationFunnel: ActivationFunnel | null;
   timestamp: string;
 }
 
@@ -34,6 +46,50 @@ function ChangeIndicator({ change, inverse = false }: { change: number | null; i
         <TrendingDown className="w-3 h-3" />
       )}
     </span>
+  );
+}
+
+function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
+  const maxCount = funnel.steps[0]?.count || 1;
+
+  return (
+    <div className="border-2 border-black">
+      <div className="bg-gray-100 border-b-2 border-black px-3 py-2 flex items-center justify-between">
+        <h2 className="font-mono font-bold text-sm uppercase">Signup → Chat Activation (30d)</h2>
+        <span className="font-mono text-sm bg-black text-white px-2 py-0.5">
+          {funnel.conversionRate}% end-to-end
+        </span>
+      </div>
+      <div className="p-4">
+        <div className="flex items-end gap-2 h-40">
+          {funnel.steps.map((step, i) => {
+            const height = (step.count / maxCount) * 100;
+            const dropoff = i > 0 ? funnel.steps[i - 1].count - step.count : 0;
+            const dropoffPercent = i > 0 && funnel.steps[i - 1].count > 0
+              ? Math.round((dropoff / funnel.steps[i - 1].count) * 100)
+              : 0;
+
+            return (
+              <div key={step.name} className="flex-1 flex flex-col items-center gap-1">
+                <div className="text-xs font-mono text-gray-500">
+                  {step.count} ({step.percent}%)
+                </div>
+                <div
+                  className="w-full bg-blue-500 transition-all"
+                  style={{ height: `${height}%`, minHeight: step.count > 0 ? '8px' : '0' }}
+                />
+                <div className="text-xs font-mono font-bold text-center">{step.name}</div>
+                {i > 0 && dropoff > 0 && (
+                  <div className="text-xs font-mono text-red-500">
+                    -{dropoff} ({dropoffPercent}% drop)
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -166,6 +222,11 @@ export default function PostHogFunnelPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Activation Funnel Chart */}
+          {data?.activationFunnel && (
+            <ActivationFunnelChart funnel={data.activationFunnel} />
+          )}
+
           {/* Main Funnel Table */}
           {mainRows.length > 0 && renderTable(mainRows, 'Main Dashboard')}
 

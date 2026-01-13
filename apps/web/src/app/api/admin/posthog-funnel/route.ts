@@ -83,7 +83,7 @@ export async function GET() {
 
   try {
     // Run all queries in parallel
-    const [funnelData, brexData, pageviewData] = await Promise.all([
+    const [funnelData, brexData, pageviewData, activationFunnel] = await Promise.all([
       // Funnel query - product events
       runHogQLQuery(`
         SELECT
@@ -136,6 +136,30 @@ export async function GET() {
         WHERE event = '$pageview'
           AND properties.$current_url LIKE '%mediar.ai%'
           AND timestamp >= today() - 60
+      `, personalKey),
+
+      // Activation funnel - Signup → App → Chat (last 30 days)
+      runHogQLQuery(`
+        WITH
+          signups AS (
+            SELECT DISTINCT person_id, min(timestamp) as signup_time
+            FROM events WHERE event = 'user_created' AND timestamp >= today() - 30
+            GROUP BY person_id
+          ),
+          app_opened AS (
+            SELECT DISTINCT person_id, min(timestamp) as app_time
+            FROM events WHERE event = 'desktop_app_started' AND timestamp >= today() - 30
+            GROUP BY person_id
+          ),
+          chat_sent AS (
+            SELECT DISTINCT person_id, min(timestamp) as chat_time
+            FROM events WHERE event = 'desktop_chat_message_sent' AND timestamp >= today() - 30
+            GROUP BY person_id
+          )
+        SELECT
+          (SELECT count() FROM signups) as total_signups,
+          (SELECT count() FROM signups s JOIN app_opened a ON s.person_id = a.person_id WHERE a.app_time >= s.signup_time) as opened_app,
+          (SELECT count() FROM signups s JOIN app_opened a ON s.person_id = a.person_id JOIN chat_sent c ON s.person_id = c.person_id WHERE a.app_time >= s.signup_time AND c.chat_time >= a.app_time) as sent_chat
       `, personalKey),
     ]);
 
@@ -282,8 +306,23 @@ export async function GET() {
     // Sort by sortOrder
     rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
+    // Build activation funnel data
+    let activationFunnelData = null;
+    if (activationFunnel?.results?.[0]) {
+      const [signups, openedApp, sentChat] = activationFunnel.results[0].map(v => Number(v) || 0);
+      activationFunnelData = {
+        steps: [
+          { name: 'Signed Up', count: signups, percent: 100 },
+          { name: 'Opened App', count: openedApp, percent: signups > 0 ? Math.round((openedApp / signups) * 100) : 0 },
+          { name: 'Sent Chat', count: sentChat, percent: signups > 0 ? Math.round((sentChat / signups) * 100) : 0 },
+        ],
+        conversionRate: signups > 0 ? ((sentChat / signups) * 100).toFixed(1) : '0',
+      };
+    }
+
     return NextResponse.json({
       rows,
+      activationFunnel: activationFunnelData,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
