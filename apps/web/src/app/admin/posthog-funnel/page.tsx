@@ -81,6 +81,10 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
         </div>
       </div>
       <div className="p-4">
+        {/* Legend */}
+        <div className="flex justify-end gap-4 mb-2 text-xs font-mono text-gray-500">
+          <span>This week vs last week</span>
+        </div>
         <div className="flex gap-4">
           {funnel.steps.map((step, i) => {
             const height = (step.count / maxCount) * 100;
@@ -91,16 +95,6 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
 
             return (
               <div key={step.name} className="flex-1 flex flex-col items-center">
-                {/* Stats row - fixed height */}
-                <div className="h-5 text-xs font-mono text-gray-500 flex items-center gap-1">
-                  {step.count} ({step.percent}%)
-                  {step.change !== null && step.change !== undefined && (
-                    <span className={step.change >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      {step.change >= 0 ? <TrendingUp className="w-3 h-3 inline" /> : <TrendingDown className="w-3 h-3 inline" />}
-                      {formatChangeText(step.change)}
-                    </span>
-                  )}
-                </div>
                 {/* Bar container - fixed height, bars align to bottom */}
                 <div className="w-full h-32 flex items-end justify-center">
                   <div
@@ -108,15 +102,25 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
                     style={{ height: `${height}%`, minHeight: step.count > 0 ? '8px' : '0' }}
                   />
                 </div>
-                {/* Label - fixed height */}
-                <div className="h-5 text-xs font-mono font-bold text-center mt-1">{step.name}</div>
-                {/* Prev count - fixed height */}
-                <div className="h-4 text-xs font-mono text-gray-400">
-                  {step.prevCount !== undefined ? `prev: ${step.prevCount}` : ''}
+                {/* Label */}
+                <div className="text-xs font-mono font-bold text-center mt-2">{step.name}</div>
+                {/* This week count */}
+                <div className="text-sm font-mono font-bold mt-1">
+                  {step.count}
+                  <span className="text-gray-400 font-normal"> ({step.percent}%)</span>
                 </div>
-                {/* Dropoff - fixed height */}
-                <div className="h-4 text-xs font-mono text-red-500">
-                  {i > 0 && dropoff > 0 ? `−${dropoff} (${dropoffPercent}% drop)` : ''}
+                {/* Last week comparison */}
+                <div className="text-xs font-mono text-gray-400 flex items-center gap-1">
+                  was {step.prevCount ?? 0}
+                  {step.change !== null && step.change !== undefined && (
+                    <span className={step.change >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      ({formatChangeText(step.change)})
+                    </span>
+                  )}
+                </div>
+                {/* Dropoff from previous step */}
+                <div className="h-4 text-xs font-mono text-red-500 mt-1">
+                  {i > 0 && dropoff > 0 ? `↓ ${dropoffPercent}% lost` : ''}
                 </div>
               </div>
             );
