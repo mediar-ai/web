@@ -98,8 +98,7 @@ export async function GET() {
           'desktop_app_download_clicked',
           'desktop_app_started',
           'desktop_user_authenticated',
-          'desktop_onboarding_completed',
-          'cal_booking_completed'
+          'desktop_onboarding_completed'
         )
         AND timestamp >= today() - 60
         GROUP BY event
@@ -228,7 +227,6 @@ export async function GET() {
     const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
-    const calBooking = funnelEvents.get('cal_booking_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
     // Event definitions with sort order and conversion rate logic
     // Main funnel: Pageview → Download → User Created → Cal Booking → Onboarding
@@ -258,19 +256,11 @@ export async function GET() {
         category: 'main',
       },
       {
-        event: 'cal_booking_completed',
-        label: 'Cal Booking',
-        sortOrder: 13,
-        convRate7d: userCreated.count7d > 0 ? `${Math.round((calBooking.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
-        convRate30d: userCreated.count30d > 0 ? `${Math.round((calBooking.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
-        category: 'main',
-      },
-      {
         event: 'desktop_onboarding_completed',
         label: 'Onboarding Done',
-        sortOrder: 14,
-        convRate7d: calBooking.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / calBooking.count7d) * 100)}% vs. Cal Booking` : '',
-        convRate30d: calBooking.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / calBooking.count30d) * 100)}% vs. Cal Booking` : '',
+        sortOrder: 13,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
         category: 'main',
       },
       // Desktop app events (separate table)
