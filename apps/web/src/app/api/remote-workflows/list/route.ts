@@ -20,6 +20,10 @@ export async function GET(request: NextRequest) {
     const filterTags = tagsParam
       ? tagsParam.split(',').map(t => t.trim().toLowerCase())
       : [];
+    // includePublic: when false (default), excludes public workflows from other orgs
+    // Desktop app defaults to false to show only owned/shared workflows in main list
+    // Community workflows are fetched separately via /api/remote-workflows/community
+    const includePublic = searchParams.get('includePublic') === 'true';
 
     // Get effective organization context
     // Don't override orgId if viewing "All Orgs" - keep the user's actual org
@@ -77,11 +81,13 @@ export async function GET(request: NextRequest) {
       // Regular org sees:
       // 1. Workflows they own
       // 2. Workflows explicitly shared with them via workflow_organization_access
-      // 3. Globally public workflows (is_public = true)
+      // 3. Globally public workflows (is_public = true) - ONLY if includePublic=true
 
-      // PARALLEL: Run all 3 access queries simultaneously
+      // PARALLEL: Run access queries simultaneously
       const accessQueryStart = Date.now();
-      const [ownedResult, sharedResult, publicResult] = await Promise.all([
+      
+      // Build array of queries to run - conditionally include public query
+      const queries: Promise<any>[] = [
         // Get workflows owned by this org
         supabase
           .from('deployed_workflows')
@@ -93,13 +99,21 @@ export async function GET(request: NextRequest) {
           .from('workflow_organization_access')
           .select('workflow_id')
           .eq('organization_id', orgId),
-        // Get globally public workflows (is_public = true)
-        supabase
-          .from('deployed_workflows')
-          .select('id')
-          .eq('is_public', true)
-          .is('parent_workflow_id', null),
-      ]);
+      ];
+      
+      // Only query for public workflows if includePublic=true
+      if (includePublic) {
+        queries.push(
+          supabase
+            .from('deployed_workflows')
+            .select('id')
+            .eq('is_public', true)
+            .is('parent_workflow_id', null)
+        );
+      }
+      
+      const results = await Promise.all(queries);
+      const [ownedResult, sharedResult, publicResult] = results;
 
       console.log(`[API TIMING] Access queries (parallel): ${Date.now() - accessQueryStart}ms`);
 
@@ -115,7 +129,7 @@ export async function GET(request: NextRequest) {
           sharedResult.error
         );
       }
-      if (publicResult.error) {
+      if (includePublic && publicResult?.error) {
         console.error(
           '[Workflows List] Error fetching public workflows:',
           publicResult.error
@@ -124,12 +138,14 @@ export async function GET(request: NextRequest) {
 
       const ownedIds = (ownedResult.data || []).map(w => w.id);
       const sharedIds = (sharedResult.data || []).map(a => a.workflow_id);
-      const publicIds = (publicResult.data || []).map(w => w.id);
+      const publicIds = includePublic ? (publicResult?.data || []).map(w => w.id) : [];
 
       // Combine and deduplicate
       accessibleWorkflowIds = [
         ...new Set([...ownedIds, ...sharedIds, ...publicIds]),
       ];
+      
+      console.log(`[API] includePublic=${includePublic}, owned=${ownedIds.length}, shared=${sharedIds.length}, public=${publicIds.length}, total=${accessibleWorkflowIds.length}`);
     }
 
     if (accessibleWorkflowIds.length === 0 && !showAllWorkflows) {
