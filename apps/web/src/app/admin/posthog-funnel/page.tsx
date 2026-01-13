@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
+import { fetchJson } from '@/lib/fetch-utils';
 
 interface FunnelRow {
   event: string;
@@ -98,12 +99,8 @@ const REFRESH_INTERVAL = 60000; // 60 seconds
 export default function PostHogFunnelPage() {
   const fetchData = useCallback(async (): Promise<FunnelData> => {
     console.log('[posthog-funnel-page] Fetching data...');
-    const res = await fetch('/api/admin/posthog-funnel');
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || 'Failed to load funnel data');
-    }
-    const d = await res.json();
+    const d = await fetchJson<FunnelData>('/api/admin/posthog-funnel');
+    
     console.log('[posthog-funnel-page] Data received:', d);
     return d;
   }, []);
