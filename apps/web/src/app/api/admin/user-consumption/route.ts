@@ -179,6 +179,14 @@ export async function GET() {
       eventUsers3d: events3dMap.size,
     });
 
+    // Emails to exclude from stats (internal users)
+    const excludedEmails = new Set([
+      'matt@mediar.ai',
+      'louis@mediar.ai',
+      'test@benchflow.ai',
+      'adrian.z.mei@gmail.com'
+    ]);
+
     // Combine all users from all sources
     const allUserIds = new Set<string>([
       ...chat3dMap.keys(),
@@ -187,25 +195,30 @@ export async function GET() {
       ...events3mMap.keys(),
     ]);
 
-    // Build users array
-    const users = Array.from(allUserIds).map(userId => ({
-      id: userId,
-      email: emailMap.get(userId) || userId.slice(0, 8) + '...',
-      chat3d: chat3dMap.get(userId) || 0,
-      chat3m: chat3mMap.get(userId) || 0,
-      events3d: events3dMap.get(userId) || 0,
-      events3m: events3mMap.get(userId) || 0,
-    }));
+    // Build users array (excluding internal users)
+    const users = Array.from(allUserIds)
+      .filter(userId => {
+        const email = emailMap.get(userId);
+        return !email || !excludedEmails.has(email.toLowerCase());
+      })
+      .map(userId => ({
+        id: userId,
+        email: emailMap.get(userId) || userId.slice(0, 8) + '...',
+        chat3d: chat3dMap.get(userId) || 0,
+        chat3m: chat3mMap.get(userId) || 0,
+        events3d: events3dMap.get(userId) || 0,
+        events3m: events3mMap.get(userId) || 0,
+      }));
 
     // Sort by total activity (3 month chat + events) descending
     users.sort((a, b) => (b.chat3m + b.events3m) - (a.chat3m + a.events3m));
 
-    // Calculate totals
+    // Calculate totals (from filtered users only)
     const totals = {
-      chat3d: Array.from(chat3dMap.values()).reduce((sum, v) => sum + v, 0),
-      chat3m: Array.from(chat3mMap.values()).reduce((sum, v) => sum + v, 0),
-      events3d: Array.from(events3dMap.values()).reduce((sum, v) => sum + v, 0),
-      events3m: Array.from(events3mMap.values()).reduce((sum, v) => sum + v, 0),
+      chat3d: users.reduce((sum, u) => sum + u.chat3d, 0),
+      chat3m: users.reduce((sum, u) => sum + u.chat3m, 0),
+      events3d: users.reduce((sum, u) => sum + u.events3d, 0),
+      events3m: users.reduce((sum, u) => sum + u.events3m, 0),
     };
 
     // Cache the result
