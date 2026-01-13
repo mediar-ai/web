@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { Activity, Server, Clock } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
+import { fetchJson } from '@/lib/fetch-utils';
 
 interface TraceData {
   hostname: string;
@@ -26,12 +27,8 @@ export default function ObservabilityPage() {
 
   const fetchTraces = useCallback(async (): Promise<TracesResponse> => {
     console.log('[observability] Fetching traces for period:', statsPeriod);
-    const res = await fetch(`/api/admin/sentry-traces?statsPeriod=${statsPeriod}`);
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || 'Failed to load traces');
-    }
-    const data: TracesResponse = await res.json();
+    const data = await fetchJson<TracesResponse>(`/api/admin/sentry-traces?statsPeriod=${statsPeriod}`);
+    
     console.log('[observability] Got', data.traces.length, 'traces');
     return data;
   }, [statsPeriod]);
