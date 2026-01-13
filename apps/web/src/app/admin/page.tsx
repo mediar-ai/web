@@ -81,8 +81,8 @@ const quickLinks = [
     description: 'Product funnel, expenses, pageviews',
   },
   {
-    title: 'User Consumption',
-    href: '/admin/user-consumption',
+    title: 'User Stats',
+    href: '/admin/user-stats',
     icon: MessageSquare,
     description: 'Chat messages and events (3 days / 3 months)',
   },
