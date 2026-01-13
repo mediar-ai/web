@@ -103,8 +103,8 @@ function WeeklyMessageChart({ weeks }: { weeks: WeeklyDataPoint[] }) {
           </div>
         )}
       </div>
-      <div className="p-4 overflow-x-auto">
-        <svg width={width} height={height} className="font-mono">
+      <div className="p-4">
+        <svg viewBox={`0 0 ${width} ${height + 40}`} className="w-full font-mono" preserveAspectRatio="xMidYMid meet">
           {/* Grid lines */}
           {yLabels.map((label, i) => {
             const y = padding.top + chartHeight - (i / 2) * chartHeight;
@@ -162,20 +162,32 @@ function WeeklyMessageChart({ weeks }: { weeks: WeeklyDataPoint[] }) {
               )}
             </g>
           ))}
-        </svg>
 
-        {/* X-axis labels as horizontal wrapped text */}
-        <div className="flex justify-between mt-2" style={{ marginLeft: padding.left, marginRight: padding.right }}>
-          {recentWeeks.map((week) => (
-            <div key={week.week} className="text-center flex-1">
-              <div className="font-mono text-[10px] text-gray-600 leading-tight">
-                {week.weekLabel.split(' - ').map((part, i) => (
-                  <div key={i}>{part}{i === 0 ? ' -' : ''}</div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+          {/* X-axis labels inside SVG for proper scaling */}
+          {points.map((point, i) => {
+            const parts = point.weekLabel.split(' - ');
+            return (
+              <g key={`label-${i}`}>
+                <text
+                  x={point.x}
+                  y={height + 5}
+                  textAnchor="middle"
+                  className="text-[11px] fill-gray-600"
+                >
+                  {parts[0]} -
+                </text>
+                <text
+                  x={point.x}
+                  y={height + 20}
+                  textAnchor="middle"
+                  className="text-[11px] fill-gray-600"
+                >
+                  {parts[1]}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
       </div>
     </div>
   );
