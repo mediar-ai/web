@@ -81,7 +81,7 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
         </div>
       </div>
       <div className="p-4">
-        <div className="flex items-end gap-2">
+        <div className="flex gap-4">
           {funnel.steps.map((step, i) => {
             const height = (step.count / maxCount) * 100;
             const dropoff = i > 0 ? funnel.steps[i - 1].count - step.count : 0;
@@ -90,8 +90,9 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
               : 0;
 
             return (
-              <div key={step.name} className="flex-1 flex flex-col items-center gap-1">
-                <div className="text-xs font-mono text-gray-500 flex items-center gap-1">
+              <div key={step.name} className="flex-1 flex flex-col items-center">
+                {/* Stats row - fixed height */}
+                <div className="h-5 text-xs font-mono text-gray-500 flex items-center gap-1">
                   {step.count} ({step.percent}%)
                   {step.change !== null && step.change !== undefined && (
                     <span className={step.change >= 0 ? 'text-green-600' : 'text-red-600'}>
@@ -100,23 +101,23 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
                     </span>
                   )}
                 </div>
-                <div className="w-full h-32 flex items-end">
+                {/* Bar container - fixed height, bars align to bottom */}
+                <div className="w-full h-32 flex items-end justify-center">
                   <div
-                    className="w-full bg-blue-500 transition-all"
+                    className="w-full max-w-24 bg-blue-500 transition-all"
                     style={{ height: `${height}%`, minHeight: step.count > 0 ? '8px' : '0' }}
                   />
                 </div>
-                <div className="text-xs font-mono font-bold text-center">{step.name}</div>
-                {step.prevCount !== undefined && (
-                  <div className="text-xs font-mono text-gray-400">
-                    prev: {step.prevCount}
-                  </div>
-                )}
-                {i > 0 && dropoff > 0 && (
-                  <div className="text-xs font-mono text-red-500">
-                    -{dropoff} ({dropoffPercent}% drop)
-                  </div>
-                )}
+                {/* Label - fixed height */}
+                <div className="h-5 text-xs font-mono font-bold text-center mt-1">{step.name}</div>
+                {/* Prev count - fixed height */}
+                <div className="h-4 text-xs font-mono text-gray-400">
+                  {step.prevCount !== undefined ? `prev: ${step.prevCount}` : ''}
+                </div>
+                {/* Dropoff - fixed height */}
+                <div className="h-4 text-xs font-mono text-red-500">
+                  {i > 0 && dropoff > 0 ? `−${dropoff} (${dropoffPercent}% drop)` : ''}
+                </div>
               </div>
             );
           })}
