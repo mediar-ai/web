@@ -62,7 +62,7 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
         </span>
       </div>
       <div className="p-4">
-        <div className="flex items-end gap-2 h-40">
+        <div className="flex items-end gap-2">
           {funnel.steps.map((step, i) => {
             const height = (step.count / maxCount) * 100;
             const dropoff = i > 0 ? funnel.steps[i - 1].count - step.count : 0;
@@ -75,10 +75,12 @@ function ActivationFunnelChart({ funnel }: { funnel: ActivationFunnel }) {
                 <div className="text-xs font-mono text-gray-500">
                   {step.count} ({step.percent}%)
                 </div>
-                <div
-                  className="w-full bg-blue-500 transition-all"
-                  style={{ height: `${height}%`, minHeight: step.count > 0 ? '8px' : '0' }}
-                />
+                <div className="w-full h-32 flex items-end">
+                  <div
+                    className="w-full bg-blue-500 transition-all"
+                    style={{ height: `${height}%`, minHeight: step.count > 0 ? '8px' : '0' }}
+                  />
+                </div>
                 <div className="text-xs font-mono font-bold text-center">{step.name}</div>
                 {i > 0 && dropoff > 0 && (
                   <div className="text-xs font-mono text-red-500">
