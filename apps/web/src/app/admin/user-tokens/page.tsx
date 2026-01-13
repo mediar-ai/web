@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { Users } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
+import { fetchJson } from '@/lib/fetch-utils';
 
 interface UserData {
   id: string;
@@ -37,12 +38,8 @@ const REFRESH_INTERVAL = 60000; // 60 seconds for token data
 export default function UserTokensPage() {
   const fetchData = useCallback(async (): Promise<TokenData> => {
     console.log('[user-tokens-page] Fetching data...');
-    const res = await fetch('/api/admin/user-tokens');
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || 'Failed to load token data');
-    }
-    const d = await res.json();
+    const d = await fetchJson<TokenData>('/api/admin/user-tokens');
+    
     console.log('[user-tokens-page] Data received:', d);
     return d;
   }, []);
