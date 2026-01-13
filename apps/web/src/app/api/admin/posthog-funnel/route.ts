@@ -83,7 +83,7 @@ export async function GET() {
 
   try {
     // Run all queries in parallel
-    const [funnelData, brexData, pageviewData, activationFunnel] = await Promise.all([
+    const [funnelData, brexData, pageviewData, activationFunnel, windowsDownloads] = await Promise.all([
       // Funnel query - product events
       runHogQLQuery(`
         SELECT
@@ -166,6 +166,19 @@ export async function GET() {
           (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time) as signed_up,
           (SELECT count() FROM downloads d JOIN app_opened a ON d.person_id = a.person_id JOIN signups s ON d.person_id = s.person_id JOIN chat_sent c ON d.person_id = c.person_id WHERE a.app_time >= d.download_time AND s.signup_time >= a.app_time AND c.chat_time >= s.signup_time) as sent_chat
       `, personalKey),
+
+      // Windows-only downloads (by user's OS)
+      runHogQLQuery(`
+        SELECT
+          uniqIf(person_id, timestamp >= today() - 7) as windows_7d,
+          uniqIf(person_id, timestamp >= today() - 14 AND timestamp < today() - 7) as windows_prev_7d,
+          uniqIf(person_id, timestamp >= today() - 30) as windows_30d,
+          uniqIf(person_id, timestamp >= today() - 60 AND timestamp < today() - 30) as windows_prev_30d
+        FROM events
+        WHERE event = 'desktop_app_download_clicked'
+        AND properties.$os = 'Windows'
+        AND timestamp >= today() - 60
+      `, personalKey),
     ]);
 
     // Build unified rows array
@@ -228,6 +241,37 @@ export async function GET() {
     const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
 
+    // Windows-only download counts (by user's OS)
+    const windowsDownloadData = windowsDownloads?.results?.[0]
+      ? {
+          count7d: Number(windowsDownloads.results[0][0]) || 0,
+          prev7d: Number(windowsDownloads.results[0][1]) || 0,
+          count30d: Number(windowsDownloads.results[0][2]) || 0,
+          prev30d: Number(windowsDownloads.results[0][3]) || 0,
+        }
+      : { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+
+    // Special handling for Download Clicked - show Windows (Total) format
+    {
+      const winChange7d = windowsDownloadData.prev7d > 0
+        ? ((windowsDownloadData.count7d - windowsDownloadData.prev7d) / windowsDownloadData.prev7d * 100)
+        : null;
+      const winChange30d = windowsDownloadData.prev30d > 0
+        ? ((windowsDownloadData.count30d - windowsDownloadData.prev30d) / windowsDownloadData.prev30d * 100)
+        : null;
+      rows.push({
+        event: 'Download Clicked',
+        value7d: `${windowsDownloadData.count7d} (${download.count7d}) ${formatChange(winChange7d)}`,
+        change7d: winChange7d,
+        convRate7d: pageview7d > 0 ? `${Math.round((windowsDownloadData.count7d / pageview7d) * 100)}% vs. Pageview` : '',
+        value30d: `${windowsDownloadData.count30d} (${download.count30d}) ${formatChange(winChange30d)}`,
+        change30d: winChange30d,
+        convRate30d: pageview30d > 0 ? `${Math.round((windowsDownloadData.count30d / pageview30d) * 100)}% vs. Pageview` : '',
+        sortOrder: 11,
+        category: 'main',
+      });
+    }
+
     // Event definitions with sort order and conversion rate logic
     // Main funnel: Pageview → Download → User Created → Onboarding
     // Desktop events (separate table): App Started, User Authenticated
@@ -239,14 +283,6 @@ export async function GET() {
       convRate30d: string;
       category: 'main' | 'desktop';
     }> = [
-      {
-        event: 'desktop_app_download_clicked',
-        label: 'Download Clicked',
-        sortOrder: 11,
-        convRate7d: pageview7d > 0 ? `${Math.round((download.count7d / pageview7d) * 100)}% vs. Pageview` : '',
-        convRate30d: pageview30d > 0 ? `${Math.round((download.count30d / pageview30d) * 100)}% vs. Pageview` : '',
-        category: 'main',
-      },
       {
         event: 'user_created',
         label: 'User Created',
