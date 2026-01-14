@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     // Check authentication
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
-    const { orgId: effectiveOrgId, isMediarAdmin } = await getEffectiveOrgId();
+    const { orgId: effectiveOrgId } = await getEffectiveOrgId();
 
     if (!effectiveOrgId) {
       return NextResponse.json(
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Look up workflow by github_folder (UUID)
     const { data: workflow, error } = await supabase
       .from('deployed_workflows')
-      .select('id, content_updated_at, organization_id')
+      .select('id, content_updated_at, organization_id, uuid')
       .eq('github_folder', folderId)
       .single();
 
@@ -61,9 +61,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Verify ownership (Mediar admins can access all workflows)
-    console.log(`[sync-status] folderId=${folderId} isMediarAdmin=${isMediarAdmin} workflowOrg=${workflow.organization_id} userOrg=${effectiveOrgId}`);
-    if (!isMediarAdmin && workflow.organization_id !== effectiveOrgId) {
+    // Verify write access using centralized permission check (consistent with publish-typescript)
+    const { checkWorkflowAccess } = await import('@/lib/workflow-permissions');
+    const access = await checkWorkflowAccess(effectiveOrgId, workflow.uuid);
+
+    console.log(`[sync-status] folderId=${folderId} workflowOrg=${workflow.organization_id} userOrg=${effectiveOrgId} accessLevel=${access.accessLevel} canWrite=${access.canWrite}`);
+
+    if (!access.canWrite) {
       return NextResponse.json(
         { error: 'Not authorized' },
         { status: 403 }
