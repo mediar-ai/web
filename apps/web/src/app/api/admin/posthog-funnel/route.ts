@@ -7,6 +7,15 @@ export const dynamic = 'force-dynamic';
 const POSTHOG_HOST = 'https://eu.posthog.com';
 const POSTHOG_PROJECT_ID = '65690'; // mediar-merged project
 
+// Internal users to exclude from funnel metrics
+const EXCLUDED_EMAILS = [
+  'matt@mediar.ai',
+  'louis@mediar.ai',
+  'task@benchflow.ai',
+  'adrian.z.mei@gmail.com',
+];
+const EXCLUDED_EMAILS_SQL = EXCLUDED_EMAILS.map(e => `'${e}'`).join(', ');
+
 interface PostHogQueryResult {
   results: unknown[][];
   columns?: string[];
@@ -101,6 +110,7 @@ export async function GET() {
           'desktop_onboarding_completed'
         )
         AND timestamp >= today() - 60
+        AND (person.properties.email IS NULL OR person.properties.email NOT IN (${EXCLUDED_EMAILS_SQL}))
         GROUP BY event
       `, personalKey),
 
@@ -143,6 +153,7 @@ export async function GET() {
           downloads AS (
             SELECT DISTINCT person_id, min(timestamp) as download_time
             FROM events WHERE event = 'desktop_app_download_clicked' AND properties.$os = 'Windows' AND timestamp >= today() - 7
+              AND (person.properties.email IS NULL OR person.properties.email NOT IN (${EXCLUDED_EMAILS_SQL}))
             GROUP BY person_id
           ),
           app_opened AS (
@@ -173,6 +184,7 @@ export async function GET() {
           downloads AS (
             SELECT DISTINCT person_id, min(timestamp) as download_time
             FROM events WHERE event = 'desktop_app_download_clicked' AND properties.$os = 'Windows' AND timestamp >= today() - 14 AND timestamp < today() - 7
+              AND (person.properties.email IS NULL OR person.properties.email NOT IN (${EXCLUDED_EMAILS_SQL}))
             GROUP BY person_id
           ),
           app_opened AS (
@@ -208,6 +220,7 @@ export async function GET() {
         WHERE event = 'desktop_app_download_clicked'
         AND properties.$os = 'Windows'
         AND timestamp >= today() - 60
+        AND (person.properties.email IS NULL OR person.properties.email NOT IN (${EXCLUDED_EMAILS_SQL}))
       `, personalKey),
 
       // Chat message thresholds - users who sent 1+, 5+, 10+ messages
@@ -222,6 +235,7 @@ export async function GET() {
           FROM events
           WHERE event = 'desktop_chat_message_sent'
             AND timestamp >= today() - 60
+            AND (person.properties.email IS NULL OR person.properties.email NOT IN (${EXCLUDED_EMAILS_SQL}))
           GROUP BY person_id
         )
         SELECT
