@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       const accessQueryStart = Date.now();
       
       // Build array of queries to run - conditionally include public query
-      const queries: Promise<any>[] = [
+      const queries = [
         // Get workflows owned by this org
         supabase
           .from('deployed_workflows')
@@ -119,7 +119,8 @@ export async function GET(request: NextRequest) {
         );
       }
       
-      const results = await Promise.all(queries);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results = await Promise.all(queries as any[]);
       const [ownedResult, sharedResult, featuredResult, publicResult] = results;
 
       console.log(`[API TIMING] Access queries (parallel): ${Date.now() - accessQueryStart}ms`);
@@ -149,10 +150,10 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const ownedIds = (ownedResult.data || []).map(w => w.id);
-      const sharedIds = (sharedResult.data || []).map(a => a.workflow_id);
-      const featuredIds = (featuredResult.data || []).map(w => w.id);
-      const publicIds = includePublic ? (publicResult?.data || []).map(w => w.id) : [];
+      const ownedIds = (ownedResult.data || []).map((w: { id: string }) => w.id);
+      const sharedIds = (sharedResult.data || []).map((a: { workflow_id: string }) => a.workflow_id);
+      const featuredIds = (featuredResult.data || []).map((w: { id: string }) => w.id);
+      const publicIds = includePublic ? (publicResult?.data || []).map((w: { id: string }) => w.id) : [];
 
       // Combine and deduplicate
       accessibleWorkflowIds = [

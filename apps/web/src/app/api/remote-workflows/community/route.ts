@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         ? 'workflow_statistics_summary_latest'
         : 'workflow_statistics_summary';
 
-    let query = supabase
+    const query = supabase
       .from(statsViewName)
       .select(
         `
