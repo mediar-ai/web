@@ -250,81 +250,61 @@ export async function GET(request: NextRequest) {
     // Fetch automation sequences for the workflows (needed for input parameter detection)
     const workflowIds = (workflows || []).map(w => w.id);
     const automationSequences: Record<number, any> = {};
-    const cronData: Record<number, any> = {};
 
-    // Determine which view to use based on version parameter
-    const viewName =
-      versionParam === 'latest'
-        ? 'deployed_workflows_with_sequence_latest'
-        : 'deployed_workflows_with_sequence';
+    // Use unified view - both views are now identical (consolidated in 20260113000000 migration)
+    const viewName = 'deployed_workflows_with_sequence';
 
     if (versionParam === 'latest') {
-      console.log('[API] Using LATEST view for desktop app');
+      console.log('[API] Using unified view for desktop app (version=latest)');
     }
 
     if (workflowIds.length > 0) {
-      // PARALLEL: Fetch cron/config data AND sequences simultaneously
+      // Single query from unified view - includes all cron, config, and metadata fields
       const dataQueryStart = Date.now();
-      const [cronResult, sequencesResult] = await Promise.all([
-        // Fetch cron data and other config directly from deployed_workflows table
-        supabase
-          .from('deployed_workflows')
-          .select(
-            `
-            id,
-            organization_id,
-            created_by,
-            estimated_duration_seconds,
-            cron_expression,
-            cron_timezone,
-            cron_enabled,
-            last_scheduled_execution,
-            next_scheduled_execution,
-            cron_max_concurrent,
-            cron_retry_on_failure,
-            cron_retry_count,
-            cron_auto_paused,
-            auto_paused_at,
-            auto_pause_reason,
-            consecutive_failures,
-            last_failure_message,
-            preferred_format,
-            typescript_metadata,
-            tags,
-            github_folder,
-            uuid,
-            step_count,
-            is_featured
+      const { data: workflowMetadata, error: metadataError } = await supabase
+        .from(viewName)
+        .select(
           `
-          )
-          .in('id', workflowIds),
-        // Fetch workflow metadata (no automation_sequence - too large, fetched on-demand)
-        supabase
-          .from(viewName)
-          .select(
-            `
-            id,
-            workflow_type,
-            parent_workflow_id,
-            display_order,
-            latest_version_number
-          `
-          )
-          .in('id', workflowIds),
-      ]);
+          id,
+          organization_id,
+          created_by,
+          estimated_duration_seconds,
+          workflow_type,
+          parent_workflow_id,
+          display_order,
+          cron_expression,
+          cron_timezone,
+          cron_enabled,
+          last_scheduled_execution,
+          next_scheduled_execution,
+          cron_max_concurrent,
+          cron_retry_on_failure,
+          cron_retry_count,
+          cron_auto_paused,
+          auto_paused_at,
+          auto_pause_reason,
+          consecutive_failures,
+          last_failure_message,
+          typescript_metadata,
+          tags,
+          github_folder,
+          uuid,
+          step_count,
+          is_featured,
+          latest_version_number
+        `
+        )
+        .in('id', workflowIds);
 
-      console.log(`[API TIMING] Cron+sequences queries (parallel): ${Date.now() - dataQueryStart}ms`);
-
-      const { data: cronWorkflows, error: cronError } = cronResult;
-      const { data: sequences, error: sequencesError } = sequencesResult;
+      console.log(`[API TIMING] Unified view query: ${Date.now() - dataQueryStart}ms`);
 
       // Lookup user emails and names for author display
       // created_by can be either a user_id (e.g., user_2yyb...) or email (for legacy/deleted users)
       const userIdToEmail: Record<string, string> = {};
       const userIdToName: Record<string, string> = {};
-      if (!cronError && cronWorkflows) {
-        const userIds = cronWorkflows
-          .map(cw => cw.created_by)
+      if (!metadataError && workflowMetadata) {
+        const userIds = workflowMetadata
+          .map(wm => wm.created_by)
           .filter((id): id is string => !!id && id.startsWith('user_'));
 
         if (userIds.length > 0) {
@@ -342,104 +322,84 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      if (!cronError && cronWorkflows) {
+      if (!metadataError && workflowMetadata) {
         console.log(
-          '[API] Fetched cron data for',
-          cronWorkflows.length,
+          '[API] Fetched workflow metadata for',
+          workflowMetadata.length,
           'workflows'
         );
-        cronWorkflows.forEach(cw => {
-          if (cw.cron_expression) {
+        workflowMetadata.forEach(wm => {
+          if (wm.cron_expression) {
             console.log(
-              `[API] Workflow ${cw.id} has cron:`,
-              cw.cron_expression,
+              `[API] Workflow ${wm.id} has cron:`,
+              wm.cron_expression,
               'enabled:',
-              cw.cron_enabled
+              wm.cron_enabled
             );
           }
           // Resolve author display: prefer email, fallback to name, then 'Unknown User'
-          const authorDisplay = cw.created_by?.startsWith('user_')
-            ? userIdToEmail[cw.created_by] || userIdToName[cw.created_by] || 'Unknown User'
-            : cw.created_by;
-          cronData[cw.id] = {
-            organization_id: cw.organization_id,
+          const authorDisplay = wm.created_by?.startsWith('user_')
+            ? userIdToEmail[wm.created_by] || userIdToName[wm.created_by] || 'Unknown User'
+            : wm.created_by;
+          // Store all metadata directly (no merge needed - unified view has everything)
+          automationSequences[wm.id] = {
+            organization_id: wm.organization_id,
             created_by: authorDisplay, // Store resolved author for display
-            estimated_duration_seconds: cw.estimated_duration_seconds,
-            cron_expression: cw.cron_expression,
-            cron_timezone: cw.cron_timezone,
-            cron_enabled: cw.cron_enabled,
-            last_scheduled_execution: cw.last_scheduled_execution,
-            next_scheduled_execution: cw.next_scheduled_execution,
-            cron_max_concurrent: cw.cron_max_concurrent,
-            cron_retry_on_failure: cw.cron_retry_on_failure,
-            cron_retry_count: cw.cron_retry_count,
-            cron_auto_paused: cw.cron_auto_paused,
-            auto_paused_at: cw.auto_paused_at,
-            auto_pause_reason: cw.auto_pause_reason,
-            consecutive_failures: cw.consecutive_failures,
-            last_failure_message: cw.last_failure_message,
-            preferred_format: cw.preferred_format,
-            typescript_metadata: cw.typescript_metadata,
-            tags: cw.tags || [],
-            github_folder: cw.github_folder,
-            uuid: cw.uuid,
-            step_count: cw.step_count || 0,
-            is_featured: cw.is_featured || false,
+            estimated_duration_seconds: wm.estimated_duration_seconds,
+            workflow_type: wm.workflow_type,
+            parent_workflow_id: wm.parent_workflow_id,
+            display_order: wm.display_order,
+            cron_expression: wm.cron_expression,
+            cron_timezone: wm.cron_timezone,
+            cron_enabled: wm.cron_enabled,
+            last_scheduled_execution: wm.last_scheduled_execution,
+            next_scheduled_execution: wm.next_scheduled_execution,
+            cron_max_concurrent: wm.cron_max_concurrent,
+            cron_retry_on_failure: wm.cron_retry_on_failure,
+            cron_retry_count: wm.cron_retry_count,
+            cron_auto_paused: wm.cron_auto_paused,
+            auto_paused_at: wm.auto_paused_at,
+            auto_pause_reason: wm.auto_pause_reason,
+            consecutive_failures: wm.consecutive_failures,
+            last_failure_message: wm.last_failure_message,
+            typescript_metadata: wm.typescript_metadata,
+            tags: wm.tags || [],
+            github_folder: wm.github_folder,
+            uuid: wm.uuid,
+            step_count: wm.step_count || 0,
+            is_featured: wm.is_featured || false,
+            latest_version_number: wm.latest_version_number,
           };
         });
         console.log(
-          '[API] Total workflows with cron data in cronData:',
-          Object.keys(cronData).filter(
-            id => cronData[parseInt(id)].cron_expression
+          '[API] Workflows with cron in automationSequences:',
+          Object.keys(automationSequences).filter(
+            id => automationSequences[parseInt(id)]?.cron_expression
           ).length
         );
         // Debug: log workflows with tags
-        const workflowsWithTags = Object.entries(cronData).filter(
+        const workflowsWithTags = Object.entries(automationSequences).filter(
           ([_, data]: [string, any]) => data.tags && data.tags.length > 0
         );
         console.log(
-          '[API] Workflows with tags in cronData:',
+          '[API] Workflows with tags:',
           workflowsWithTags.map(([id, data]: [string, any]) => ({
             id,
             tags: data.tags,
           }))
         );
-      } else if (cronError) {
-        console.error('[API] Error fetching cron data:', cronError);
-      }
-
-      console.log(
-        '[API] Fetched automation sequences:',
-        sequences?.length,
-        'error:',
-        sequencesError?.message
-      );
-
-      if (!sequencesError && sequences) {
-        sequences.forEach(seq => {
-          // Merge cron data with automation sequence data
-          automationSequences[seq.id] = {
-            ...seq,
-            ...(cronData[seq.id] || {}),
-          };
-        });
-        console.log(
-          '[API] After merge, workflows with cron in automationSequences:',
-          Object.keys(automationSequences).filter(
-            id => automationSequences[parseInt(id)]?.cron_expression
-          ).length
+        // Debug: log featured workflows
+        const featuredWorkflows = Object.entries(automationSequences).filter(
+          ([_, data]: [string, any]) => data.is_featured
         );
-        // Log specific workflows
-        [71, 73, 74, 65, 313, 84].forEach(id => {
-          if (automationSequences[id]) {
-            console.log(
-              `[API] Workflow ${id} cron after merge:`,
-              automationSequences[id].cron_expression,
-              'enabled:',
-              automationSequences[id].cron_enabled
-            );
-          }
-        });
+        if (featuredWorkflows.length > 0) {
+          console.log(
+            '[API] Featured workflows:',
+            featuredWorkflows.map(([id]) => id)
+          );
+        }
+      } else if (metadataError) {
+        console.error('[API] Error fetching workflow metadata:', metadataError);
       }
     }
 
