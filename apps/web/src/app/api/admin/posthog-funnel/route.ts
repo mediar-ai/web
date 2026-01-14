@@ -236,7 +236,11 @@ export async function GET() {
           countIf(msgs_7d >= 10) as sent_10_7d,
           countIf(msgs_prev_7d >= 10) as sent_10_prev_7d,
           countIf(msgs_30d >= 10) as sent_10_30d,
-          countIf(msgs_prev_30d >= 10) as sent_10_prev_30d
+          countIf(msgs_prev_30d >= 10) as sent_10_prev_30d,
+          countIf(msgs_7d >= 100) as sent_100_7d,
+          countIf(msgs_prev_7d >= 100) as sent_100_prev_7d,
+          countIf(msgs_30d >= 100) as sent_100_30d,
+          countIf(msgs_prev_30d >= 100) as sent_100_prev_30d
         FROM user_message_counts
       `, personalKey),
     ]);
@@ -321,6 +325,12 @@ export async function GET() {
       count30d: Number(chatData[10]) || 0,
       prev30d: Number(chatData[11]) || 0,
     };
+    const sent100Msgs = {
+      count7d: Number(chatData[12]) || 0,
+      prev7d: Number(chatData[13]) || 0,
+      count30d: Number(chatData[14]) || 0,
+      prev30d: Number(chatData[15]) || 0,
+    };
 
     // Windows-only download counts (by user's OS)
     const windowsDownloadData = windowsDownloads?.results?.[0]
@@ -354,7 +364,7 @@ export async function GET() {
     }
 
     // Event definitions with sort order and conversion rate logic
-    // Main funnel: Pageview → Download → User Created → Onboarding Done → Sent Chat → Sent 5 → Sent 10
+    // Main funnel: Pageview → Download → User Created → Onboarding Done → Sent Chat → Sent 5 → Sent 10 → Sent 100
     // Desktop events (separate table): App Started, User Authenticated
     const eventDefs: Array<{
       event: string;
@@ -416,11 +426,12 @@ export async function GET() {
       });
     }
 
-    // Chat message threshold rows (Sent Chat, Sent 5, Sent 10)
+    // Chat message threshold rows (Sent Chat, Sent 5, Sent 10, Sent 100)
     const chatThresholdDefs = [
       { data: sent1Msg, label: 'Sent Chat', sortOrder: 14, compareLabel: 'Onboarding Done', compareData: onboardingCompleted },
       { data: sent5Msgs, label: 'Sent 5 Messages', sortOrder: 15, compareLabel: 'Sent Chat', compareData: sent1Msg },
       { data: sent10Msgs, label: 'Sent 10 Messages', sortOrder: 16, compareLabel: 'Sent 5', compareData: sent5Msgs },
+      { data: sent100Msgs, label: 'Sent 100 Messages', sortOrder: 17, compareLabel: 'Sent 10', compareData: sent10Msgs },
     ];
 
     for (const def of chatThresholdDefs) {
