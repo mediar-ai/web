@@ -83,7 +83,7 @@ export async function GET() {
 
   try {
     // Run all queries in parallel
-    const [funnelData, brexData, pageviewData, activationFunnel7d, activationFunnelPrev7d, windowsDownloads] = await Promise.all([
+    const [funnelData, brexData, pageviewData, activationFunnel7d, activationFunnelPrev7d, windowsDownloads, chatThresholds] = await Promise.all([
       // Funnel query - product events
       runHogQLQuery(`
         SELECT
@@ -98,7 +98,6 @@ export async function GET() {
           'desktop_app_download_clicked',
           'desktop_app_started',
           'desktop_user_authenticated',
-          'desktop_onboarding_started',
           'desktop_onboarding_completed'
         )
         AND timestamp >= today() - 60
@@ -210,6 +209,40 @@ export async function GET() {
         AND properties.$os = 'Windows'
         AND timestamp >= today() - 60
       `, personalKey),
+
+      // Chat message thresholds - users who sent 1+, 5+, 10+ messages
+      runHogQLQuery(`
+        WITH user_message_counts AS (
+          SELECT
+            person_id,
+            countIf(timestamp >= today() - 7) as msgs_7d,
+            countIf(timestamp >= today() - 14 AND timestamp < today() - 7) as msgs_prev_7d,
+            countIf(timestamp >= today() - 30) as msgs_30d,
+            countIf(timestamp >= today() - 60 AND timestamp < today() - 30) as msgs_prev_30d
+          FROM events
+          WHERE event = 'desktop_chat_message_sent'
+            AND timestamp >= today() - 60
+          GROUP BY person_id
+        )
+        SELECT
+          countIf(msgs_7d >= 1) as sent_1_7d,
+          countIf(msgs_prev_7d >= 1) as sent_1_prev_7d,
+          countIf(msgs_30d >= 1) as sent_1_30d,
+          countIf(msgs_prev_30d >= 1) as sent_1_prev_30d,
+          countIf(msgs_7d >= 5) as sent_5_7d,
+          countIf(msgs_prev_7d >= 5) as sent_5_prev_7d,
+          countIf(msgs_30d >= 5) as sent_5_30d,
+          countIf(msgs_prev_30d >= 5) as sent_5_prev_30d,
+          countIf(msgs_7d >= 10) as sent_10_7d,
+          countIf(msgs_prev_7d >= 10) as sent_10_prev_7d,
+          countIf(msgs_30d >= 10) as sent_10_30d,
+          countIf(msgs_prev_30d >= 10) as sent_10_prev_30d,
+          countIf(msgs_7d >= 100) as sent_100_7d,
+          countIf(msgs_prev_7d >= 100) as sent_100_prev_7d,
+          countIf(msgs_30d >= 100) as sent_100_30d,
+          countIf(msgs_prev_30d >= 100) as sent_100_prev_30d
+        FROM user_message_counts
+      `, personalKey),
     ]);
 
     // Build unified rows array
@@ -265,13 +298,39 @@ export async function GET() {
     }
 
     // Get counts for conversion rate calculations
-    // Funnel order: Pageview → Download → User Created → Onboarding Started → Onboarding Done
+    // Funnel order: Pageview → Download → User Created → Onboarding Done
     const download = funnelEvents.get('desktop_app_download_clicked') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const userCreated = funnelEvents.get('user_created') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const appStarted = funnelEvents.get('desktop_app_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const authenticated = funnelEvents.get('desktop_user_authenticated') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
-    const onboardingStarted = funnelEvents.get('desktop_onboarding_started') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
     const onboardingCompleted = funnelEvents.get('desktop_onboarding_completed') || { count7d: 0, prev7d: 0, count30d: 0, prev30d: 0 };
+
+    // Chat threshold data (users who sent 1+, 5+, 10+ messages)
+    const chatData = chatThresholds?.results?.[0] || [];
+    const sent1Msg = {
+      count7d: Number(chatData[0]) || 0,
+      prev7d: Number(chatData[1]) || 0,
+      count30d: Number(chatData[2]) || 0,
+      prev30d: Number(chatData[3]) || 0,
+    };
+    const sent5Msgs = {
+      count7d: Number(chatData[4]) || 0,
+      prev7d: Number(chatData[5]) || 0,
+      count30d: Number(chatData[6]) || 0,
+      prev30d: Number(chatData[7]) || 0,
+    };
+    const sent10Msgs = {
+      count7d: Number(chatData[8]) || 0,
+      prev7d: Number(chatData[9]) || 0,
+      count30d: Number(chatData[10]) || 0,
+      prev30d: Number(chatData[11]) || 0,
+    };
+    const sent100Msgs = {
+      count7d: Number(chatData[12]) || 0,
+      prev7d: Number(chatData[13]) || 0,
+      count30d: Number(chatData[14]) || 0,
+      prev30d: Number(chatData[15]) || 0,
+    };
 
     // Windows-only download counts (by user's OS)
     const windowsDownloadData = windowsDownloads?.results?.[0]
@@ -305,7 +364,7 @@ export async function GET() {
     }
 
     // Event definitions with sort order and conversion rate logic
-    // Main funnel: Pageview → Download → User Created → Onboarding Started → Onboarding Done
+    // Main funnel: Pageview → Download → User Created → Onboarding Done → Sent Chat → Sent 5 → Sent 10 → Sent 100
     // Desktop events (separate table): App Started, User Authenticated
     const eventDefs: Array<{
       event: string;
@@ -324,19 +383,11 @@ export async function GET() {
         category: 'main',
       },
       {
-        event: 'desktop_onboarding_started',
-        label: 'Onboarding Started',
-        sortOrder: 13,
-        convRate7d: userCreated.count7d > 0 ? `${Math.round((onboardingStarted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
-        convRate30d: userCreated.count30d > 0 ? `${Math.round((onboardingStarted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
-        category: 'main',
-      },
-      {
         event: 'desktop_onboarding_completed',
         label: 'Onboarding Done',
-        sortOrder: 14,
-        convRate7d: onboardingStarted.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / onboardingStarted.count7d) * 100)}% vs. Onboarding Started` : '',
-        convRate30d: onboardingStarted.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / onboardingStarted.count30d) * 100)}% vs. Onboarding Started` : '',
+        sortOrder: 13,
+        convRate7d: userCreated.count7d > 0 ? `${Math.round((onboardingCompleted.count7d / userCreated.count7d) * 100)}% vs. User Created` : '',
+        convRate30d: userCreated.count30d > 0 ? `${Math.round((onboardingCompleted.count30d / userCreated.count30d) * 100)}% vs. User Created` : '',
         category: 'main',
       },
       // Desktop app events (separate table)
@@ -372,6 +423,30 @@ export async function GET() {
         convRate30d: def.convRate30d,
         sortOrder: def.sortOrder,
         category: def.category,
+      });
+    }
+
+    // Chat message threshold rows (Sent Chat, Sent 5, Sent 10, Sent 100)
+    const chatThresholdDefs = [
+      { data: sent1Msg, label: 'Sent Chat', sortOrder: 14, compareLabel: 'Onboarding Done', compareData: onboardingCompleted },
+      { data: sent5Msgs, label: 'Sent 5 Messages', sortOrder: 15, compareLabel: 'Sent Chat', compareData: sent1Msg },
+      { data: sent10Msgs, label: 'Sent 10 Messages', sortOrder: 16, compareLabel: 'Sent 5', compareData: sent5Msgs },
+      { data: sent100Msgs, label: 'Sent 100 Messages', sortOrder: 17, compareLabel: 'Sent 10', compareData: sent10Msgs },
+    ];
+
+    for (const def of chatThresholdDefs) {
+      const change7d = def.data.prev7d > 0 ? ((def.data.count7d - def.data.prev7d) / def.data.prev7d * 100) : null;
+      const change30d = def.data.prev30d > 0 ? ((def.data.count30d - def.data.prev30d) / def.data.prev30d * 100) : null;
+      rows.push({
+        event: def.label,
+        value7d: `${def.data.count7d} (${formatChange(change7d)})`,
+        change7d,
+        convRate7d: def.compareData.count7d > 0 ? `${Math.round((def.data.count7d / def.compareData.count7d) * 100)}% vs. ${def.compareLabel}` : '',
+        value30d: `${def.data.count30d} (${formatChange(change30d)})`,
+        change30d,
+        convRate30d: def.compareData.count30d > 0 ? `${Math.round((def.data.count30d / def.compareData.count30d) * 100)}% vs. ${def.compareLabel}` : '',
+        sortOrder: def.sortOrder,
+        category: 'main',
       });
     }
 
