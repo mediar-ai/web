@@ -82,7 +82,7 @@ export async function GET() {
     const excludedEmails = [
       'matt@mediar.ai',
       'louis@mediar.ai',
-      'test@benchflow.ai',
+      'task@benchflow.ai',
       'adrian.z.mei@gmail.com'
     ];
 
