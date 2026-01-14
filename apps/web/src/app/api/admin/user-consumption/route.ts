@@ -1,7 +1,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { MEDIAR_ORG_IDS, EXCLUDED_EMAILS_FROM_STATS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +60,7 @@ export async function GET() {
       chat3m: number;
       events3d: number;
       events3m: number;
+      joinedAt: string | null;
     }>;
     totals: {
       chat3d: number;
@@ -99,11 +100,12 @@ export async function GET() {
       events3mResult,
       events3dResult,
     ] = await Promise.all([
-      // Get all user emails from desktop sessions
+      // Get all user emails and join dates from desktop sessions
       supabase
         .from('mediar_desktop_sessions')
-        .select('clerk_user_id, email')
-        .not('email', 'is', null),
+        .select('clerk_user_id, email, created_at')
+        .not('email', 'is', null)
+        .order('created_at', { ascending: true }),
 
       // Get chat message counts for 3 months using RPC
       supabase.rpc('get_chat_message_counts_by_user', {
@@ -145,11 +147,16 @@ export async function GET() {
       console.error('[user-consumption] Events 3d RPC error:', events3dResult.error);
     }
 
-    // Build email lookup (deduplicate by user_id)
+    // Build email and join date lookup (deduplicate by user_id, keeping earliest created_at)
     const emailMap = new Map<string, string>();
+    const joinDateMap = new Map<string, string>();
     for (const s of sessionsResult.data || []) {
       if (s.email && !emailMap.has(s.clerk_user_id)) {
         emailMap.set(s.clerk_user_id, s.email);
+        // Since we ordered by created_at ascending, the first occurrence is the earliest
+        if (s.created_at) {
+          joinDateMap.set(s.clerk_user_id, s.created_at);
+        }
       }
     }
 
@@ -180,12 +187,7 @@ export async function GET() {
     });
 
     // Emails to exclude from stats (internal users)
-    const excludedEmails = new Set([
-      'matt@mediar.ai',
-      'louis@mediar.ai',
-      'redacted@example.com',
-      'redacted@example.com'
-    ]);
+    const excludedEmails = new Set(EXCLUDED_EMAILS_FROM_STATS.map(e => e.toLowerCase()));
 
     // Combine all users from all sources
     const allUserIds = new Set<string>([
@@ -208,6 +210,7 @@ export async function GET() {
         chat3m: chat3mMap.get(userId) || 0,
         events3d: events3dMap.get(userId) || 0,
         events3m: events3mMap.get(userId) || 0,
+        joinedAt: joinDateMap.get(userId) || null,
       }));
 
     // Sort by total activity (3 month chat + events) descending
