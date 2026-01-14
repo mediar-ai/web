@@ -1,20 +1,11 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { MEDIAR_ORG_IDS, EXCLUDED_EMAILS_SQL } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
 const POSTHOG_HOST = 'https://eu.posthog.com';
 const POSTHOG_PROJECT_ID = '65690'; // mediar-merged project
-
-// Internal users to exclude from funnel metrics
-const EXCLUDED_EMAILS = [
-  'matt@mediar.ai',
-  'louis@mediar.ai',
-  'redacted@example.com',
-  'redacted@example.com',
-];
-const EXCLUDED_EMAILS_SQL = EXCLUDED_EMAILS.map(e => `'${e}'`).join(', ');
 
 interface PostHogQueryResult {
   results: unknown[][];
