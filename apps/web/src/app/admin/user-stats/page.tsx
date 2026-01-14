@@ -13,6 +13,7 @@ interface UserData {
   chat3m: number;
   events3d: number;
   events3m: number;
+  joinedAt: string | null;
 }
 
 interface ConsumptionData {
@@ -38,7 +39,7 @@ interface WeeklyData {
   timestamp: string;
 }
 
-type SortField = 'email' | 'chat3d' | 'chat3m' | 'events3d' | 'events3m';
+type SortField = 'email' | 'chat3d' | 'chat3m' | 'events3d' | 'events3m' | 'joinedAt';
 type SortDirection = 'asc' | 'desc';
 
 interface SortConfig {
@@ -50,6 +51,25 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return n.toString();
+}
+
+function formatJoinDate(dateStr: string | null): { date: string; daysAgo: string } | null {
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffTime = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  const formattedDate = date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return {
+    date: formattedDate,
+    daysAgo: `${diffDays}d ago`,
+  };
 }
 
 // Line chart component
@@ -272,6 +292,10 @@ export default function UserStatsPage() {
           aValue = a.events3m;
           bValue = b.events3m;
           break;
+        case 'joinedAt':
+          aValue = a.joinedAt || '';
+          bValue = b.joinedAt || '';
+          break;
         default:
           return 0;
       }
@@ -368,6 +392,15 @@ export default function UserStatsPage() {
                       <SortIndicator field="email" />
                     </div>
                   </th>
+                  <th
+                    className="text-left p-3 font-mono text-sm font-bold border-l border-gray-600 cursor-pointer hover:bg-gray-800 transition-colors"
+                    onClick={() => handleSort('joinedAt')}
+                  >
+                    <div className="flex items-center">
+                      Joined
+                      <SortIndicator field="joinedAt" />
+                    </div>
+                  </th>
                   <th className="text-right p-3 font-mono text-sm font-bold border-l border-gray-600" colSpan={2}>
                     Chat Messages
                   </th>
@@ -377,6 +410,7 @@ export default function UserStatsPage() {
                 </tr>
                 <tr className="border-b-2 border-black bg-gray-100">
                   <th className="text-left p-2 font-mono text-xs text-gray-600 sticky left-0 bg-gray-100"></th>
+                  <th className="text-left p-2 font-mono text-xs text-gray-600 border-l border-gray-300"></th>
                   <th
                     className="text-right p-2 font-mono text-xs text-gray-600 border-l border-gray-300 cursor-pointer hover:bg-gray-200 transition-colors"
                     onClick={() => handleSort('chat3d')}
@@ -421,6 +455,7 @@ export default function UserStatsPage() {
                   <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-100">
                     TOTAL ({data.users.length} users)
                   </td>
+                  <td className="p-3 font-mono text-sm border-l border-gray-300"></td>
                   <td className="text-right p-3 font-mono text-sm font-bold border-l border-gray-300">
                     {data.totals.chat3d > 0 ? formatNumber(data.totals.chat3d) : '-'}
                   </td>
@@ -436,13 +471,23 @@ export default function UserStatsPage() {
                 </tr>
 
                 {/* User Rows */}
-                {sortedUsers.map((user, index) => (
+                {sortedUsers.map((user, index) => {
+                  const joinInfo = formatJoinDate(user.joinedAt);
+                  return (
                   <tr
                     key={user.id}
                     className={`border-b border-gray-200 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                   >
                     <td className="p-3 font-mono text-sm sticky left-0 bg-inherit max-w-[250px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {user.email}
+                    </td>
+                    <td className="p-3 font-mono text-sm border-l border-gray-200">
+                      {joinInfo ? (
+                        <div className="flex flex-col">
+                          <span>{joinInfo.date}</span>
+                          <span className="text-xs text-gray-500">({joinInfo.daysAgo})</span>
+                        </div>
+                      ) : '-'}
                     </td>
                     <td className="text-right p-3 font-mono text-sm border-l border-gray-200">
                       {user.chat3d > 0 ? formatNumber(user.chat3d) : '-'}
@@ -457,7 +502,8 @@ export default function UserStatsPage() {
                       {user.events3m > 0 ? formatNumber(user.events3m) : '-'}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
