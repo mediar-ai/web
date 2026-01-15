@@ -2,17 +2,38 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useClerk } from '@clerk/nextjs';
-import { ShieldOff, ShieldAlert, LogOut, Mail } from 'lucide-react';
-import { Suspense } from 'react';
+import { ShieldOff, ShieldAlert, LogOut, Mail, Copy, Check } from 'lucide-react';
+import { Suspense, useState } from 'react';
+
+const SUPPORT_EMAIL = 'matt@mediar.ai';
 
 function AccountBlockedContent() {
   const searchParams = useSearchParams();
   const { signOut } = useClerk();
+  const [copied, setCopied] = useState(false);
 
   const status = searchParams.get('status') || 'suspended';
   const reason = searchParams.get('reason');
 
   const isTrialExpired = status === 'trial_expired';
+
+  const copyEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPPORT_EMAIL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = SUPPORT_EMAIL;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
@@ -37,33 +58,49 @@ function AccountBlockedContent() {
         <div className="border-2 border-black p-6 mb-6">
           <p className="font-mono text-sm text-center text-gray-700">
             {reason || (isTrialExpired
-              ? 'Your trial period has ended. Please upgrade your account to continue using Mediar.'
+              ? 'Your trial period has ended. Please contact us to upgrade your account.'
               : 'Your account has been suspended. Please contact support for assistance.'
             )}
           </p>
         </div>
 
+        {/* Contact Email */}
+        <div className="mb-6">
+          <p className="font-mono text-xs text-gray-600 text-center mb-2 uppercase">
+            {isTrialExpired ? 'Contact us to upgrade' : 'Contact support'}
+          </p>
+          <div className="flex items-center gap-2 border-2 border-black p-3">
+            <Mail className="w-4 h-4 flex-shrink-0" />
+            <span className="font-mono text-sm flex-1">{SUPPORT_EMAIL}</span>
+            <button
+              onClick={copyEmail}
+              className="flex items-center gap-1 px-2 py-1 font-mono text-xs font-bold border border-black hover:bg-black hover:text-white transition-colors"
+              title="Copy email"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3 h-3" />
+                  COPIED
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  COPY
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Actions */}
         <div className="space-y-3">
-          {isTrialExpired && (
-            <a
-              href="mailto:support@mediar.ai?subject=Trial%20Upgrade%20Request"
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 font-mono text-sm font-bold border-2 border-black bg-black text-white hover:bg-gray-800 transition-colors"
-            >
-              <Mail className="w-4 h-4" />
-              CONTACT US TO UPGRADE
-            </a>
-          )}
-
-          {!isTrialExpired && (
-            <a
-              href="mailto:support@mediar.ai?subject=Account%20Suspended%20-%20Help%20Request"
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 font-mono text-sm font-bold border-2 border-black bg-black text-white hover:bg-gray-800 transition-colors"
-            >
-              <Mail className="w-4 h-4" />
-              CONTACT SUPPORT
-            </a>
-          )}
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=${isTrialExpired ? 'Trial%20Upgrade%20Request' : 'Account%20Suspended%20-%20Help%20Request'}`}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 font-mono text-sm font-bold border-2 border-black bg-black text-white hover:bg-gray-800 transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            OPEN EMAIL CLIENT
+          </a>
 
           <button
             onClick={() => signOut({ redirectUrl: '/' })}
@@ -73,11 +110,6 @@ function AccountBlockedContent() {
             SIGN OUT
           </button>
         </div>
-
-        {/* Footer */}
-        <p className="mt-6 text-center font-mono text-xs text-gray-500">
-          Questions? Email us at support@mediar.ai
-        </p>
       </div>
     </div>
   );
