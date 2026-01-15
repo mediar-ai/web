@@ -102,6 +102,21 @@ export default clerkMiddleware(async (auth, req) => {
           );
           return; // Allow access for valid desktop tokens
         }
+
+        // Check if user is blocked (trial expired or suspended)
+        if (validation.errorCode === 'TRIAL_EXPIRED' || validation.errorCode === 'USER_SUSPENDED') {
+          console.log(`[Middleware] Desktop API access blocked - errorCode: ${validation.errorCode}`);
+          return new Response(
+            JSON.stringify({
+              error: validation.error || 'Account access restricted',
+              errorCode: validation.errorCode
+            }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // For other validation failures (invalid token, expired token), fall through to Clerk auth
+        console.log('[Middleware] Desktop token invalid, trying Clerk auth');
       } catch (error) {
         // Desktop token validation failed, fall through to Clerk auth
         console.log('[Middleware] Desktop token validation failed, trying Clerk auth');
