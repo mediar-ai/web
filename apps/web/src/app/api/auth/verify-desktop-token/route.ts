@@ -61,8 +61,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check user status in mediar_users table before allowing access
+    const { data: user } = await supabase
+      .from('mediar_users')
+      .select('status, status_reason')
+      .eq('user_id', session.clerk_user_id)
+      .single();
+
+    // If user exists and has a non-active status, block them
+    if (user?.status && user.status !== 'active') {
+      const errorMessages: Record<string, { error: string; errorCode: string }> = {
+        trial_expired: {
+          error: user.status_reason || 'Your trial has ended. Please contact us to upgrade.',
+          errorCode: 'TRIAL_EXPIRED',
+        },
+        suspended: {
+          error: user.status_reason || 'Your account has been suspended. Please contact support.',
+          errorCode: 'USER_SUSPENDED',
+        },
+      };
+
+      const message = errorMessages[user.status] || {
+        error: 'Account access restricted',
+        errorCode: 'USER_SUSPENDED',
+      };
+
+      console.log(
+        `[Desktop Auth] User ${session.clerk_user_id} blocked - status: ${user.status}`
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: message.error,
+          errorCode: message.errorCode,
+        },
+        { status: 403 }
+      );
+    }
+
     // Update last_used_at and machine metadata
-    const updateData: any = {
+    const updateData: Record<string, string> = {
       last_used_at: now.toISOString(),
     };
 
