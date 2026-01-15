@@ -7,6 +7,7 @@ interface TokenValidationResult {
   orgId?: string;
   orgName?: string;
   error?: string;
+  errorCode?: 'INVALID_TOKEN' | 'TOKEN_EXPIRED' | 'TRIAL_EXPIRED' | 'USER_SUSPENDED' | 'CONFIG_ERROR';
 }
 
 /**
@@ -21,7 +22,7 @@ export async function validateDesktopToken(
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    return { valid: false, error: 'Supabase configuration missing' };
+    return { valid: false, error: 'Supabase configuration missing', errorCode: 'CONFIG_ERROR' };
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -39,7 +40,7 @@ export async function validateDesktopToken(
       '[Auth] Token not found or inactive:',
       token.substring(0, 10) + '...'
     );
-    return { valid: false, error: 'Invalid or expired token' };
+    return { valid: false, error: 'Invalid or expired token', errorCode: 'INVALID_TOKEN' };
   }
 
   // Check expiry
@@ -57,7 +58,7 @@ export async function validateDesktopToken(
       })
       .eq('id', session.id);
 
-    return { valid: false, error: 'Token expired' };
+    return { valid: false, error: 'Token expired', errorCode: 'TOKEN_EXPIRED' };
   }
 
   // Update last_used_at
@@ -65,6 +66,43 @@ export async function validateDesktopToken(
     .from('mediar_desktop_sessions')
     .update({ last_used_at: now.toISOString() })
     .eq('id', session.id);
+
+  // Check user status in mediar_users table
+  // Note: mediar_users uses 'user_id' column, desktop_sessions uses 'clerk_user_id'
+  const { data: user } = await supabase
+    .from('mediar_users')
+    .select('status, status_reason')
+    .eq('user_id', session.clerk_user_id)
+    .single();
+
+  // If user exists and has a non-active status, block them
+  if (user?.status && user.status !== 'active') {
+    const statusMessages: Record<string, { error: string; code: TokenValidationResult['errorCode'] }> = {
+      trial_expired: {
+        error: user.status_reason || 'Your trial has ended. Please upgrade to continue using Mediar.',
+        code: 'TRIAL_EXPIRED',
+      },
+      suspended: {
+        error: user.status_reason || 'Your account has been suspended. Please contact support.',
+        code: 'USER_SUSPENDED',
+      },
+    };
+
+    const message = statusMessages[user.status] || {
+      error: 'Account access restricted',
+      code: 'USER_SUSPENDED' as const,
+    };
+
+    console.log(
+      `[Auth] User ${session.clerk_user_id} blocked - status: ${user.status}`
+    );
+
+    return {
+      valid: false,
+      error: message.error,
+      errorCode: message.code,
+    };
+  }
 
   console.log(
     `[Auth] Token validated for user ${session.clerk_user_id} (${session.email})`
