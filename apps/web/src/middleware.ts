@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { checkUserStatus } from '@/lib/auth/checkUserStatus';
 
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)'
@@ -7,6 +8,30 @@ const isAdminRoute = createRouteMatcher([
 ]);
 
 const isDeploymentRoute = createRouteMatcher(['/deployments(.*)']);
+
+// Routes that should skip user status check (to avoid redirect loops)
+const isStatusExemptRoute = createRouteMatcher([
+  '/account-blocked(.*)',
+  '/sign-out(.*)',
+  '/unauthorized(.*)',
+  '/',  // Landing page
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+]);
+
+// Routes that require user status check (authenticated app routes)
+const isAppRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/my-machines(.*)',
+  '/notifications(.*)',
+  '/settings(.*)',
+  '/workflows(.*)',
+  '/playground(.*)',
+  '/billing(.*)',
+  '/analytics(.*)',
+  '/low-level(.*)',
+  '/sessions(.*)',
+]);
 
 const isPublicApiRoute = createRouteMatcher([
   '/api/ingest(.*)',
@@ -93,6 +118,19 @@ export default clerkMiddleware(async (auth, req) => {
       );
       await auth.protect();
       return;
+    }
+
+    // Check user status for API routes
+    const userStatus = await checkUserStatus(userId);
+    if (!userStatus.allowed) {
+      console.log(`[Middleware] API access blocked for user ${userId} - status: ${userStatus.status}`);
+      return new Response(
+        JSON.stringify({
+          error: userStatus.reason || 'Account access restricted',
+          errorCode: userStatus.status === 'trial_expired' ? 'TRIAL_EXPIRED' : 'USER_SUSPENDED'
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log(
@@ -201,6 +239,24 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     console.log('[Middleware Debug] Access granted');
+  }
+
+  // Check user status for app routes (dashboard, settings, etc.)
+  if (isAppRoute(req) && !isStatusExemptRoute(req)) {
+    const { userId } = await auth();
+
+    if (userId) {
+      const userStatus = await checkUserStatus(userId);
+      if (!userStatus.allowed) {
+        console.log(`[Middleware] App access blocked for user ${userId} - status: ${userStatus.status}`);
+        const redirectUrl = new URL('/account-blocked', req.url);
+        redirectUrl.searchParams.set('status', userStatus.status);
+        if (userStatus.reason) {
+          redirectUrl.searchParams.set('reason', userStatus.reason);
+        }
+        return Response.redirect(redirectUrl);
+      }
+    }
   }
 });
 
