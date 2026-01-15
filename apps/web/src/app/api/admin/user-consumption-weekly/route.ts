@@ -1,7 +1,7 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
-import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { MEDIAR_ORG_IDS, EXCLUDED_EMAILS_FROM_STATS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,19 +78,11 @@ export async function GET() {
 
     console.log('[user-consumption-weekly] Fetching rolling 7-day periods from:', today);
 
-    // Emails to exclude from stats (internal users)
-    const excludedEmails = [
-      'matt@mediar.ai',
-      'louis@mediar.ai',
-      'task@benchflow.ai',
-      'adrian.z.mei@gmail.com'
-    ];
-
     // Call the RPC function for rolling 7-day periods
     const { data, error } = await supabase.rpc('get_rolling_weekly_chat_counts', {
       reference_date: today,
       num_periods: 12,
-      excluded_emails: excludedEmails
+      excluded_emails: EXCLUDED_EMAILS_FROM_STATS
     });
 
     if (error) {

@@ -249,7 +249,7 @@ We draw from products that prioritize **speed and clarity**:
 - **API tests**: For backend routes, create test scripts that hit the endpoint with real data
   - Example: Create a `test-*.js` script that makes actual HTTP requests
   - Verify response codes, error handling, edge cases
-  - Clean up test artifacts after completion
+  - Place scripts in `local-scripts/` (never root), clean up after use
 - **E2E tests**: Use Terminator MCP commands to test full workflows
 - **Manual verification**: For UI changes, use `npm run dev` to verify visually (LAST RESORT)
 
