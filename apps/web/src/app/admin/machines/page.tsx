@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Server, Plus, Activity, Eye, EyeOff, Zap } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { Server, Plus, Activity, Eye, EyeOff, Zap, Clock, AlertTriangle, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import { MachineCard } from '@/components/admin/MachineCard';
 import { ProvisionVmDialog } from '@/components/admin/ProvisionVmDialog';
@@ -31,7 +31,14 @@ interface Machine {
   // Activity
   last_execution_at?: string;
   created_at?: string;
+  updated_at?: string;
 }
+
+// Trial VM lifecycle constants
+const TRIAL_AUTO_STOP_MINUTES = 30;
+const TRIAL_AUTO_DELETE_HOURS = 24;
+const AUTO_STOP_CRON_INTERVAL_MINUTES = 5;
+const AUTO_DELETE_CRON_INTERVAL_MINUTES = 60;
 
 const REFRESH_INTERVAL = 15000; // 15 seconds for machine health
 
@@ -150,6 +157,65 @@ export default function AdminMachinesPage() {
   const activeCount = machineList.filter(m => m.status === 'active').length;
   const inactiveCount = machineList.filter(m => m.status !== 'active').length;
 
+  // Trial VM lifecycle info
+  const trialVmInfo = useMemo(() => {
+    const trialVms = machineList.filter(m => m.tags?.includes('trial:true'));
+    const now = Date.now();
+
+    // VMs that will be auto-stopped (idle for > 30min)
+    const idleThresholdMs = TRIAL_AUTO_STOP_MINUTES * 60 * 1000;
+    const idleTrialVms = trialVms.filter(m => {
+      if (m.status !== 'active') return false;
+      if (!m.updated_at) return false;
+      const lastActivity = new Date(m.updated_at).getTime();
+      return (now - lastActivity) > idleThresholdMs;
+    });
+
+    // VMs approaching auto-stop (idle 20-30 min)
+    const approachingIdleVms = trialVms.filter(m => {
+      if (m.status !== 'active') return false;
+      if (!m.updated_at) return false;
+      const lastActivity = new Date(m.updated_at).getTime();
+      const idleTime = now - lastActivity;
+      return idleTime > (20 * 60 * 1000) && idleTime <= idleThresholdMs;
+    });
+
+    // VMs approaching deletion (> 20h old)
+    const deleteThresholdMs = TRIAL_AUTO_DELETE_HOURS * 60 * 60 * 1000;
+    const approachingDeleteVms = trialVms.filter(m => {
+      if (!m.created_at) return false;
+      const age = now - new Date(m.created_at).getTime();
+      return age > (20 * 60 * 60 * 1000) && age <= deleteThresholdMs;
+    });
+
+    // VMs that should already be deleted (> 24h old)
+    const expiredVms = trialVms.filter(m => {
+      if (!m.created_at || m.status === 'deleted') return false;
+      const age = now - new Date(m.created_at).getTime();
+      return age > deleteThresholdMs;
+    });
+
+    // Calculate next cron times (approximate)
+    const nowMinutes = new Date().getMinutes();
+    const nextAutoStopMinutes = AUTO_STOP_CRON_INTERVAL_MINUTES - (nowMinutes % AUTO_STOP_CRON_INTERVAL_MINUTES);
+    const nextAutoDeleteMinutes = AUTO_DELETE_CRON_INTERVAL_MINUTES - (nowMinutes % AUTO_DELETE_CRON_INTERVAL_MINUTES);
+
+    return {
+      total: trialVms.length,
+      active: trialVms.filter(m => m.status === 'active').length,
+      idle: idleTrialVms.length,
+      approachingIdle: approachingIdleVms.length,
+      approachingDelete: approachingDeleteVms.length,
+      expired: expiredVms.length,
+      idleVms: idleTrialVms,
+      approachingIdleVms,
+      approachingDeleteVms,
+      expiredVms,
+      nextAutoStopMinutes,
+      nextAutoDeleteMinutes,
+    };
+  }, [machineList]);
+
   // Filter machines based on showInactive toggle
   const displayedMachines = showInactive
     ? machineList
@@ -228,6 +294,77 @@ export default function AdminMachinesPage() {
           <div className="font-mono font-bold text-xl">{inactiveCount}</div>
         </div>
       </div>
+
+      {/* Trial VM Lifecycle Info */}
+      {trialVmInfo.total > 0 && (
+        <div className="mb-6 border-2 border-black p-4 bg-gray-50">
+          <div className="flex items-center gap-2 mb-3">
+            <Timer className="w-4 h-4" />
+            <h2 className="font-mono font-bold text-sm uppercase">Trial Sandbox Lifecycle</h2>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="text-center p-2 border border-gray-300 rounded">
+              <div className="font-mono text-xs text-gray-500 uppercase">Trial VMs</div>
+              <div className="font-mono font-bold text-lg">{trialVmInfo.total}</div>
+              <div className="font-mono text-xs text-gray-500">{trialVmInfo.active} active</div>
+            </div>
+            <div className={`text-center p-2 border rounded ${trialVmInfo.idle > 0 ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}>
+              <div className="font-mono text-xs text-gray-500 uppercase">Will Stop</div>
+              <div className="font-mono font-bold text-lg">{trialVmInfo.idle}</div>
+              <div className="font-mono text-xs text-gray-500">idle &gt;30min</div>
+            </div>
+            <div className={`text-center p-2 border rounded ${trialVmInfo.approachingIdle > 0 ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'}`}>
+              <div className="font-mono text-xs text-gray-500 uppercase">Near Idle</div>
+              <div className="font-mono font-bold text-lg">{trialVmInfo.approachingIdle}</div>
+              <div className="font-mono text-xs text-gray-500">20-30min idle</div>
+            </div>
+            <div className={`text-center p-2 border rounded ${trialVmInfo.approachingDelete > 0 ? 'border-orange-400 bg-orange-50' : 'border-gray-300'}`}>
+              <div className="font-mono text-xs text-gray-500 uppercase">Near Delete</div>
+              <div className="font-mono font-bold text-lg">{trialVmInfo.approachingDelete}</div>
+              <div className="font-mono text-xs text-gray-500">&gt;20h old</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-xs font-mono text-gray-600">
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              <span>Auto-stop check: ~{trialVmInfo.nextAutoStopMinutes}min</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              <span>Auto-delete check: ~{trialVmInfo.nextAutoDeleteMinutes}min</span>
+            </div>
+            <div className="text-gray-400">|</div>
+            <span>Stop: {TRIAL_AUTO_STOP_MINUTES}min idle</span>
+            <span>Delete: {TRIAL_AUTO_DELETE_HOURS}h old</span>
+          </div>
+
+          {/* List VMs that will be affected */}
+          {(trialVmInfo.idle > 0 || trialVmInfo.expired > 0) && (
+            <div className="mt-3 pt-3 border-t border-gray-300">
+              {trialVmInfo.idleVms.length > 0 && (
+                <div className="flex items-start gap-2 text-xs font-mono mb-1">
+                  <AlertTriangle className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong>Will stop next check:</strong>{' '}
+                    {trialVmInfo.idleVms.map(m => m.name).join(', ')}
+                  </span>
+                </div>
+              )}
+              {trialVmInfo.expiredVms.length > 0 && (
+                <div className="flex items-start gap-2 text-xs font-mono">
+                  <AlertTriangle className="w-3 h-3 text-red-500 mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong>Will delete next check:</strong>{' '}
+                    {trialVmInfo.expiredVms.map(m => m.name).join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Machine Form */}
       {showAddMachine && (
