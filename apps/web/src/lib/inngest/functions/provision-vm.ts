@@ -368,6 +368,9 @@ export const provisionVmFunction = inngest.createFunction(
       const vmAdminUsername = process.env.AZURE_VM_ADMIN_USERNAME || 'vmuser';
       const vmAdminPassword = process.env.AZURE_VM_ADMIN_PASSWORD!;
 
+      // Get auth token from event data (if provided for trial VM auto-auth)
+      const authToken = event.data.authToken;
+
       const configScript = `
         $winlogonPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'
         Set-ItemProperty -Path $winlogonPath -Name 'AutoAdminLogon' -Value '1' -Type String
@@ -376,6 +379,10 @@ export const provisionVmFunction = inngest.createFunction(
         Set-ItemProperty -Path $winlogonPath -Name 'DefaultDomainName' -Value '.' -Type String
         Set-ItemProperty -Path $winlogonPath -Name 'ForceAutoLogon' -Value '1' -Type String
         Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'DisableCAD' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+
+        ${authToken ? `# Set auth token for mediar-app auto-login (trial VM)
+        [System.Environment]::SetEnvironmentVariable('MEDIAR_AUTH_TOKEN', '${authToken}', 'Machine')
+        Write-Host 'MEDIAR_AUTH_TOKEN set for auto-login'` : '# No auth token provided'}
 
         $mcpProcess = Get-Process -Name 'terminator-mcp-agent' -ErrorAction SilentlyContinue
         if (-not $mcpProcess) {
@@ -504,30 +511,21 @@ export const provisionVmFunction = inngest.createFunction(
                   <h2 style="margin: 0 0 16px 0; font-size: 24px;">Your Sandbox is Ready! 🎉</h2>
 
                   <p style="font-size: 16px; margin: 16px 0;">
-                    Great news! Your cloud sandbox <strong>"${vmName}"</strong> has been successfully provisioned and is ready to use.
+                    Great news! Your cloud sandbox <strong>"${vmName}"</strong> is ready to use.
                   </p>
 
-                  <div style="margin: 24px 0; padding: 20px; background: #f5f5f5; border-radius: 8px;">
-                    <p style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-transform: uppercase; font-weight: 600;">Sandbox Details</p>
-                    <table style="width: 100%; font-size: 14px;">
-                      <tr><td style="padding: 4px 0; color: #666;">Name:</td><td style="font-family: monospace;">${vmName}</td></tr>
-                      <tr><td style="padding: 4px 0; color: #666;">IP Address:</td><td style="font-family: monospace;">${publicIp.ipAddress}</td></tr>
-                      <tr><td style="padding: 4px 0; color: #666;">Status:</td><td><span style="background: #000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">ACTIVE</span></td></tr>
-                    </table>
-                  </div>
-
                   <p style="font-size: 15px; margin: 20px 0;">
-                    You can now access your sandbox through the web interface to record workflows, run automations, or control it directly via VNC.
+                    Click the button below to access your sandbox and start building automations.
                   </p>
 
                   <div style="text-align: center; margin: 32px 0;">
-                    <a href="${baseUrl}/machines/${machineId}" class="action-button">
+                    <a href="${baseUrl}/my-machines" class="action-button">
                       Open Sandbox
                     </a>
                   </div>
 
                   <p style="font-size: 14px; color: #666; margin-top: 24px;">
-                    Need help getting started? Check out our <a href="https://docs.mediar.ai" style="color: #000;">documentation</a> or reply to this email.
+                    Need help? Reply to this email and we'll get back to you.
                   </p>
                 </div>
 

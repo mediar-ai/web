@@ -541,7 +541,7 @@ export const claimPoolVmFunction = inngest.createFunction(
   },
   { event: 'pool/claim.requested' },
   async ({ event, step }) => {
-    const { machineId, userId, orgId, requestId, vmName } = event.data;
+    const { machineId, userId, orgId, requestId, vmName, authToken } = event.data;
     const supabase = getSupabase();
 
     // Step 1: Get machine details and verify it's still available
@@ -585,6 +585,36 @@ export const claimPoolVmFunction = inngest.createFunction(
 
       console.log(`[Pool Claim] VM ${parsed.vmName} started`);
     });
+
+    // Step 2.5: Set auth token for auto-login (if provided)
+    if (authToken) {
+      await step.run('set-auth-token', async () => {
+        await updateProvisioningStep(machineId, 'configure', 'in_progress', 'Configuring auto-login...');
+
+        const { compute } = getAzureClients();
+
+        const configScript = `
+          # Set auth token for mediar-app auto-login (trial VM)
+          [System.Environment]::SetEnvironmentVariable('MEDIAR_AUTH_TOKEN', '${authToken}', 'Machine')
+          Write-Host 'MEDIAR_AUTH_TOKEN set for auto-login'
+        `;
+
+        try {
+          const runCommandPoller = await compute.virtualMachines.beginRunCommand(
+            parsed.resourceGroup,
+            parsed.vmName,
+            { commandId: 'RunPowerShellScript', script: [configScript] }
+          );
+          await runCommandPoller.pollUntilDone();
+          console.log(`[Pool Claim] Auth token set for VM ${parsed.vmName}`);
+        } catch (e) {
+          // Non-fatal: VM will still work, just won't auto-login
+          console.warn(`[Pool Claim] Failed to set auth token, VM will require manual login:`, e);
+        }
+
+        await updateProvisioningStep(machineId, 'configure', 'completed', 'Auto-login configured');
+      });
+    }
 
     // Step 3: Update tags to claimed and set owner
     await step.run('finalize-claim', async () => {
