@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
       .map(m => m.owner_user_id)
       .filter((id): id is string => !!id);
 
-    const [orgNames, userNames] = await Promise.all([
+    const [orgNames, userNames]: [Record<string, string>, Record<string, string>] = await Promise.all([
       orgIds.length > 0 ? getOrganizationNames(orgIds) : Promise.resolve({}),
       userIds.length > 0 ? getUserDisplayNames(userIds) : Promise.resolve({}),
     ]);
