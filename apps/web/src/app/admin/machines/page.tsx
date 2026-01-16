@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { Server, Plus, Activity, Eye, EyeOff, Zap, Clock, AlertTriangle, Timer } from 'lucide-react';
+import { Server, Plus, Activity, Eye, EyeOff, Zap, Clock, AlertTriangle, Timer, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MachineCard } from '@/components/admin/MachineCard';
 import { ProvisionVmDialog } from '@/components/admin/ProvisionVmDialog';
@@ -54,6 +54,7 @@ export default function AdminMachinesPage() {
   });
   const [adding, setAdding] = useState(false);
   const [showProvisionDialog, setShowProvisionDialog] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   const fetchMachines = useCallback(async (): Promise<Machine[]> => {
     console.log('[machines-page] Fetching machines...');
@@ -156,6 +157,58 @@ export default function AdminMachinesPage() {
   const healthyCount = machineList.filter(m => m.health_status === 'healthy').length;
   const activeCount = machineList.filter(m => m.status === 'active').length;
   const inactiveCount = machineList.filter(m => m.status !== 'active').length;
+
+  // Stale entries: inactive machines without Azure resource ID (DB-only entries)
+  const staleEntries = useMemo(() => {
+    return machineList.filter(m => m.status !== 'active' && !m.azure_resource_id);
+  }, [machineList]);
+
+  // Bulk cleanup stale DB entries
+  const handleBulkCleanup = async () => {
+    if (staleEntries.length === 0) {
+      toast.info('No stale entries to clean up');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Remove ${staleEntries.length} stale database entries?\n\n` +
+        `These are inactive machines without Azure resources:\n` +
+        staleEntries.slice(0, 5).map(m => `• ${m.name}`).join('\n') +
+        (staleEntries.length > 5 ? `\n... and ${staleEntries.length - 5} more` : '') +
+        `\n\nThis only removes database records (no Azure resources to delete).`
+    );
+
+    if (!confirmed) return;
+
+    setIsCleaningUp(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const machine of staleEntries) {
+      try {
+        const response = await fetch(`/api/admin/machines/${machine.id}/delete`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+        }
+      } catch {
+        errorCount++;
+      }
+    }
+
+    setIsCleaningUp(false);
+
+    if (errorCount === 0) {
+      toast.success(`Removed ${successCount} stale entries`);
+    } else {
+      toast.warning(`Removed ${successCount}, failed ${errorCount}`);
+    }
+
+    refresh();
+  };
 
   // Trial VM lifecycle info
   const trialVmInfo = useMemo(() => {
@@ -460,14 +513,53 @@ export default function AdminMachinesPage() {
       ) : (
         <>
           {!showInactive && inactiveCount > 0 && (
-            <div className="mb-4 text-sm font-mono text-gray-500">
-              Showing {displayedMachines.length} active/healthy machines.{' '}
-              <button
-                onClick={() => setShowInactive(true)}
-                className="underline hover:text-black"
-              >
-                Show {inactiveCount} inactive
-              </button>
+            <div className="mb-4 text-sm font-mono text-gray-500 flex items-center gap-4">
+              <span>
+                Showing {displayedMachines.length} active/healthy machines.{' '}
+                <button
+                  onClick={() => setShowInactive(true)}
+                  className="underline hover:text-black"
+                >
+                  Show {inactiveCount} inactive
+                </button>
+              </span>
+              {staleEntries.length > 0 && (
+                <button
+                  onClick={handleBulkCleanup}
+                  disabled={isCleaningUp}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50"
+                  title={`Remove ${staleEntries.length} stale DB entries (no Azure resources)`}
+                >
+                  {isCleaningUp ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                  Clean {staleEntries.length} stale
+                </button>
+              )}
+            </div>
+          )}
+          {showInactive && staleEntries.length > 0 && (
+            <div className="mb-4 p-3 border border-orange-300 bg-orange-50">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-mono">
+                  <span className="text-orange-600 font-bold">{staleEntries.length} stale DB entries</span>
+                  <span className="text-gray-500 ml-2">(inactive, no Azure resources)</span>
+                </div>
+                <button
+                  onClick={handleBulkCleanup}
+                  disabled={isCleaningUp}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-mono border-2 border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {isCleaningUp ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                  REMOVE ALL STALE ENTRIES
+                </button>
+              </div>
             </div>
           )}
           <div className="space-y-3">

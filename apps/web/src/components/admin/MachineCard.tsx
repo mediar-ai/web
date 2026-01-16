@@ -257,10 +257,41 @@ export function MachineCard({
   const indicator = getHealthIndicator();
   const hasAzure = !!machine.azure_resource_id;
 
+  // Remove from DB only (no Azure resources)
+  const handleRemoveFromDb = async () => {
+    const confirmed = confirm(
+      `Remove "${machine.name}" from database?\n\n` +
+        (hasAzure
+          ? `This will also attempt to delete Azure resources.`
+          : `This machine has no Azure resources - only the database entry will be removed.`)
+    );
+
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/admin/machines/${machine.id}/delete`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Machine removed');
+        onRefresh();
+      } else {
+        toast.error(data.error || 'Remove failed');
+      }
+    } catch {
+      toast.error('Failed to remove machine');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Compact view for inactive machines
   if (compact) {
     return (
-      <div className="border border-gray-300 bg-gray-50 p-3 flex items-center justify-between">
+      <div className="border border-gray-300 bg-gray-50 p-3 flex items-center justify-between relative">
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full ${indicator.bg}`} />
           <span className="font-mono text-sm text-gray-600">
@@ -269,9 +300,26 @@ export function MachineCard({
           <span className="text-xs font-mono text-gray-400 uppercase">
             {machine.status}
           </span>
+          {!hasAzure && (
+            <span className="text-xs font-mono text-orange-500" title="No Azure resource - stale DB entry">
+              (DB only)
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
-          <span>{formatTimeAgo(machine.last_health_check)}</span>
+          <span>{formatTimeAgo(machine.last_health_check || machine.created_at)}</span>
+          <button
+            onClick={handleRemoveFromDb}
+            disabled={isDeleting}
+            className="px-2 py-1 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50"
+            title={hasAzure ? 'Delete VM + Azure resources' : 'Remove from database'}
+          >
+            {isDeleting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              hasAzure ? 'DELETE' : 'REMOVE'
+            )}
+          </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="px-2 py-1 border border-gray-300 hover:bg-gray-200 transition-colors"
@@ -280,19 +328,30 @@ export function MachineCard({
           </button>
         </div>
         {isExpanded && (
-          <div className="absolute right-0 top-full mt-1 z-10 bg-white border-2 border-black p-4 shadow-lg">
-            <div className="text-sm space-y-2">
-              <div>
-                <span className="text-gray-500">ID:</span> {machine.id}
+          <div className="absolute right-0 top-full mt-1 z-10 bg-white border-2 border-black p-4 shadow-lg min-w-64">
+            <div className="text-sm space-y-2 font-mono">
+              <div className="flex justify-between">
+                <span className="text-gray-500">ID:</span>
+                <span>{machine.id}</span>
               </div>
-              <div>
-                <span className="text-gray-500">Endpoint:</span>{' '}
-                {machine.mcp_endpoint || '-'}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Endpoint:</span>
+                <span className="text-xs truncate max-w-40">{machine.mcp_endpoint || '-'}</span>
               </div>
-              <div>
-                <span className="text-gray-500">Azure:</span>{' '}
-                {hasAzure ? 'Yes' : 'No'}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Azure:</span>
+                <span>{hasAzure ? 'Yes' : 'No'}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Created:</span>
+                <span>{formatTimeAgo(machine.created_at)}</span>
+              </div>
+              {machine.owner_name && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Owner:</span>
+                  <span className="truncate max-w-32">{machine.owner_name}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -437,7 +496,7 @@ export function MachineCard({
 
       {/* Actions */}
       <div className="p-3 flex flex-wrap gap-2">
-        {/* Power controls - only if Azure is configured */}
+        {/* Power controls - simplified: only START/STOP visible, RESTART/DEALLOCATE in expanded */}
         {hasAzure ? (
           <>
             <button
@@ -465,40 +524,10 @@ export function MachineCard({
               )}
               STOP
             </button>
-
-            <button
-              onClick={() => executeOperation('restart')}
-              disabled={isStopped || loadingOperation !== null}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {loadingOperation === 'restart' ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <RotateCcw className="w-3 h-3" />
-              )}
-              RESTART
-            </button>
-
-            <button
-              onClick={() => executeOperation('deallocate')}
-              disabled={
-                powerState === 'deallocated' || loadingOperation !== null
-              }
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-red-600 hover:text-white hover:border-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {loadingOperation === 'deallocate' ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Power className="w-3 h-3" />
-              )}
-              DEALLOCATE
-            </button>
-
-            {/* SYNC button removed - auto-sync now happens in health check after 2+ failures */}
           </>
         ) : (
           <span className="text-xs font-mono text-gray-400">
-            No Azure controls (no resource ID)
+            No Azure (DB only)
           </span>
         )}
 
@@ -542,22 +571,20 @@ export function MachineCard({
           </>
         )}
 
-        {/* Delete button - more visible */}
-        {hasAzure && (
-          <button
-            onClick={handleDelete}
-            disabled={isDeleting || loadingOperation !== null}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Delete VM and all Azure resources"
-          >
-            {isDeleting ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Trash2 className="w-3 h-3" />
-            )}
-            DELETE
-          </button>
-        )}
+        {/* Delete/Remove button - works for all machines */}
+        <button
+          onClick={hasAzure ? handleDelete : handleRemoveFromDb}
+          disabled={isDeleting || loadingOperation !== null}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-red-600 text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title={hasAzure ? 'Delete VM and all Azure resources' : 'Remove from database'}
+        >
+          {isDeleting ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Trash2 className="w-3 h-3" />
+          )}
+          {hasAzure ? 'DELETE' : 'REMOVE'}
+        </button>
 
         {/* Expand for more */}
         <button
@@ -596,6 +623,42 @@ export function MachineCard({
       {/* Expanded Details */}
       {isExpanded && (
         <div className="border-t border-gray-200 p-3 bg-gray-50">
+          {/* Advanced Power Controls (shown in expanded view) */}
+          {hasAzure && (
+            <div className="mb-4 p-3 border border-gray-300 bg-white">
+              <div className="text-xs text-gray-500 font-mono uppercase mb-2">
+                ADVANCED CONTROLS
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => executeOperation('restart')}
+                  disabled={isStopped || loadingOperation !== null}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-black hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loadingOperation === 'restart' ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3 h-3" />
+                  )}
+                  RESTART
+                </button>
+                <button
+                  onClick={() => executeOperation('deallocate')}
+                  disabled={powerState === 'deallocated' || loadingOperation !== null}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-black bg-white hover:bg-red-600 hover:text-white hover:border-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Fully deallocate VM (stops billing for compute)"
+                >
+                  {loadingOperation === 'deallocate' ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Power className="w-3 h-3" />
+                  )}
+                  DEALLOCATE
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Uptime Stats */}
           {(machine.total_checks ?? 0) > 0 && (
             <div className="mb-4 p-3 border border-gray-300 bg-white">
