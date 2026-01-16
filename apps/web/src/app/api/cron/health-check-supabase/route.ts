@@ -64,7 +64,7 @@ export async function GET(request: Request) {
       .from('remote_machines')
       .update({
         health_status: 'unknown',
-        updated_at: new Date().toISOString()
+        // Note: Don't update updated_at here - that should only track user activity, not health checks
       })
       .in('status', ['inactive', 'maintenance', 'failed'])
       .neq('health_status', 'unknown');
@@ -180,9 +180,9 @@ export async function GET(request: Request) {
           const isHealthy = newStatus === 'healthy';
 
           // Simple update with just the essential fields
+          // Note: Don't update updated_at - that tracks user activity only, not health checks
           const updateData: any = {
             health_status: newStatus,
-            updated_at: currentTime,
             last_health_check: currentTime
           };
 
@@ -353,10 +353,10 @@ export async function GET(request: Request) {
           };
 
           // Update machine with error status - only update fields that exist
+          // Note: Don't update updated_at - that tracks user activity only, not health checks
           const currentTime = new Date().toISOString();
           const updateData: any = {
             health_status: newStatus,
-            updated_at: currentTime,
             last_health_check: currentTime
           };
 
