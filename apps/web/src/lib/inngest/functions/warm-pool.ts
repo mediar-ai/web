@@ -451,6 +451,19 @@ export const provisionPoolVmFunction = inngest.createFunction(
         Set-ItemProperty -Path $winlogonPath -Name 'ForceAutoLogon' -Value '1' -Type String
         Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name 'DisableCAD' -Value 1 -Type DWord -ErrorAction SilentlyContinue
 
+        # Optimize TightVNC for low-latency internet streaming
+        $vncPath = 'HKLM:\\SOFTWARE\\TightVNC\\Server'
+        if (Test-Path $vncPath) {
+          Set-ItemProperty -Path $vncPath -Name 'PollingInterval' -Value 30 -Type DWord
+          Set-ItemProperty -Path $vncPath -Name 'UseD3D' -Value 1 -Type DWord
+          Set-ItemProperty -Path $vncPath -Name 'GrabTransparentWindows' -Value 0 -Type DWord
+          Set-ItemProperty -Path $vncPath -Name 'RemoveWallpaper' -Value 1 -Type DWord
+          Set-ItemProperty -Path $vncPath -Name 'RemovePattern' -Value 1 -Type DWord
+          Set-ItemProperty -Path $vncPath -Name 'UseMirrorDriver' -Value 1 -Type DWord
+          Restart-Service tvnserver -ErrorAction SilentlyContinue
+          Write-Host 'TightVNC optimized for streaming'
+        }
+
         $mcpProcess = Get-Process -Name 'terminator-mcp-agent' -ErrorAction SilentlyContinue
         if (-not $mcpProcess) {
           Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList '-t http --host 0.0.0.0 -p 8080 --auth-token cargorunmediar123' -WindowStyle Hidden
