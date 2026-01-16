@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   getEstimatedMonthlyCost,
@@ -7,11 +7,93 @@ import {
 } from '@/lib/azure/vm-provisioning';
 import { inngest } from '@/lib/inngest';
 import { VM_SIZES, getVmLaunchCost } from '@/lib/credits';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import {
   WARM_POOL_CONFIG,
   updateTagsToClaimingStatus,
 } from '@/lib/config/warm-pool';
+
+// Desktop auth token settings (matches desktop-token route)
+const TOKEN_EXPIRY_DAYS = 30;
+
+// Generate cryptographically secure random token for desktop auto-auth
+function generateDesktopAuthToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * Generate and store a desktop auth token for VM auto-login
+ * This allows trial VMs to auto-authenticate without browser login
+ */
+async function createDesktopAuthToken(
+  supabase: SupabaseClient,
+  userId: string,
+  email: string,
+  orgId: string | null
+): Promise<string | null> {
+  try {
+    // Get org info if we have an orgId
+    let orgRole: string | null = null;
+    let orgName: string | null = null;
+    let effectiveOrgId = orgId;
+
+    if (!effectiveOrgId) {
+      // No org context - fetch user's primary organization
+      const clerk = await clerkClient();
+      const memberships = await clerk.users.getOrganizationMembershipList({ userId });
+
+      if (memberships.data && memberships.data.length > 0) {
+        const primaryMembership = memberships.data[0];
+        effectiveOrgId = primaryMembership.organization.id;
+        orgRole = primaryMembership.role;
+        orgName = primaryMembership.organization.name;
+      }
+    } else {
+      // Get org details from Clerk
+      try {
+        const clerk = await clerkClient();
+        const org = await clerk.organizations.getOrganization({ organizationId: effectiveOrgId });
+        orgName = org.name;
+
+        // Get user's role in this org
+        const memberships = await clerk.users.getOrganizationMembershipList({ userId });
+        const membership = memberships.data?.find(m => m.organization.id === effectiveOrgId);
+        orgRole = membership?.role || null;
+      } catch (err) {
+        console.warn('[VM Provision] Could not fetch org details:', err);
+      }
+    }
+
+    // Generate secure token
+    const token = generateDesktopAuthToken();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + TOKEN_EXPIRY_DAYS);
+
+    // Store token in mediar_desktop_sessions (same table as regular desktop auth)
+    const { error: insertError } = await supabase
+      .from('mediar_desktop_sessions')
+      .insert({
+        token,
+        clerk_user_id: userId,
+        email,
+        org_id: effectiveOrgId,
+        org_role: orgRole,
+        org_name: orgName,
+        expires_at: expiresAt.toISOString(),
+      });
+
+    if (insertError) {
+      console.error('[VM Provision] Failed to store desktop auth token:', insertError);
+      return null;
+    }
+
+    console.log(`[VM Provision] Desktop auth token generated for ${email} (expires: ${expiresAt.toISOString()})`);
+    return token;
+  } catch (err) {
+    console.error('[VM Provision] Error creating desktop auth token:', err);
+    return null;
+  }
+}
 
 /**
  * GET /api/vm/provision
@@ -95,7 +177,8 @@ async function claimFromWarmPool(
   orgId: string | null,
   requestId: string,
   vmName: string,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  authToken: string | null
 ): Promise<{
   machineId: number;
   name: string;
@@ -153,6 +236,7 @@ async function claimFromWarmPool(
         orgId,
         requestId,
         vmName,
+        authToken, // Desktop auth token for auto-login (trial VMs only)
       },
     });
 
@@ -409,7 +493,16 @@ export async function POST(request: NextRequest) {
       const randomSuffix = Math.random().toString(36).substring(2, 6);
       const vmName = `${customerName}-${body.name}-${randomSuffix}`.slice(0, 40);
 
-      const poolVm = await claimFromWarmPool(userId, orgId || null, requestId, vmName, supabase);
+      // Generate desktop auth token for trial VMs (auto-login without browser)
+      let poolAuthToken: string | null = null;
+      if (email) {
+        poolAuthToken = await createDesktopAuthToken(supabase, userId, email, orgId || null);
+        if (poolAuthToken) {
+          console.log(`[VM Provision API] Desktop auth token generated for warm pool claim`);
+        }
+      }
+
+      const poolVm = await claimFromWarmPool(userId, orgId || null, requestId, vmName, supabase, poolAuthToken);
 
       if (poolVm) {
         // Get current balance for response
@@ -506,6 +599,17 @@ export async function POST(request: NextRequest) {
 
     const costEstimate = getEstimatedMonthlyCost(vmSize);
 
+    // Generate desktop auth token for trial VMs (auto-login without browser)
+    let authToken: string | null = null;
+    if (isTrial && email) {
+      authToken = await createDesktopAuthToken(supabase, userId, email, orgId || null);
+      if (authToken) {
+        console.log(`[VM Provision API] Desktop auth token generated for trial VM auto-login`);
+      } else {
+        console.warn(`[VM Provision API] Could not generate auth token - VM will require manual login`);
+      }
+    }
+
     console.log(`[VM Provision API] Sending vm/provision.requested event to Inngest (requestId: ${requestId}, trial: ${isTrial})`);
 
     // INNGEST-FIRST: Send event with all data, Inngest creates DB record as step 1
@@ -523,6 +627,7 @@ export async function POST(request: NextRequest) {
         isTrial,
         trialConfig: isTrial ? TRIAL_CONFIG : null,
         launchCost,
+        authToken, // Desktop auth token for auto-login (trial VMs only)
       },
     });
 
