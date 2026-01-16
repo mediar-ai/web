@@ -244,12 +244,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // STEP 7: Log access
+    // STEP 7: Log access and update machine activity
     console.log(
       `[RDP Access] SUCCESS - User ${userId} (org: ${orgId}) accessing machine ${machineName} (${resolvedMachineId})`
     );
 
-    // TODO: Consider logging to database for audit trail
+    // Update machine's last activity timestamp for "last used" tracking
+    await supabase
+      .from('remote_machines')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', resolvedMachineId);
 
     // STEP 8: Return connection URL
     return NextResponse.json({

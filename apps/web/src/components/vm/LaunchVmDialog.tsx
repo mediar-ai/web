@@ -23,12 +23,17 @@ import {
   CreditCard,
   Sparkles,
   Gift,
+  Maximize2,
+  X,
+  Radio,
+  Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { VM_SIZES, CREDIT_PACKAGES } from '@/lib/credits';
 import { cn } from '@/lib/utils';
 import { FreeCreditsEligibilityModal } from './FreeCreditsEligibilityModal';
 import { usePostHog } from 'posthog-js/react';
+import { VNC_GATEWAY_URL } from '@/lib/azure';
 
 interface LaunchVmDialogProps {
   open: boolean;
@@ -42,7 +47,16 @@ type Step = 'config' | 'buy-credits' | 'provisioning' | 'success';
 interface VmConfig {
   name: string;
   vmSize: string;
+  isTrial: boolean;
 }
+
+// Trial sandbox configuration
+const TRIAL_CONFIG = {
+  vmSize: 'Standard_D2s_v3', // Smallest size for trials
+  launchCost: 0, // Free to launch
+  autoStopMinutes: 30, // Auto-stop after 30 min idle
+  autoDeleteDays: 1, // Delete after 1 day of non-usage
+};
 
 // User-friendly provisioning steps (simplified from technical backend steps)
 const PROVISIONING_STEPS = [
@@ -75,19 +89,25 @@ export function LaunchVmDialog({
   const [config, setConfig] = useState<VmConfig>({
     name: '',
     vmSize: 'Standard_D4s_v3',
+    isTrial: true, // Trial selected by default
   });
   const [isLoading, setIsLoading] = useState(false);
   const [_provisioningStatus, setProvisioningStatus] = useState<string>('');
   const [currentStep, setCurrentStep] = useState<string>('init');
   const [machineId, setMachineId] = useState<number | null>(null);
+  const [_requestId, setRequestId] = useState<string | null>(null);
+  const [terraformKey, setTerraformKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showFreeCreditsModal, setShowFreeCreditsModal] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const provisioningStartTime = useRef<number>(0);
   // Track if dialog was previously open to detect fresh opens vs re-renders
   const wasOpenRef = useRef(false);
 
   const selectedSize = VM_SIZES.find(s => s.id === config.vmSize) || VM_SIZES[1];
-  const canAfford = userCredits >= selectedSize.launchCost;
+  // Trial sandboxes are free, otherwise check normal cost
+  const effectiveLaunchCost = config.isTrial ? TRIAL_CONFIG.launchCost : selectedSize.launchCost;
+  const canAfford = userCredits >= effectiveLaunchCost;
 
   // Reset state only when dialog freshly opens (not on userCredits changes)
   useEffect(() => {
@@ -98,9 +118,12 @@ export function LaunchVmDialog({
         can_afford_default: userCredits >= VM_SIZES[1].launchCost,
       });
       setStep('config');
-      setConfig({ name: '', vmSize: 'Standard_D4s_v3' });
+      setConfig({ name: '', vmSize: 'Standard_D4s_v3', isTrial: true });
       setError(null);
       setMachineId(null);
+      setRequestId(null);
+      setTerraformKey(null);
+      setIsFullscreen(false);
       setProvisioningStatus('');
       setCurrentStep('init');
     }
@@ -124,12 +147,16 @@ export function LaunchVmDialog({
       return;
     }
 
+    // For trial, use the trial VM size
+    const vmSizeToUse = config.isTrial ? TRIAL_CONFIG.vmSize : config.vmSize;
+
     // Track launch attempt
     posthog?.capture('sandbox_launch_started', {
       sandbox_name: config.name,
-      vm_size: config.vmSize,
+      vm_size: vmSizeToUse,
+      is_trial: config.isTrial,
       user_credits: userCredits,
-      launch_cost: selectedSize.launchCost,
+      launch_cost: effectiveLaunchCost,
     });
     provisioningStartTime.current = Date.now();
 
@@ -144,29 +171,35 @@ export function LaunchVmDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: config.name,
-          vmSize: config.vmSize,
+          vmSize: vmSizeToUse,
+          isTrial: config.isTrial,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create sandbox');
+        // Show the most informative error message available
+        const errorMsg = data.error || data.details || 'Failed to create sandbox';
+        throw new Error(errorMsg);
       }
 
-      setMachineId(data.machine.id);
+      // New Inngest-first approach: API returns requestId, not machineId
+      // The DB record will be created by Inngest as step 1
+      setRequestId(data.requestId);
       setProvisioningStatus('Setting up your environment...');
 
       posthog?.capture('sandbox_provisioning_started', {
-        machine_id: data.machine.id,
+        request_id: data.requestId,
         sandbox_name: config.name,
         vm_size: config.vmSize,
+        is_trial: config.isTrial,
       });
 
-      // Poll for status updates
-      pollProvisioningStatus(data.machine.id);
+      // Poll for status updates using requestId
+      pollProvisioningStatusByRequestId(data.requestId);
 
-      toast.success(`Creating "${data.machine.name}"...`);
+      toast.success(`Creating "${data.vmName}"...`);
       onCreditsChange?.();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create sandbox';
@@ -183,83 +216,108 @@ export function LaunchVmDialog({
     }
   };
 
-  const pollProvisioningStatus = async (id: number) => {
-    const maxAttempts = 60; // 10 minutes at 10s intervals
+  // Poll provisioning status using requestId (Inngest-first approach)
+  const pollProvisioningStatusByRequestId = async (reqId: string) => {
+    const maxAttempts = 360; // 30 minutes at 5s intervals (Azure RunCommand can take 10-25 min)
     let attempts = 0;
     let lastTrackedStep = '';
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/machines/${id}`);
+        const response = await fetch(`/api/vm/provision/status?requestId=${reqId}`);
         const data = await response.json();
 
-        if (data.machine) {
-          const provStep = data.machine.provisioning_step;
-          if (provStep) {
-            const parsed = typeof provStep === 'string' ? JSON.parse(provStep) : provStep;
-            // Update current step for UI mapping
-            if (parsed.step) {
-              // Track step transitions
-              if (parsed.step !== lastTrackedStep) {
-                posthog?.capture('sandbox_provisioning_step', {
-                  machine_id: id,
-                  step: parsed.step,
-                  step_index: getActiveStepIndex(parsed.step),
-                  elapsed_seconds: Math.round((Date.now() - provisioningStartTime.current) / 1000),
-                });
-                lastTrackedStep = parsed.step;
-              }
-              setCurrentStep(parsed.step);
-            }
-            // Keep raw message for technical details
-            setProvisioningStatus(parsed.message || '');
-
-            if (parsed.step === 'done' || parsed.status === 'completed') {
-              const totalTime = Math.round((Date.now() - provisioningStartTime.current) / 1000);
-              posthog?.capture('sandbox_provisioning_completed', {
-                machine_id: id,
-                total_time_seconds: totalTime,
-                sandbox_name: config.name,
-                vm_size: config.vmSize,
-              });
-              setStep('success');
-              onCreditsChange?.();
-              return;
-            }
-
-            if (parsed.status === 'failed') {
-              posthog?.capture('sandbox_provisioning_failed', {
-                machine_id: id,
-                error: parsed.message,
-                failed_at_step: parsed.step,
-                elapsed_seconds: Math.round((Date.now() - provisioningStartTime.current) / 1000),
-              });
-              setError(parsed.message || 'Provisioning failed');
-              setStep('config');
-              return;
-            }
-          }
-
-          if (data.machine.status === 'active') {
-            const totalTime = Math.round((Date.now() - provisioningStartTime.current) / 1000);
-            posthog?.capture('sandbox_provisioning_completed', {
-              machine_id: id,
-              total_time_seconds: totalTime,
-              sandbox_name: config.name,
-              vm_size: config.vmSize,
-            });
-            setStep('success');
-            onCreditsChange?.();
-            return;
-          }
+        // Update machineId once we get it from the status endpoint
+        if (data.machineId && !machineId) {
+          setMachineId(data.machineId);
         }
 
+        // Handle different statuses
+        if (data.status === 'pending') {
+          // Inngest hasn't created the DB record yet, show queued state
+          if (currentStep !== 'queued') {
+            setCurrentStep('queued');
+            setProvisioningStatus('Queued, waiting for provisioning to start...');
+          }
+        } else if (data.provisioningStep) {
+          const parsed = data.provisioningStep;
+          // Update current step for UI mapping
+          if (parsed.step) {
+            // Track step transitions
+            if (parsed.step !== lastTrackedStep) {
+              posthog?.capture('sandbox_provisioning_step', {
+                request_id: reqId,
+                machine_id: data.machineId,
+                step: parsed.step,
+                step_index: getActiveStepIndex(parsed.step),
+                elapsed_seconds: Math.round((Date.now() - provisioningStartTime.current) / 1000),
+              });
+              lastTrackedStep = parsed.step;
+            }
+            setCurrentStep(parsed.step);
+          }
+          // Keep raw message for technical details
+          setProvisioningStatus(parsed.message || '');
+        }
+
+        // Check for completion
+        if (data.status === 'complete') {
+          const totalTime = Math.round((Date.now() - provisioningStartTime.current) / 1000);
+          posthog?.capture('sandbox_provisioning_completed', {
+            request_id: reqId,
+            machine_id: data.machineId,
+            total_time_seconds: totalTime,
+            sandbox_name: config.name,
+            vm_size: config.vmSize,
+          });
+
+          // Fetch machine details to get terraform_key for VNC
+          if (data.machineId) {
+            try {
+              const machineResp = await fetch(`/api/machines/${data.machineId}`);
+              const machineData = await machineResp.json();
+              if (machineData.machine) {
+                const machine = machineData.machine;
+                // Extract terraform key from tags or terraform_key field
+                const tagKey = machine.tags
+                  ?.find((t: string) => t.startsWith('terraform:'))
+                  ?.replace('terraform:', '');
+                const tfKey = machine.terraform_key && !machine.terraform_key.startsWith('dashboard-')
+                  ? machine.terraform_key
+                  : null;
+                setTerraformKey(tagKey || tfKey);
+              }
+            } catch (err) {
+              console.error('Failed to fetch machine details for VNC:', err);
+            }
+          }
+          setStep('success');
+          onCreditsChange?.();
+          return;
+        }
+
+        // Check for failure
+        if (data.status === 'failed') {
+          posthog?.capture('sandbox_provisioning_failed', {
+            request_id: reqId,
+            machine_id: data.machineId,
+            error: data.provisioningStep?.message,
+            failed_at_step: data.provisioningStep?.step,
+            elapsed_seconds: Math.round((Date.now() - provisioningStartTime.current) / 1000),
+          });
+          setError(data.provisioningStep?.message || 'Provisioning failed');
+          setStep('config');
+          return;
+        }
+
+        // Continue polling
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 10000); // Poll every 10 seconds
+          setTimeout(poll, 5000); // Poll every 5 seconds (faster since Inngest-first may have delay)
         } else {
           posthog?.capture('sandbox_provisioning_timeout', {
-            machine_id: id,
+            request_id: reqId,
+            machine_id: data.machineId,
             last_step: lastTrackedStep,
             elapsed_seconds: Math.round((Date.now() - provisioningStartTime.current) / 1000),
           });
@@ -268,7 +326,7 @@ export function LaunchVmDialog({
         // Continue polling on error
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 10000);
+          setTimeout(poll, 5000);
         }
       }
     };
@@ -339,6 +397,64 @@ export function LaunchVmDialog({
             </DialogHeader>
 
             <div className="space-y-6 py-4">
+              {/* Trial vs Full Sandbox Toggle */}
+              <div className="space-y-3">
+                <Label className="font-mono text-xs uppercase">Sandbox Type</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      posthog?.capture('sandbox_type_selected', { type: 'trial' });
+                      setConfig({ ...config, isTrial: true });
+                    }}
+                    className={cn(
+                      'relative flex flex-col items-center justify-center p-4 border-2 transition-all',
+                      config.isTrial
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-200 hover:border-black'
+                    )}
+                  >
+                    <Clock className="h-6 w-6 mb-2" />
+                    <span className="font-mono font-bold">TRIAL</span>
+                    <span className={cn(
+                      'text-xs mt-1',
+                      config.isTrial ? 'text-gray-300' : 'text-gray-500'
+                    )}>
+                      Free • 30 min
+                    </span>
+                    <span className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-mono bg-green-500 text-white">
+                      FREE
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      posthog?.capture('sandbox_type_selected', { type: 'full' });
+                      setConfig({ ...config, isTrial: false });
+                    }}
+                    className={cn(
+                      'relative flex flex-col items-center justify-center p-4 border-2 transition-all',
+                      !config.isTrial
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-200 hover:border-black'
+                    )}
+                  >
+                    <Monitor className="h-6 w-6 mb-2" />
+                    <span className="font-mono font-bold">FULL</span>
+                    <span className={cn(
+                      'text-xs mt-1',
+                      !config.isTrial ? 'text-gray-300' : 'text-gray-500'
+                    )}>
+                      Persistent • No limits
+                    </span>
+                  </button>
+                </div>
+                {config.isTrial && (
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Trial sandboxes auto-stop after 30 min idle and are deleted after 1 day
+                  </p>
+                )}
+              </div>
+
               {/* Sandbox Name */}
               <div className="space-y-2">
                 <Label htmlFor="vm-name" className="font-mono text-xs uppercase">
@@ -356,99 +472,108 @@ export function LaunchVmDialog({
                 </p>
               </div>
 
-              {/* Size Selection */}
-              <div className="space-y-3">
-                <Label className="font-mono text-xs uppercase">Performance</Label>
-                <div className="grid gap-3">
-                  {VM_SIZES.map(size => (
-                    <button
-                      key={size.id}
-                      onClick={() => {
-                        if (config.vmSize !== size.id) {
-                          posthog?.capture('sandbox_size_selected', {
-                            size_id: size.id,
-                            size_name: size.name,
-                            launch_cost: size.launchCost,
-                            hourly_cost: size.perHourCost,
-                          });
-                        }
-                        setConfig({ ...config, vmSize: size.id });
-                      }}
-                      className={cn(
-                        'relative flex items-center justify-between p-4 border-2 transition-all text-left',
-                        config.vmSize === size.id
-                          ? 'border-black bg-black text-white'
-                          : 'border-gray-200 hover:border-black'
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Cpu className="h-5 w-5" />
-                        <div>
-                          <div className="font-mono font-bold">{size.name}</div>
-                          <div className={cn(
-                            'text-sm',
-                            config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
-                          )}>
-                            {size.specs}
+              {/* Size Selection - only show for full sandboxes */}
+              {!config.isTrial && (
+                <div className="space-y-3">
+                  <Label className="font-mono text-xs uppercase">Performance</Label>
+                  <div className="grid gap-3">
+                    {VM_SIZES.map(size => (
+                      <button
+                        key={size.id}
+                        onClick={() => {
+                          if (config.vmSize !== size.id) {
+                            posthog?.capture('sandbox_size_selected', {
+                              size_id: size.id,
+                              size_name: size.name,
+                              launch_cost: size.launchCost,
+                              hourly_cost: size.perHourCost,
+                            });
+                          }
+                          setConfig({ ...config, vmSize: size.id });
+                        }}
+                        className={cn(
+                          'relative flex items-center justify-between p-4 border-2 transition-all text-left',
+                          config.vmSize === size.id
+                            ? 'border-black bg-black text-white'
+                            : 'border-gray-200 hover:border-black'
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Cpu className="h-5 w-5" />
+                          <div>
+                            <div className="font-mono font-bold">{size.name}</div>
+                            <div className={cn(
+                              'text-sm',
+                              config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
+                            )}>
+                              {size.specs}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-mono font-bold flex items-center gap-1">
-                          <Coins className="h-4 w-4" />
-                          {size.launchCost}
+                        <div className="text-right">
+                          <div className="font-mono font-bold flex items-center gap-1">
+                            <Coins className="h-4 w-4" />
+                            {size.launchCost}
+                          </div>
+                          <div className={cn(
+                            'text-xs',
+                            config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
+                          )}>
+                            + {size.perHourCost}/hr
+                          </div>
                         </div>
-                        <div className={cn(
-                          'text-xs',
-                          config.vmSize === size.id ? 'text-gray-300' : 'text-gray-500'
-                        )}>
-                          + {size.perHourCost}/hr
-                        </div>
-                      </div>
-                      {size.recommended && (
-                        <span className={cn(
-                          'absolute -top-2 -right-2 px-2 py-0.5 text-xs font-mono',
-                          config.vmSize === size.id
-                            ? 'bg-white text-black'
-                            : 'bg-black text-white'
-                        )}>
-                          RECOMMENDED
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                        {size.recommended && (
+                          <span className={cn(
+                            'absolute -top-2 -right-2 px-2 py-0.5 text-xs font-mono',
+                            config.vmSize === size.id
+                              ? 'bg-white text-black'
+                              : 'bg-black text-white'
+                          )}>
+                            RECOMMENDED
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Cost Summary */}
-              <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-4 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-mono text-sm text-gray-600">Your Balance</span>
-                  <span className="font-mono font-bold flex items-center gap-1">
-                    <Coins className="h-4 w-4" />
-                    {userCredits} credits
-                  </span>
+              {/* Cost Summary - simplified for trial */}
+              {config.isTrial ? (
+                <div className="bg-green-50 border-2 border-green-200 p-4 text-center">
+                  <span className="font-mono font-bold text-green-700">FREE TRIAL</span>
+                  <p className="text-xs text-gray-600 mt-1">No credits required. Start exploring now!</p>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-mono text-sm text-gray-600">Launch Cost</span>
-                  <span className="font-mono font-bold flex items-center gap-1">
-                    <Coins className="h-4 w-4" />
-                    {selectedSize.launchCost} credits
-                  </span>
+              ) : (
+                <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-sm text-gray-600">Your Balance</span>
+                    <span className="font-mono font-bold flex items-center gap-1">
+                      <Coins className="h-4 w-4" />
+                      {userCredits} credits
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-sm text-gray-600">Launch Cost</span>
+                    <span className="font-mono font-bold flex items-center gap-1">
+                      <Coins className="h-4 w-4" />
+                      {selectedSize.launchCost} credits
+                    </span>
+                  </div>
+                  <div className="border-t border-gray-300 pt-2 flex justify-between items-center">
+                    <span className="font-mono text-sm font-bold">After Launch</span>
+                    <span className={cn(
+                      'font-mono font-bold',
+                      canAfford ? 'text-black' : 'text-red-600'
+                    )}>
+                      {userCredits - selectedSize.launchCost} credits
+                    </span>
+                  </div>
                 </div>
-                <div className="border-t border-gray-300 pt-2 flex justify-between items-center">
-                  <span className="font-mono text-sm font-bold">After Launch</span>
-                  <span className={cn(
-                    'font-mono font-bold',
-                    canAfford ? 'text-black' : 'text-red-600'
-                  )}>
-                    {userCredits - selectedSize.launchCost} credits
-                  </span>
-                </div>
-              </div>
+              )}
 
-              {/* Free credits hint for users with low balance */}
-              {userCredits < 15 && (
+              {/* Free credits hint for users with low balance - hide for trial */}
+              {!config.isTrial && userCredits < 15 && (
                 <button
                   onClick={() => {
                     posthog?.capture('sandbox_free_credits_clicked', {
@@ -711,6 +836,7 @@ export function LaunchVmDialog({
                     machine_id: machineId,
                   });
                   onOpenChange(false);
+                  window.location.href = '/my-machines';
                 }}
               >
                 Close — continues in background
@@ -723,23 +849,55 @@ export function LaunchVmDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-mono text-xl">
-                <CheckCircle2 className="h-5 w-5" />
-                SANDBOX READY
+                <Monitor className="h-5 w-5" />
+                <span className="font-mono font-bold uppercase">{config.name}</span>
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-xs text-gray-500 font-normal">LIVE</span>
+                </div>
               </DialogTitle>
               <DialogDescription>
-                Your agent sandbox is ready to run workflows
+                Your sandbox is ready. Use it directly from here or go fullscreen.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="py-8 flex flex-col items-center gap-4">
-              <div className="w-24 h-24 border-4 border-black rounded-full flex items-center justify-center bg-gray-50">
-                <CheckCircle2 className="h-12 w-12 text-black" />
+            <div className="py-2">
+              {/* VNC Viewer */}
+              <div className="relative border-2 border-black bg-gray-900 rounded-lg overflow-hidden" style={{ height: '400px' }}>
+                {terraformKey ? (
+                  <>
+                    {/* Fullscreen button */}
+                    <button
+                      onClick={() => {
+                        posthog?.capture('sandbox_fullscreen_clicked', {
+                          machine_id: machineId,
+                        });
+                        setIsFullscreen(true);
+                      }}
+                      className="absolute top-2 right-2 z-10 p-1.5 bg-black/80 text-white hover:bg-black transition-colors rounded"
+                      title="Fullscreen"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </button>
+                    {/* VNC iframe */}
+                    <iframe
+                      src={`${VNC_GATEWAY_URL}/vnc/${terraformKey}`}
+                      className="w-full h-full border-0"
+                      allow="clipboard-read; clipboard-write"
+                    />
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                    <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                    <span className="text-sm font-mono">Connecting to screen...</span>
+                  </div>
+                )}
               </div>
-              <div className="text-center">
-                <p className="font-mono font-bold text-lg">{config.name}</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Ready to execute your automations
-                </p>
+
+              {/* Read-only indicator */}
+              <div className="flex items-center justify-center gap-2 mt-2 text-xs text-gray-500 font-mono">
+                <Radio className="w-3 h-3" />
+                <span>INTERACTIVE — Click inside to control</span>
               </div>
             </div>
 
@@ -749,7 +907,7 @@ export function LaunchVmDialog({
                 onClick={() => {
                   posthog?.capture('sandbox_success_closed', {
                     machine_id: machineId,
-                    viewed_sandbox: false,
+                    viewed_sandbox: true,
                   });
                   onOpenChange(false);
                 }}
@@ -761,14 +919,11 @@ export function LaunchVmDialog({
                   posthog?.capture('sandbox_success_view_clicked', {
                     machine_id: machineId,
                   });
-                  onOpenChange(false);
-                  if (machineId) {
-                    window.location.href = `/machines/${machineId}`;
-                  }
+                  window.open(`/my-machines`, '_blank');
                 }}
                 className="bg-black text-white hover:bg-gray-800"
               >
-                View Sandbox
+                Manage Sandboxes
               </Button>
             </DialogFooter>
           </>
@@ -781,6 +936,44 @@ export function LaunchVmDialog({
         onOpenChange={setShowFreeCreditsModal}
         onCreditsGranted={handleFreeCreditsGranted}
       />
+
+      {/* Fullscreen VNC Modal */}
+      {isFullscreen && terraformKey && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-black text-white border-b border-gray-800">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+                <h3 className="font-mono font-bold text-sm uppercase">
+                  {config.name}
+                </h3>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+                <Radio className="w-3 h-3" />
+                <span>INTERACTIVE</span>
+              </div>
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="p-2 hover:bg-gray-800 rounded transition-colors"
+                title="Exit fullscreen"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          {/* VNC viewer */}
+          <div className="flex-1">
+            <iframe
+              src={`${VNC_GATEWAY_URL}/vnc/${terraformKey}`}
+              className="w-full h-full border-0"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }

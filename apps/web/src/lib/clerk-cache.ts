@@ -93,3 +93,82 @@ export async function getOrganizationNames(orgIds: string[]): Promise<Record<str
 
   return results;
 }
+
+// User name caching
+const userNameCache = new Map<string, CacheEntry>();
+const pendingUserRequests = new Map<string, Promise<string | null>>();
+
+/**
+ * Get user display name with in-memory caching and request deduplication
+ */
+export async function getUserDisplayName(userId: string): Promise<string | null> {
+  if (!userId) return null;
+
+  const now = Date.now();
+  const cached = userNameCache.get(userId);
+
+  // Return cached value if valid
+  if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+    return cached.name;
+  }
+
+  // If a request for this ID is already in flight, return that promise
+  if (pendingUserRequests.has(userId)) {
+    return pendingUserRequests.get(userId)!;
+  }
+
+  // Create new fetch promise
+  const fetchPromise = (async () => {
+    try {
+      const user = await clerkClient.users.getUser(userId);
+
+      if (user) {
+        // Build display name from available fields
+        const displayName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.emailAddresses?.[0]?.emailAddress?.split('@')[0] || userId.slice(0, 8);
+
+        userNameCache.set(userId, {
+          name: displayName,
+          timestamp: Date.now(),
+        });
+        return displayName;
+      }
+    } catch (error) {
+      // Log warning but don't crash
+      console.warn(`[ClerkCache] Failed to fetch user ${userId}:`, error);
+    }
+    return null;
+  })();
+
+  // Store pending request
+  pendingUserRequests.set(userId, fetchPromise);
+
+  try {
+    return await fetchPromise;
+  } finally {
+    // Clean up pending request
+    pendingUserRequests.delete(userId);
+  }
+}
+
+/**
+ * Batch fetch user display names
+ * Efficiently handles duplicates and uses caching
+ */
+export async function getUserDisplayNames(userIds: string[]): Promise<Record<string, string>> {
+  const uniqueIds = [...new Set(userIds)].filter(Boolean);
+  const results: Record<string, string> = {};
+
+  // Execute all fetches in parallel
+  await Promise.all(
+    uniqueIds.map(async (id) => {
+      const name = await getUserDisplayName(id);
+      if (name) {
+        results[id] = name;
+      }
+    })
+  );
+
+  return results;
+}

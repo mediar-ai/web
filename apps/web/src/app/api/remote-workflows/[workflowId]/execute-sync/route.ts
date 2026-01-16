@@ -663,6 +663,14 @@ export async function POST(
       `[SUCCESS] Created execution ${execution.id} - waiting for completion (max ${MAX_WAIT_TIME_MS / 1000}s)...`
     );
 
+    // Update machine's last activity timestamp for "last used" tracking
+    if (assigned_machine_id) {
+      await supabase
+        .from('remote_machines')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', assigned_machine_id);
+    }
+
     // Poll execution until completion or timeout
     try {
       const completedExecution = await pollExecutionUntilComplete(

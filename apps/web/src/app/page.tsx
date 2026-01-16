@@ -8,13 +8,21 @@ import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Monitor, LayoutDashboard, Cloud, CircleDot } from 'lucide-react';
+import { LaunchVmDialog } from '@/components/vm/LaunchVmDialog';
 // COMMENTED OUT: Purchase flow imports
 // import { useSearchParams } from 'next/navigation';
 // import { useCallback } from 'react';
 // import { Loader2, Gift } from 'lucide-react';
 // import { FreeEligibilitySurveyModal } from '@/components/homepage/FreeEligibilitySurveyModal';
 // import { OnboardingSection } from '@/components/onboarding/OnboardingSection';
+
+// Windows icon SVG component
+const WindowsIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M3 5.548l7.053-0.96v6.807H3v-5.847zm0 12.904l7.053 0.96v-6.659H3v5.699zm7.937 1.07l9.963 1.363v-8.132h-9.963v6.769zm0-13.044v6.769h9.963V3.115l-9.963 1.363z" />
+  </svg>
+);
 
 // Mediar icon SVG component
 const MediarIcon = ({ className = 'w-16 h-16' }: { className?: string }) => (
@@ -67,6 +75,25 @@ function HomePageContent() {
   const posthog = usePostHog();
   const [navigatingToDashboard, setNavigatingToDashboard] = useState(false);
   const [navigatingToWebApp, setNavigatingToWebApp] = useState(false);
+  const [launchVmOpen, setLaunchVmOpen] = useState(false);
+  const [userCredits, setUserCredits] = useState(0);
+
+  // Fetch user credits
+  useEffect(() => {
+    if (!userId) return;
+    const fetchCredits = async () => {
+      try {
+        const response = await fetch('/api/user/credits');
+        const data = await response.json();
+        if (data.balance !== undefined) {
+          setUserCredits(data.balance);
+        }
+      } catch (err) {
+        console.error('Failed to fetch credits:', err);
+      }
+    };
+    fetchCredits();
+  }, [userId]);
 
   // COMMENTED OUT: Purchase flow state
   // const searchParams = useSearchParams();
@@ -234,26 +261,57 @@ function HomePageContent() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="max-w-4xl w-full space-y-6">
+      <div className="flex-1 flex items-center justify-center p-4 pt-16">
+        <div className="max-w-5xl w-full space-y-8">
           {/* Welcome section */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-12">
             <h1 className="text-4xl font-bold text-black font-mono">
               Welcome to Mediar
             </h1>
           </div>
 
-          {/* 3 Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Web App */}
+          {/* 4 Cards Grid (2x2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Launch Cloud Sandbox */}
             <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
-                    WEB APP
+                  <div className="flex justify-center mb-3">
+                    <div className="p-3 bg-gray-100 rounded-full">
+                      <Cloud className="w-6 h-6 text-black" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-bold text-black font-mono mb-2">
+                    START IN BROWSER
                   </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
-                    Record workflows in your browser
+                    Launch a cloud sandbox and start building - no install needed
+                  </p>
+                  <Button
+                    className="w-full bg-black text-white hover:bg-gray-800"
+                    onClick={() => setLaunchVmOpen(true)}
+                  >
+                    <Cloud className="w-4 h-4 mr-2" />
+                    LAUNCH SANDBOX
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Record in Browser */}
+            <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
+              <CardContent className="pt-6 h-full">
+                <div className="flex flex-col h-full text-center">
+                  <div className="flex justify-center mb-3">
+                    <div className="p-3 bg-gray-100 rounded-full">
+                      <CircleDot className="w-6 h-6 text-black" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-bold text-black font-mono mb-2">
+                    RECORD WORKFLOW
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-4 flex-1">
+                    Record a workflow now - no install needed
                   </p>
                   <Button
                     className="w-full bg-black text-white hover:bg-gray-800"
@@ -269,7 +327,10 @@ function HomePageContent() {
                         LOADING...
                       </>
                     ) : (
-                      'OPEN WEB APP'
+                      <>
+                        <CircleDot className="w-4 h-4 mr-2" />
+                        START RECORDING
+                      </>
                     )}
                   </Button>
                 </div>
@@ -280,11 +341,16 @@ function HomePageContent() {
             <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
-                    DOWNLOAD APP
+                  <div className="flex justify-center mb-3">
+                    <div className="p-3 bg-gray-100 rounded-full">
+                      <Monitor className="w-6 h-6 text-black" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-bold text-black font-mono mb-2">
+                    DESKTOP APP
                   </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
-                    Build automated workflows
+                    Automate any task on your computer
                   </p>
                   <a
                     href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
@@ -292,7 +358,8 @@ function HomePageContent() {
                     onClick={handleDownloadClick}
                   >
                     <Button className="w-full bg-black text-white hover:bg-gray-800">
-                      DOWNLOAD (Windows)
+                      <WindowsIcon className="w-4 h-4 mr-2" />
+                      DOWNLOAD FOR WINDOWS
                     </Button>
                   </a>
                 </div>
@@ -303,11 +370,16 @@ function HomePageContent() {
             <Card className="border-2 border-black hover:shadow-lg transition-shadow flex flex-col">
               <CardContent className="pt-6 h-full">
                 <div className="flex flex-col h-full text-center">
-                  <h3 className="text-lg font-bold text-black font-mono mb-4">
+                  <div className="flex justify-center mb-3">
+                    <div className="p-3 bg-gray-100 rounded-full">
+                      <LayoutDashboard className="w-6 h-6 text-black" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-bold text-black font-mono mb-2">
                     DASHBOARD
                   </h3>
                   <p className="text-gray-600 text-sm mb-4 flex-1">
-                    Manage workflows and deployments
+                    Manage your workflows and scheduled automations
                   </p>
                   <Button
                     className="w-full bg-black text-white hover:bg-gray-800"
@@ -323,7 +395,10 @@ function HomePageContent() {
                         LOADING...
                       </>
                     ) : (
-                      'OPEN DASHBOARD'
+                      <>
+                        <LayoutDashboard className="w-4 h-4 mr-2" />
+                        OPEN DASHBOARD
+                      </>
                     )}
                   </Button>
                 </div>
@@ -342,6 +417,23 @@ function HomePageContent() {
       />
       */}
 
+      {/* Launch VM Dialog */}
+      <LaunchVmDialog
+        open={launchVmOpen}
+        onOpenChange={setLaunchVmOpen}
+        userCredits={userCredits}
+        onCreditsChange={() => {
+          // Refetch credits after purchase or VM launch
+          fetch('/api/user/credits')
+            .then(res => res.json())
+            .then(data => {
+              if (data.balance !== undefined) {
+                setUserCredits(data.balance);
+              }
+            })
+            .catch(console.error);
+        }}
+      />
     </div>
   );
 }

@@ -15,6 +15,11 @@ import {
   Monitor,
   Cloud,
   FolderOpen,
+  Bell,
+  AlertTriangle,
+  CheckCircle,
+  ExternalLink,
+  Gift,
 } from 'lucide-react';
 
 interface BreakdownItem {
@@ -220,6 +225,150 @@ export default function BillingPage() {
             </div>
           </div>
         </div>
+
+        {/* Azure Quick Links */}
+        <div className="border-2 border-black mb-6">
+          <div className="bg-black text-white p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              <span className="font-mono font-bold text-sm">AZURE PORTAL QUICK LINKS</span>
+            </div>
+            <a
+              href="https://www.microsoftazuresponsorships.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs bg-white text-black px-2 py-1 hover:bg-gray-200 transition-colors"
+            >
+              <Gift className="w-3 h-3" />
+              SPONSORSHIP PORTAL
+            </a>
+          </div>
+          <div className="p-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Compute%2FVirtualMachines"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Monitor className="w-4 h-4" />
+              VMs
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Compute%2FVirtualMachineScaleSets"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Server className="w-4 h-4" />
+              VMSS
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.ContainerInstance%2FcontainerGroups"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Container className="w-4 h-4" />
+              Containers
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Compute%2Fdisks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <HardDrive className="w-4 h-4" />
+              Disks
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#view/Microsoft_Azure_StorageHub/StorageHub.MenuView/~/AllStorageResourcesView/menuid/StorageAccountsBrowse"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Storage
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Network%2FpublicIPAddresses"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Network className="w-4 h-4" />
+              Public IPs
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Network%2FvirtualNetworks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Network className="w-4 h-4" />
+              VNets
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/Microsoft.Compute%2Fimages"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <HardDrive className="w-4 h-4" />
+              Images
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#browse/resourcegroups"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Resource Groups
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/costanalysis"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <DollarSign className="w-4 h-4" />
+              Cost Analysis
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/budgets"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <Bell className="w-4 h-4" />
+              Budgets
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+            <a
+              href="https://portal.azure.com/#view/Microsoft_Azure_Monitoring/AzureMonitoringBrowseBlade/~/overview"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black hover:bg-gray-50 transition-colors text-sm font-mono"
+            >
+              <TrendingUp className="w-4 h-4" />
+              Monitor
+              <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+            </a>
+          </div>
+        </div>
+
+        {/* Cost Alerts / Budget Status */}
+        <CostAlertsSection combinedTotal={combinedTotal} azureTotal={azureTotal} gcpTotal={gcpTotal} />
 
         {/* Provider Tabs */}
         <div className="flex border-2 border-black mb-6">
@@ -855,5 +1004,478 @@ function GCPBillingView({ data }: { data: GCPBillingData | null }) {
         <p>Table: {data.billingAccount?.table}</p>
       </div>
     </>
+  );
+}
+
+interface CostAlertSettings {
+  thresholds: {
+    warning: number;
+    critical: number;
+    maximum: number;
+  };
+  emailRecipients: string[];
+  enabled: boolean;
+  lastAlertSent?: {
+    level: 'warning' | 'critical' | 'maximum';
+    sentAt: string;
+    amount: number;
+  };
+}
+
+const DEFAULT_SETTINGS: CostAlertSettings = {
+  thresholds: { warning: 500, critical: 800, maximum: 1000 },
+  emailRecipients: [],
+  enabled: true,
+};
+
+function CostAlertsSection({
+  combinedTotal,
+}: {
+  combinedTotal: number;
+  azureTotal: number;
+  gcpTotal: number;
+}) {
+  const [settings, setSettings] = useState<CostAlertSettings>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [testingAlert, setTestingAlert] = useState(false);
+  const [editForm, setEditForm] = useState<CostAlertSettings>(DEFAULT_SETTINGS);
+  const [newEmail, setNewEmail] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/cost-alerts');
+      const data = await res.json();
+      if (data.settings) {
+        setSettings(data.settings);
+        setEditForm(data.settings);
+      }
+    } catch (err) {
+      console.error('Failed to fetch cost alert settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/admin/cost-alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSettings(data.settings);
+        setEditing(false);
+        setMessage({ type: 'success', text: 'Settings saved' });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to save' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save settings' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendTestAlert = async (level: 'warning' | 'critical' | 'maximum') => {
+    if (!editForm.emailRecipients.length) {
+      setMessage({ type: 'error', text: 'Add at least one email recipient first' });
+      return;
+    }
+    setTestingAlert(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/admin/cost-alerts/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: editForm.emailRecipients[0],
+          testLevel: level,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: 'success', text: `Test ${level.toUpperCase()} alert sent to ${editForm.emailRecipients[0]}` });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to send test alert' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to send test alert' });
+    } finally {
+      setTestingAlert(false);
+    }
+  };
+
+  const addEmail = () => {
+    const email = newEmail.trim();
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (!editForm.emailRecipients.includes(email)) {
+        setEditForm({ ...editForm, emailRecipients: [...editForm.emailRecipients, email] });
+      }
+      setNewEmail('');
+    }
+  };
+
+  const removeEmail = (email: string) => {
+    setEditForm({ ...editForm, emailRecipients: editForm.emailRecipients.filter(e => e !== email) });
+  };
+
+  const thresholds = settings.thresholds;
+  const percentOfWarning = (combinedTotal / thresholds.warning) * 100;
+  const percentOfCritical = (combinedTotal / thresholds.critical) * 100;
+  const percentOfMax = (combinedTotal / thresholds.maximum) * 100;
+
+  const getAlertStatus = () => {
+    if (combinedTotal >= thresholds.maximum) return 'maximum';
+    if (combinedTotal >= thresholds.critical) return 'critical';
+    if (combinedTotal >= thresholds.warning) return 'warning';
+    return 'ok';
+  };
+
+  const status = getAlertStatus();
+
+  if (loading) {
+    return (
+      <div className="border-2 border-black mb-6 p-8 flex items-center justify-center">
+        <RefreshCw className="w-6 h-6 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-2 border-black mb-6">
+      <div className="bg-black text-white p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bell className="w-5 h-5" />
+          <span className="font-mono font-bold">COST ALERTS</span>
+          {!settings.enabled && (
+            <span className="text-xs bg-gray-700 px-2 py-0.5 ml-2">DISABLED</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {status === 'ok' && (
+            <span className="flex items-center gap-1 text-sm">
+              <CheckCircle className="w-4 h-4" />
+              WITHIN BUDGET
+            </span>
+          )}
+          {status === 'warning' && (
+            <span className="flex items-center gap-1 text-sm bg-white text-black px-2 py-1">
+              <AlertTriangle className="w-4 h-4" />
+              WARNING
+            </span>
+          )}
+          {status === 'critical' && (
+            <span className="flex items-center gap-1 text-sm bg-white text-black px-2 py-1 font-bold">
+              <AlertTriangle className="w-4 h-4" />
+              CRITICAL
+            </span>
+          )}
+          {status === 'maximum' && (
+            <span className="flex items-center gap-1 text-sm bg-white text-black px-2 py-1 font-bold animate-pulse">
+              <AlertCircle className="w-4 h-4" />
+              OVER BUDGET
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setEditing(!editing);
+              setEditForm(settings);
+              setMessage(null);
+            }}
+            className="ml-2 px-3 py-1 text-sm border border-white hover:bg-white hover:text-black transition-colors"
+          >
+            {editing ? 'CANCEL' : 'CONFIGURE'}
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {message && (
+          <div className={`mb-4 p-3 border-2 ${message.type === 'success' ? 'border-black bg-gray-50' : 'border-black bg-gray-100'}`}>
+            <span className="font-mono text-sm">{message.text}</span>
+          </div>
+        )}
+
+        {editing ? (
+          <div className="space-y-4">
+            {/* Enable/Disable Toggle */}
+            <div className="flex items-center gap-3">
+              <label className="font-mono text-sm">Alerts Enabled:</label>
+              <button
+                onClick={() => setEditForm({ ...editForm, enabled: !editForm.enabled })}
+                className={`px-4 py-2 font-mono text-sm border-2 border-black ${editForm.enabled ? 'bg-black text-white' : 'bg-white text-black'}`}
+              >
+                {editForm.enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Thresholds */}
+            <div>
+              <label className="font-mono text-xs text-gray-600 uppercase block mb-2">Alert Thresholds ($/month)</label>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="font-mono text-xs text-gray-500">Warning</label>
+                  <input
+                    type="number"
+                    value={editForm.thresholds.warning}
+                    onChange={(e) => setEditForm({
+                      ...editForm,
+                      thresholds: { ...editForm.thresholds, warning: Number(e.target.value) }
+                    })}
+                    className="w-full border-2 border-black p-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-xs text-gray-500">Critical</label>
+                  <input
+                    type="number"
+                    value={editForm.thresholds.critical}
+                    onChange={(e) => setEditForm({
+                      ...editForm,
+                      thresholds: { ...editForm.thresholds, critical: Number(e.target.value) }
+                    })}
+                    className="w-full border-2 border-black p-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-xs text-gray-500">Maximum</label>
+                  <input
+                    type="number"
+                    value={editForm.thresholds.maximum}
+                    onChange={(e) => setEditForm({
+                      ...editForm,
+                      thresholds: { ...editForm.thresholds, maximum: Number(e.target.value) }
+                    })}
+                    className="w-full border-2 border-black p-2 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Email Recipients */}
+            <div>
+              <label className="font-mono text-xs text-gray-600 uppercase block mb-2">Email Recipients</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addEmail())}
+                  placeholder="email@example.com"
+                  className="flex-1 border-2 border-black p-2 font-mono"
+                />
+                <button
+                  onClick={addEmail}
+                  className="px-4 py-2 bg-black text-white font-mono hover:bg-gray-800"
+                >
+                  ADD
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {editForm.emailRecipients.map((email) => (
+                  <div key={email} className="flex items-center gap-2 bg-gray-100 px-3 py-1 border border-gray-300">
+                    <span className="font-mono text-sm">{email}</span>
+                    <button
+                      onClick={() => removeEmail(email)}
+                      className="text-gray-500 hover:text-black"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {editForm.emailRecipients.length === 0 && (
+                  <span className="text-gray-500 text-sm font-mono">No recipients configured</span>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-3 pt-2">
+              <button
+                onClick={saveSettings}
+                disabled={saving}
+                className="px-4 py-2 bg-black text-white font-mono hover:bg-gray-800 disabled:bg-gray-400 w-fit"
+              >
+                {saving ? 'SAVING...' : 'SAVE SETTINGS'}
+              </button>
+
+              {/* Test Alert Buttons */}
+              <div>
+                <label className="font-mono text-xs text-gray-600 uppercase block mb-2">Test Alerts</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => sendTestAlert('warning')}
+                    disabled={testingAlert || editForm.emailRecipients.length === 0}
+                    className="px-3 py-2 border-2 border-black font-mono text-sm hover:bg-gray-100 disabled:border-gray-400 disabled:text-gray-400"
+                  >
+                    {testingAlert ? '...' : 'WARNING'}
+                  </button>
+                  <button
+                    onClick={() => sendTestAlert('critical')}
+                    disabled={testingAlert || editForm.emailRecipients.length === 0}
+                    className="px-3 py-2 border-2 border-black font-mono text-sm hover:bg-gray-200 disabled:border-gray-400 disabled:text-gray-400"
+                  >
+                    {testingAlert ? '...' : 'CRITICAL'}
+                  </button>
+                  <button
+                    onClick={() => sendTestAlert('maximum')}
+                    disabled={testingAlert || editForm.emailRecipients.length === 0}
+                    className="px-3 py-2 border-2 border-black bg-black text-white font-mono text-sm hover:bg-gray-800 disabled:bg-gray-400"
+                  >
+                    {testingAlert ? '...' : 'MAXIMUM'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 font-mono">
+                  Sends test email to {editForm.emailRecipients[0] || 'first recipient'}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Budget Progress Bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs font-mono text-gray-600 mb-1">
+                <span>Monthly Spend</span>
+                <span>${combinedTotal.toLocaleString()} / ${thresholds.maximum.toLocaleString()}</span>
+              </div>
+              <div className="h-6 bg-gray-100 border border-gray-300 relative">
+                {/* Warning threshold marker */}
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-gray-400"
+                  style={{ left: `${(thresholds.warning / thresholds.maximum) * 100}%` }}
+                />
+                {/* Critical threshold marker */}
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-gray-600"
+                  style={{ left: `${(thresholds.critical / thresholds.maximum) * 100}%` }}
+                />
+                {/* Progress fill */}
+                <div
+                  className={`h-full transition-all ${
+                    status === 'maximum' ? 'bg-black' :
+                    status === 'critical' ? 'bg-gray-800' :
+                    status === 'warning' ? 'bg-gray-600' : 'bg-gray-400'
+                  }`}
+                  style={{ width: `${Math.min(percentOfMax, 100)}%` }}
+                />
+                {/* Threshold labels */}
+                <div
+                  className="absolute -bottom-5 text-xs font-mono text-gray-500"
+                  style={{ left: `${(thresholds.warning / thresholds.maximum) * 100}%`, transform: 'translateX(-50%)' }}
+                >
+                  ${thresholds.warning}
+                </div>
+                <div
+                  className="absolute -bottom-5 text-xs font-mono text-gray-500"
+                  style={{ left: `${(thresholds.critical / thresholds.maximum) * 100}%`, transform: 'translateX(-50%)' }}
+                >
+                  ${thresholds.critical}
+                </div>
+              </div>
+            </div>
+
+            {/* Alert Thresholds */}
+            <div className="grid grid-cols-3 gap-4 mt-8">
+              <div className={`p-3 border ${combinedTotal >= thresholds.warning ? 'border-2 border-black bg-gray-50' : 'border-gray-200'}`}>
+                <div className="font-mono text-xs text-gray-600 uppercase">Warning</div>
+                <div className="font-mono font-bold">${thresholds.warning}/mo</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {percentOfWarning.toFixed(0)}% used
+                </div>
+              </div>
+              <div className={`p-3 border ${combinedTotal >= thresholds.critical ? 'border-2 border-black bg-gray-50' : 'border-gray-200'}`}>
+                <div className="font-mono text-xs text-gray-600 uppercase">Critical</div>
+                <div className="font-mono font-bold">${thresholds.critical}/mo</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {percentOfCritical.toFixed(0)}% used
+                </div>
+              </div>
+              <div className={`p-3 border ${combinedTotal >= thresholds.maximum ? 'border-2 border-black bg-gray-50' : 'border-gray-200'}`}>
+                <div className="font-mono text-xs text-gray-600 uppercase">Maximum</div>
+                <div className="font-mono font-bold">${thresholds.maximum}/mo</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {percentOfMax.toFixed(0)}% used
+                </div>
+              </div>
+            </div>
+
+            {/* Last Alert Info */}
+            {settings.lastAlertSent && (
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200">
+                <div className="font-mono text-xs text-gray-600 uppercase mb-1">Last Alert Sent</div>
+                <div className="font-mono text-sm">
+                  <span className="font-bold uppercase">{settings.lastAlertSent.level}</span>
+                  {' '}at ${settings.lastAlertSent.amount.toLocaleString()}/mo
+                  {' • '}
+                  {new Date(settings.lastAlertSent.sentAt).toLocaleString()}
+                </div>
+              </div>
+            )}
+
+            {/* Recipients Summary */}
+            <div className="mt-4 p-3 bg-gray-50 border border-gray-200">
+              <div className="font-mono text-xs text-gray-600 uppercase mb-1">Alert Recipients</div>
+              <div className="font-mono text-sm">
+                {settings.emailRecipients.length > 0
+                  ? settings.emailRecipients.join(', ')
+                  : <span className="text-gray-500">No recipients configured</span>
+                }
+              </div>
+            </div>
+
+            {/* Security Limits Info */}
+            <div className="mt-4 p-3 bg-gray-50 border border-gray-200">
+              <div className="font-mono text-xs text-gray-600 uppercase mb-2">Active Security Limits</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm font-mono">
+                <div>
+                  <span className="text-gray-500">Max VMs/user:</span> 3
+                </div>
+                <div>
+                  <span className="text-gray-500">Rate limit:</span> 1/hr
+                </div>
+                <div>
+                  <span className="text-gray-500">IP limit:</span> 5/day
+                </div>
+                <div>
+                  <span className="text-gray-500">Global max:</span> 50 VMs
+                </div>
+                <div>
+                  <span className="text-gray-500">Trial limit:</span> 1/user
+                </div>
+                <div>
+                  <span className="text-gray-500">Trial auto-stop:</span> 30min
+                </div>
+                <div>
+                  <span className="text-gray-500">Trial auto-delete:</span> 1 day
+                </div>
+                <div>
+                  <span className="text-gray-500">Allowed sizes:</span> D2s/D4s/D8s
+                </div>
+              </div>
+            </div>
+
+            {/* Alert Info */}
+            <div className="mt-4 text-sm text-gray-600">
+              <p className="font-mono">
+                <strong>Hourly checks:</strong> Alerts are automatically checked every hour and emails sent when thresholds are crossed.
+                Configure thresholds and recipients above.
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

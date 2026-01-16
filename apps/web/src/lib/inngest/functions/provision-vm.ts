@@ -4,6 +4,9 @@ import { NetworkManagementClient } from '@azure/arm-network';
 import { ResourceManagementClient } from '@azure/arm-resources';
 import { getAzureCredential, getSubscriptionId } from '@/lib/azure/client';
 import { createClient } from '@supabase/supabase-js';
+import { clerkClient } from '@clerk/nextjs/server';
+import { Resend } from 'resend';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 // VM Configuration
 const VM_CONFIG = {
@@ -65,18 +68,65 @@ export const provisionVmFunction = inngest.createFunction(
   },
   { event: 'vm/provision.requested' },
   async ({ event, step }) => {
-    // Step 0: Mark that Inngest has picked up the job
-    await step.run('init', async () => {
-      console.log();
-      const supabase = getSupabase();
-      await supabase.from('remote_machines').update({
-        provisioning_step: JSON.stringify({ step: 'init', status: 'in_progress', message: 'Inngest job started...', timestamp: new Date().toISOString() }),
-        updated_at: new Date().toISOString(),
-      }).eq('id', event.data.machineId);
-      return { started: true };
-    });
+    const { requestId, vmName, customer, location, vmSize, userId, orgId, clientIp, isTrial, trialConfig: _trialConfig, launchCost: _launchCost } = event.data;
 
-    const { machineId, vmName, customer, organizationId, location, vmSize } = event.data;
+    // Step 0: Create the database record (INNGEST-FIRST approach)
+    // This is the first step - if it fails, no orphan records are created
+    const { machineId } = await step.run('create-db-record', async () => {
+      console.log(`[Provision] Creating DB record for requestId: ${requestId}`);
+      const supabase = getSupabase();
+
+      // Build tags array (same format as original API)
+      const terraformKey = `user-${userId}-${vmName}`;
+      const placeholderIp = '0.0.0.0';
+      const tags = [
+        `terraform:${terraformKey}`,
+        `user:${userId}`,
+        `vm:${vmName}`,
+        `request:${requestId}`,
+      ];
+      if (clientIp && clientIp !== 'unknown') {
+        tags.push(`ip:${clientIp}`);
+      }
+      if (isTrial) {
+        tags.push('trial:true');
+      }
+
+      const { data: machine, error } = await supabase
+        .from('remote_machines')
+        .insert({
+          name: vmName,
+          mcp_endpoint: `http://${placeholderIp}:8080/mcp`,
+          health_endpoint: `http://${placeholderIp}:8080/health`,
+          management_endpoint: `http://${placeholderIp}:8080/management`,
+          terraform_key: terraformKey,
+          tags,
+          status: 'inactive',
+          health_status: 'unknown',
+          machine_type: 'windows_vm',
+          region: location || 'eastus',
+          is_global: false,
+          owner_user_id: userId,
+          owner_org_id: orgId || null,
+          provisioned_at: new Date().toISOString(),
+          provisioning_step: JSON.stringify({
+            step: 'init',
+            status: 'in_progress',
+            message: 'Inngest job started, creating VM...',
+            timestamp: new Date().toISOString(),
+          }),
+        })
+        .select('id')
+        .single();
+
+      if (error || !machine) {
+        console.error('[Provision] Failed to create DB record:', error);
+        throw new Error(`Failed to create provisioning record: ${error?.message || 'Unknown error'}`);
+      }
+
+      console.log(`[Provision] DB record created with machineId: ${machine.id}`);
+      return { machineId: machine.id };
+    });
     const names = generateResourceNames(vmName, customer);
     const subscriptionId = getSubscriptionId();
     const credential = getAzureCredential();
@@ -277,7 +327,9 @@ export const provisionVmFunction = inngest.createFunction(
         tags: {
           customer,
           'managed-by': 'mediar-dashboard',
-          'organization-id': organizationId,
+          'organization-id': orgId || '',
+          'is-trial': isTrial ? 'true' : 'false',
+          'request-id': requestId,
         },
       };
 
@@ -376,7 +428,130 @@ export const provisionVmFunction = inngest.createFunction(
         })
         .eq('id', machineId);
 
+      // Track trial sandbox provisioned server-side
+      if (isTrial) {
+        try {
+          const posthog = getPostHogClient();
+          posthog.capture({
+            distinctId: userId || 'system',
+            event: 'trial_sandbox_provisioned_server',
+            properties: {
+              machine_id: machineId,
+              machine_name: vmName,
+              location,
+              vm_size: vmSize,
+              public_ip: publicIp.ipAddress,
+              provisioning_duration_estimate: 'unknown', // Could calculate from step timestamps
+              is_trial: true,
+            },
+          });
+        } catch (e) {
+          console.warn('[Provision] Failed to track PostHog event:', e);
+        }
+      }
+
       return { success: true, mcpEndpoint, publicIp: publicIp.ipAddress };
+    });
+
+    // Step 10: Send email notification to user
+    await step.run('send-email', async () => {
+      const { userId } = event.data;
+      if (!userId) {
+        console.log('[Provision] No userId provided, skipping email notification');
+        return { sent: false, reason: 'no_user_id' };
+      }
+
+      try {
+        const clerk = await clerkClient();
+        const user = await clerk.users.getUser(userId);
+        const email = user.emailAddresses?.[0]?.emailAddress;
+
+        if (!email) {
+          console.log('[Provision] No email found for user, skipping notification');
+          return { sent: false, reason: 'no_email' };
+        }
+
+        const resendApiKey = process.env.RESEND_API_KEY;
+        if (!resendApiKey) {
+          console.log('[Provision] RESEND_API_KEY not configured, skipping email');
+          return { sent: false, reason: 'no_resend_key' };
+        }
+
+        const resend = new Resend(resendApiKey);
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.mediar.ai';
+        const fromEmail = (process.env.RESEND_FROM_EMAIL || 'alerts@alerts.mediar.ai').trim();
+
+        const { data, error } = await resend.emails.send({
+          from: `Mediar.ai <${fromEmail}>`,
+          replyTo: ['matt@mediar.ai', 'louis@mediar.ai'],
+          to: email,
+          subject: `🖥️ Your sandbox "${vmName}" is ready!`,
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1a1a1a; margin: 0; padding: 0; }
+                .container { max-width: 600px; margin: 0 auto; }
+                .content { background: white; padding: 32px 24px; }
+                .action-button { display: inline-block; background: #000; color: white !important; padding: 14px 28px; border-radius: 6px; text-decoration: none !important; font-weight: 600; margin: 8px; font-size: 14px; }
+                .footer { padding: 24px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e5e5e5; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="content">
+                  <h2 style="margin: 0 0 16px 0; font-size: 24px;">Your Sandbox is Ready! 🎉</h2>
+
+                  <p style="font-size: 16px; margin: 16px 0;">
+                    Great news! Your cloud sandbox <strong>"${vmName}"</strong> has been successfully provisioned and is ready to use.
+                  </p>
+
+                  <div style="margin: 24px 0; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+                    <p style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-transform: uppercase; font-weight: 600;">Sandbox Details</p>
+                    <table style="width: 100%; font-size: 14px;">
+                      <tr><td style="padding: 4px 0; color: #666;">Name:</td><td style="font-family: monospace;">${vmName}</td></tr>
+                      <tr><td style="padding: 4px 0; color: #666;">IP Address:</td><td style="font-family: monospace;">${publicIp.ipAddress}</td></tr>
+                      <tr><td style="padding: 4px 0; color: #666;">Status:</td><td><span style="background: #000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">ACTIVE</span></td></tr>
+                    </table>
+                  </div>
+
+                  <p style="font-size: 15px; margin: 20px 0;">
+                    You can now access your sandbox through the web interface to record workflows, run automations, or control it directly via VNC.
+                  </p>
+
+                  <div style="text-align: center; margin: 32px 0;">
+                    <a href="${baseUrl}/machines/${machineId}" class="action-button">
+                      Open Sandbox
+                    </a>
+                  </div>
+
+                  <p style="font-size: 14px; color: #666; margin-top: 24px;">
+                    Need help getting started? Check out our <a href="https://docs.mediar.ai" style="color: #000;">documentation</a> or reply to this email.
+                  </p>
+                </div>
+
+                <div class="footer">
+                  <p style="margin: 0;">Mediar • Workflow Automation</p>
+                  <p style="margin: 8px 0 0 0; font-size: 10px; color: #999;">Machine ID: ${machineId}</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+        });
+
+        if (error) {
+          console.error('[Provision] Failed to send email:', error);
+          return { sent: false, error: error.message };
+        }
+
+        console.log(`[Provision] Email sent successfully to ${email}, id: ${data?.id}`);
+        return { sent: true, email, messageId: data?.id };
+      } catch (err) {
+        console.error('[Provision] Error sending email:', err);
+        return { sent: false, error: err instanceof Error ? err.message : 'Unknown error' };
+      }
     });
 
     return {

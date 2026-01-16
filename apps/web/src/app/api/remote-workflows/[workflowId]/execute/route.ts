@@ -863,6 +863,14 @@ export async function POST(
       `[SUCCESS] Created execution ${execution.id} for workflow "${workflow.name}" - will be processed by ${executor_type} executor`
     );
 
+    // Update machine's last activity timestamp for "last used" tracking
+    if (assigned_machine_id) {
+      await supabase
+        .from('remote_machines')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', assigned_machine_id);
+    }
+
     // Return immediate response - executor will process this asynchronously
     const response = {
       success: true,
