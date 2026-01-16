@@ -276,25 +276,27 @@ export async function POST(request: NextRequest) {
     request.headers.get('host')?.includes('localhost') ||
     isMediarUser;
 
-  // Security: Max 3 VMs per user to prevent abuse
-  const MAX_VMS_PER_USER = 3;
-  const { count: vmCount } = await supabase
-    .from('remote_machines')
-    .select('id', { count: 'exact', head: true })
-    .eq('owner_user_id', userId)
-    .not('status', 'in', '("deleted","failed")');
+  // Security: Max 3 VMs per user to prevent abuse (skip for Mediar team)
+  if (!skipRateLimits) {
+    const MAX_VMS_PER_USER = 3;
+    const { count: vmCount } = await supabase
+      .from('remote_machines')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_user_id', userId)
+      .not('status', 'in', '("deleted","failed")');
 
-  if (vmCount !== null && vmCount >= MAX_VMS_PER_USER) {
-    console.warn(`[VM Provision API] User ${userId} hit VM limit: ${vmCount}/${MAX_VMS_PER_USER}`);
-    return NextResponse.json(
-      {
-        success: false,
-        error: `Maximum ${MAX_VMS_PER_USER} sandboxes per user. Please delete existing sandboxes first.`,
-        currentCount: vmCount,
-        maxAllowed: MAX_VMS_PER_USER,
-      },
-      { status: 400 }
-    );
+    if (vmCount !== null && vmCount >= MAX_VMS_PER_USER) {
+      console.warn(`[VM Provision API] User ${userId} hit VM limit: ${vmCount}/${MAX_VMS_PER_USER}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Maximum ${MAX_VMS_PER_USER} sandboxes per user. Please delete existing sandboxes first.`,
+          currentCount: vmCount,
+          maxAllowed: MAX_VMS_PER_USER,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   // Security: Rate limit - max 1 VM creation per hour to prevent rapid abuse
@@ -325,8 +327,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Security: IP-based rate limit - max 5 VMs per IP per 24 hours to prevent multi-account abuse
-  // Skip in development
-  if (!isDev && clientIp && clientIp !== 'unknown') {
+  // Skip in development or for Mediar team
+  if (!skipRateLimits && clientIp && clientIp !== 'unknown') {
     const MAX_VMS_PER_IP_PER_DAY = 5;
     const TWENTY_FOUR_HOURS_AGO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const ipTag = `ip:${clientIp}`;
