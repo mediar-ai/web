@@ -185,6 +185,18 @@ async function claimFromWarmPool(
   mcpEndpoint: string;
 } | null> {
   try {
+    console.log('[VM Provision API] Attempting to claim from warm pool...');
+    console.log(`[VM Provision API] Looking for tags: ${WARM_POOL_CONFIG.tags.poolWarm}, ${WARM_POOL_CONFIG.tags.poolStatusAvailable}`);
+
+    // First, check how many pool VMs are available (for debugging)
+    const { count: availableCount } = await supabase
+      .from('remote_machines')
+      .select('id', { count: 'exact', head: true })
+      .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
+      .eq('status', 'inactive');
+
+    console.log(`[VM Provision API] Available pool VMs count: ${availableCount}`);
+
     // Find and lock an available pool VM using FOR UPDATE SKIP LOCKED
     // This prevents race conditions when multiple users try to claim simultaneously
     const { data: poolVm, error } = await supabase
@@ -196,10 +208,20 @@ async function claimFromWarmPool(
       .limit(1)
       .single();
 
-    if (error || !poolVm) {
-      console.log('[VM Provision API] No available pool VMs');
+    if (error) {
+      console.log(`[VM Provision API] Pool query error: ${error.code} - ${error.message}`);
+      console.log(`[VM Provision API] Error details: ${JSON.stringify(error)}`);
       return null;
     }
+
+    if (!poolVm) {
+      console.log('[VM Provision API] No pool VM returned (null data)');
+      return null;
+    }
+
+    console.log(`[VM Provision API] Found pool VM: ${poolVm.id} (${poolVm.name})`);
+    console.log(`[VM Provision API] Pool VM tags: ${poolVm.tags?.join(', ')}`);
+    console.log(`[VM Provision API] Pool VM MCP endpoint: ${poolVm.mcp_endpoint}`);
 
     // Update the VM to claiming status atomically
     const updatedTags = updateTagsToClaimingStatus(poolVm.tags || [], userId, requestId);
