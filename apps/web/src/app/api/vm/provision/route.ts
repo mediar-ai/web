@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   getEstimatedMonthlyCost,
   getAvailableRegions,
@@ -95,7 +95,7 @@ async function claimFromWarmPool(
   orgId: string | null,
   requestId: string,
   vmName: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: SupabaseClient
 ): Promise<{
   machineId: number;
   name: string;
