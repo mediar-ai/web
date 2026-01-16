@@ -20,6 +20,7 @@ import {
   Timer,
   Cpu,
   AlertTriangle,
+  Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -608,6 +609,10 @@ export default function MyMachinesPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5 text-xs text-green-400 font-mono" title="Connection secured with TLS encryption">
+                <Shield className="w-3 h-3" />
+                <span>SECURE</span>
+              </div>
               <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
                 <Radio className="w-3 h-3" />
                 <span>INTERACTIVE</span>
