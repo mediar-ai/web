@@ -72,10 +72,30 @@ export async function GET(request: NextRequest) {
     // Determine overall status
     const isComplete = machine.status === 'active' && provisioningStep?.step === 'done';
     const isFailed = machine.status === 'failed' || provisioningStep?.status === 'failed';
+    const isClaiming = machine.status === 'claiming';
+
+    // Determine status string and message
+    let status: 'pending' | 'provisioning' | 'claiming' | 'complete' | 'failed';
+    let statusMessage: string | undefined;
+
+    if (isFailed) {
+      status = 'failed';
+      statusMessage = provisioningStep?.message || 'Provisioning failed';
+    } else if (isComplete) {
+      status = 'complete';
+      statusMessage = 'Sandbox is ready!';
+    } else if (isClaiming) {
+      status = 'claiming';
+      statusMessage = provisioningStep?.message || 'Starting your sandbox from pool...';
+    } else {
+      status = 'provisioning';
+      statusMessage = provisioningStep?.message || 'Provisioning in progress...';
+    }
 
     return NextResponse.json({
       success: true,
-      status: isFailed ? 'failed' : isComplete ? 'complete' : 'provisioning',
+      status,
+      statusMessage,
       requestId,
       machineId: machine.id,
       machine: {

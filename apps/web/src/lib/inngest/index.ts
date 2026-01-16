@@ -9,6 +9,12 @@ import {
 } from './functions/vm-lifecycle';
 import { vmBillingCronFunction } from './functions/vm-billing';
 import { costAlertsFunction, testCostAlertFunction } from './functions/cost-alerts';
+import {
+  maintainWarmPoolFunction,
+  provisionPoolVmFunction,
+  claimPoolVmFunction,
+  replenishWarmPoolFunction,
+} from './functions/warm-pool';
 
 export {
   provisionVmFunction,
@@ -20,6 +26,11 @@ export {
   autoDeleteOldTrialVmsFunction,
   costAlertsFunction,
   testCostAlertFunction,
+  // Warm pool functions
+  maintainWarmPoolFunction,
+  provisionPoolVmFunction,
+  claimPoolVmFunction,
+  replenishWarmPoolFunction,
 };
 
 // All Inngest functions - register these in the API route
@@ -33,4 +44,9 @@ export const inngestFunctions = [
   autoDeleteOldTrialVmsFunction,
   costAlertsFunction,
   testCostAlertFunction,
+  // Warm pool functions
+  maintainWarmPoolFunction,
+  provisionPoolVmFunction,
+  claimPoolVmFunction,
+  replenishWarmPoolFunction,
 ];
