@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { getOrganizationNames, getUserDisplayNames } from '@/lib/clerk-cache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -117,6 +118,52 @@ export async function GET(request: NextRequest) {
       assignmentsSummary = assignments || [];
     }
 
+    // Get last execution time for each machine
+    const machineIds = accessibleMachines.map(m => m.id);
+    const lastExecutionByMachine: Record<number, string> = {};
+
+    if (machineIds.length > 0) {
+      // Query the most recent execution for each machine
+      // Note: assigned_machine_id may be null for older executions
+      const { data: executions, error: execError } = await supabase
+        .from('workflow_executions')
+        .select('assigned_machine_id, created_at')
+        .not('assigned_machine_id', 'is', null)
+        .in('assigned_machine_id', machineIds)
+        .order('created_at', { ascending: false });
+
+      console.log(
+        `📋 Last execution query: found ${executions?.length || 0} executions with assigned machines (error: ${execError?.message || 'none'})`
+      );
+
+      if (executions && executions.length > 0) {
+        // Group by machine and take the most recent
+        for (const exec of executions) {
+          if (exec.assigned_machine_id && !lastExecutionByMachine[exec.assigned_machine_id]) {
+            lastExecutionByMachine[exec.assigned_machine_id] = exec.created_at;
+          }
+        }
+        console.log(
+          `📋 Last execution by machine:`,
+          Object.keys(lastExecutionByMachine).length,
+          'machines have execution history'
+        );
+      }
+    }
+
+    // Fetch human-friendly owner names from Clerk
+    const orgIds = accessibleMachines
+      .map(m => m.owner_org_id)
+      .filter((id): id is string => !!id);
+    const userIds = accessibleMachines
+      .map(m => m.owner_user_id)
+      .filter((id): id is string => !!id);
+
+    const [orgNames, userNames] = await Promise.all([
+      orgIds.length > 0 ? getOrganizationNames(orgIds) : Promise.resolve({}),
+      userIds.length > 0 ? getUserDisplayNames(userIds) : Promise.resolve({}),
+    ]);
+
     // Format response
     const formattedMachines = accessibleMachines.map(machine => ({
       id: machine.id,
@@ -129,6 +176,15 @@ export async function GET(request: NextRequest) {
       tags: machine.tags,
       is_global: machine.is_global, // Include global flag for UI display
       azure_resource_id: machine.azure_resource_id, // Azure unique identifier
+
+      // Owner info
+      owner_user_id: machine.owner_user_id,
+      owner_org_id: machine.owner_org_id,
+      owner_name: machine.owner_org_id
+        ? orgNames[machine.owner_org_id] || null
+        : machine.owner_user_id
+          ? userNames[machine.owner_user_id] || null
+          : null,
 
       // Connection details (nested format)
       endpoints: {
@@ -183,6 +239,14 @@ export async function GET(request: NextRequest) {
 
       // Provisioning status (for UI progress tracking)
       provisioning_step: machine.provisioning_step,
+
+      // Last activity - use workflow execution time, or fall back to machine's updated_at (VNC access updates this)
+      // Only use updated_at as fallback if it's significantly different from created_at (meaning actual activity happened)
+      last_execution_at: lastExecutionByMachine[machine.id] ||
+        (machine.updated_at && machine.created_at &&
+         new Date(machine.updated_at).getTime() - new Date(machine.created_at).getTime() > 60000
+          ? machine.updated_at
+          : null),
     }));
 
     const responseData = {

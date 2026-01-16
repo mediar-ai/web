@@ -14,6 +14,8 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
+  User,
+  Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { VNC_GATEWAY_URL } from '@/lib/azure';
@@ -48,6 +50,13 @@ interface MachineCardProps {
     first_healthy_at?: string;
     // Provisioning progress
     provisioning_step?: ProvisioningStep | string;
+    // Owner info
+    owner_user_id?: string;
+    owner_org_id?: string;
+    owner_name?: string;
+    // Activity
+    last_execution_at?: string;
+    created_at?: string;
   };
   onRefresh: () => void;
   compact?: boolean;
@@ -379,6 +388,49 @@ export function MachineCard({
           <div className="text-xs text-gray-500 font-mono uppercase">Azure</div>
           <div className="font-mono text-xs">
             {hasAzure ? 'Configured' : 'Not set'}
+          </div>
+        </div>
+      </div>
+
+      {/* Owner & Activity Info */}
+      <div className="px-3 py-2 grid grid-cols-3 gap-3 text-sm border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-1.5">
+          <User className="w-3 h-3 text-gray-400" />
+          <div className="text-xs text-gray-500 font-mono uppercase">Owner</div>
+          <div className="font-mono text-xs truncate" title={machine.owner_name || machine.owner_org_id || machine.owner_user_id || undefined}>
+            {machine.owner_name ? (
+              <span title={machine.owner_org_id ? `Org: ${machine.owner_org_id}` : `User: ${machine.owner_user_id}`}>
+                {machine.owner_name}
+              </span>
+            ) : machine.owner_org_id || machine.owner_user_id ? (
+              <span className="text-gray-400" title={machine.owner_org_id || machine.owner_user_id}>
+                {(machine.owner_org_id || machine.owner_user_id || '').slice(0, 12)}...
+              </span>
+            ) : (
+              <span className="text-gray-400">Global/Unowned</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <div className="text-xs text-gray-500 font-mono uppercase">Last Used</div>
+          <div className="font-mono text-xs">
+            {machine.last_execution_at ? (
+              formatTimeAgo(machine.last_execution_at)
+            ) : (
+              <span className="text-gray-400">Never</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <div className="text-xs text-gray-500 font-mono uppercase">Created</div>
+          <div className="font-mono text-xs">
+            {machine.created_at ? (
+              formatTimeAgo(machine.created_at)
+            ) : (
+              <span className="text-gray-400">-</span>
+            )}
           </div>
         </div>
       </div>

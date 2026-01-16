@@ -3,3 +3,5 @@
 
 # next.js build output
 .next/
+.vercel
+.env*.local

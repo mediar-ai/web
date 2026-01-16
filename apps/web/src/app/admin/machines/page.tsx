@@ -24,6 +24,13 @@ interface Machine {
   total_checks?: number;
   successful_checks?: number;
   uptime_percentage?: number;
+  // Owner info
+  owner_user_id?: string;
+  owner_org_id?: string;
+  owner_name?: string;
+  // Activity
+  last_execution_at?: string;
+  created_at?: string;
 }
 
 const REFRESH_INTERVAL = 15000; // 15 seconds for machine health
