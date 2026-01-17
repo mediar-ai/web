@@ -99,12 +99,14 @@ export async function DELETE(
   }
 
   // Trigger Azure resource cleanup via Inngest (async - don't wait for it)
+  // Pass both azure_resource_id AND machine name so we can derive resource group if needed
   try {
     await inngest.send({
       name: 'vm/delete.requested',
       data: {
         machineId: parseInt(machineId),
         azureResourceId: machine.azure_resource_id,
+        machineName: machine.name, // Fallback: derive RG from name pattern mcp-{customer}-{name}-rg
       },
     });
   } catch (err) {

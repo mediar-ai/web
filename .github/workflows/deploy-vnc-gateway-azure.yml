@@ -1,0 +1,137 @@
+name: Deploy VNC Gateway to Azure
+
+on:
+  # Manual trigger only - use this when ready to switch from GCP
+  workflow_dispatch:
+    inputs:
+      deploy_aci:
+        description: 'Deploy to Azure Container Instance'
+        required: true
+        default: 'true'
+        type: boolean
+
+env:
+  ACR_NAME: mediarvncgateway
+  RESOURCE_GROUP: mediar-vnc-gateway-rg
+  IMAGE_NAME: vnc-gateway
+  LOCATION: eastus
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group (if not exists)
+        run: |
+          az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.LOCATION }} || true
+
+      - name: Create ACR (if not exists)
+        run: |
+          az acr create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.ACR_NAME }} \
+            --sku Basic \
+            --admin-enabled true || true
+
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build and push to ACR
+        run: |
+          cd infra/vnc-gateway
+
+          TAG=$(date +%Y%m%d-%H%M%S)
+          ACR_SERVER="${{ env.ACR_NAME }}.azurecr.io"
+
+          docker build -t ${ACR_SERVER}/${{ env.IMAGE_NAME }}:${TAG} .
+          docker tag ${ACR_SERVER}/${{ env.IMAGE_NAME }}:${TAG} ${ACR_SERVER}/${{ env.IMAGE_NAME }}:latest
+
+          docker push ${ACR_SERVER}/${{ env.IMAGE_NAME }}:${TAG}
+          docker push ${ACR_SERVER}/${{ env.IMAGE_NAME }}:latest
+
+          echo "IMAGE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "Pushed: ${ACR_SERVER}/${{ env.IMAGE_NAME }}:${TAG}"
+
+      - name: Get ACR credentials
+        if: ${{ inputs.deploy_aci }}
+        id: acr_creds
+        run: |
+          ACR_USERNAME=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name ${{ env.ACR_NAME }} --query passwords[0].value -o tsv)
+          echo "::add-mask::$ACR_PASSWORD"
+          echo "username=$ACR_USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$ACR_PASSWORD" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Azure Container Instance
+        if: ${{ inputs.deploy_aci }}
+        run: |
+          ACR_SERVER="${{ env.ACR_NAME }}.azurecr.io"
+
+          # Delete existing container if it exists (to update)
+          az container delete \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name vnc-gateway \
+            --yes || true
+
+          # Create new container
+          az container create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name vnc-gateway \
+            --image ${ACR_SERVER}/${{ env.IMAGE_NAME }}:latest \
+            --cpu 1 \
+            --memory 1 \
+            --registry-login-server ${ACR_SERVER} \
+            --registry-username ${{ steps.acr_creds.outputs.username }} \
+            --registry-password ${{ steps.acr_creds.outputs.password }} \
+            --dns-name-label mediar-vnc-gateway \
+            --ports 8080 \
+            --environment-variables \
+              PORT=8080 \
+              SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --secure-environment-variables \
+              SUPABASE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} \
+              VNC_PASSWORD=${{ secrets.VNC_PASSWORD }} \
+            --restart-policy Always \
+            --location ${{ env.LOCATION }}
+
+      - name: Get ACI details
+        if: ${{ inputs.deploy_aci }}
+        run: |
+          FQDN=$(az container show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name vnc-gateway \
+            --query ipAddress.fqdn -o tsv)
+
+          IP=$(az container show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name vnc-gateway \
+            --query ipAddress.ip -o tsv)
+
+          echo "### VNC Gateway Deployed to Azure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**FQDN:** \`$FQDN\`" >> $GITHUB_STEP_SUMMARY
+          echo "**IP:** \`$IP\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Endpoints:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Health: http://$FQDN:8080/health" >> $GITHUB_STEP_SUMMARY
+          echo "- VNC: http://$FQDN:8080/vnc/{vm-key}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**NOTE:** For HTTPS, configure Azure Application Gateway or Cloudflare proxy" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary (build only)
+        if: ${{ !inputs.deploy_aci }}
+        run: |
+          echo "### VNC Gateway Image Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ACI deployment skipped (deploy_aci=false)" >> $GITHUB_STEP_SUMMARY

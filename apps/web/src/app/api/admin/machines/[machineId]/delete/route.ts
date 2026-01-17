@@ -70,25 +70,35 @@ export async function DELETE(
     let azureDeleted = false;
     let resourceGroup: string | null = null;
 
-    // If machine has Azure Resource ID, delete the resource group
+    // Try to determine resource group from azure_resource_id or machine name
     if (machine.azure_resource_id) {
       try {
         const parsed = parseAzureVmResourceId(machine.azure_resource_id);
         resourceGroup = parsed.resourceGroup;
-
-        console.log(`[Delete VM] Deleting resource group: ${resourceGroup}`);
-        const result = await deleteVmResources(resourceGroup);
-
-        if (!result.success) {
-          console.error(`[Delete VM] Azure deletion failed: ${result.error}`);
-          // Continue to delete from database anyway
-        } else {
-          azureDeleted = true;
-        }
       } catch (parseError) {
         console.error('[Delete VM] Failed to parse Azure Resource ID:', parseError);
-        // Continue to delete from database anyway
       }
+    }
+
+    // Fallback: derive from machine name pattern (mcp-{customer}-{name} -> mcp-{customer}-{name}-rg)
+    if (!resourceGroup && machine.name && machine.name.startsWith('mcp-')) {
+      resourceGroup = `${machine.name}-rg`;
+      console.log(`[Delete VM] Derived resource group from machine name: ${resourceGroup}`);
+    }
+
+    // Delete the resource group if we found one
+    if (resourceGroup) {
+      console.log(`[Delete VM] Deleting resource group: ${resourceGroup}`);
+      const result = await deleteVmResources(resourceGroup);
+
+      if (!result.success) {
+        console.error(`[Delete VM] Azure deletion failed: ${result.error}`);
+        // Continue to delete from database anyway
+      } else {
+        azureDeleted = true;
+      }
+    } else {
+      console.warn(`[Delete VM] No resource group found for machine ${machineId} (${machine.name})`);
     }
 
     // Record operation in database
