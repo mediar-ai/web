@@ -349,9 +349,66 @@ export async function POST(request: NextRequest) {
   // Debug mode - return early with debug info (for Mediar team only)
   const url = new URL(request.url);
   if (url.searchParams.get('debug') === 'true' && isMediarUser) {
+    // If debug=pool, also test the pool claim flow
+    if (url.searchParams.get('pool') === 'true' && isTrial) {
+      const supabaseUrlDebug = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKeyDebug = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrlDebug || !supabaseServiceKeyDebug) {
+        return NextResponse.json({ debug: true, error: 'Missing env vars' }, { status: 500 });
+      }
+      const supabaseDebug = createClient(supabaseUrlDebug, supabaseServiceKeyDebug);
+
+      try {
+        // Test the exact same query that claimFromWarmPool uses
+        const { count: availableCount, error: countErr } = await supabaseDebug
+          .from('remote_machines')
+          .select('id', { count: 'exact', head: true })
+          .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
+          .eq('status', 'inactive');
+
+        const { data: poolVm, error: queryErr } = await supabaseDebug
+          .from('remote_machines')
+          .select('id, name, tags, mcp_endpoint')
+          .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
+          .eq('status', 'inactive')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .single();
+
+        return NextResponse.json({
+          debug: true,
+          deploymentVersion: 'v3-pool-diag',
+          parsing: { isTrial, bodyIsTrial: body.isTrial },
+          user: { userId, email, isMediarUser },
+          poolDiagnostics: {
+            configTags: {
+              poolWarm: WARM_POOL_CONFIG.tags.poolWarm,
+              poolStatusAvailable: WARM_POOL_CONFIG.tags.poolStatusAvailable,
+            },
+            countQuery: { availableCount, error: countErr?.message },
+            singleQuery: {
+              poolVm: poolVm ? { id: poolVm.id, name: poolVm.name, hasMcpEndpoint: !!poolVm.mcp_endpoint, tags: poolVm.tags } : null,
+              error: queryErr ? { code: queryErr.code, message: queryErr.message } : null,
+            },
+            wouldClaimFromPool: !!poolVm && !queryErr,
+          },
+        });
+      } catch (err) {
+        return NextResponse.json({
+          debug: true,
+          deploymentVersion: 'v3-pool-diag',
+          parsing: { isTrial, bodyIsTrial: body.isTrial },
+          user: { userId, email, isMediarUser },
+          poolDiagnostics: {
+            exception: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+          },
+        });
+      }
+    }
+
     return NextResponse.json({
       debug: true,
-      deploymentVersion: 'v2-pool-debug', // Change this to verify deployment
+      deploymentVersion: 'v3-pool-diag',
       parsing: {
         'body.isTrial': body.isTrial,
         'typeof body.isTrial': typeof body.isTrial,
