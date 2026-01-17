@@ -51,21 +51,69 @@ export async function GET() {
 
 /**
  * POST /api/vm/pool-debug
- * Test how the provision route would parse the request body
+ * Simulate the full pool claim flow without actually claiming
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json({ error: 'Missing env vars' }, { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const isTrial = body.isTrial === true;
 
-  return NextResponse.json({
-    receivedBody: body,
-    parsing: {
+  const result: Record<string, unknown> = {
+    step1_parsing: {
       'body.isTrial': body.isTrial,
       'typeof body.isTrial': typeof body.isTrial,
-      'body.isTrial === true': body.isTrial === true,
-      'isTrial (final)': isTrial,
+      isTrial,
     },
-    wouldAttemptPoolClaim: isTrial,
-  });
+    deploymentVersion: 'v3-full-simulation',
+  };
+
+  if (!isTrial) {
+    result.outcome = 'SKIP: isTrial is false, would not attempt pool claim';
+    return NextResponse.json(result);
+  }
+
+  result.step2_wouldEnterTrialBlock = true;
+
+  // Simulate the pool query
+  try {
+    const { count: availableCount } = await supabase
+      .from('remote_machines')
+      .select('id', { count: 'exact', head: true })
+      .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
+      .eq('status', 'inactive');
+
+    result.step3_poolCount = availableCount;
+
+    const { data: poolVm, error } = await supabase
+      .from('remote_machines')
+      .select('id, name, tags, mcp_endpoint, status')
+      .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
+      .eq('status', 'inactive')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    if (error) {
+      result.step4_queryError = { code: error.code, message: error.message };
+      result.outcome = 'WOULD FALLBACK: Query returned error';
+    } else if (!poolVm) {
+      result.step4_poolVm = null;
+      result.outcome = 'WOULD FALLBACK: No pool VM found';
+    } else {
+      result.step4_poolVm = { id: poolVm.id, name: poolVm.name, status: poolVm.status };
+      result.outcome = 'WOULD CLAIM: Pool VM found and would be claimed';
+    }
+  } catch (err) {
+    result.step3_exception = err instanceof Error ? err.message : String(err);
+    result.outcome = 'WOULD FALLBACK: Exception thrown';
+  }
+
+  return NextResponse.json(result);
 }

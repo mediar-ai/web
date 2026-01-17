@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import { useUser, useOrganization } from '@clerk/nextjs';
 import Link from 'next/link';
 import {
-  Users,
-  Mail,
   Server,
   CreditCard,
   Receipt,
@@ -22,22 +20,9 @@ interface QuickStats {
   totalOrganizations: number;
   totalMachines: number;
   healthyMachines: number;
-  pendingInvitations: number;
 }
 
 const quickLinks = [
-  {
-    title: 'Members',
-    href: '/admin/members',
-    icon: Users,
-    description: 'Manage organization members across all orgs',
-  },
-  {
-    title: 'Invitations',
-    href: '/admin/invitations',
-    icon: Mail,
-    description: 'View and manage pending invitations',
-  },
   {
     title: 'Machines',
     href: '/admin/machines',
@@ -57,10 +42,10 @@ const quickLinks = [
     description: 'Customer usage metrics and invoicing',
   },
   {
-    title: 'Sentry traces by hostname',
+    title: 'Observability',
     href: '/admin/observability',
     icon: Activity,
-    description: 'Total spans for: terminator::new',
+    description: 'Sentry traces by hostname',
   },
   {
     title: 'VM Timeline',
