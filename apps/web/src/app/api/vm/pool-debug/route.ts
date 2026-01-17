@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       'typeof body.isTrial': typeof body.isTrial,
       isTrial,
     },
-    deploymentVersion: 'v3-full-simulation',
+    deploymentVersion: 'v4-force-deploy',
   };
 
   if (!isTrial) {
