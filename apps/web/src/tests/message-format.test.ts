@@ -427,10 +427,10 @@ class MessageFormatTests {
     const startTime = Date.now();
 
     const messagesWithoutContent = [
-      [{ role: 'user' }], // No content or parts
-      [{ role: 'user', content: null }], // Null content
-      [{ role: 'user', content: '' }], // Empty content (should be valid)
-      [{ role: 'user', parts: [] }], // Empty parts array
+      [{ role: 'user' }], // No content or parts - invalid
+      [{ role: 'user', content: null }], // Null content - invalid
+      [{ role: 'user', content: '' }], // Empty content - invalid (empty string is falsy)
+      [{ role: 'user', parts: [] }], // Empty parts array - valid (array exists, even if empty)
     ];
 
     const results = [];
@@ -438,8 +438,8 @@ class MessageFormatTests {
     for (let i = 0; i < messagesWithoutContent.length; i++) {
       const validation = validateMessages(messagesWithoutContent[i]);
 
-      // Empty content should be valid, others should be invalid
-      const shouldBeValid = i === 2; // Only empty string content should pass
+      // Cases 0-2 should be invalid, case 3 (empty parts array) is valid because ![] is false
+      const shouldBeValid = i === 3;
       const correctResult = validation.valid === shouldBeValid;
 
       results.push({
