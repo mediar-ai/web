@@ -255,13 +255,15 @@ async function claimFromWarmPool(
     // Update the VM to claiming status atomically
     const updatedTags = updateTagsToClaimingStatus(poolVm.tags || [], userId, requestId);
 
+    // Use 'starting' status instead of 'claiming' because the database CHECK constraint
+    // only allows: active, inactive, maintenance, failed, starting
     const { error: updateError } = await supabase
       .from('remote_machines')
       .update({
         tags: updatedTags,
-        status: 'claiming',
+        status: 'starting', // Use allowed status; the provisioning_step.step tracks 'claiming'
         provisioning_step: JSON.stringify({
-          step: 'claiming',
+          step: 'pool_claim', // Use distinct step name to identify pool claims
           status: 'in_progress',
           message: 'Claiming sandbox from pool...',
           timestamp: new Date().toISOString(),

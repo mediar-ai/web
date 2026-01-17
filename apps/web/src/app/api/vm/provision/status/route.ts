@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const requestTag = `request:${requestId}`;
     const { data: machine, error } = await supabase
       .from('remote_machines')
-      .select('id, name, status, health_status, provisioning_step, mcp_endpoint, created_at, updated_at')
+      .select('id, name, status, health_status, provisioning_step, mcp_endpoint, tags, created_at, updated_at')
       .eq('owner_user_id', userId)
       .contains('tags', [requestTag])
       .single();
@@ -72,7 +72,9 @@ export async function GET(request: NextRequest) {
     // Determine overall status
     const isComplete = machine.status === 'active' && provisioningStep?.step === 'done';
     const isFailed = machine.status === 'failed' || provisioningStep?.status === 'failed';
-    const isClaiming = machine.status === 'claiming';
+    // Detect pool claims by provisioning step (step=pool_claim) or starting status with pool tags
+    const isPoolClaim = provisioningStep?.step === 'pool_claim' ||
+      (machine.status === 'starting' && machine.tags?.includes('pool:warm'));
 
     // Determine status string and message
     let status: 'pending' | 'provisioning' | 'claiming' | 'complete' | 'failed';
@@ -84,7 +86,7 @@ export async function GET(request: NextRequest) {
     } else if (isComplete) {
       status = 'complete';
       statusMessage = 'Sandbox is ready!';
-    } else if (isClaiming) {
+    } else if (isPoolClaim) {
       status = 'claiming';
       statusMessage = provisioningStep?.message || 'Starting your sandbox from pool...';
     } else {
