@@ -1,0 +1,10 @@
+# GCP Configuration
+# Copy to gcp.tfvars and fill in values
+
+gcp_project = "your-gcp-project-id"
+gcp_region  = "us-east1"
+
+# Existing secrets (same as Azure setup)
+clickhouse_password = "your-clickhouse-password"
+supabase_url        = "https://your-project.supabase.co"
+supabase_api_key    = "your-supabase-api-key"
