@@ -9,7 +9,12 @@
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'No tests configured for web app'",
     "clean": "rimraf .next .turbo"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.2"
   },
   "dependencies": {
     "@mediar/infra": "*"
