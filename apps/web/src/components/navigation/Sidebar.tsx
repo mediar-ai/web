@@ -112,13 +112,10 @@ export function Sidebar() {
         mediarOnly: true,
         children: [
           { label: 'Overview', href: '/admin', icon: LayoutGrid, mediarOnly: true },
-          { label: 'Members', href: '/admin/members', icon: Users, mediarOnly: true },
-          { label: 'Invitations', href: '/admin/invitations', icon: Bell, mediarOnly: true },
           { label: 'Machines', href: '/admin/machines', icon: Monitor, mediarOnly: true },
           { label: 'User Management', href: '/admin/user-management', icon: Shield, mediarOnly: true },
           { label: 'Billing', href: '/admin/billing', icon: DollarSign, mediarOnly: true },
           { label: 'Customer Billing', href: '/admin/customer-billing', icon: FileText, mediarOnly: true },
-          { label: 'Analytics', href: '/analytics', icon: BarChart3, mediarOnly: true },
         ],
       },
     ],
