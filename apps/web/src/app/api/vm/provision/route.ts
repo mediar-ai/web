@@ -343,6 +343,8 @@ export async function POST(request: NextRequest) {
   }
 
   const isTrial = body.isTrial === true;
+  console.log(`[VM Provision API] Request body: name=${body.name}, vmSize=${body.vmSize}, isTrial=${body.isTrial}`);
+  console.log(`[VM Provision API] Parsed isTrial=${isTrial} (typeof body.isTrial: ${typeof body.isTrial})`);
 
   // SECURITY: Validate vmSize against allowed sizes to prevent cost attacks
   // Without this check, attacker could request vmSize="Standard_D96as_v5" (96 cores, $10+/hr)
@@ -502,6 +504,7 @@ export async function POST(request: NextRequest) {
 
   // For trial sandboxes, try to claim from warm pool first (much faster: ~30-60s vs 5-10min)
   if (isTrial) {
+    console.log('[VM Provision API] Trial request detected, attempting warm pool claim...');
     try {
       // Generate request ID early so we can use it for pool claim
       const requestId = randomUUID();
@@ -556,7 +559,8 @@ export async function POST(request: NextRequest) {
       // If no pool VM available, fall through to regular provisioning
       console.log('[VM Provision API] No pool VMs available, falling back to regular provisioning');
     } catch (poolError) {
-      console.error('[VM Provision API] Error checking warm pool, falling back:', poolError);
+      console.error('[VM Provision API] Error checking warm pool, falling back to regular provisioning');
+      console.error('[VM Provision API] Pool error details:', poolError instanceof Error ? poolError.stack : poolError);
       // Fall through to regular provisioning
     }
   }
