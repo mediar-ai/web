@@ -80,7 +80,6 @@ export default function AdminOverviewPage() {
     totalOrganizations: 0,
     totalMachines: 0,
     healthyMachines: 0,
-    pendingInvitations: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -104,7 +103,6 @@ export default function AdminOverviewPage() {
           totalOrganizations: orgsData.organizations?.length || 0,
           totalMachines: machines.length,
           healthyMachines: healthyCount,
-          pendingInvitations: 0, // Would need separate API
         });
       } catch (error) {
         console.error('Failed to fetch stats:', error);
@@ -127,7 +125,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="border-2 border-black p-4">
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="w-5 h-5" />
@@ -153,15 +151,6 @@ export default function AdminOverviewPage() {
           </div>
           <div className="font-mono font-bold text-2xl">
             {loading ? '-' : `${stats.healthyMachines}/${stats.totalMachines}`}
-          </div>
-        </div>
-        <div className="border-2 border-black p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Mail className="w-5 h-5" />
-            <span className="font-mono text-xs text-gray-600 uppercase">Invitations</span>
-          </div>
-          <div className="font-mono font-bold text-2xl">
-            {loading ? '-' : stats.pendingInvitations}
           </div>
         </div>
       </div>

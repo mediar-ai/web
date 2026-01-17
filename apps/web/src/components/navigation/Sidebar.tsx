@@ -14,7 +14,6 @@ import {
   Shield,
   LogOut,
   Lock,
-  Bell,
   Users,
   User,
   Key,
@@ -23,6 +22,10 @@ import {
   FileText,
   Zap,
   BarChart3,
+  Activity,
+  Clock,
+  Coins,
+  MessageSquare,
 } from 'lucide-react';
 import { MediarOrgSwitcher } from '@/components/admin/MediarOrgSwitcher';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -113,9 +116,14 @@ export function Sidebar() {
         children: [
           { label: 'Overview', href: '/admin', icon: LayoutGrid, mediarOnly: true },
           { label: 'Machines', href: '/admin/machines', icon: Monitor, mediarOnly: true },
-          { label: 'User Management', href: '/admin/user-management', icon: Shield, mediarOnly: true },
           { label: 'Billing', href: '/admin/billing', icon: DollarSign, mediarOnly: true },
           { label: 'Customer Billing', href: '/admin/customer-billing', icon: FileText, mediarOnly: true },
+          { label: 'Observability', href: '/admin/observability', icon: Activity, mediarOnly: true },
+          { label: 'VM Timeline', href: '/admin/vm-timeline', icon: Clock, mediarOnly: true },
+          { label: 'User Tokens', href: '/admin/user-tokens', icon: Coins, mediarOnly: true },
+          { label: 'User Management', href: '/admin/user-management', icon: Shield, mediarOnly: true },
+          { label: 'PostHog Stats', href: '/admin/posthog-funnel', icon: BarChart3, mediarOnly: true },
+          { label: 'User Stats', href: '/admin/user-stats', icon: MessageSquare, mediarOnly: true },
         ],
       },
     ],
