@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "crates/*"
+]
+
+# Terminator dependencies configuration:
+#
+# By default, this workspace uses PUBLISHED crates from crates.io for production builds.
+#
+# For LOCAL DEVELOPMENT with local terminator sources:
+# - Create apps/desktop/src-tauri/.cargo/config.toml with local path patches
+# - To switch back to crates.io: remove the config.toml
+#
+# This approach ensures:
+# - CI/Production builds: Always use published, stable crates from crates.io
+# - Local development: Can use latest local terminator code for testing
+
+# Workspace-level build profiles
+[profile.release]
+debug = true
+
+# Development profile optimizations for better performance
+[profile.dev]
+opt-level = 0
+debug = 0
+incremental = true
+split-debuginfo = "unpacked"
+codegen-units = 256
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Use local terminator crates for development (adjust paths as needed)
+[patch.crates-io]
+terminator-rs = { path = "../terminator/crates/terminator" }
+terminator-workflow-recorder = { path = "../terminator/crates/terminator-workflow-recorder" }

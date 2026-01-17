@@ -1,0 +1,137 @@
+name: Desktop App Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "apps/desktop/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/desktop-test.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "apps/desktop/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/desktop-test.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust-tests:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout terminator (local dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: mediar-ai/terminator
+          path: terminator
+          ref: main
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build MCP binary (placeholder)
+        run: |
+          echo "Creating placeholder MCP binary for CI"
+          mkdir -p apps/desktop/src-tauri/binaries
+          echo "placeholder" > apps/desktop/src-tauri/binaries/terminator-mcp-agent-x86_64-pc-windows-msvc.exe
+        shell: bash
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run Rust tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --all-features --verbose
+
+      - name: Run Rust clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --all-features -- -D warnings
+
+      - name: Check Rust formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --all --check
+
+  frontend-tests:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: apps/desktop
+        run: bun install
+
+      - name: Run TypeScript type checking
+        working-directory: apps/desktop
+        run: bunx tsc --noEmit
+
+      - name: Run frontend tests with coverage
+        working-directory: apps/desktop
+        run: bun run test:coverage
+
+      - name: Run frontend linting
+        working-directory: apps/desktop
+        run: bun run lint
+
+  build-test:
+    runs-on: windows-latest
+    needs: [rust-tests, frontend-tests]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout terminator (local dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: mediar-ai/terminator
+          path: terminator
+          ref: main
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install dependencies
+        working-directory: apps/desktop
+        run: bun install
+
+      - name: Build application
+        working-directory: apps/desktop
+        run: bun run build:tauri

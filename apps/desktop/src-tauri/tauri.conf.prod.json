@@ -1,0 +1,175 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "mediar",
+  "identifier": "ai.mediar.desktop",
+  "build": {
+    "beforeDevCommand": "bun run predev:tauri && bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run prebuild:tauri && bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "window-control",
+          "description": "Allow window control operations and global shortcuts",
+          "windows": ["main", "recording-bar", "execution-bar", "ai-thinking-bar"],
+          "permissions": [
+            "core:window:allow-set-size",
+            "core:window:allow-inner-size",
+            "core:window:allow-outer-size",
+            "core:window:allow-start-dragging",
+            "core:window:allow-minimize",
+            "core:window:allow-unminimize",
+            "core:window:allow-maximize",
+            "core:window:allow-unmaximize",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-close",
+            "core:window:allow-show",
+            "core:window:allow-hide",
+            "core:window:allow-set-focus",
+            "core:window:allow-set-always-on-top",
+            "core:window:allow-is-visible",
+            "core:window:allow-is-minimized",
+            "core:window:allow-is-maximized",
+            "core:window:allow-request-user-attention",
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
+            "core:event:default",
+            "global-shortcut:default",
+            "global-shortcut:allow-register",
+            "global-shortcut:allow-unregister",
+            "global-shortcut:allow-unregister-all",
+            "sentry:allow-breadcrumb",
+            "sentry:default",
+            "dialog:default",
+            "dialog:allow-open",
+            "log:default",
+            "log:allow-log"
+          ]
+        }
+      ]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mediar Agent",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 450,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "decorations": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "transparent": true,
+        "shadow": true,
+        "visible": false
+      },
+      {
+        "label": "recording-bar",
+        "title": "Mediar Recording",
+        "url": "index.html?window=recording-bar",
+        "width": 280,
+        "height": 80,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "shadow": true,
+        "visible": false,
+        "center": false,
+        "x": 20,
+        "y": -100
+      },
+      {
+        "label": "execution-bar",
+        "title": "Mediar Workflow",
+        "url": "index.html?window=execution-bar",
+        "width": 350,
+        "height": 100,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "shadow": true,
+        "visible": false,
+        "center": false,
+        "x": 20,
+        "y": -120
+      },
+      {
+        "label": "ai-thinking-bar",
+        "title": "Mediar Thinking",
+        "url": "index.html?window=ai-thinking-bar",
+        "width": 350,
+        "height": 110,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "shadow": true,
+        "visible": false,
+        "center": false,
+        "x": 20,
+        "y": -130
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../scripts/add-defender-exclusions.bat": "",
+      "../scripts/add-defender-exclusions.ps1": "",
+      "vcredist/*": "",
+      "resources/demo/greenway.html": "resources/demo/",
+      "resources/demo/lc360.html": "resources/demo/"
+    },
+    "externalBin": ["binaries/bun", "binaries/terminator-mcp-agent"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "sidebarImage": "assets/nsis-sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Mediar",
+        "installerHooks": "./nsis-hooks/installer.nsh"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBNTU0NENGRDc5OUY3OTQKUldTVTk1blh6MFJWaXU4di8zNU16Q3BOb05SVjBVajdvazJIVWZyWjJDT1NiMmNFWXZvZFBiWUEK",
+      "endpoints": ["https://cdn.crabnebula.app/update/mediar/mediar/{{target}}-{{arch}}/{{current_version}}"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

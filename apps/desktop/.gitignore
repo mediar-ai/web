@@ -1,0 +1,69 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+*node_modules*
+dist
+dist-ssr
+*.local
+*.next*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.history/
+
+
+.env
+
+# Downloaded binaries (managed by build.rs)
+src-tauri/binaries/
+src-tauri/bun-*
+
+# Visual C++ Redistributables (downloaded during build)
+src-tauri/vcredist/
+
+
+# rust
+
+target
+
+# Development-only Cargo config (patches to local terminator sources)
+src-tauri/.cargo/config.toml
+
+# Cargo.lock changes frequently due to local patches - CI regenerates it
+Cargo.lock
+
+
+# rules
+
+.cursor/rules/
+# Workflow backups and recordings
+workflows/*.backup_*.yaml
+workflows/*_recorded_*.yaml
+workflows/*_from_main.yml
+
+# Tauri config backups (managed by git filters)
+src-tauri/*.backup
+
+# Development scripts (local only)
+restart-dev-safe-no-wmi.ps1
+cleanup.ps1
+local-scripts/
+src-tauri/vc_redist.x64.exe
+
+# Windows artifact
+nul
+tmpclaude-*

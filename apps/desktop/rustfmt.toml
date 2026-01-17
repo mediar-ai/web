@@ -1,0 +1,24 @@
+# Rustfmt configuration for consistent code formatting
+# Using only stable features to avoid CI issues
+edition = "2021"
+max_width = 120
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+
+# Stable options only
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+match_arm_leading_pipes = "Never"
+fn_params_layout = "Tall"  # Renamed from fn_args_layout
+
+# Width settings (stable)
+fn_call_width = 60
+attr_fn_like_width = 70
+struct_lit_width = 18
+struct_variant_width = 35
+array_width = 60
+chain_width = 60
+single_line_if_else_max_width = 50
