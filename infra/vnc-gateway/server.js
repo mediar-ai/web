@@ -257,7 +257,6 @@ const server = http.createServer(async (req, res) => {
 </head>
 <body>
   <div id="toolbar">
-    <button class="btn" id="pasteBtn">Paste to VM</button>
     <button class="btn" id="copyBtn">Copy from VM</button>
     <button class="btn" id="ctrlAltDel">Ctrl+Alt+Del</button>
     <span id="latency">--ms</span>
@@ -287,12 +286,35 @@ const server = http.createServer(async (req, res) => {
     let vmClipboard = '';
     rfb.addEventListener('clipboard', (e) => { vmClipboard = e.detail.text; });
 
-    document.getElementById('pasteBtn').onclick = async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text) rfb.clipboardPasteFrom(text);
-      } catch (err) { console.error(err); }
-    };
+    // Auto-paste: intercept Ctrl+V and paste events
+    document.addEventListener('paste', async (e) => {
+      // Only handle if VNC is connected
+      if (rfb && rfb._rfbConnectionState === 'connected') {
+        e.preventDefault();
+        const text = e.clipboardData?.getData('text');
+        if (text) {
+          rfb.clipboardPasteFrom(text);
+          console.log('Auto-pasted to VM:', text.slice(0, 50) + (text.length > 50 ? '...' : ''));
+        }
+      }
+    });
+
+    // Also handle Ctrl+V keydown as backup
+    document.addEventListener('keydown', async (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if (rfb && rfb._rfbConnectionState === 'connected') {
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+              rfb.clipboardPasteFrom(text);
+              console.log('Ctrl+V pasted to VM');
+            }
+          } catch (err) {
+            // Fallback to paste event will handle it
+          }
+        }
+      }
+    });
 
     document.getElementById('copyBtn').onclick = async () => {
       try {
