@@ -1,0 +1,81 @@
+name: Check Desktop App Update
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get current CrabNebula asset ID
+        id: current
+        run: |
+          # Follow redirect to get asset URL
+          ASSET_URL=$(curl -sI "https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64" | grep -i "^location:" | tr -d '\r' | cut -d' ' -f2)
+
+          # Extract asset ID from URL
+          ASSET_ID=$(echo "$ASSET_URL" | grep -oP 'asset/\K[A-Z0-9]+')
+
+          echo "Asset URL: $ASSET_URL"
+          echo "Asset ID: $ASSET_ID"
+          echo "asset_id=$ASSET_ID" >> $GITHUB_OUTPUT
+
+      - name: Get stored asset ID
+        id: stored
+        run: |
+          if [ -f ".github/desktop-app-version.txt" ]; then
+            STORED_ID=$(cat .github/desktop-app-version.txt)
+            echo "Stored ID: $STORED_ID"
+            echo "stored_id=$STORED_ID" >> $GITHUB_OUTPUT
+          else
+            echo "No stored version found"
+            echo "stored_id=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if update needed
+        id: check
+        run: |
+          if [ "${{ steps.current.outputs.asset_id }}" != "${{ steps.stored.outputs.stored_id }}" ]; then
+            echo "New version detected!"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "No update needed"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update stored version
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          echo "${{ steps.current.outputs.asset_id }}" > .github/desktop-app-version.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/desktop-app-version.txt
+          git commit -m "chore: update desktop app version to ${{ steps.current.outputs.asset_id }}"
+          git push
+
+      - name: Trigger VM image rebuild
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          gh workflow run build-vm-image.yml
+          echo "### Desktop App Update Detected" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "New asset ID: \`${{ steps.current.outputs.asset_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Old asset ID: \`${{ steps.stored.outputs.stored_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "VM image rebuild triggered." >> $GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No update summary
+        if: steps.check.outputs.needs_update == 'false'
+        run: |
+          echo "### No Desktop App Update" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Current asset ID: \`${{ steps.current.outputs.asset_id }}\`" >> $GITHUB_STEP_SUMMARY
