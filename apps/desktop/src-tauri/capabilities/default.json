@@ -1,0 +1,90 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:tray:default",
+    "core:menu:default",
+    "core:event:default",
+    "core:window:default",
+    "core:window:allow-toggle-maximize",
+    "autostart:default",
+    "shell:default",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "sentry:default",
+    "updater:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "process:default",
+    "positioner:default",
+    "process:allow-restart",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "log:default",
+    "log:allow-log",
+    "fs:default",
+    "fs:allow-resource-read",
+    "fs:allow-resource-read-recursive",
+    "fs:write-all",
+    "fs:read-all",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "fs:allow-applocaldata-read",
+    "fs:allow-applocaldata-read-recursive",
+    "fs:allow-applocaldata-write",
+    "fs:allow-applocaldata-write-recursive",
+    "fs:allow-picture-read-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$APPDATA/**"
+        },
+        {
+          "path": "$APPLOCALDATA/**"
+        },
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$RESOURCE/**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-rename",
+      "allow": ["$APPLOCALDATA/**"]
+    },
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        {
+          "path": "$APPLOCALDATA/**/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": [
+        {
+          "path": "$APPLOCALDATA/**/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        {
+          "path": "$APPLOCALDATA/**/*"
+        }
+      ]
+    },
+    "fs:allow-watch",
+    "fs:allow-unwatch",
+    "fs:default"
+  ]
+}

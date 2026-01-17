@@ -1,0 +1,5 @@
+# Project-specific Cargo configuration
+# Global optimizations (sccache, jobs, lld) are in ~/.cargo/config.toml
+
+# NOTE: Do NOT use target-cpu=native here - it causes "Illegal Instruction" crashes
+# on machines with older CPUs when the binary is built on a newer CPU

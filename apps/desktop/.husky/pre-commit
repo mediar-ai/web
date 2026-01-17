@@ -1,0 +1,23 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Check if tauri.conf.json has dev values IN THE STAGED VERSION (after clean filter)
+# Use git show :0:path to get the staged (filtered) content
+STAGED_CONTENT=$(git show :src-tauri/tauri.conf.json 2>/dev/null || cat src-tauri/tauri.conf.json)
+
+if echo "$STAGED_CONTENT" | grep -q '"mediar-dev[0-9]"' || echo "$STAGED_CONTENT" | grep -q '"ai\.mediar\.desktop\.dev[0-9]"'; then
+  echo "❌ Error: tauri.conf.json STAGED version contains development values!"
+  echo "   Git clean filter may not be working properly."
+  echo "   Expected: productName: 'mediar', identifier: 'ai.mediar.desktop'"
+  echo ""
+  echo "   Check git filter config:"
+  echo "   git config filter.tauri-config.clean"
+  echo "   git config filter.tauri-config.smudge"
+  exit 1
+fi
+
+echo "✅ tauri.conf.json check passed (staged version is production)"
+
+# Run lint-staged to format staged files (removes trailing blank lines, etc.)
+echo "🔧 Running lint-staged..."
+npx lint-staged

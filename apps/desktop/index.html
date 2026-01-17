@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ipc: http://ipc.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://client.crisp.chat https://settings.crisp.chat https://eu-assets.i.posthog.com https://*.crisp.chat; script-src-elem 'self' 'unsafe-inline' https://client.crisp.chat https://settings.crisp.chat https://eu-assets.i.posthog.com https://*.crisp.chat; connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* https://app.mediar.ai https://cdn.crabnebula.app https://client.crisp.chat https://settings.crisp.chat https://storage.crisp.chat https://stream.relay.crisp.chat https://eu.i.posthog.com https://eu-assets.i.posthog.com https://*.crisp.chat wss://client.crisp.chat wss://stream.relay.crisp.chat wss://*.crisp.chat ws: wss: https://oauth2.googleapis.com https://*.googleapis.com https://generativelanguage.googleapis.com https://playgroundcdn.typescriptlang.org; frame-src https://client.crisp.chat https://game.crisp.chat https://settings.crisp.chat https://*.crisp.chat; img-src 'self' data: blob: https: http://asset.localhost https://client.crisp.chat https://storage.crisp.chat https://image.crisp.chat; style-src 'self' 'unsafe-inline' https://client.crisp.chat https://*.crisp.chat; font-src 'self' data: https://client.crisp.chat;" />
+    <title>Mediar</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <div id="dropdown-portal"></div>
+    <!-- Shim for Google auth library - needs process.stdout/stderr -->
+    <script>
+      window.process = window.process || {};
+      window.process.stdout = window.process.stdout || { isTTY: false };
+      window.process.stderr = window.process.stderr || { isTTY: false };
+      window.process.env = window.process.env || { NODE_ENV: 'production' };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

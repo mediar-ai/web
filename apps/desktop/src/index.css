@@ -1,0 +1,836 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* Font scaling system for compact view */
+  --font-scale: 1.0; /* Normal size multiplier */
+  --compact-padding-scale: 0.85; /* Reduce padding in compact mode */
+
+  /* Color variables */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Dark mode with 95% transparent background */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+
+  /* Global font scaling - applies to all text elements */
+  input,
+  textarea,
+  button,
+  p,
+  span,
+  div,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  label,
+  a,
+  li {
+    font-size: calc(0.875rem * var(--font-scale)) !important;
+  }
+
+  /* Target placeholder text specifically */
+  input::placeholder,
+  textarea::placeholder {
+    font-size: calc(0.875rem * var(--font-scale)) !important;
+  }
+
+  /* Specific Tailwind text classes */
+  .text-xs { font-size: calc(0.75rem * var(--font-scale)) !important; }
+  .text-sm { font-size: calc(0.875rem * var(--font-scale)) !important; }
+  .text-base { font-size: calc(1rem * var(--font-scale)) !important; }
+  .text-lg { font-size: calc(1.125rem * var(--font-scale)) !important; }
+  .text-xl { font-size: calc(1.25rem * var(--font-scale)) !important; }
+  .text-2xl { font-size: calc(1.5rem * var(--font-scale)) !important; }
+  .text-3xl { font-size: calc(1.875rem * var(--font-scale)) !important; }
+
+  html,
+  body,
+  #root {
+    @apply h-full m-0 p-0 border-0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    overflow: hidden;
+    border-width: 0px;
+    /* Disable text selection for native feel */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+    /* Disable text selection globally */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Disable drag behaviors */
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    /* Disable highlighting */
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Re-enable text selection for input elements */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+  }
+
+  /* Ensure selection highlighting is visible in input elements */
+  input::selection,
+  textarea::selection,
+  [contenteditable="true"]::selection {
+    background-color: rgba(0, 0, 0, 0.2) !important;
+    color: inherit !important;
+  }
+
+  input::-moz-selection,
+  textarea::-moz-selection,
+  [contenteditable="true"]::-moz-selection {
+    background-color: rgba(0, 0, 0, 0.2) !important;
+    color: inherit !important;
+  }
+
+  body {
+    /* Backdrop blur effect with subtle background */
+    background: rgba(255, 255, 255, 0.01);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    @apply text-foreground;
+    /* Additional native app styles */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Solid background mode - overrides transparency */
+  .solid-background body {
+    background: rgb(255, 255, 255);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .dark.solid-background body {
+    background: rgb(23, 23, 23);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Override transparent backgrounds in solid mode */
+  .solid-background .bg-white\/5,
+  .solid-background .bg-black\/5,
+  .solid-background .bg-transparent,
+  .solid-background .backdrop-blur-md,
+  .solid-background .backdrop-blur-sm,
+  .solid-background .backdrop-blur-lg {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .solid-background .bg-white\/5 {
+    @apply bg-gray-50;
+  }
+
+  .dark.solid-background .bg-white\/5 {
+    @apply bg-gray-900;
+  }
+
+  .solid-background .bg-black\/5 {
+    @apply bg-gray-100;
+  }
+
+  .dark.solid-background .bg-black\/5 {
+    @apply bg-gray-800;
+  }
+
+  /* Text shadow only for larger text elements */
+  h1, h2, h3, h4, h5, h6,
+  .text-lg, .text-xl, .text-2xl, .text-3xl,
+  .font-semibold, .font-bold {
+    text-shadow:
+      0 1px 2px rgba(255, 255, 255, 0.3),
+      0 0.5px 1px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Subtle shadow for regular text - much lighter */
+  body {
+    text-shadow:
+      0 0.5px 1px rgba(255, 255, 255, 0.2);
+  }
+
+  /* Dark mode text shadows - also lighter */
+  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6,
+  .dark .text-lg, .dark .text-xl, .dark .text-2xl, .dark .text-3xl,
+  .dark .font-semibold, .dark .font-bold {
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.3),
+      0 0.5px 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .dark body {
+    text-shadow:
+      0 0.5px 1px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Remove text shadow from inputs and small text for clarity */
+  input,
+  textarea,
+  [contenteditable="true"],
+  .text-xs,
+  .text-sm {
+    text-shadow: none !important;
+  }
+
+  /* Additional small text sizes without text shadow */
+  [class*="text-["] {
+    text-shadow: none !important;
+  }
+
+  /* Re-enable text selection for input fields and text areas */
+  input,
+  textarea,
+  [contenteditable="true"],
+  .selectable,
+  /* Allow selection in chat messages for copying AI responses */
+  .chat-message-content,
+  .chat-message-content *,
+  /* Ensure input elements are selectable */
+  [data-slot="input"],
+  /* Allow selection in workflow descriptions and content */
+  .workflow-description,
+  .workflow-step-content,
+  /* Allow selection in general text content areas */
+  p,
+  span:not([class*="icon"]):not([class*="button"]):not(.lucide):not([role="button"]),
+  h1, h2, h3, h4, h5, h6,
+  li,
+  div:not([class*="button"]):not([role="button"]):not(.interactive-element),
+  /* Allow selection in error messages and notifications */
+  .error-message,
+  .notification-content,
+  /* Allow selection in code blocks and pre-formatted text */
+  pre,
+  code,
+  /* Allow selection in markdown content */
+  .markdown-content,
+  .markdown-content *,
+  /* Allow selection in cards and content areas */
+  [class*="card"] *:not(button):not([role="button"]):not(.interactive-element),
+  /* Allow selection in text-based elements */
+  [class*="text-"],
+  /* Allow selection in workflow and step content */
+  [data-step-name],
+  [data-step-description],
+  [data-workflow-name],
+  [data-workflow-description],
+  /* Allow selection in table-like structures */
+  [class*="grid"] span:not([class*="icon"]):not([class*="button"]),
+  [class*="flex"] span:not([class*="icon"]):not([class*="button"]),
+  /* Allow selection in timestamps and metadata */
+  time,
+  [datetime],
+  /* Allow selection in pre-formatted and structured content */
+  .font-mono:not(button):not([role="button"]),
+  .whitespace-pre-wrap,
+  /* Allow selection in specific UI components */
+  .truncate,
+  .break-words,
+  .break-all,
+  /* Allow selection in titles and descriptions */
+  [class*="title"]:not(button):not([role="button"]),
+  [class*="description"]:not(button):not([role="button"]),
+  /* Allow selection in input elements */
+  input,
+  textarea,
+  [contenteditable="true"],
+  /* Allow selection in status and metadata text */
+  [class*="status"]:not(button):not([role="button"]),
+  [class*="meta"]:not(button):not([role="button"]),
+  /* Allow selection in label-like elements */
+  label:not([for*="button"]):not([class*="button"]),
+  /* Allow selection in any text that should be copyable */
+  .copyable,
+  .selectable-text {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+  }
+
+  /* Global width guards to prevent horizontal overflow */
+  .chat-message-content,
+  .chat-message-content *,
+  [data-slot="scroll-area"],
+  [data-slot="scroll-area-viewport"],
+  .markdown-content,
+  .markdown-content *,
+  .border-black-outline,
+  .border-black-outline * {
+    max-width: 100% !important;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  /* Specific constraints for code blocks in tool execution messages */
+  .border-black-outline pre,
+  .border-black-outline pre > code {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+  }
+
+  /* Paragraphs, spans, and list items should wrap long words by default */
+  p,
+  li,
+  .chat-message-content p,
+  .chat-message-content li,
+  .markdown-content p,
+  .markdown-content li,
+  .chat-message-content span,
+  .markdown-content span {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Inline code should be allowed to break long tokens */
+  :not(pre) > code {
+    word-break: break-all;
+  }
+
+  /* Disable image dragging */
+  img {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    pointer-events: none;
+  }
+
+  /* Make buttons and interactive elements feel more native */
+  button,
+  .button,
+  [role="button"],
+  .interactive-element {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    /* Ensure buttons remain non-selectable for native feel */
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+  }
+
+  /* Disable context menu on right-click for native feel */
+  .no-context-menu {
+    -webkit-context-menu: none;
+  }
+
+  /* Standard black border for containers/sections */
+  .border-black-outline {
+    @apply border border-black rounded-lg;
+  }
+
+  /* Backdrop blur utilities */
+  .bg-transparent-white {
+    background: rgba(255, 255, 255, 0.01);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .bg-transparent-white-hover:hover {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* Dark mode backdrop blur */
+  .dark .bg-transparent-white {
+    background: rgba(0, 0, 0, 0.01);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .dark .bg-transparent-white-hover:hover {
+    background: rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* Pulse animation for preview mode button */
+  @keyframes preview-pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+
+  .preview-pulse {
+    animation: preview-pulse 1.5s ease-in-out infinite;
+  }
+
+}
+
+/* Compact view mode styles - twice as compact */
+.compact-view {
+  --font-scale: 0.75; /* 25% smaller fonts in ultra-compact mode */
+  --compact-padding-scale: 0.5; /* 50% less padding for maximum density */
+}
+
+/* Apply font scaling to text elements (using rem to avoid cascading) */
+.compact-view input,
+.compact-view textarea,
+.compact-view button,
+.compact-view p,
+.compact-view span,
+.compact-view div,
+.compact-view h1,
+.compact-view h2,
+.compact-view h3,
+.compact-view h4,
+.compact-view h5,
+.compact-view h6,
+.compact-view label,
+.compact-view a,
+.compact-view li {
+  font-size: calc(0.875rem * var(--font-scale)) !important;
+}
+
+/* Target placeholder text specifically */
+.compact-view input::placeholder,
+.compact-view textarea::placeholder {
+  font-size: calc(0.875rem * var(--font-scale)) !important;
+}
+
+/* Specific Tailwind text classes */
+.compact-view .text-xs { font-size: calc(0.75rem * var(--font-scale)) !important; }
+.compact-view .text-sm { font-size: calc(0.875rem * var(--font-scale)) !important; }
+.compact-view .text-base { font-size: calc(1rem * var(--font-scale)) !important; }
+.compact-view .text-lg { font-size: calc(1.125rem * var(--font-scale)) !important; }
+.compact-view .text-xl { font-size: calc(1.25rem * var(--font-scale)) !important; }
+.compact-view .text-2xl { font-size: calc(1.5rem * var(--font-scale)) !important; }
+.compact-view .text-3xl { font-size: calc(1.875rem * var(--font-scale)) !important; }
+
+/* Reduce padding/margins in compact mode */
+.compact-view .p-3 { padding: calc(0.75rem * var(--compact-padding-scale)); }
+.compact-view .p-4 { padding: calc(1rem * var(--compact-padding-scale)); }
+.compact-view .p-6 { padding: calc(1.5rem * var(--compact-padding-scale)); }
+.compact-view .px-3 { padding-left: calc(0.75rem * var(--compact-padding-scale)); padding-right: calc(0.75rem * var(--compact-padding-scale)); }
+.compact-view .px-4 { padding-left: calc(1rem * var(--compact-padding-scale)); padding-right: calc(1rem * var(--compact-padding-scale)); }
+.compact-view .py-2 { padding-top: calc(0.5rem * var(--compact-padding-scale)); padding-bottom: calc(0.5rem * var(--compact-padding-scale)); }
+
+/* Compact mode spacing for gaps */
+.compact-view .gap-3 { gap: calc(0.75rem * var(--compact-padding-scale)); }
+.compact-view .gap-6 { gap: calc(1.5rem * var(--compact-padding-scale)); }
+
+/* Smaller component heights in compact mode */
+.compact-view .h-9 { height: calc(2.25rem * var(--compact-padding-scale)); }
+.compact-view .h-10 { height: calc(2.5rem * var(--compact-padding-scale)); }
+
+/* Compact view indicator - subtle top border instead of intrusive sidebar */
+.compact-view::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+/* Custom animation for chat bubble */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Toast notification styles - darker outline and red error styling */
+[data-sonner-toast] {
+  @apply border-2 border-black rounded-lg shadow-lg;
+  background: white !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  @apply bg-red-50 border-l-4 border-l-red-500;
+  border-top: 2px solid black !important;
+  border-right: 2px solid black !important;
+  border-bottom: 2px solid black !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-title] {
+  @apply text-red-900;
+  font-weight: 600;
+}
+
+[data-sonner-toast][data-type="error"] [data-description] {
+  @apply text-red-800;
+}
+
+/* Dark mode toast styles */
+.dark [data-sonner-toast] {
+  @apply border-2 border-white/20;
+  background: rgba(32, 32, 32, 0.95) !important;
+}
+
+.dark [data-sonner-toast][data-type="error"] {
+  @apply bg-red-950/50 border-l-4 border-l-red-500;
+  border-top: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border-right: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark [data-sonner-toast][data-type="error"] [data-title] {
+  @apply text-red-200;
+  font-weight: 600;
+}
+
+.dark [data-sonner-toast][data-type="error"] [data-description] {
+  @apply text-red-300;
+}
+
+/* Fix for workflow steps code overflow */
+/* Keep minimal constraints to not break functionality */
+
+/* CodeMirror Search Panel - Floating in Central Panel Top Right */
+
+/* Make the central panel a positioning context */
+#details-panel,
+[data-panel-id="details-panel"] {
+  position: relative !important;
+}
+
+.cm-editor {
+  position: static !important;
+  height: 100%;
+}
+
+/* Add scroll margin to center search matches and enable keyboard scroll-into-view */
+.cm-editor .cm-scroller {
+  height: 100%;
+  overflow: auto;
+  scroll-padding-top: 40%;
+  scroll-padding-bottom: 40%;
+}
+
+/* Highlight current search match more prominently */
+.cm-editor .cm-searchMatch-selected {
+  background-color: rgba(255, 200, 0, 0.5) !important;
+}
+
+/* Position search panel at central panel top right */
+.cm-panels {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+  bottom: auto !important;
+  z-index: 100;
+}
+
+.cm-panels-top {
+  border-bottom: none !important;
+}
+
+.cm-panel.cm-search {
+  background: black;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.375rem;
+  padding: 8px 12px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: 400px;
+  color: white;
+}
+
+.cm-panel.cm-search label {
+  display: none;
+}
+
+.cm-panel.cm-search input.cm-textfield {
+  height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  min-width: 120px;
+  flex: 1;
+  color: white;
+}
+
+.cm-panel.cm-search input.cm-textfield:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+
+.cm-panel.cm-search input.cm-textfield::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px !important;
+}
+
+.cm-panel.cm-search button.cm-button {
+  height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0.25rem;
+  background: transparent;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+  color: white;
+}
+
+.cm-panel.cm-search button.cm-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-panel.cm-search button.cm-button:active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Close button styling */
+.cm-panel.cm-search button[name="close"] {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+/* Checkbox styling */
+.cm-panel.cm-search input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: white;
+  cursor: pointer;
+}
+
+/* Match count / info */
+.cm-panel.cm-search .cm-search-result {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0 4px;
+}
+
+/* Second row items (replace field) */
+.cm-panel.cm-search br {
+  display: none;
+}
+
+/* Dark mode support */
+.dark .cm-panel.cm-search {
+  background: #1f1f1f;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .cm-panel.cm-search input.cm-textfield {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.dark .cm-panel.cm-search input.cm-textfield:focus {
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.1);
+}
+
+.dark .cm-panel.cm-search input.cm-textfield::placeholder {
+  color: #6b7280;
+}
+
+.dark .cm-panel.cm-search button.cm-button {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.dark .cm-panel.cm-search button.cm-button:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.dark .cm-panel.cm-search button.cm-button:active {
+  background: rgb(255 255 255 / 0.15);
+}
+

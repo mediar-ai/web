@@ -1,0 +1,125 @@
+name: Desktop App Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      custom_version:
+        description: 'Custom version (overrides version_type if set, e.g., 1.2.3)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-22.04
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      tag_name: ${{ steps.bump.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(grep '^version = ' apps/desktop/src-tauri/Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "Current version: $CURRENT_VERSION"
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Calculate new version
+        id: bump
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            NEW_VERSION="${{ inputs.custom_version }}"
+            echo "Using custom version: $NEW_VERSION"
+          else
+            IFS='.' read -ra PARTS <<< "$CURRENT"
+            MAJOR=${PARTS[0]}
+            MINOR=${PARTS[1]}
+            PATCH=${PARTS[2]}
+
+            case "${{ inputs.version_type }}" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            echo "Bumping ${{ inputs.version_type }}: $CURRENT -> $NEW_VERSION"
+          fi
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=desktop-v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version in files
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" apps/desktop/src-tauri/Cargo.toml
+
+          # Update package.json
+          cd apps/desktop && sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" package.json
+
+          echo "Updated versions to $NEW_VERSION"
+
+      - name: Commit and tag
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          TAG_NAME="${{ steps.bump.outputs.tag_name }}"
+
+          git add apps/desktop/package.json apps/desktop/src-tauri/Cargo.toml
+          git commit -m "chore(desktop): bump version to $NEW_VERSION"
+          git tag -a "$TAG_NAME" -m "Desktop Release $TAG_NAME"
+
+          echo "Created commit and tag: $TAG_NAME"
+
+      - name: Push changes
+        run: |
+          git push origin main
+          git push origin ${{ steps.bump.outputs.tag_name }}
+          echo "Pushed commit and tag to origin"
+
+  summary:
+    name: Release Summary
+    needs: prepare-release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Print summary
+        run: |
+          echo "## Desktop Release Prepared Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare-release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ needs.prepare-release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
