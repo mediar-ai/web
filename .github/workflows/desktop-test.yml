@@ -28,12 +28,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout terminator (local dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: mediar-ai/terminator
-          path: ../terminator
-          ref: main
+      - name: Clone terminator (required for unpublished crate versions)
+        run: git clone --depth 1 https://github.com/mediar-ai/terminator.git ../terminator
+        shell: bash
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,13 +41,23 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.1.45"
+          bun-version: latest
 
       - name: Build MCP binary (placeholder)
         run: |
           echo "Creating placeholder MCP binary for CI"
           mkdir -p apps/desktop/src-tauri/binaries
           echo "placeholder" > apps/desktop/src-tauri/binaries/terminator-mcp-agent-x86_64-pc-windows-msvc.exe
+        shell: bash
+
+      - name: Create cargo config for CI
+        run: |
+          mkdir -p apps/desktop/src-tauri/.cargo
+          cat > apps/desktop/src-tauri/.cargo/config.toml << 'EOF'
+          [patch.crates-io]
+          terminator-rs = { path = "../../../../terminator/crates/terminator" }
+          terminator-workflow-recorder = { path = "../../../../terminator/crates/terminator-workflow-recorder" }
+          EOF
         shell: bash
 
       - name: Cache cargo dependencies
@@ -85,11 +92,11 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.1.45"
+          bun-version: latest
 
       - name: Install dependencies
         working-directory: apps/desktop
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Run TypeScript type checking
         working-directory: apps/desktop
@@ -111,26 +118,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout terminator (local dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: mediar-ai/terminator
-          path: ../terminator
-          ref: main
+      - name: Clone terminator (required for unpublished crate versions)
+        run: git clone --depth 1 https://github.com/mediar-ai/terminator.git ../terminator
+        shell: bash
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.1.45"
+          bun-version: latest
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
+      - name: Create cargo config for CI
+        run: |
+          mkdir -p apps/desktop/src-tauri/.cargo
+          cat > apps/desktop/src-tauri/.cargo/config.toml << 'EOF'
+          [patch.crates-io]
+          terminator-rs = { path = "../../../../terminator/crates/terminator" }
+          terminator-workflow-recorder = { path = "../../../../terminator/crates/terminator-workflow-recorder" }
+          EOF
+        shell: bash
+
       - name: Install dependencies
         working-directory: apps/desktop
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Build application
         working-directory: apps/desktop

@@ -32,7 +32,11 @@ codegen-units = 256
 [profile.dev.package."*"]
 opt-level = 2
 
-# Use local terminator crates for development (adjust paths as needed)
-[patch.crates-io]
-terminator-rs = { path = "../terminator/crates/terminator" }
-terminator-workflow-recorder = { path = "../terminator/crates/terminator-workflow-recorder" }
+# For LOCAL DEVELOPMENT with local terminator sources:
+# Create apps/desktop/src-tauri/.cargo/config.toml with:
+#
+# [patch.crates-io]
+# terminator-rs = { path = "../../../../terminator/crates/terminator" }
+# terminator-workflow-recorder = { path = "../../../../terminator/crates/terminator-workflow-recorder" }
+#
+# CI uses published crates from crates.io (no patch here)
