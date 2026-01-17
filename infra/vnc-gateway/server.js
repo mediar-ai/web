@@ -274,8 +274,9 @@ const server = http.createServer(async (req, res) => {
     rfb.resizeSession = false;
 
     // Optimize for low latency over internet
-    rfb.qualityLevel = 4;      // 0-9: lower = faster but uglier (4 for speed)
-    rfb.compressionLevel = 7;  // 0-9: higher = less bandwidth (7 for internet connections)
+    rfb.qualityLevel = 2;      // 0-9: lower = faster but uglier
+    rfb.compressionLevel = 5;  // 0-9: lower = less CPU overhead
+    rfb.clipViewport = true;   // Only transmit visible area
     rfb.showDotCursor = true;  // Show cursor position immediately
 
     const status = document.getElementById('status');
