@@ -172,6 +172,17 @@ const TRIAL_CONFIG = {
  * Try to claim a VM from the warm pool for trial users
  * Returns the pool VM details if successful, null otherwise
  */
+// Debug info for pool claim attempts (stored in memory for response)
+let lastPoolClaimDebug: {
+  timestamp: string;
+  availableCount: number | null;
+  queryError: { code: string; message: string } | null;
+  poolVmId: number | null;
+  poolVmName: string | null;
+  updateError: string | null;
+  outcome: string;
+} | null = null;
+
 async function claimFromWarmPool(
   userId: string,
   orgId: string | null,
@@ -184,6 +195,17 @@ async function claimFromWarmPool(
   name: string;
   mcpEndpoint: string;
 } | null> {
+  // Reset debug info
+  lastPoolClaimDebug = {
+    timestamp: new Date().toISOString(),
+    availableCount: null,
+    queryError: null,
+    poolVmId: null,
+    poolVmName: null,
+    updateError: null,
+    outcome: 'unknown',
+  };
+
   try {
     console.log('[VM Provision API] Attempting to claim from warm pool...');
     console.log(`[VM Provision API] Looking for tags: ${WARM_POOL_CONFIG.tags.poolWarm}, ${WARM_POOL_CONFIG.tags.poolStatusAvailable}`);
@@ -195,6 +217,7 @@ async function claimFromWarmPool(
       .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
       .eq('status', 'inactive');
 
+    lastPoolClaimDebug.availableCount = availableCount;
     console.log(`[VM Provision API] Available pool VMs count: ${availableCount}`);
 
     // Find and lock an available pool VM using FOR UPDATE SKIP LOCKED
@@ -211,13 +234,19 @@ async function claimFromWarmPool(
     if (error) {
       console.log(`[VM Provision API] Pool query error: ${error.code} - ${error.message}`);
       console.log(`[VM Provision API] Error details: ${JSON.stringify(error)}`);
+      lastPoolClaimDebug.queryError = { code: error.code, message: error.message };
+      lastPoolClaimDebug.outcome = 'query_error';
       return null;
     }
 
     if (!poolVm) {
       console.log('[VM Provision API] No pool VM returned (null data)');
+      lastPoolClaimDebug.outcome = 'no_pool_vm';
       return null;
     }
+
+    lastPoolClaimDebug.poolVmId = poolVm.id;
+    lastPoolClaimDebug.poolVmName = poolVm.name;
 
     console.log(`[VM Provision API] Found pool VM: ${poolVm.id} (${poolVm.name})`);
     console.log(`[VM Provision API] Pool VM tags: ${poolVm.tags?.join(', ')}`);
@@ -244,9 +273,12 @@ async function claimFromWarmPool(
 
     if (updateError) {
       console.error('[VM Provision API] Failed to update pool VM to claiming:', updateError);
+      lastPoolClaimDebug.updateError = updateError.message;
+      lastPoolClaimDebug.outcome = 'update_error';
       return null;
     }
 
+    lastPoolClaimDebug.outcome = 'success';
     console.log(`[VM Provision API] Claimed pool VM ${poolVm.id} for user ${userId}`);
 
     // Send claim event to Inngest to start the VM
@@ -275,8 +307,14 @@ async function claimFromWarmPool(
     };
   } catch (err) {
     console.error('[VM Provision API] Error claiming from warm pool:', err);
+    lastPoolClaimDebug.outcome = 'exception';
     return null;
   }
+}
+
+// Helper to get pool claim debug info
+function getPoolClaimDebug() {
+  return lastPoolClaimDebug;
 }
 
 // Get client IP from request headers (works with Vercel, Cloudflare, etc.)
@@ -732,11 +770,15 @@ export async function POST(request: NextRequest) {
     console.log(`[VM Provision API] Inngest event sent successfully`);
 
     // Return requestId - UI will poll for status
+    // Include pool claim debug info for trial VMs to help diagnose pool issues
+    const poolClaimDebug = isTrial ? getPoolClaimDebug() : null;
+
     return NextResponse.json({
       success: true,
       requestId,
       vmName,
       isTrial,
+      fromPool: false, // Indicates this was NOT from warm pool
       creditsDeducted: launchCost,
       newBalance,
       estimatedCost: {
@@ -747,6 +789,8 @@ export async function POST(request: NextRequest) {
       message: isTrial
         ? `Trial sandbox ${vmName} is being provisioned. It will auto-stop after ${TRIAL_CONFIG.autoStopMinutes} minutes of inactivity.`
         : `VM ${vmName} is being provisioned. This will take 5-10 minutes.`,
+      // DEBUG: Include pool claim info for trial VMs that didn't use the pool
+      ...(poolClaimDebug ? { _poolClaimDebug: poolClaimDebug } : {}),
     });
   } catch (error) {
     console.error('[VM Provision API] POST failed:', error);
