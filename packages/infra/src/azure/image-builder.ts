@@ -293,6 +293,28 @@ Start-Process msiexec.exe -ArgumentList '/i', 'C:\\Temp\\vnc.msi', '/quiet', '/n
 Remove-Item 'C:\\Temp\\vnc.msi' -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName 'Allow VNC 5900' -Direction Inbound -LocalPort 5900 -Protocol TCP -Action Allow -Enabled True -ErrorAction SilentlyContinue
 
+# Configure TightVNC for optimal performance
+Write-Host 'Configuring TightVNC for low latency...'
+$vncRegPath = 'HKLM:\\SOFTWARE\\TightVNC\\Server'
+if (Test-Path $vncRegPath) {
+  # Faster screen capture polling (30ms instead of default 1000ms)
+  Set-ItemProperty -Path $vncRegPath -Name 'PollingInterval' -Value 30 -Type DWord
+  # Use mirror driver for faster capture (if available)
+  Set-ItemProperty -Path $vncRegPath -Name 'UseMirrorDriver' -Value 1 -Type DWord
+  # Grab transparent/layered windows properly
+  Set-ItemProperty -Path $vncRegPath -Name 'GrabTransparentWindows' -Value 1 -Type DWord
+  # Disable local input priority (remote user has full control)
+  Set-ItemProperty -Path $vncRegPath -Name 'LocalInputPriority' -Value 0 -Type DWord
+  Set-ItemProperty -Path $vncRegPath -Name 'LocalInputPriorityTimeout' -Value 0 -Type DWord
+  # Allow remote input
+  Set-ItemProperty -Path $vncRegPath -Name 'BlockRemoteInput' -Value 0 -Type DWord
+  # Use Direct3D if available for faster capture
+  Set-ItemProperty -Path $vncRegPath -Name 'UseD3D' -Value 1 -Type DWord
+  Write-Host 'TightVNC configured for low latency'
+} else {
+  Write-Host 'Warning: TightVNC registry path not found, skipping optimization'
+}
+
 # ==============================================================================
 # 12. Create vmuser account
 # ==============================================================================
