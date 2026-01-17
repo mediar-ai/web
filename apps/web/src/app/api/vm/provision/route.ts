@@ -346,6 +346,21 @@ export async function POST(request: NextRequest) {
   console.log(`[VM Provision API] Request body: name=${body.name}, vmSize=${body.vmSize}, isTrial=${body.isTrial}`);
   console.log(`[VM Provision API] Parsed isTrial=${isTrial} (typeof body.isTrial: ${typeof body.isTrial})`);
 
+  // Debug mode - return early with debug info (for Mediar team only)
+  const url = new URL(request.url);
+  if (url.searchParams.get('debug') === 'true' && isMediarUser) {
+    return NextResponse.json({
+      debug: true,
+      deploymentVersion: 'v2-pool-debug', // Change this to verify deployment
+      parsing: {
+        'body.isTrial': body.isTrial,
+        'typeof body.isTrial': typeof body.isTrial,
+        isTrial,
+      },
+      user: { userId, email, isMediarUser },
+    });
+  }
+
   // SECURITY: Validate vmSize against allowed sizes to prevent cost attacks
   // Without this check, attacker could request vmSize="Standard_D96as_v5" (96 cores, $10+/hr)
   // and only pay 10 credits (default fallback cost)

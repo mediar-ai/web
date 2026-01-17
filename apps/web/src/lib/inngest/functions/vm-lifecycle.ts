@@ -158,10 +158,13 @@ export const deleteVmFunction = inngest.createFunction(
   { id: 'delete-vm', retries: 2 },
   { event: 'vm/delete.requested' },
   async ({ event, step }) => {
-    const { machineId, azureResourceId, resourceGroup } = event.data;
+    const { machineId, azureResourceId, resourceGroup, machineName } = event.data;
     const supabase = getSupabase();
 
-    // If we have azure_resource_id, parse it; otherwise use provided resourceGroup
+    // Try multiple ways to determine resource group:
+    // 1. Explicit resourceGroup param
+    // 2. Parse from azure_resource_id
+    // 3. Derive from machine name (pattern: mcp-{customer}-{name} -> mcp-{customer}-{name}-rg)
     let rgToDelete = resourceGroup;
 
     if (azureResourceId && !rgToDelete) {
@@ -171,9 +174,15 @@ export const deleteVmFunction = inngest.createFunction(
       }
     }
 
+    // Fallback: derive from machine name pattern
+    if (!rgToDelete && machineName && machineName.startsWith('mcp-')) {
+      rgToDelete = `${machineName}-rg`;
+      console.log(`[VM Delete] Derived resource group from machine name: ${rgToDelete}`);
+    }
+
     if (!rgToDelete) {
-      console.log(`[VM Delete] No resource group to delete for machine ${machineId}`);
-      return { success: true, machineId, message: 'No Azure resources to clean up' };
+      console.error(`[VM Delete] No resource group found for machine ${machineId} (name: ${machineName}, azureResourceId: ${azureResourceId})`);
+      return { success: false, machineId, message: 'No Azure resources to clean up - could not determine resource group' };
     }
 
     // Delete the entire resource group (this deletes all resources in it)
