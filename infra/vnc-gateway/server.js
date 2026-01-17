@@ -258,7 +258,6 @@ const server = http.createServer(async (req, res) => {
 <body>
   <div id="toolbar">
     <button class="btn" id="copyBtn">Copy from VM</button>
-    <button class="btn" id="ctrlAltDel">Ctrl+Alt+Del</button>
     <span id="latency">--ms</span>
     <span id="status">Connecting...</span>
   </div>
@@ -321,8 +320,6 @@ const server = http.createServer(async (req, res) => {
         if (vmClipboard) await navigator.clipboard.writeText(vmClipboard);
       } catch (err) { console.error(err); }
     };
-
-    document.getElementById('ctrlAltDel').onclick = () => rfb.sendCtrlAltDel();
 
     // Activity tracking - report user input to keep VM active
     const vmKey = '${vmKey}';
