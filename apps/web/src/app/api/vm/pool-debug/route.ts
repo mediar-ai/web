@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { WARM_POOL_CONFIG } from '@/lib/config/warm-pool';
 
@@ -46,5 +46,26 @@ export async function GET() {
       poolVm: poolVm ? { id: poolVm.id, name: poolVm.name, status: poolVm.status } : null,
       error: queryError ? { code: queryError.code, message: queryError.message } : null,
     },
+  });
+}
+
+/**
+ * POST /api/vm/pool-debug
+ * Test how the provision route would parse the request body
+ */
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+
+  const isTrial = body.isTrial === true;
+
+  return NextResponse.json({
+    receivedBody: body,
+    parsing: {
+      'body.isTrial': body.isTrial,
+      'typeof body.isTrial': typeof body.isTrial,
+      'body.isTrial === true': body.isTrial === true,
+      'isTrial (final)': isTrial,
+    },
+    wouldAttemptPoolClaim: isTrial,
   });
 }
