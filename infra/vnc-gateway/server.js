@@ -127,6 +127,62 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Latency measurement endpoint - measures round-trip to VM's VNC port
+  const pingMatch = req.url.match(/^\/api\/ping\/([^\/\?]+)/);
+  if (pingMatch && req.method === "GET") {
+    const vmKey = pingMatch[1];
+    const vmIp = await getVmIp(vmKey);
+
+    if (!vmIp) {
+      res.writeHead(404, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: "VM not found" }));
+      return;
+    }
+
+    const startTime = Date.now();
+    const testSocket = net.createConnection({ host: vmIp, port: VNC_PORT }, () => {
+      const latency = Date.now() - startTime;
+      testSocket.destroy();
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ latency, vmIp }));
+    });
+
+    testSocket.on("error", (err) => {
+      res.writeHead(502, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+
+    testSocket.setTimeout(5000, () => {
+      testSocket.destroy();
+      res.writeHead(504, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ error: "Timeout" }));
+    });
+    return;
+  }
+
+  // CORS preflight for ping endpoint
+  if (req.url.startsWith("/api/ping/") && req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    res.end();
+    return;
+  }
+
   // Serve noVNC static files
   if (req.url.startsWith("/novnc/")) {
     const filePath = path.join(
@@ -186,6 +242,17 @@ const server = http.createServer(async (req, res) => {
     }
     .btn:hover { background: #444; }
     #status { color: #888; font-size: 11px; margin-left: auto; }
+    #latency {
+      color: #888;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 4px 8px;
+      background: #222;
+      border-radius: 4px;
+    }
+    #latency.good { color: #4f4; }
+    #latency.ok { color: #ff4; }
+    #latency.bad { color: #f44; }
   </style>
 </head>
 <body>
@@ -193,6 +260,7 @@ const server = http.createServer(async (req, res) => {
     <button class="btn" id="pasteBtn">Paste to VM</button>
     <button class="btn" id="copyBtn">Copy from VM</button>
     <button class="btn" id="ctrlAltDel">Ctrl+Alt+Del</button>
+    <span id="latency">--ms</span>
     <span id="status">Connecting...</span>
   </div>
   <div id="screen"></div>
@@ -263,6 +331,41 @@ const server = http.createServer(async (req, res) => {
 
     // Also report on connect (user opened VNC = activity)
     rfb.addEventListener('connect', reportActivity);
+
+    // Latency measurement
+    const latencyEl = document.getElementById('latency');
+    async function measureLatency() {
+      try {
+        const start = performance.now();
+        const res = await fetch('/api/ping/' + vmKey);
+        const data = await res.json();
+
+        if (data.latency !== undefined) {
+          // Server-side latency (gateway -> VM)
+          const serverLatency = data.latency;
+          // Client-side latency (browser -> gateway)
+          const clientLatency = Math.round(performance.now() - start);
+          // Total round-trip estimate
+          const total = serverLatency + Math.round(clientLatency / 2);
+
+          latencyEl.textContent = total + 'ms';
+          latencyEl.className = total < 50 ? 'good' : total < 150 ? 'ok' : 'bad';
+          latencyEl.title = 'Gateway→VM: ' + serverLatency + 'ms, Browser→Gateway: ~' + Math.round(clientLatency/2) + 'ms';
+        } else {
+          latencyEl.textContent = 'ERR';
+          latencyEl.className = 'bad';
+        }
+      } catch (err) {
+        latencyEl.textContent = '--ms';
+        latencyEl.className = '';
+      }
+    }
+
+    // Measure latency on connect and every 10 seconds
+    rfb.addEventListener('connect', () => {
+      measureLatency();
+      setInterval(measureLatency, 10000);
+    });
   </script>
 </body>
 </html>`);
