@@ -290,8 +290,8 @@ export default function DeploymentsTabContent() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowDeployment | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [templateYaml, setTemplateYaml] = useState<string>('');
-  const [templateName, setTemplateName] = useState<string>('');
+  const [templateYaml, _setTemplateYaml] = useState<string>('');
+  const [templateName, _setTemplateName] = useState<string>('');
 
   const filteredWorkflows = useMemo(() => {
     return mockWorkflows.filter(workflow => {
