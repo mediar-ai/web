@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   const isTrial = body.isTrial === true;
 
   const result: Record<string, unknown> = {
-    deploymentVersion: 'v6-update-test',
+    deploymentVersion: 'v8-use-starting-status',
     step1_parsing: { isTrial, bodyIsTrial: body.isTrial, typeofBodyIsTrial: typeof body.isTrial },
   };
 
@@ -117,16 +117,17 @@ export async function POST(request: NextRequest) {
     result.step5_wouldUpdate = {
       vmId: poolVm.id,
       currentTags: poolVm.tags,
-      wouldSetStatus: 'claiming',
+      wouldSetStatus: 'starting', // Changed from 'claiming' to allowed status
     };
 
     // Step 6: If testUpdate=true, actually test the update (with rollback)
     if (body.testUpdate === true) {
       // Test the exact update query used in claimFromWarmPool
+      // Note: Using 'starting' instead of 'claiming' due to CHECK constraint
       const { error: updateErr, count: updateCount } = await supabase
         .from('remote_machines')
         .update({
-          status: 'test_claiming', // Use test status to avoid side effects
+          status: 'starting', // Use allowed status (not 'claiming')
           updated_at: new Date().toISOString(),
         })
         .eq('id', poolVm.id)
