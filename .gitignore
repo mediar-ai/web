@@ -171,7 +171,16 @@ modal_apps/fix*.py
 
 # Rust build artifacts
 rust-executor/target/
+target/
+apps/desktop/src-tauri/target/
 
 # Build artifacts
 packages/*/dist/
 tmpclaude-*
+
+# Azure CLI cache (sensitive)
+~/.azure/
+.azure/
+
+# Binary archives in repo
+apps/desktop/apps/vm-dashboard/public/*.zip
