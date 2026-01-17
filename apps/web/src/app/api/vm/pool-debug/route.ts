@@ -51,7 +51,7 @@ export async function GET() {
 
 /**
  * POST /api/vm/pool-debug
- * Simulate the full pool claim flow without actually claiming
+ * Simulate the FULL pool claim flow including what claimFromWarmPool does
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -66,53 +66,64 @@ export async function POST(request: NextRequest) {
   const isTrial = body.isTrial === true;
 
   const result: Record<string, unknown> = {
-    step1_parsing: {
-      'body.isTrial': body.isTrial,
-      'typeof body.isTrial': typeof body.isTrial,
-      isTrial,
-    },
-    deploymentVersion: 'v4-force-deploy',
+    deploymentVersion: 'v5-full-claim-simulation',
+    step1_parsing: { isTrial, bodyIsTrial: body.isTrial, typeofBodyIsTrial: typeof body.isTrial },
   };
 
   if (!isTrial) {
-    result.outcome = 'SKIP: isTrial is false, would not attempt pool claim';
+    result.outcome = 'SKIP: isTrial is false';
     return NextResponse.json(result);
   }
 
-  result.step2_wouldEnterTrialBlock = true;
+  result.step2_enterTrialBlock = true;
 
-  // Simulate the pool query
+  // Simulate claimFromWarmPool EXACTLY as it's done in provision route
   try {
-    const { count: availableCount } = await supabase
+    // Step 3: Count available (same as claimFromWarmPool)
+    const { count: availableCount, error: countErr } = await supabase
       .from('remote_machines')
       .select('id', { count: 'exact', head: true })
       .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
       .eq('status', 'inactive');
 
-    result.step3_poolCount = availableCount;
+    result.step3_count = { availableCount, error: countErr?.message };
 
-    const { data: poolVm, error } = await supabase
+    // Step 4: Query with .single() (same as claimFromWarmPool)
+    const { data: poolVm, error: queryErr } = await supabase
       .from('remote_machines')
-      .select('id, name, tags, mcp_endpoint, status')
+      .select('id, name, tags, mcp_endpoint')
       .contains('tags', [WARM_POOL_CONFIG.tags.poolWarm, WARM_POOL_CONFIG.tags.poolStatusAvailable])
       .eq('status', 'inactive')
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
 
-    if (error) {
-      result.step4_queryError = { code: error.code, message: error.message };
-      result.outcome = 'WOULD FALLBACK: Query returned error';
-    } else if (!poolVm) {
-      result.step4_poolVm = null;
-      result.outcome = 'WOULD FALLBACK: No pool VM found';
-    } else {
-      result.step4_poolVm = { id: poolVm.id, name: poolVm.name, status: poolVm.status };
-      result.outcome = 'WOULD CLAIM: Pool VM found and would be claimed';
+    result.step4_query = {
+      poolVm: poolVm ? { id: poolVm.id, name: poolVm.name, hasMcpEndpoint: !!poolVm.mcp_endpoint } : null,
+      error: queryErr ? { code: queryErr.code, message: queryErr.message } : null,
+    };
+
+    if (queryErr) {
+      result.outcome = `FALLBACK: Query error ${queryErr.code}`;
+      return NextResponse.json(result);
     }
+
+    if (!poolVm) {
+      result.outcome = 'FALLBACK: No pool VM found';
+      return NextResponse.json(result);
+    }
+
+    // Step 5: Simulate the update (but don't actually do it)
+    result.step5_wouldUpdate = {
+      vmId: poolVm.id,
+      currentTags: poolVm.tags,
+      wouldSetStatus: 'claiming',
+    };
+
+    result.outcome = 'SUCCESS: Would claim pool VM ' + poolVm.id;
   } catch (err) {
-    result.step3_exception = err instanceof Error ? err.message : String(err);
-    result.outcome = 'WOULD FALLBACK: Exception thrown';
+    result.exception = err instanceof Error ? { message: err.message, stack: err.stack } : String(err);
+    result.outcome = 'FALLBACK: Exception thrown';
   }
 
   return NextResponse.json(result);
