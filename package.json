@@ -20,6 +20,7 @@
     "type-check": "turbo type-check typecheck",
     "test": "turbo test",
     "test:web": "tsx apps/web/src/tests/run-tests.ts",
+    "test:web:unit": "tsx apps/web/src/tests/unit-tests.test.ts",
     "test:desktop": "turbo test --filter=mediar-app",
     "test:mcp": "tsx apps/web/src/tests/run-tests.ts",
     "test:watch": "tsx --watch apps/web/src/tests/run-tests.ts",

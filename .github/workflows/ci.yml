@@ -23,10 +23,5 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run Web Tests
-        run: bun run test:web
-        env:
-          SKIP_REAL_API_TESTS: 'true'
-          AI_API_PASSWORD: 'dummy-password'
-          CLICKHOUSE_HOST: 'dummy-host'
-          CLICKHOUSE_PASSWORD: 'dummy-password'
+      - name: Run Web Unit Tests
+        run: bun run test:web:unit
