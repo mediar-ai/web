@@ -2,7 +2,7 @@
   "name": "browser-workflow-capture-app",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "npm@11.6.2",
+  "packageManager": "bun@1.3.3",
   "scripts": {
     "dev": "turbo dev",
     "dev:web": "turbo dev --filter=@mediar/web",
@@ -12,7 +12,7 @@
     "build:web": "turbo build --filter=@mediar/web",
     "build:desktop": "turbo build:tauri --filter=mediar-app",
     "build:infra": "turbo build --filter=@mediar/infra",
-    "start": "npm run start --workspace=apps/web",
+    "start": "bun run --filter=@mediar/web start",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "format": "prettier --write .",
