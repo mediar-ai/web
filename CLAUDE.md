@@ -12,10 +12,9 @@ bun run dev            # all packages
 bun run dev:web        # just web
 bun run dev:desktop    # just desktop (Tauri)
 bun run build          # build all
-bun run build:web      # build web only
 bun run type-check     # typecheck all
 bun run test           # test all
-bun run clean          # clean build artifacts
+bun run test:desktop   # desktop tests (vitest + cargo)
 ```
 
 ## Deploy
