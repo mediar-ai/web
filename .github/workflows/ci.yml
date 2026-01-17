@@ -13,19 +13,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20'
-          cache: 'npm'
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: bun install
 
       - name: Run Tests
-        run: npm run test
+        run: bun run test
         env:
           SKIP_REAL_API_TESTS: 'true'
           AI_API_PASSWORD: 'dummy-password'
