@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   const isTrial = body.isTrial === true;
 
   const result: Record<string, unknown> = {
-    deploymentVersion: 'v5-full-claim-simulation',
+    deploymentVersion: 'v6-update-test',
     step1_parsing: { isTrial, bodyIsTrial: body.isTrial, typeofBodyIsTrial: typeof body.isTrial },
   };
 
@@ -119,6 +119,43 @@ export async function POST(request: NextRequest) {
       currentTags: poolVm.tags,
       wouldSetStatus: 'claiming',
     };
+
+    // Step 6: If testUpdate=true, actually test the update (with rollback)
+    if (body.testUpdate === true) {
+      // Test the exact update query used in claimFromWarmPool
+      const { error: updateErr, count: updateCount } = await supabase
+        .from('remote_machines')
+        .update({
+          status: 'test_claiming', // Use test status to avoid side effects
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', poolVm.id)
+        .contains('tags', [WARM_POOL_CONFIG.tags.poolStatusAvailable]);
+
+      const step6Result: { error: { code: string; message: string } | null; rowsAffected: number | null; rolledBack?: boolean } = {
+        error: updateErr ? { code: updateErr.code, message: updateErr.message } : null,
+        rowsAffected: updateCount,
+      };
+
+      // Rollback: restore original status
+      if (!updateErr) {
+        await supabase
+          .from('remote_machines')
+          .update({
+            status: 'inactive',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', poolVm.id);
+        step6Result.rolledBack = true;
+      }
+
+      result.step6_updateTest = step6Result;
+
+      if (updateErr) {
+        result.outcome = 'FALLBACK: Update query failed - ' + updateErr.message;
+        return NextResponse.json(result);
+      }
+    }
 
     result.outcome = 'SUCCESS: Would claim pool VM ' + poolVm.id;
   } catch (err) {
