@@ -29,6 +29,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'No lint configured for infra'",
     "cli": "tsx src/cli/index.ts",
     "test": "bun test",
     "clean": "rimraf dist .turbo"
