@@ -8,6 +8,7 @@
     "dev:web": "turbo dev --filter=@mediar/web",
     "dev:desktop": "turbo dev:tauri --filter=mediar-app",
     "dev:infra": "turbo dev --filter=@mediar/infra",
+    "dev:vm": "cd apps/desktop/apps/vm-dashboard && bun run dev",
     "build": "turbo build",
     "build:web": "turbo build --filter=@mediar/web",
     "build:desktop": "turbo build:tauri --filter=mediar-app",
