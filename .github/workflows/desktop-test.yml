@@ -104,7 +104,7 @@ jobs:
 
       - name: Run frontend tests with coverage
         working-directory: apps/desktop
-        run: bun run test:coverage
+        run: bunx vitest run --coverage --exclude='**/e2e/**'
 
       - name: Run frontend linting
         working-directory: apps/desktop
