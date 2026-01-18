@@ -145,6 +145,18 @@ Stop-MediarProcess -ProcessName "mediar" -PathPattern $WORKSPACE_NAME
 # Kill terminator-mcp-agent.exe from current workspace
 Stop-MediarProcess -ProcessName "terminator-mcp-agent" -PathPattern $WORKSPACE_NAME
 
+# Kill terminator-mcp-agent.exe running from target directory (locks sidecar binary during rebuild)
+$targetDir = Join-Path (Get-Location) "..\..\target"
+$targetDirResolved = [System.IO.Path]::GetFullPath($targetDir)
+$mcpAgentProcesses = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -like "$targetDirResolved*"
+}
+foreach ($proc in $mcpAgentProcesses) {
+    Write-Host "  Stopping terminator-mcp-agent from target dir (PID: $($proc.Id))" -ForegroundColor Red
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    "Killed terminator-mcp-agent from target (PID: $($proc.Id))" | Out-File -Append logs\debug.log
+}
+
 # Kill node/bun processes running in current workspace directory
 Stop-MediarProcess -ProcessName "node" -PathPattern $WORKSPACE_NAME
 Stop-MediarProcess -ProcessName "bun" -PathPattern $WORKSPACE_NAME
@@ -432,36 +444,9 @@ if ($WebAppUrl) {
     Write-Host "Using default API URL (production: https://app.mediar.ai)" -ForegroundColor Gray
 }
 
-# Update Tauri config with workspace identifier (devNumber already computed at top of script)
-Write-Host "`n=== Workspace Configuration ===" -ForegroundColor Cyan
-
-# Always update identifier and productName based on workspace using regex (preserves formatting)
-Write-Host "Setting workspace identifier to dev$devNumber based on folder name '$WORKSPACE_NAME'..." -ForegroundColor Yellow
-$tauriConfigPath = "src-tauri\tauri.conf.json"
-$absolutePath = Join-Path (Get-Location).Path $tauriConfigPath
-$content = [System.IO.File]::ReadAllText($absolutePath)
-
-# Use regex replacements to preserve original JSON formatting
-$content = $content -replace '"identifier":\s*"ai\.mediar\.desktop[^"]*"', "`"identifier`":  `"ai.mediar.desktop.dev$devNumber`""
-$content = $content -replace '"productName":\s*"mediar[^"]*"', "`"productName`":  `"mediar-dev$devNumber`""
-Write-Host "  [OK] Set identifier: ai.mediar.desktop.dev$devNumber" -ForegroundColor Green
-Write-Host "  [OK] Set productName: mediar-dev$devNumber" -ForegroundColor Green
-
-# Update Tauri config port
-if ($selectedPort -ne 1420) {
-    Write-Host "Updating Tauri config for port $selectedPort..." -ForegroundColor Yellow
-    $content = $content -replace '"devUrl":\s*"http://localhost:\d+"', "`"devUrl`":  `"http://localhost:$selectedPort`""
-    Write-Host "  Updated tauri.conf.json devUrl to port $selectedPort" -ForegroundColor Green
-} else {
-    # Reset to default port
-    $content = $content -replace '"devUrl":\s*"http://localhost:\d+"', '"devUrl":  "http://localhost:1420"'
-}
-
-# Save with LF line endings and UTF-8 without BOM
-$content = $content -replace "`r`n", "`n"
-$utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText($absolutePath, $content, $utf8NoBom)
-Write-Host "[OK] Tauri configuration updated (formatting preserved)" -ForegroundColor Green
+# Note: tauri.conf.json is handled by git smudge filter (see scripts/git-filters/)
+# The filter auto-sets identifier, productName, and devUrl based on workspace folder name
+Write-Host "`n=== Workspace: dev$devNumber ===" -ForegroundColor Cyan
 
 # Start the development server
 Write-Host "Starting Mediar development server on port $selectedPort..." -ForegroundColor Green
