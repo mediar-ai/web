@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:mcp": "cd ../terminator && git pull && cargo build -p terminator-mcp-agent && cp target/debug/terminator-mcp-agent.exe ../mediar-app/src-tauri/binaries/terminator-mcp-agent.exe && cp target/debug/terminator-mcp-agent.exe ../mediar-app/src-tauri/binaries/terminator-mcp-agent-x86_64-pc-windows-msvc.exe",
+    "build:mcp": "cd ../../../terminator && git pull && cargo build -p terminator-mcp-agent && cp target/debug/terminator-mcp-agent.exe ../mediar-web-app-workspace/apps/desktop/src-tauri/binaries/terminator-mcp-agent.exe && cp target/debug/terminator-mcp-agent.exe ../mediar-web-app-workspace/apps/desktop/src-tauri/binaries/terminator-mcp-agent-x86_64-pc-windows-msvc.exe",
     "predev:tauri": "bun scripts/cleanup-dev.js",
     "dev:tauri": "tauri dev",
     "predev:tauri:inspect": "bun scripts/build-mcp.js",
