@@ -145,6 +145,18 @@ Stop-MediarProcess -ProcessName "mediar" -PathPattern $WORKSPACE_NAME
 # Kill terminator-mcp-agent.exe from current workspace
 Stop-MediarProcess -ProcessName "terminator-mcp-agent" -PathPattern $WORKSPACE_NAME
 
+# Kill terminator-mcp-agent.exe running from target directory (locks sidecar binary during rebuild)
+$targetDir = Join-Path (Get-Location) "..\..\target"
+$targetDirResolved = [System.IO.Path]::GetFullPath($targetDir)
+$mcpAgentProcesses = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -like "$targetDirResolved*"
+}
+foreach ($proc in $mcpAgentProcesses) {
+    Write-Host "  Stopping terminator-mcp-agent from target dir (PID: $($proc.Id))" -ForegroundColor Red
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    "Killed terminator-mcp-agent from target (PID: $($proc.Id))" | Out-File -Append logs\debug.log
+}
+
 # Kill node/bun processes running in current workspace directory
 Stop-MediarProcess -ProcessName "node" -PathPattern $WORKSPACE_NAME
 Stop-MediarProcess -ProcessName "bun" -PathPattern $WORKSPACE_NAME
