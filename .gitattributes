@@ -9,6 +9,11 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 
+# Rust/Cargo files - use LF line endings
+*.toml text eol=lf
+*.rs text eol=lf
+Cargo.lock text eol=lf
+
 # Web development files - use LF line endings
 *.md text eol=lf
 *.yml text eol=lf
