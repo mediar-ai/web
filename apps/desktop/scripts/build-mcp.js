@@ -35,9 +35,10 @@ function getSharedBinaryPath() {
 
 // Local development configuration - uses sibling directory approach
 // Can be overridden with TERMINATOR_PATH environment variable
+// In monorepo: apps/desktop/ -> repos/ is 3 levels up (../../..)
 const DEFAULT_TERMINATOR_DIR = "terminator";
 const TERMINATOR_DIR = process.env.TERMINATOR_PATH || DEFAULT_TERMINATOR_DIR;
-const LOCAL_TERMINATOR_PATH = path.resolve(process.cwd(), "..", TERMINATOR_DIR);
+const LOCAL_TERMINATOR_PATH = path.resolve(process.cwd(), "../../..", TERMINATOR_DIR);
 // Check both release and dev-release folders, prefer the newer one
 const BINARY_FILENAME = process.platform === "win32" ? "terminator-mcp-agent.exe" : "terminator-mcp-agent";
 const LOCAL_RELEASE_PATH = path.join(LOCAL_TERMINATOR_PATH, "target", "release", BINARY_FILENAME);
@@ -83,7 +84,7 @@ if (showHelp) {
   console.log("  bun build-mcp.js [options]");
   console.log("");
   console.log("Options:");
-  console.log("  --local          Use local terminator repository (../terminator)");
+  console.log("  --local          Use local terminator repository (../../../terminator)");
   console.log("  --npm            Force download from npm registry");
   console.log("  --force-rebuild  Force rebuild even if binary exists");
   console.log("  --help,-h        Show this help message");
@@ -583,7 +584,7 @@ async function checkLocalBinary() {
     console.log(`📁 Source: ${LOCAL_BINARY_PATH}`);
     console.log(`📁 Target: ${TARGET_PATH}`);
     console.log(`📁 Also created: ${platformAgnosticPath}`);
-    console.log("\n🎯 USING: Local terminator build (../terminator/target/release)");
+    console.log("\n🎯 USING: Local terminator build (../../../terminator/target/release)");
     return true;
   }
 
@@ -633,7 +634,7 @@ async function main() {
   // Priority 4: Fall back to npm
   console.log("\n📦 Falling back to NPM package");
   console.log("💡 To use local build, run:");
-  console.log("   cd ../terminator && cargo build --release -p terminator-mcp-agent");
+  console.log("   cd ../../../terminator && cargo build --release -p terminator-mcp-agent");
   console.log("\n🎯 USING: NPM registry (fallback)");
   await checkVersionAndBuild();
 }

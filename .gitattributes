@@ -39,3 +39,7 @@
 *.woff2 binary
 *.ttf binary
 *.eot binary
+
+# Tauri config filter - auto-converts dev/prod values
+# Run: apps/desktop/scripts/setup-git-filters.ps1 to configure
+apps/desktop/src-tauri/tauri.conf.json filter=tauri-config

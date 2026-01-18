@@ -31,12 +31,12 @@ param(
 
 Write-Host "[--] Setting up git filters for tauri.conf.json..." -ForegroundColor Cyan
 
-# Configure git filters
+# Configure git filters (paths relative to repo root for monorepo)
 Write-Host "  [..] Configuring clean filter (production values on commit)..." -ForegroundColor Gray
-git config filter.tauri-config.clean "node scripts/git-filters/tauri-config-clean.cjs"
+git config filter.tauri-config.clean "node apps/desktop/scripts/git-filters/tauri-config-clean.cjs"
 
 Write-Host "  [..] Configuring smudge filter (workspace values on checkout)..." -ForegroundColor Gray
-git config filter.tauri-config.smudge "node scripts/git-filters/tauri-config-smudge.cjs"
+git config filter.tauri-config.smudge "node apps/desktop/scripts/git-filters/tauri-config-smudge.cjs"
 
 # Set workspace variant environment variable if specified
 if ($WorkspaceVariant -and $WorkspaceVariant -ne "production") {
@@ -56,11 +56,11 @@ if ($WorkspaceVariant -and $WorkspaceVariant -ne "production") {
 
 Write-Host ""
 Write-Host "[..] Reapplying filters to existing files..." -ForegroundColor Cyan
-git checkout HEAD -- src-tauri/tauri.conf.json 2>$null
+git checkout HEAD -- apps/desktop/src-tauri/tauri.conf.json 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK] Filters applied successfully!" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] Note: Run 'git checkout HEAD -- src-tauri/tauri.conf.json' to apply filters" -ForegroundColor Yellow
+    Write-Host "[WARN] Note: Run 'git checkout HEAD -- apps/desktop/src-tauri/tauri.conf.json' to apply filters" -ForegroundColor Yellow
 }
 
 Write-Host ""

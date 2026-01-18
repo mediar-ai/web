@@ -22,17 +22,26 @@ process.stdin.on('end', () => {
     const cwd = process.cwd();
     let workspaceVariant;
 
-    if (cwd.includes('mediar-app_4')) {
+    // Monorepo: mediar-web-app-workspace patterns (folder name determines variant)
+    if (cwd.includes('mediar-web-app-workspace_4')) {
+      workspaceVariant = 'dev4';
+    } else if (cwd.includes('mediar-web-app-workspace_3')) {
+      workspaceVariant = 'dev3';
+    } else if (cwd.includes('mediar-web-app-workspace_2')) {
+      workspaceVariant = 'dev2';
+    } else if (cwd.includes('mediar-web-app-workspace')) {
+      workspaceVariant = 'dev1';
+    // Standalone: mediar-app patterns (folder name determines variant)
+    } else if (cwd.includes('mediar-app_4')) {
       workspaceVariant = 'dev4';
     } else if (cwd.includes('mediar-app_3')) {
       workspaceVariant = 'dev3';
     } else if (cwd.includes('mediar-app_2')) {
       workspaceVariant = 'dev2';
     } else if (cwd.includes('mediar-app')) {
-      // Base workspace - check env var or default to 'dev'
-      workspaceVariant = process.env.MEDIAR_WORKSPACE_VARIANT || 'dev';
+      workspaceVariant = 'dev';
     } else {
-      // Fallback to env var if folder pattern doesn't match
+      // Fallback to env var only if folder pattern doesn't match
       workspaceVariant = process.env.MEDIAR_WORKSPACE_VARIANT;
     }
 
