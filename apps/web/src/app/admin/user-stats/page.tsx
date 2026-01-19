@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useState, useMemo, useEffect } from 'react';
-import { Activity, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Search } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { AutoRefreshControls } from '@/components/admin/AutoRefreshControls';
+import { UserMessagesModal } from '@/components/admin/UserMessagesModal';
 import { fetchJson } from '@/lib/fetch-utils';
 
 interface UserData {
@@ -221,6 +222,9 @@ export default function UserStatsPage() {
     field: 'chat3d',
     direction: 'desc',
   });
+
+  // Selected user for messages modal
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
 
   // Weekly data state
   const [weeklyData, setWeeklyData] = useState<WeeklyData | null>(null);
@@ -478,8 +482,17 @@ export default function UserStatsPage() {
                     key={user.id}
                     className={`border-b border-gray-200 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                   >
-                    <td className="p-3 font-mono text-sm sticky left-0 bg-inherit max-w-[250px] overflow-hidden text-ellipsis whitespace-nowrap">
-                      {user.email}
+                    <td className="p-3 font-mono text-sm sticky left-0 bg-inherit max-w-[250px]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedUser(user)}
+                          title="View messages"
+                          className="p-1 hover:bg-gray-200 transition-colors flex-shrink-0"
+                        >
+                          <Search className="w-4 h-4" />
+                        </button>
+                        <span className="truncate">{user.email}</span>
+                      </div>
                     </td>
                     <td className="p-3 font-mono text-sm border-l border-gray-200">
                       {joinInfo ? (
@@ -508,6 +521,16 @@ export default function UserStatsPage() {
             </table>
           </div>
         </>
+      )}
+
+      {/* User Messages Modal */}
+      {selectedUser && (
+        <UserMessagesModal
+          userId={selectedUser.id}
+          userEmail={selectedUser.email}
+          open={!!selectedUser}
+          onOpenChange={(open) => !open && setSelectedUser(null)}
+        />
       )}
     </div>
   );
