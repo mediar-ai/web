@@ -1,10 +1,15 @@
 // API Configuration constants
-pub const GEMINI_API_KEY: &str = "***REMOVED***";
+// These are loaded from environment variables at runtime
+use std::sync::LazyLock;
+
+pub static GEMINI_API_KEY: LazyLock<String> = LazyLock::new(|| std::env::var("GEMINI_API_KEY").unwrap_or_default());
 pub const GEMINI_MODEL: &str = "gemini-3-pro-preview";
 pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // Analytics constants
-pub const POSTHOG_API_KEY: &str = "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9";
+pub static POSTHOG_API_KEY: LazyLock<String> = LazyLock::new(|| {
+    std::env::var("POSTHOG_API_KEY").unwrap_or_else(|_| "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9".to_string())
+});
 pub const POSTHOG_ENDPOINT: &str = "https://eu.i.posthog.com/capture/";
 
 // LLM Processing constants
@@ -36,11 +41,8 @@ mod tests {
 
     #[test]
     fn test_api_constants() {
-        // Verify API configuration constants are not empty
-        assert!(
-            !GEMINI_API_KEY.is_empty(),
-            "Gemini API key should not be empty"
-        );
+        // Verify static API configuration constants are not empty
+        // Note: GEMINI_API_KEY is loaded from env var at runtime, so we don't test it here
         assert!(!GEMINI_MODEL.is_empty(), "Gemini model should not be empty");
         assert!(
             !GEMINI_BASE_URL.is_empty(),
@@ -60,9 +62,10 @@ mod tests {
 
     #[test]
     fn test_analytics_constants() {
+        // POSTHOG_API_KEY has a default fallback, so it should never be empty
         assert!(
             !POSTHOG_API_KEY.is_empty(),
-            "PostHog API key should not be empty"
+            "PostHog API key should not be empty (has default)"
         );
         assert!(
             !POSTHOG_ENDPOINT.is_empty(),
