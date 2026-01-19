@@ -61,6 +61,8 @@ export class McpClient {
   private activeToolExecutions: number = 0;
   // Connection ID to detect stale connection attempts after cleanup
   private connectionId: number = 0;
+  // Track if transport close was intentional (user clicked STOP) to avoid false error logs
+  private isIntentionalClose: boolean = false;
 
   async connect(port: number): Promise<void> {
     // If already connected to this port, reuse the connection
@@ -115,6 +117,9 @@ export class McpClient {
     // Capture connection ID at start to detect if cleanup happened during async operations
     const myConnectionId = ++this.connectionId;
 
+    // Reset intentional close flag for new connection
+    this.isIntentionalClose = false;
+
     try {
       const httpUrl = `http://127.0.0.1:${port}/mcp`;
       console.log("🚀 [MCP-CLIENT] Starting connection to:", httpUrl);
@@ -148,7 +153,12 @@ export class McpClient {
         const transport = this.transport as any;
         if (typeof transport.onclose === "undefined") {
           transport.onclose = () => {
-            console.error("🔌 [MCP-CLIENT] Transport closed unexpectedly!");
+            // Only log as error if this was truly unexpected (not user-initiated stop)
+            if (this.isIntentionalClose) {
+              console.log("🔌 [MCP-CLIENT] Transport closed (user stop)");
+            } else {
+              console.error("🔌 [MCP-CLIENT] Transport closed unexpectedly!");
+            }
             if (this.serverInfo) {
               this.serverInfo.isConnected = false;
             }
@@ -156,7 +166,12 @@ export class McpClient {
         }
         if (typeof transport.onerror === "undefined") {
           transport.onerror = (error: any) => {
-            console.error("🔌 [MCP-CLIENT] Transport error:", error);
+            // Only log as error if this was truly unexpected
+            if (this.isIntentionalClose) {
+              console.log("🔌 [MCP-CLIENT] Transport error during stop (expected):", error);
+            } else {
+              console.error("🔌 [MCP-CLIENT] Transport error:", error);
+            }
             if (this.serverInfo) {
               this.serverInfo.isConnected = false;
             }
@@ -397,7 +412,12 @@ export class McpClient {
                 }
               }
             } catch (error) {
-              console.error(`🌊 [MCP-TRANSPORT] Stream processing error:`, error);
+              // Only log as error if this was truly unexpected (not user-initiated stop)
+              if (this.isIntentionalClose) {
+                console.log(`🌊 [MCP-TRANSPORT] Stream closed (user stop)`);
+              } else {
+                console.error(`🌊 [MCP-TRANSPORT] Stream processing error:`, error);
+              }
               // Don't reconnect for POST SSE streams (isReconnectable=false)
               if (isReconnectable) {
                 console.log(`🌊 [MCP-TRANSPORT] Would reconnect, but disabled for WebView2`);
@@ -865,6 +885,8 @@ export class McpClient {
           // This ensures we don't hang if stop_execution fails
           if (this.transport) {
             try {
+              // Mark as intentional close to suppress false error logs
+              this.isIntentionalClose = true;
               console.log("🔌 [STOP-DEBUG] Force-closing transport after stop attempt");
               // Force close the transport
               (this.transport as any).close?.();
@@ -887,6 +909,8 @@ export class McpClient {
           if (this.serverInfo) {
             this.serverInfo = { ...this.serverInfo, isConnected: false };
           }
+          // Reset intentional close flag after cleanup
+          this.isIntentionalClose = false;
 
           console.log(
             `✅ [STOP-DEBUG] Abort handler complete (total ${Date.now() - abortTime}ms) - local aborted, stop_execution attempted, transport closed`
