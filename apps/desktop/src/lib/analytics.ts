@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import posthog from "posthog-js";
 
-// PostHog configuration
-const POSTHOG_API_KEY = "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9";
-const POSTHOG_HOST = "https://eu.i.posthog.com";
+// PostHog configuration - loaded from environment variable with fallback
+const POSTHOG_API_KEY = import.meta.env.VITE_POSTHOG_API_KEY || "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9";
+const POSTHOG_HOST = import.meta.env.VITE_POSTHOG_HOST || "https://eu.i.posthog.com";
 
 let isInitialized = false;
 let machineId: string | null = null;
