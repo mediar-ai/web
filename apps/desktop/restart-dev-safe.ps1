@@ -9,12 +9,73 @@ param(
     [string]$WebAppUrl = ""  # Optional web app URL for local backend testing (e.g., http://localhost:3002)
 )
 
+# Determine the correct working directory (apps/desktop within the monorepo)
+# This script can be run from: monorepo root, apps/desktop, or anywhere
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+# Find monorepo root by looking for package.json with workspaces
+function Find-MonorepoRoot {
+    param([string]$StartPath)
+
+    $current = $StartPath
+    while ($current -and (Test-Path $current)) {
+        $packageJson = Join-Path $current "package.json"
+        if (Test-Path $packageJson) {
+            $content = Get-Content $packageJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($content.workspaces) {
+                return $current
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) { break }
+        $current = $parent
+    }
+    return $null
+}
+
+# Find desktop app directory
+function Find-DesktopAppDir {
+    param([string]$MonorepoRoot)
+
+    $desktopDir = Join-Path $MonorepoRoot "apps\desktop"
+    if (Test-Path $desktopDir) {
+        return $desktopDir
+    }
+    return $null
+}
+
+# Determine paths - try script location first, then current directory
+$monorepoRoot = Find-MonorepoRoot $scriptDir
+if (-not $monorepoRoot) {
+    $monorepoRoot = Find-MonorepoRoot (Get-Location)
+}
+
+if (-not $monorepoRoot) {
+    Write-Host "ERROR: Could not find monorepo root (no package.json with workspaces found)" -ForegroundColor Red
+    Write-Host "Please run this script from within the mediar-web-app-workspace directory" -ForegroundColor Yellow
+    exit 1
+}
+
+$desktopAppDir = Find-DesktopAppDir $monorepoRoot
+if (-not $desktopAppDir) {
+    Write-Host "ERROR: Could not find apps/desktop directory in $monorepoRoot" -ForegroundColor Red
+    exit 1
+}
+
+# Change to desktop app directory if not already there
+$currentDir = (Get-Location).Path
+if ($currentDir -ne $desktopAppDir) {
+    Write-Host "Changing directory to: $desktopAppDir" -ForegroundColor Yellow
+    Set-Location $desktopAppDir
+}
+
 # Get the current workspace directory name (e.g., "mediar-app_3")
 $WORKSPACE_NAME = Split-Path -Leaf (Get-Location)
 
 # Map workspace name to dev identifier (needed early for cache cleanup)
-# In monorepo, we're in apps/desktop, so check parent workspace folder name
-$monorepoRoot = Split-Path -Parent (Split-Path -Parent (Get-Location))
 $monorepoName = Split-Path -Leaf $monorepoRoot
 $devNumber = switch ($monorepoName) {
     "mediar-web-app-workspace"   { "1" }
@@ -112,11 +173,72 @@ function Get-ProcessUsingPort {
     return $null
 }
 
+# Function to wait for a process to fully terminate
+function Wait-ProcessExit {
+    param(
+        [int]$ProcessId,
+        [int]$TimeoutSeconds = 10
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if (-not $proc) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    return $false
+}
+
+# Function to check if a file is locked
+function Test-FileLocked {
+    param([string]$FilePath)
+
+    if (-not (Test-Path $FilePath)) {
+        return $false
+    }
+
+    try {
+        $file = [System.IO.File]::Open($FilePath, 'Open', 'ReadWrite', 'None')
+        $file.Close()
+        $file.Dispose()
+        return $false
+    } catch {
+        return $true
+    }
+}
+
+# Function to wait for file lock release with timeout
+function Wait-FileLockRelease {
+    param(
+        [string]$FilePath,
+        [int]$TimeoutSeconds = 30
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        return $true
+    }
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        if (-not (Test-FileLocked $FilePath)) {
+            return $true
+        }
+        if ($Verbose) {
+            Write-Host "  Waiting for file lock release: $FilePath" -ForegroundColor Gray
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
+
 # Function to safely identify and kill Mediar processes
 function Stop-MediarProcess {
     param(
         [string]$ProcessName,
-        [string]$PathPattern
+        [string]$PathPattern,
+        [switch]$WaitForExit
     )
 
     $processes = Get-WmiObject Win32_Process | Where-Object {
@@ -124,42 +246,71 @@ function Stop-MediarProcess {
         ($_.CommandLine -like "*\$PathPattern\*" -or $_.CommandLine -like "*/$PathPattern/*")
     }
 
+    $killedPids = @()
     foreach ($proc in $processes) {
         if ($Verbose) {
             Write-Host "  Found: $($proc.Name) with command: $($proc.CommandLine.Substring(0, [Math]::Min(100, $proc.CommandLine.Length)))..." -ForegroundColor Gray
         }
         Write-Host "  Stopping: $($proc.Name) (PID: $($proc.ProcessId))" -ForegroundColor Red
         Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        $killedPids += $proc.ProcessId
         "Killed $($proc.Name) (PID: $($proc.ProcessId))" | Out-File -Append logs\debug.log
     }
+
+    # Wait for all killed processes to fully terminate
+    if ($WaitForExit -and $killedPids.Count -gt 0) {
+        foreach ($procId in $killedPids) {
+            if (-not (Wait-ProcessExit -ProcessId $procId -TimeoutSeconds 10)) {
+                Write-Host "  WARNING: Process $procId did not terminate within timeout" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    return $killedPids.Count
 }
 
 Write-Host "Looking for $WORKSPACE_NAME processes..." -ForegroundColor Yellow
 
 # Kill cargo processes running in the current workspace directory
-Stop-MediarProcess -ProcessName "cargo" -PathPattern $WORKSPACE_NAME
+Stop-MediarProcess -ProcessName "cargo" -PathPattern $WORKSPACE_NAME -WaitForExit
 
-# Kill mediar.exe from current workspace
-Stop-MediarProcess -ProcessName "mediar" -PathPattern $WORKSPACE_NAME
+# Kill tauri.exe processes (Tauri CLI can hold file locks during builds)
+Stop-MediarProcess -ProcessName "tauri" -PathPattern $WORKSPACE_NAME -WaitForExit
+
+# Also kill any tauri processes by monorepo name pattern
+Stop-MediarProcess -ProcessName "tauri" -PathPattern $monorepoName -WaitForExit
+
+# Kill mediar.exe from current workspace (critical - holds file locks on sidecars)
+Stop-MediarProcess -ProcessName "mediar" -PathPattern $WORKSPACE_NAME -WaitForExit
+
+# Also kill mediar by monorepo name pattern
+Stop-MediarProcess -ProcessName "mediar" -PathPattern $monorepoName -WaitForExit
 
 # Kill terminator-mcp-agent.exe from current workspace
-Stop-MediarProcess -ProcessName "terminator-mcp-agent" -PathPattern $WORKSPACE_NAME
+Stop-MediarProcess -ProcessName "terminator-mcp-agent" -PathPattern $WORKSPACE_NAME -WaitForExit
 
 # Kill terminator-mcp-agent.exe running from target directory (locks sidecar binary during rebuild)
 $targetDir = Join-Path (Get-Location) "..\..\target"
 $targetDirResolved = [System.IO.Path]::GetFullPath($targetDir)
+$mcpAgentPids = @()
 $mcpAgentProcesses = Get-Process -Name "terminator-mcp-agent" -ErrorAction SilentlyContinue | Where-Object {
     $_.Path -like "$targetDirResolved*"
 }
 foreach ($proc in $mcpAgentProcesses) {
     Write-Host "  Stopping terminator-mcp-agent from target dir (PID: $($proc.Id))" -ForegroundColor Red
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    $mcpAgentPids += $proc.Id
     "Killed terminator-mcp-agent from target (PID: $($proc.Id))" | Out-File -Append logs\debug.log
 }
 
+# Wait for MCP agent processes to fully terminate
+foreach ($procId in $mcpAgentPids) {
+    Wait-ProcessExit -ProcessId $procId -TimeoutSeconds 10 | Out-Null
+}
+
 # Kill node/bun processes running in current workspace directory
-Stop-MediarProcess -ProcessName "node" -PathPattern $WORKSPACE_NAME
-Stop-MediarProcess -ProcessName "bun" -PathPattern $WORKSPACE_NAME
+Stop-MediarProcess -ProcessName "node" -PathPattern $WORKSPACE_NAME -WaitForExit
+Stop-MediarProcess -ProcessName "bun" -PathPattern $WORKSPACE_NAME -WaitForExit
 
 # Find and kill Vite process by checking for vite in the command line
 $viteProcesses = Get-WmiObject Win32_Process | Where-Object {
@@ -168,14 +319,52 @@ $viteProcesses = Get-WmiObject Win32_Process | Where-Object {
     ($_.CommandLine -like "*\$WORKSPACE_NAME\*" -or $_.CommandLine -like "*/$WORKSPACE_NAME/*")
 }
 
+$vitePids = @()
 foreach ($proc in $viteProcesses) {
     Write-Host "  Stopping Vite server (PID: $($proc.ProcessId))" -ForegroundColor Red
     Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    $vitePids += $proc.ProcessId
     "Killed Vite process (PID: $($proc.ProcessId))" | Out-File -Append logs\debug.log
 }
 
-# Small delay to ensure processes are fully terminated
-Start-Sleep -Seconds 2
+# Wait for Vite processes to fully terminate
+foreach ($procId in $vitePids) {
+    Wait-ProcessExit -ProcessId $procId -TimeoutSeconds 10 | Out-Null
+}
+
+# Wait for critical file locks to be released before continuing
+Write-Host "Waiting for file locks to be released..." -ForegroundColor Yellow
+$criticalFiles = @(
+    "src-tauri\target\debug\mediar.exe",
+    "src-tauri\target\debug\terminator-mcp-agent.exe",
+    "..\..\target\debug\mediar.exe",
+    "..\..\target\debug\terminator-mcp-agent.exe"
+)
+
+$lockWaitStart = Get-Date
+$maxLockWait = 30  # Maximum seconds to wait for locks
+$allLocksReleased = $true
+
+foreach ($file in $criticalFiles) {
+    $fullPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $file))
+    if (Test-Path $fullPath) {
+        if (-not (Wait-FileLockRelease -FilePath $fullPath -TimeoutSeconds $maxLockWait)) {
+            Write-Host "  WARNING: File still locked: $fullPath" -ForegroundColor Yellow
+            $allLocksReleased = $false
+        } elseif ($Verbose) {
+            Write-Host "  [OK] File unlocked: $file" -ForegroundColor Green
+        }
+    }
+}
+
+if ($allLocksReleased) {
+    Write-Host "  [OK] All file locks released" -ForegroundColor Green
+} else {
+    Write-Host "  Some files may still be locked. Build might fail - retry if needed." -ForegroundColor Yellow
+}
+
+# Small additional delay to ensure all handles are released
+Start-Sleep -Seconds 1
 
 # Check if node_modules exists, install if missing
 if (!(Test-Path "node_modules")) {
@@ -259,20 +448,31 @@ terminator-rs = { path = "../../../../terminator/crates/terminator" }
 
         # Need to update Cargo.lock to use local sources
         Write-Host "Updating Cargo.lock to use local sources..." -ForegroundColor Yellow
-        Set-Location src-tauri
-        cargo update -p terminator-workflow-recorder -p terminator-rs 2>&1 | Out-Null
-        Set-Location ..
+        Push-Location src-tauri
+        try {
+            cargo update -p terminator-workflow-recorder -p terminator-rs 2>&1 | Out-Null
+        } finally {
+            Pop-Location
+        }
     }
 
     Write-Host "Using LOCAL terminator sources (auto-configured)" -ForegroundColor Green
-    # Get the actual path from cargo
-    Set-Location src-tauri
-    $pkgId = cargo pkgid terminator-workflow-recorder 2>$null
-    if ($pkgId -and ($pkgId -match 'path\+file:///(.+)#')) {
-        $terminatorPath = $Matches[1] -replace '/', '\'
-        Write-Host "  Path: $terminatorPath" -ForegroundColor Gray
+    # Get the actual path from cargo (only if we're in the right directory)
+    $srcTauriDir = Join-Path (Get-Location) "src-tauri"
+    if (Test-Path (Join-Path $srcTauriDir "Cargo.toml")) {
+        Push-Location $srcTauriDir
+        try {
+            $pkgId = cargo pkgid terminator-workflow-recorder 2>$null
+            if ($pkgId -and ($pkgId -match 'path\+file:///(.+)#')) {
+                $terminatorPath = $Matches[1] -replace '/', '\'
+                Write-Host "  Path: $terminatorPath" -ForegroundColor Gray
+            }
+        } catch {
+            # Silently ignore cargo errors
+        } finally {
+            Pop-Location
+        }
     }
-    Set-Location ..
 }
 
 
