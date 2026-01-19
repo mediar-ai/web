@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "bun@1.3.3",
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  },
   "scripts": {
     "dev": "turbo dev",
     "dev:web": "turbo dev --filter=@mediar/web",
