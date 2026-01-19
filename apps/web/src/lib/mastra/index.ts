@@ -1,8 +1,14 @@
 import { Mastra, Agent } from '@mastra/core';
 import { createVertex } from '@ai-sdk/google-vertex';
 
-// Initialize Vertex AI provider
+// Cached instances for lazy initialization
+let _vertexProvider: ReturnType<typeof createVertex> | null = null;
+let _mastra: Mastra | null = null;
+
+// Initialize Vertex AI provider (lazy - only when first called)
 function getVertexAIProvider() {
+  if (_vertexProvider) return _vertexProvider;
+
   if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
     throw new Error('Missing GOOGLE_APPLICATION_CREDENTIALS_BASE64');
   }
@@ -14,7 +20,7 @@ function getVertexAIProvider() {
 
   const credentials = JSON.parse(credentialsJson);
 
-  return createVertex({
+  _vertexProvider = createVertex({
     project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
     location: process.env.VERTEX_AI_LOCATION || 'us-central1',
     googleAuthOptions: {
@@ -24,19 +30,34 @@ function getVertexAIProvider() {
       },
     },
   });
+
+  return _vertexProvider;
 }
 
-// Get the Vertex provider instance
-const vertexProvider = getVertexAIProvider();
+// Get or create the Mastra instance (lazy initialization)
+function getMastra(): Mastra {
+  if (_mastra) return _mastra;
 
-// Create the workflow agent
-const workflowAgent = new Agent({
-  name: 'workflowAgent',
-  instructions: 'You are a helpful AI assistant that helps users automate tasks and run workflows. You have access to various tools to help users automate their workflows.',
-  model: vertexProvider('gemini-2.5-pro'),
-});
+  const vertexProvider = getVertexAIProvider();
 
-// Initialize Mastra with the agent
-export const mastra = new Mastra({
-  agents: { workflowAgent },
+  const workflowAgent = new Agent({
+    name: 'workflowAgent',
+    instructions: 'You are a helpful AI assistant that helps users automate tasks and run workflows. You have access to various tools to help users automate their workflows.',
+    model: vertexProvider('gemini-2.5-pro'),
+  });
+
+  _mastra = new Mastra({
+    agents: { workflowAgent },
+  });
+
+  return _mastra;
+}
+
+// Export a proxy that lazily initializes mastra on first access
+export const mastra = new Proxy({} as Mastra, {
+  get(_target, prop) {
+    const instance = getMastra();
+    const value = instance[prop as keyof Mastra];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
 });
