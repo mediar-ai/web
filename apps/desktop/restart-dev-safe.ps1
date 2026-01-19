@@ -613,6 +613,23 @@ if (!$NoDebug) {
 $env:VITE_PORT = $selectedPort
 $env:PORT = $selectedPort
 
+# Update tauri.conf.json devUrl to match selected port
+$tauriConfigPath = "src-tauri\tauri.conf.json"
+if (Test-Path $tauriConfigPath) {
+    $tauriConfig = Get-Content $tauriConfigPath -Raw
+    $expectedDevUrl = "http://localhost:$selectedPort"
+
+    # Check if devUrl needs updating
+    if ($tauriConfig -match '"devUrl"\s*:\s*"([^"]+)"') {
+        $currentDevUrl = $Matches[1]
+        if ($currentDevUrl -ne $expectedDevUrl) {
+            Write-Host "Updating tauri.conf.json devUrl: $currentDevUrl -> $expectedDevUrl" -ForegroundColor Yellow
+            $tauriConfig = $tauriConfig -replace '"devUrl"\s*:\s*"[^"]+"', "`"devUrl`": `"$expectedDevUrl`""
+            $tauriConfig | Set-Content $tauriConfigPath -NoNewline
+        }
+    }
+}
+
 # Read API URL from .env file if it exists
 $apiUrlFromEnv = $null
 if (Test-Path ".env") {
