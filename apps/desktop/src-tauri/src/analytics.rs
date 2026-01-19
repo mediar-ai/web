@@ -50,7 +50,7 @@ impl Analytics {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("🔍 [DEBUG] get_feature_flag() called for: {}", flag_name);
         let payload = json!({
-            "api_key": POSTHOG_API_KEY,
+            "api_key": &*POSTHOG_API_KEY,
             "distinct_id": self.distinct_id,
             "person_properties": {
                 "distinct_id": self.distinct_id,
@@ -198,7 +198,7 @@ impl Analytics {
         }
 
         let payload = json!({
-            "api_key": POSTHOG_API_KEY,
+            "api_key": &*POSTHOG_API_KEY,
             "event": event_name,
             "distinct_id": self.distinct_id,
             "properties": event_properties,
@@ -424,7 +424,7 @@ impl Analytics {
         let timestamp = chrono::Utc::now().to_rfc3339();
 
         let payload = json!({
-            "api_key": POSTHOG_API_KEY,
+            "api_key": &*POSTHOG_API_KEY,
             "event": "$identify",
             "distinct_id": self.distinct_id,
             "properties": {
@@ -501,7 +501,7 @@ impl Analytics {
         // First, alias the machine ID to the user ID to merge profiles
         // This links all previous anonymous events to the user
         let alias_payload = json!({
-            "api_key": POSTHOG_API_KEY,
+            "api_key": &*POSTHOG_API_KEY,
             "event": "$create_alias",
             "distinct_id": user_id.clone(),  // The user ID we want to use going forward
             "properties": {
@@ -556,7 +556,7 @@ impl Analytics {
 
         // Now identify the user with their properties
         let identify_payload = json!({
-            "api_key": POSTHOG_API_KEY,
+            "api_key": &*POSTHOG_API_KEY,
             "event": "$identify",
             "distinct_id": user_id.clone(),
             "properties": {
