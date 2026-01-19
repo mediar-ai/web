@@ -19,7 +19,8 @@ export type LLMSource =
   | 'workflow_event'
   | 'workflow_list_edit'
   | 'workflow_export'
-  | 'activity_analysis';
+  | 'activity_analysis'
+  | 'user_message_analysis';
 
 interface TrackLLMUsageParams {
   userId?: string;  // Optional - defaults to 'system' for internal routes
