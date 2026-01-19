@@ -6,6 +6,20 @@ import { getVmPublicIp } from '@/lib/azure/vm-operations';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// MCP auth token helper - logs warning once if missing
+let mcpAuthWarningLogged = false;
+function getMcpAuthHeaders(): Record<string, string> {
+  const token = process.env.MCP_AUTH_TOKEN;
+  if (!token) {
+    if (!mcpAuthWarningLogged) {
+      console.warn('[health-check] MCP_AUTH_TOKEN not set - requests will be unauthenticated');
+      mcpAuthWarningLogged = true;
+    }
+    return {};
+  }
+  return { 'Authorization': `Bearer ${token}` };
+}
+
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Supabase environment variables are not set');
 }
@@ -124,7 +138,7 @@ export async function GET(request: Request) {
             signal: controller.signal,
             headers: {
               'Accept': 'application/json',
-              'Authorization': 'Bearer ***REMOVED***'
+              ...getMcpAuthHeaders()
             }
           });
 
@@ -322,7 +336,7 @@ export async function GET(request: Request) {
                       signal: retryController.signal,
                       headers: {
                         'Accept': 'application/json',
-                        'Authorization': 'Bearer ***REMOVED***'
+                        ...getMcpAuthHeaders()
                       }
                     });
                     clearTimeout(retryTimeout);

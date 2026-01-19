@@ -1,7 +1,12 @@
 {
-  "name": "browser-workflow-capture-app",
+  "name": "mediar-web-app-workspace",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/mediar-web-app-workspace.git"
+  },
   "packageManager": "bun@1.3.3",
   "scripts": {
     "dev": "turbo dev",

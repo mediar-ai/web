@@ -6,10 +6,8 @@ pub static GEMINI_API_KEY: LazyLock<String> = LazyLock::new(|| std::env::var("GE
 pub const GEMINI_MODEL: &str = "gemini-3-pro-preview";
 pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
-// Analytics constants
-pub static POSTHOG_API_KEY: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("POSTHOG_API_KEY").unwrap_or_else(|_| "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9".to_string())
-});
+// Analytics constants - loaded from environment variable (no fallback for security)
+pub static POSTHOG_API_KEY: LazyLock<String> = LazyLock::new(|| std::env::var("POSTHOG_API_KEY").unwrap_or_default());
 pub const POSTHOG_ENDPOINT: &str = "https://eu.i.posthog.com/capture/";
 
 // LLM Processing constants
@@ -62,11 +60,9 @@ mod tests {
 
     #[test]
     fn test_analytics_constants() {
-        // POSTHOG_API_KEY has a default fallback, so it should never be empty
-        assert!(
-            !POSTHOG_API_KEY.is_empty(),
-            "PostHog API key should not be empty (has default)"
-        );
+        // POSTHOG_API_KEY is loaded from env var - may be empty if not set
+        // We just verify it's accessible (the LazyLock works)
+        let _ = &*POSTHOG_API_KEY;
         assert!(
             !POSTHOG_ENDPOINT.is_empty(),
             "PostHog endpoint should not be empty"

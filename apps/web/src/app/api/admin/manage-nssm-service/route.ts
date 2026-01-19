@@ -4,14 +4,29 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+// VM configuration loaded from environment variables
 const VM_CONFIG = {
-  host: '48.214.144.108',
-  port: 3389,
+  host: process.env.VM_ADMIN_HOST || '',
+  port: parseInt(process.env.VM_ADMIN_PORT || '3389'),
   serviceName: 'MCPServer',
-  healthEndpoint: 'http://localhost:3000/health',
-  serviceEndpoint: 'https://vm-windows-1.ngrok.dev',  // Ngrok tunnel to PowerShell server
-  mcpEndpoint: 'https://mcp-server-1.ngrok.app'       // Ngrok tunnel to MCP server
+  healthEndpoint: process.env.VM_HEALTH_ENDPOINT || 'http://localhost:3000/health',
+  serviceEndpoint: process.env.VM_SERVICE_ENDPOINT || '',  // Ngrok tunnel to PowerShell server
+  mcpEndpoint: process.env.VM_MCP_ENDPOINT || ''           // Ngrok tunnel to MCP server
 };
+
+// MCP auth token helper - logs warning once if missing
+let mcpAuthWarningLogged = false;
+function getMcpAuthHeaders(): Record<string, string> {
+  const token = process.env.MCP_AUTH_TOKEN;
+  if (!token) {
+    if (!mcpAuthWarningLogged) {
+      console.warn('[manage-nssm] MCP_AUTH_TOKEN not set - requests will be unauthenticated');
+      mcpAuthWarningLogged = true;
+    }
+    return {};
+  }
+  return { 'Authorization': `Bearer ${token}` };
+}
 
 // Utility function to execute remote PowerShell commands
 async function executeRemoteCommand(command: string, options: { timeout?: number } = {}) {
@@ -239,7 +254,7 @@ const ServiceOperations = {
         const mcpResponse = await fetch(`${VM_CONFIG.mcpEndpoint}/health`, {
           headers: {
             'ngrok-skip-browser-warning': 'true',
-            'Authorization': 'Bearer ***REMOVED***'
+            ...getMcpAuthHeaders()
           },
           signal: AbortSignal.timeout(5000)
         });

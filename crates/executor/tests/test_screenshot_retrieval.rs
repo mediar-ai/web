@@ -8,10 +8,16 @@ mod screenshot_tests {
     use super::*;
 
     /// Test MCP endpoints for screenshot support
-    const TEST_ENDPOINTS: &[&str] = &[
-        "http://4.227.217.44:8080/mcp",
-        "http://172.190.244.122:8080/mcp",
-    ];
+    /// Set MCP_TEST_ENDPOINTS environment variable as comma-separated list
+    /// e.g., MCP_TEST_ENDPOINTS=http://vm1:8080/mcp,http://vm2:8080/mcp
+    fn get_test_endpoints() -> Vec<String> {
+        std::env::var("MCP_TEST_ENDPOINTS")
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().to_string())
+            .collect()
+    }
 
     /// Helper function to parse MCP response and extract screenshots
     fn extract_screenshots_from_response(response: &Value) -> Result<Vec<String>> {
@@ -142,9 +148,16 @@ mod screenshot_tests {
         // This test connects to real MCP endpoints
         use reqwest::Client;
 
-        let client = Client::new();
+        let endpoints = get_test_endpoints();
+        if endpoints.is_empty() {
+            println!("Skipping test: MCP_TEST_ENDPOINTS not set");
+            return Ok(());
+        }
 
-        for endpoint in TEST_ENDPOINTS {
+        let client = Client::new();
+        let auth_token = std::env::var("MCP_AUTH_TOKEN").ok();
+
+        for endpoint in &endpoints {
             println!("Testing endpoint: {endpoint}");
 
             // Step 1: Initialize session
@@ -162,13 +175,15 @@ mod screenshot_tests {
                 }
             });
 
-            let init_response = client
+            let mut init_request_builder = client
                 .post(*endpoint)
                 .header("Accept", "application/json, text/event-stream")
-                .header("Authorization", "Bearer ***REMOVED***")
-                .json(&init_request)
-                .send()
-                .await?;
+                .json(&init_request);
+            if let Some(token) = &auth_token {
+                init_request_builder =
+                    init_request_builder.header("Authorization", format!("Bearer {}", token));
+            }
+            let init_response = init_request_builder.send().await?;
 
             assert_eq!(init_response.status(), 200, "Initialization should succeed");
 
@@ -194,8 +209,11 @@ mod screenshot_tests {
             let mut request_builder = client
                 .post(*endpoint)
                 .header("Accept", "application/json, text/event-stream")
-                .header("Authorization", "Bearer ***REMOVED***")
                 .json(&tool_request);
+            if let Some(token) = &auth_token {
+                request_builder =
+                    request_builder.header("Authorization", format!("Bearer {}", token));
+            }
 
             // Add session ID if available
             if let Some(sid) = session_id {

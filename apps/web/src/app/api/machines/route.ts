@@ -12,6 +12,20 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// MCP auth token helper - logs warning once if missing
+let mcpAuthWarningLogged = false;
+function getMcpAuthHeaders(): Record<string, string> {
+  const token = process.env.MCP_AUTH_TOKEN;
+  if (!token) {
+    if (!mcpAuthWarningLogged) {
+      console.warn('[machines] MCP_AUTH_TOKEN not set - requests will be unauthenticated');
+      mcpAuthWarningLogged = true;
+    }
+    return {};
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
 // GET /api/machines - List machines the user's organization has access to
 export async function GET(request: NextRequest) {
   try {
@@ -482,7 +496,7 @@ async function validateMachineEndpoints(
         method: 'GET',
         headers: {
           'ngrok-skip-browser-warning': 'true',
-          Authorization: 'Bearer ***REMOVED***',
+          ...getMcpAuthHeaders(),
         },
         signal: AbortSignal.timeout(10000),
       });

@@ -402,9 +402,15 @@ if (Test-Path S:\\) {
     Write-Host "S: drive not found, skipping recording"
 }
 
+# Verify MCP_AUTH_TOKEN is set before starting agent
+if (-not $env:MCP_AUTH_TOKEN) {
+    Write-Host "ERROR: MCP_AUTH_TOKEN environment variable is not set. MCP agent will not start." -ForegroundColor Red
+    throw "MCP_AUTH_TOKEN is required to start the MCP agent"
+}
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = 'C:\\MCP\\terminator-mcp-agent.exe'
-$psi.Arguments = '-t http --host 0.0.0.0 -p 8080 --auth-token ***REMOVED***'
+$psi.Arguments = "-t http --host 0.0.0.0 -p 8080 --auth-token $env:MCP_AUTH_TOKEN"
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true
 $psi.RedirectStandardOutput = $true
@@ -429,7 +435,8 @@ $hostname = [System.Net.Dns]::GetHostName()
 $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*'} | Select-Object -First 1).IPAddress
 
 # Configure MCP authentication
-$psi.EnvironmentVariables['MCP_AUTH_TOKEN'] = '***REMOVED***'
+# MCP_AUTH_TOKEN should be set in the machine environment variables during VM provisioning
+# $psi.EnvironmentVariables['MCP_AUTH_TOKEN'] is inherited from parent environment
 
 # Configure OTEL telemetry
 $psi.EnvironmentVariables['OTEL_SDK_ENABLED'] = [System.Environment]::GetEnvironmentVariable('OTEL_SDK_ENABLED', 'Machine')

@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import posthog from "posthog-js";
 
-// PostHog configuration - loaded from environment variable with fallback
-const POSTHOG_API_KEY = import.meta.env.VITE_POSTHOG_API_KEY || "phc_NFSaZUao49XckpqaeyB3lIEKrFXhhXbKaI81jqZ8yn9";
+// PostHog configuration - loaded from environment variables (no hardcoded fallbacks for security)
+const POSTHOG_API_KEY = import.meta.env.VITE_POSTHOG_API_KEY || "";
 const POSTHOG_HOST = import.meta.env.VITE_POSTHOG_HOST || "https://eu.i.posthog.com";
 
 let isInitialized = false;
+let isEnabled = false; // True only if PostHog was actually initialized with a valid key
 let machineId: string | null = null;
 
 /**
@@ -14,6 +15,13 @@ let machineId: string | null = null;
 export async function initializeAnalytics(): Promise<void> {
   if (isInitialized) {
     console.log("✅ [Analytics] Already initialized");
+    return;
+  }
+
+  // Skip initialization if no API key is configured
+  if (!POSTHOG_API_KEY) {
+    console.warn("⚠️ [Analytics] VITE_POSTHOG_API_KEY not set - analytics disabled");
+    isInitialized = true; // Mark as initialized to prevent repeated warnings
     return;
   }
 
@@ -37,6 +45,7 @@ export async function initializeAnalytics(): Promise<void> {
     });
 
     isInitialized = true;
+    isEnabled = true;
   } catch (error) {
     console.error("❌ [Analytics] Failed to initialize:", error);
     throw error;
@@ -47,8 +56,8 @@ export async function initializeAnalytics(): Promise<void> {
  * Identify user after authentication (merges machine ID with user ID)
  */
 export function identifyUser(userId: string, email: string): void {
-  if (!isInitialized) {
-    console.warn("⚠️ [Analytics] Not initialized, cannot identify user");
+  if (!isEnabled) {
+    // Silently skip if analytics is disabled
     return;
   }
 
@@ -73,8 +82,8 @@ export function identifyUser(userId: string, email: string): void {
  * Track a custom event with properties
  */
 function trackEvent(eventName: string, properties?: Record<string, any>): void {
-  if (!isInitialized) {
-    console.warn("⚠️ [Analytics] Not initialized, cannot track event:", eventName);
+  if (!isEnabled) {
+    // Silently skip if analytics is disabled
     return;
   }
 

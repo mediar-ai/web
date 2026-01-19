@@ -83,7 +83,7 @@ Please provide a structured analysis with these exact sections:
 - [Any configuration changes needed]
 
 Focus on these common issues:
-1. MCP connection timeouts (http://172.178.65.145:8080/mcp or similar endpoints)
+1. MCP connection timeouts (e.g., http://[VM_IP]:8080/mcp endpoints)
 2. SAP session timeouts or login failures
 3. Element not found errors (SAP UI changes)
 4. Data format mismatches (dates, amounts, account codes)
@@ -260,10 +260,10 @@ function generateBasicAnalysis(data: ErrorAnalysisRequest): string {
   let analysis = '## Error Analysis\n\n';
 
   // Detect common MCP/SAP errors
-  if (error?.message?.includes('ConnectTimeout') || error?.message?.includes('http://172.178.65.145:8080/mcp')) {
+  if (error?.message?.includes('ConnectTimeout') || error?.message?.includes('/mcp')) {
     analysis += '**Root Cause:** MCP connection timeout - The automation server is not responding.\n\n';
     analysis += '**Solution:**\n';
-    analysis += '- Check if the MCP server at 172.178.65.145 is running\n';
+    analysis += '- Check if the MCP server is running\n';
     analysis += '- Verify network connectivity\n';
     analysis += '- Restart the MCP service on the Azure VM\n';
     analysis += '- Check Azure NSG rules for port 8080\n\n';

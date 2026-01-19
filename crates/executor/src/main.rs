@@ -200,16 +200,19 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
     let db_pool = create_pool(&database_url).await?;
 
     // Determine MCP endpoint based on machine name
+    // VMs should be registered in the database or specified as full URLs
     let mcp_endpoint = match machine.to_lowercase().as_str() {
-        "vm1" => "http://172.190.244.122:8080".to_string(),
-        "vm2" => "http://4.227.217.44:8080".to_string(),
         url if url.starts_with("http://") || url.starts_with("https://") => url.to_string(),
-        _ => {
-            // Try to look up machine by name in database
-            // For now, return an error
-            return Err(anyhow::anyhow!(
-                "Unknown machine: {machine}. Use vm1, vm2, or provide a full MCP endpoint URL"
-            ));
+        name => {
+            // Look up machine by name from environment variable or database
+            // Environment format: VM_<NAME>_ENDPOINT (e.g., VM_VM1_ENDPOINT=http://10.0.0.1:8080)
+            let env_key = format!("VM_{}_ENDPOINT", name.to_uppercase());
+            std::env::var(&env_key).map_err(|_| {
+                anyhow::anyhow!(
+                    "Unknown machine: {machine}. Set {} or provide a full MCP endpoint URL",
+                    env_key
+                )
+            })?
         }
     };
 

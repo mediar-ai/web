@@ -58,7 +58,7 @@ jobs:
             --platform managed \
             --set-env-vars SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --set-env-vars SUPABASE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} \
-            --set-env-vars VNC_PASSWORD=mediar12
+            --set-env-vars VNC_PASSWORD=${{ secrets.VNC_PASSWORD }}
 
       - name: Summary
         run: |

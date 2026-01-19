@@ -71,9 +71,10 @@ uv.lock
 # sveltekit
 .svelte-kit/
 
-# cursor
+# AI assistants config (contains local paths and settings)
 .cursor/
 .cursor
+.claude/
 
 #ബോ
 server.log

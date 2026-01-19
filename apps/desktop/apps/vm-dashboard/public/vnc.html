@@ -28,7 +28,11 @@
 
     const params = new URLSearchParams(window.location.search);
     const target = params.get('target');
-    const password = params.get('password') || 'mediar123';
+    const password = params.get('password');
+    if (!password) {
+      document.getElementById('status').textContent = 'No password specified';
+      throw new Error('VNC password is required as a URL parameter');
+    }
 
     if (!target) {
       document.getElementById('status').textContent = 'No target specified';

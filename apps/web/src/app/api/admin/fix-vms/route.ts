@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const WORKING_VM_IP = '172.171.215.84';
+// Working VM IP loaded from environment variable - required to prevent accidental data corruption
+function getWorkingVmIp(): string {
+  const ip = process.env.WORKING_VM_IP;
+  if (!ip) {
+    throw new Error('WORKING_VM_IP environment variable is required for fix-vms endpoint');
+  }
+  return ip;
+}
 
 export async function POST() {
   try {
@@ -20,6 +27,7 @@ export async function POST() {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
+    const WORKING_VM_IP = getWorkingVmIp();
     const updates = [];
 
     // Update all machines to point to working VM

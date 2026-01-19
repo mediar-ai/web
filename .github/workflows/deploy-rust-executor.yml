@@ -104,11 +104,11 @@ jobs:
             --set-env-vars "^::^RUST_LOG=workflow_executor=debug,tower_http=debug,info" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
-            --set-env-vars "MCP_ENDPOINT=http://4.227.217.44:8080" \
+            --set-env-vars "MCP_ENDPOINT=${{ secrets.MCP_ENDPOINT }}" \
             --set-env-vars "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" \
             --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             --set-env-vars "OTEL_SDK_ENABLED=true" \
-            --set-env-vars "OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector-e4mtrji55a-ue.a.run.app" \
+            --set-env-vars "OTEL_EXPORTER_OTLP_ENDPOINT=${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}" \
             --set-env-vars "APP_URL=${{ secrets.APP_URL }}" \
             --set-env-vars "MEDIAR_SERVICE_API_KEY=${{ secrets.MEDIAR_SERVICE_API_KEY }}" \
             --set-env-vars "MCP_SERVICE_TOKEN=${{ secrets.MCP_SERVICE_TOKEN }}" \

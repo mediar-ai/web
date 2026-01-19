@@ -91,8 +91,17 @@ export default function Dashboard() {
     setActionLoading(null);
   };
 
+  const vncPassword = process.env.NEXT_PUBLIC_VNC_PASSWORD || "";
+  const buildVncUrl = (ip: string) => {
+    const target = encodeURIComponent(`${ip}:5900`);
+    if (!vncPassword) {
+      return `/vnc.html?target=${target}`;
+    }
+    return `/vnc.html?target=${target}&password=${encodeURIComponent(vncPassword)}`;
+  };
+
   const openVNC = (ip: string) => {
-    window.open(`/vnc.html?target=${ip}:5900`, "_blank");
+    window.open(buildVncUrl(ip), "_blank");
   };
 
   const runningCount = vms.filter(v => v.state === "Running").length;

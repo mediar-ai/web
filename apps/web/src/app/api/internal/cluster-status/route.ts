@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Fallback endpoints if Supabase is not available
-const FALLBACK_ENDPOINTS = [
-  { id: 4, name: 'Azure Load Balancer', mcp_endpoint: 'http://172.203.20.145:8080' },
-];
+// Fallback endpoints if Supabase is not available - loaded from environment
+function getFallbackEndpoints(): any[] {
+  const envValue = process.env.CLUSTER_FALLBACK_ENDPOINTS;
+  if (!envValue) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(envValue);
+    if (!Array.isArray(parsed)) {
+      console.warn('CLUSTER_FALLBACK_ENDPOINTS must be a JSON array, got:', typeof parsed);
+      return [];
+    }
+    return parsed;
+  } catch (e) {
+    console.error('Failed to parse CLUSTER_FALLBACK_ENDPOINTS:', e);
+    return [];
+  }
+}
 
 interface VMStatus {
   id: string;
@@ -92,7 +106,7 @@ export async function GET() {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     // Get VM endpoints from Supabase remote_machines table
-    let vmEndpoints = FALLBACK_ENDPOINTS;
+    let vmEndpoints = getFallbackEndpoints();
     
     if (supabaseUrl && supabaseServiceKey) {
       const supabase = createClient(supabaseUrl, supabaseServiceKey);

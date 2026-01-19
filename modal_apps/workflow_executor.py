@@ -1619,15 +1619,23 @@ async def execute_mcp_workflow(
             )
             return httpx.AsyncClient(timeout=timeout_config)
 
+        mcp_auth_token = os.environ.get("MCP_AUTH_TOKEN")
+
+        def _with_auth(headers):
+            if not mcp_auth_token:
+                return headers
+            headers = dict(headers)
+            headers["Authorization"] = f"Bearer {mcp_auth_token}"
+            return headers
+
         async def _initialize_session():
             client, resp = await post_with_503_backoff(
                 _client_factory,
                 endpoint_url,
                 init_request,
-                {
+                _with_auth({
                     "Accept": "application/json, text/event-stream",
-                    "Authorization": "Bearer ***REMOVED***"
-                },
+                }),
             )
             return client, resp
 
@@ -1666,9 +1674,9 @@ async def execute_mcp_workflow(
                             retry_response = await retry_client.post(
                                 endpoint_url,
                                 json=init_request,
-                                headers={
+                                headers=_with_auth({
                                     "Accept": "application/json, text/event-stream"
-                                },
+                                }),
                             )
                             if retry_response.status_code == 200:
                                 session_client = retry_client
@@ -1725,11 +1733,10 @@ async def execute_mcp_workflow(
             resp = await session_client.post(
                 endpoint_url,
                 json=payload,
-                headers={
+                headers=_with_auth({
                     "Accept": "application/json, text/event-stream",
                     "Mcp-Session-Id": session_id,
-                    "Authorization": "Bearer ***REMOVED***"
-                },
+                }),
             )
             logger.info("[DEBUG] _post_with_session: POST returned, status=%s", resp.status_code)
             if resp.status_code == 401:
@@ -1747,11 +1754,10 @@ async def execute_mcp_workflow(
                 resp = await session_client.post(
                     endpoint_url,
                     json=payload,
-                    headers={
+                    headers=_with_auth({
                         "Accept": "application/json, text/event-stream",
                         "Mcp-Session-Id": session_id,
-                        "Authorization": "Bearer ***REMOVED***"
-                    },
+                    }),
                 )
                 logger.info("[DEBUG] _post_with_session: Retry POST returned, status=%s", resp.status_code)
             logger.info("[DEBUG] _post_with_session: About to return response object")

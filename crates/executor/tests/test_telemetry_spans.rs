@@ -21,7 +21,7 @@ fn test_span_attributes_structure() {
         "workflow_id": "123",
         "workflow_name": "OneDrive Authentication",
         "organization_id": "org_REDACTED",
-        "mcp_endpoint": "http://4.227.217.44:8080",
+        "mcp_endpoint": "http://localhost:8080",
         "otel.kind": "server"
     });
 
@@ -150,8 +150,8 @@ fn test_mcp_endpoint_format() {
     // MCP endpoints should be valid HTTP/HTTPS URLs
     let endpoints = vec![
         "http://localhost:8080",
-        "http://4.227.217.44:8080",
-        "http://172.190.244.122:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8082",
         "https://mcp.example.com:8443",
     ];
 

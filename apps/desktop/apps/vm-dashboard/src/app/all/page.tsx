@@ -32,6 +32,15 @@ export default function AllAgents() {
     return () => clearInterval(interval);
   }, [fetchVMs]);
 
+  const vncPassword = process.env.NEXT_PUBLIC_VNC_PASSWORD || "";
+  const buildVncUrl = (ip: string) => {
+    const target = encodeURIComponent(`${ip}:5900`);
+    if (!vncPassword) {
+      return `/vnc.html?target=${target}`;
+    }
+    return `/vnc.html?target=${target}&password=${encodeURIComponent(vncPassword)}`;
+  };
+
   const runningVms = vms.filter(vm => vm.ip);
   const cols = runningVms.length === 1 ? 1 : runningVms.length <= 4 ? 2 : 3;
 
@@ -63,7 +72,7 @@ export default function AllAgents() {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <span style={styles.ip}>{vm.ip}</span>
                   <button
-                    onClick={() => window.open(`/vnc.html?target=${vm.ip}:5900`, "_blank")}
+                    onClick={() => window.open(buildVncUrl(vm.ip!), "_blank")}
                     style={styles.openBtn}
                   >
                     Open
@@ -71,7 +80,7 @@ export default function AllAgents() {
                 </div>
               </div>
               <iframe
-                src={`/vnc.html?target=${vm.ip}:5900`}
+                src={buildVncUrl(vm.ip!)}
                 style={styles.iframe}
                 allow="clipboard-read; clipboard-write"
               />

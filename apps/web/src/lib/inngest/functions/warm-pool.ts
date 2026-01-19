@@ -466,7 +466,11 @@ export const provisionPoolVmFunction = inngest.createFunction(
 
         $mcpProcess = Get-Process -Name 'terminator-mcp-agent' -ErrorAction SilentlyContinue
         if (-not $mcpProcess) {
-          Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList '-t http --host 0.0.0.0 -p 8080 --auth-token ***REMOVED***' -WindowStyle Hidden
+          if (-not $env:MCP_AUTH_TOKEN) {
+            Write-Host 'ERROR: MCP_AUTH_TOKEN not set, cannot start MCP agent'
+            throw 'MCP_AUTH_TOKEN is required'
+          }
+          Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList "-t http --host 0.0.0.0 -p 8080 --auth-token $env:MCP_AUTH_TOKEN" -WindowStyle Hidden
           Start-Sleep -Seconds 3
         }
 

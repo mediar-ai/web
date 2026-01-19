@@ -210,10 +210,15 @@ impl McpClient {
             reqwest::header::ACCEPT,
             reqwest::header::HeaderValue::from_static("application/json, text/event-stream"),
         );
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_static("Bearer ***REMOVED***"),
-        );
+        let auth_token = std::env::var("MCP_AUTH_TOKEN")
+            .unwrap_or_else(|_| "".to_string());
+        if !auth_token.is_empty() {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", auth_token))
+                    .expect("Invalid MCP_AUTH_TOKEN value"),
+            );
+        }
 
         // Add W3C Trace Context header (traceparent) for distributed tracing
         // This propagates the current OpenTelemetry trace to the MCP server
@@ -606,8 +611,10 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires live MCP server - run with: cargo test --ignored test_mcp_session_management
     async fn test_mcp_session_management() {
-        // This test requires a live MCP server at http://4.227.217.44:8080/mcp
-        let client = McpClient::from_url("http://4.227.217.44:8080".to_string());
+        // Set MCP_TEST_ENDPOINT to point at a live MCP server.
+        let endpoint =
+            std::env::var("MCP_TEST_ENDPOINT").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let client = McpClient::from_url(endpoint);
 
         // First tool call should initialize session and succeed
         let result1 = client

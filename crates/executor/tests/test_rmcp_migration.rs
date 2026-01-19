@@ -6,7 +6,9 @@ use workflow_executor::mcp::McpClient;
 #[ignore] // Run with: cargo test --test test_rmcp_migration -- --ignored --nocapture
 async fn test_rmcp_sdk_real_server() {
     // Test against real MCP server
-    let client = McpClient::from_url("http://4.227.217.44:8080".to_string());
+    let endpoint =
+        std::env::var("MCP_TEST_ENDPOINT").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let client = McpClient::from_url(endpoint);
 
     println!("\n=== Testing RMCP SDK Migration ===\n");
 

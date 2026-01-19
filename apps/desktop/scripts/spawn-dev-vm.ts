@@ -48,10 +48,25 @@ const MIN_MEMORY_MB = 512; // 512MB minimum for dynamic memory
 const MAX_MEMORY_MB = 4096; // 4GB maximum for dynamic memory
 const EXTERNAL_SWITCH_NAME = "External Switch";
 
-// Credentials (from packer image build)
-const VM_USERNAME = "vmuser";
-const VM_PASSWORD = "P@ssw0rd123!";
-const VNC_PASSWORD = "mediar123";
+// Credentials (from packer image build) - loaded from environment variables
+// Validation is deferred to when credentials are actually needed (not --setup or --help)
+const VM_USERNAME = process.env.VM_USERNAME || "vmuser";
+
+function getVmPassword(): string {
+  const password = process.env.VM_PASSWORD;
+  if (!password) {
+    throw new Error("VM_PASSWORD environment variable is required for VM operations");
+  }
+  return password;
+}
+
+function getVncPassword(): string {
+  const password = process.env.VNC_PASSWORD;
+  if (!password) {
+    throw new Error("VNC_PASSWORD environment variable is required for VNC operations");
+  }
+  return password;
+}
 
 // Snapshot paths
 const SNAPSHOT_VHD = join(VMS_DIR, "mcp-dev-authenticated.vhdx");
@@ -185,7 +200,7 @@ async function openRDP(ip: string): Promise<void> {
   // Create .rdp file with credentials (cmdkey approach)
   try {
     // Store credentials temporarily
-    await ps(`cmdkey /generic:${ip} /user:${VM_USERNAME} /pass:${VM_PASSWORD}`);
+    await ps(`cmdkey /generic:${ip} /user:${VM_USERNAME} /pass:${getVmPassword()}`);
     // Launch mstsc
     await $`powershell -NoProfile -Command "Start-Process mstsc -ArgumentList '/v:${ip}'"`;
     log("  ✓ RDP window opened");
@@ -205,12 +220,12 @@ async function openVNC(ip: string): Promise<void> {
     const tvncPath = tvncPaths.find(p => existsSync(p));
     if (tvncPath) {
       // Launch TightVNC with password and auto-scale
-      const vncArgs = `${ip}::5900 -password=${VNC_PASSWORD} -scale=auto`;
+      const vncArgs = `${ip}::5900 -password=${getVncPassword()} -scale=auto`;
       await $`powershell -NoProfile -Command "Start-Process '${tvncPath}' -ArgumentList ${vncArgs}"`;
       log("  ✓ TightVNC Viewer opened (auto-scale enabled)");
     } else {
       logWarning("TightVNC not found. Install: winget install GlavSoft.TightVNC");
-      log(`     Manual: tvnviewer ${ip}::5900 -password=${VNC_PASSWORD} -scale=auto`);
+      log(`     Manual: tvnviewer ${ip}::5900 -password=${getVncPassword()} -scale=auto`);
     }
   } catch (e) {
     logWarning("Could not open VNC");
@@ -910,10 +925,10 @@ async function main() {
     bun scripts/spawn-dev-vm.ts --snapshot mcp-dev   # Save authenticated VM
     bun scripts/spawn-dev-vm.ts --use-snapshot       # Create from snapshot
 
-  Credentials:
+  Credentials (from environment variables):
     RDP User: ${VM_USERNAME}
-    RDP Pass: ${VM_PASSWORD}
-    VNC Pass: ${VNC_PASSWORD}
+    RDP Pass: (VM_PASSWORD env var)
+    VNC Pass: (VNC_PASSWORD env var)
 `);
     return;
   }
@@ -1001,10 +1016,10 @@ async function main() {
   ├─────────────────────────────────────────────────┤
   │  RDP Credentials:                               │
   │    User: ${VM_USERNAME.padEnd(38)}│
-  │    Pass: ${VM_PASSWORD.padEnd(38)}│
+  │    Pass: ${getVmPassword().padEnd(38)}│
   ├─────────────────────────────────────────────────┤
   │  VNC: ${ip}:5900${" ".repeat(Math.max(0, 26 - ip.length))}│
-  │    Pass: ${VNC_PASSWORD.padEnd(38)}│
+  │    Pass: ${getVncPassword().padEnd(38)}│
   └─────────────────────────────────────────────────┘
 
   Commands:
