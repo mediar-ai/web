@@ -1,0 +1,3 @@
+- Improved workflow event delivery reliability
+- Fixed MCP server startup delays on Azure VMs
+- Performance: 30-50x faster UI tree building with caching
