@@ -1,3 +1,3 @@
-- Improved workflow event delivery reliability
-- Fixed MCP server startup delays on Azure VMs
+- Fixed spinner getting stuck when MCP connection drops unexpectedly
+- Improved workflow UI state reset on transport errors
 - Performance: 30-50x faster UI tree building with caching
