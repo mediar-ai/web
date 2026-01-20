@@ -485,6 +485,29 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
     };
   }, []);
 
+  // FIX: Listen for MCP transport errors to reset UI state when connection dies unexpectedly
+  // This prevents the spinner from staying stuck when the SSE stream or transport closes
+  useEffect(() => {
+    const handleTransportError = (e: CustomEvent<{ reason: string; message: string }>) => {
+      console.log(`🔌 [WORKFLOW] MCP transport error detected: ${e.detail.reason} - ${e.detail.message}`);
+      // Reset execution state to prevent stuck spinner
+      if (workflowStateRef.current === "executing") {
+        console.log("🔌 [WORKFLOW] Resetting state due to transport error");
+        setLiveStepStatus({});
+        setWorkflowState("idle");
+        isExecutingRef.current = false;
+        setExecutingRange(null);
+        setIsFullWorkflowMode(false);
+      }
+    };
+
+    window.addEventListener("mcp-transport-error", handleTransportError as EventListener);
+
+    return () => {
+      window.removeEventListener("mcp-transport-error", handleTransportError as EventListener);
+    };
+  }, []);
+
   // Add ref to track if recording toggle is in progress
   const isProcessingToggleRef = useRef(false);
 
@@ -3549,6 +3572,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       isExecutingRef.current = false;
       setExecutingRange(null); // Clear any range execution
       setIsFullWorkflowMode(false); // Clear full workflow mode
+      setLiveStepStatus({}); // Clear live step status to stop spinner animation
     }
   }, [workflowState]);
 
