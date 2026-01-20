@@ -12,16 +12,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { parseTypeScriptWorkflow } from '@/lib/typescript-workflow-parser';
 import { getAuthenticatedOctokit, isGitHubAppConfigured } from '@/lib/github-app-auth';
 
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const GITHUB_OWNER = 'mediar-ai';
 const GITHUB_REPO = 'workflows';
@@ -36,6 +31,7 @@ interface PublishRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Check authentication
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');

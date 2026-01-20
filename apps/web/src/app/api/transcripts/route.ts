@@ -1,19 +1,30 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+// Lazy initialization to avoid build-time errors
+let _supabaseAdmin: SupabaseClient | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
+function getSupabaseAdmin(): SupabaseClient {
+  if (_supabaseAdmin) return _supabaseAdmin;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase URL or Service Role Key');
+  }
+
+  _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  return _supabaseAdmin;
 }
 
-if (!INTERNAL_API_KEY) {
-  throw new Error('INTERNAL_API_KEY is not set');
+function getInternalApiKey(): string {
+  const key = process.env.INTERNAL_API_KEY;
+  if (!key) {
+    throw new Error('INTERNAL_API_KEY is not set');
+  }
+  return key;
 }
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 interface TranscriptionItem {
     id: string;
@@ -128,9 +139,11 @@ function parseRawTranscript(rawContent: string, sessionId: string): Transcriptio
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get('Authorization');
-    if (authHeader !== `Bearer ${INTERNAL_API_KEY}`) {
+    if (authHeader !== `Bearer ${getInternalApiKey()}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     const body = await request.json();
     

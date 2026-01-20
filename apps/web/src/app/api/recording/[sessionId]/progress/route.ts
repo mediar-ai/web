@@ -1,15 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
@@ -44,7 +35,7 @@ export async function GET(
     console.log(`[recording/progress] Fetching progress for session ${sessionId}`);
 
     // Get session metadata
-    const { data: session, error: sessionError } = await supabaseAdmin
+    const { data: session, error: sessionError } = await getSupabaseAdmin()
       .from('session_metadata')
       .select('*')
       .eq('session_id', sessionId)
@@ -74,7 +65,7 @@ export async function GET(
     let processedCount = 0;
 
     if (session.user_id) {
-      const { data: pending, error: pendingError } = await supabaseAdmin
+      const { data: pending, error: pendingError } = await getSupabaseAdmin()
         .rpc('count_unprocessed_events_by_timestamp', { p_user_id: session.user_id });
 
       if (pendingError) {
@@ -83,7 +74,7 @@ export async function GET(
         pendingCount = pending || 0;
       }
 
-      const { data: processed, error: processedError } = await supabaseAdmin
+      const { data: processed, error: processedError } = await getSupabaseAdmin()
         .rpc('count_processed_events_by_timestamp', { p_user_id: session.user_id });
 
       if (processedError) {

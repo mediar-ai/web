@@ -1,17 +1,13 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { encryptSecret, validateSecretName } from '@/lib/crypto';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * GET /api/secrets - List all secrets for user's org (values masked)
  */
 export async function GET() {
+  const supabase = getSupabaseAdmin();
   try {
     const { userId, orgId } = await auth();
 
@@ -48,6 +44,7 @@ export async function GET() {
  * POST /api/secrets - Create new secret
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const { userId, orgId } = await auth();
 

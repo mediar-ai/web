@@ -1,16 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import type { WorkflowRecord, CachedTool, JSONSchemaProperty } from './types';
 import { generateToolFromWorkflow } from './toolGenerator';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase configuration for MCP server');
-}
-
-// Use service key for full database access
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export class WorkflowDiscovery {
   private toolsCache = new Map<string, CachedTool>();
@@ -18,8 +8,9 @@ export class WorkflowDiscovery {
   private readonly CACHE_TTL = 30000; // 30 seconds
 
   async discoverWorkflows(orgId?: string, isMediarOrg?: boolean, isMediarAdmin?: boolean): Promise<WorkflowRecord[]> {
+    const supabase = getSupabaseAdmin();
     console.log('[FIX] [MCP] Discovering workflows from database...');
-    
+
     // If no org context provided, return empty (fail-safe)
     if (!orgId) {
       console.warn('[FIX] [MCP] No org context - returning empty workflow list');

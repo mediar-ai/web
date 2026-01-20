@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import * as yaml from 'js-yaml';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // CORS headers for cross-origin requests from Tauri app
 const corsHeaders = {
@@ -22,6 +17,7 @@ export async function OPTIONS(_request: NextRequest) {
 
 // POST: Add selected pool steps to a workflow
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Dual authentication: Desktop token or Clerk session
     let authenticatedUserId: string | null = null;

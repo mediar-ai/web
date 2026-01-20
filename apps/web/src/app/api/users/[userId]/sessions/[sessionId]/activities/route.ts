@@ -1,15 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import type { ActivityItem } from '@/types';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 interface Params {
   params: Promise<{
@@ -21,9 +12,10 @@ interface Params {
 export async function GET(request: Request, { params }: Params) {
   try {
     const { userId, sessionId } = await params;
-    
+    const supabaseAdmin = getSupabaseAdmin();
+
     console.log(`[API] Fetching activities for user ${userId}, session ${sessionId}`);
-    
+
     // Fetch activity items from Supabase
     const { data, error } = await supabaseAdmin
       .from('user_activity_data')

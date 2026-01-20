@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const searchParams = request.nextUrl.searchParams;
   const workflowId = searchParams.get('id');
   const fix = searchParams.get('fix') === 'true';
@@ -102,6 +98,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(_request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Get all workflows that have files but no subdirectory
     const { data: workflows, error } = await supabase

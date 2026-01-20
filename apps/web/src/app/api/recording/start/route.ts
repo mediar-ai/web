@@ -1,16 +1,7 @@
 import { Function_ } from 'modal';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Create/update session_metadata record
     console.log('[recording/start] Upserting session_metadata...');
-    const { error: upsertError } = await supabaseAdmin
+    const { error: upsertError } = await getSupabaseAdmin()
       .from('session_metadata')
       .upsert({
         session_id: sessionId,

@@ -4,15 +4,10 @@ import {
   shouldExecuteAt,
   getNextExecutionTime,
 } from '@/lib/cronParser';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 interface ScheduledWorkflow {
   id: number;
@@ -44,6 +39,7 @@ interface ExecutionResult {
  * Called every minute by Vercel Cron to check and execute scheduled workflows
  */
 export async function POST(_request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const startTime = Date.now();
   const currentTime = new Date();
 

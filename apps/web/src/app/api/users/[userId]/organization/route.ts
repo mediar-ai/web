@@ -1,15 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // Update user's organization ID
 export async function PUT(
@@ -40,6 +31,7 @@ export async function PUT(
     }
 
     // Call the database function to update organization for both tables
+    const supabaseAdmin = getSupabaseAdmin();
     const { error } = await supabaseAdmin.rpc('update_user_organization', {
       user_id_param: userId,
       org_id_param: organizationId
@@ -116,6 +108,7 @@ export async function DELETE(
       // Optionally, also clean up any app-specific data
       // Note: You may want to keep user data for audit purposes
       // Only delete if you really want to remove all traces
+      const supabaseAdmin = getSupabaseAdmin();
       const { error: mediarError } = await supabaseAdmin
         .from('mediar_users')
         .update({ organization_id: null }) // Just unlink from org, don't delete

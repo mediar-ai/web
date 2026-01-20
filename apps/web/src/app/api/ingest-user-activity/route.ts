@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // These types are copied from the old edge function for consistency.
 // In a larger refactor, they could be moved to a shared types file.
@@ -109,18 +109,10 @@ interface UserActivityDataRow {
   client_timestamp: string;
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-// Initialize Supabase client for admin operations
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
 export async function POST(request: NextRequest) {
   console.log("API route 'ingest-user-activity' invoked.");
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   try {
     // Extract and validate Authorization header

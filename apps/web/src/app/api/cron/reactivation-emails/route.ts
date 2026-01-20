@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendTransactionalEmail } from '@/lib/loops';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 const POSTHOG_API_KEY = process.env.POSTHOG_PERSONAL_API_KEY;
 const POSTHOG_PROJECT_ID = '98541';
@@ -65,35 +60,37 @@ async function getInactiveUsers(daysAgo: number = 2): Promise<{ email: string; u
 }
 
 /**
- * Check if we already sent a reactivation email to this user
- */
-async function hasBeenEmailed(email: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('reactivation_emails')
-    .select('id')
-    .eq('email', email)
-    .single();
-
-  return !!data;
-}
-
-/**
- * Record that we sent a reactivation email
- */
-async function recordEmailSent(email: string, userId: string) {
-  await supabase.from('reactivation_emails').insert({
-    email,
-    user_id: userId,
-    sent_at: new Date().toISOString(),
-    email_type: 'desktop_not_opened',
-  });
-}
-
-/**
  * Reactivation Emails Cron Job
  * Runs daily to email users who signed up but never opened the desktop app
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
+
+  /**
+   * Check if we already sent a reactivation email to this user
+   */
+  async function hasBeenEmailed(email: string): Promise<boolean> {
+    const { data } = await supabase
+      .from('reactivation_emails')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    return !!data;
+  }
+
+  /**
+   * Record that we sent a reactivation email
+   */
+  async function recordEmailSent(email: string, odUserId: string) {
+    await supabase.from('reactivation_emails').insert({
+      email,
+      user_id: odUserId,
+      sent_at: new Date().toISOString(),
+      email_type: 'desktop_not_opened',
+    });
+  }
+
   const userAgent = request.headers.get('user-agent') || '';
   const isVercelCron = userAgent.includes('vercel-cron');
 

@@ -5,16 +5,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateStepEmbeddings } from '@/lib/vertex-embeddings';
 import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * OPTIONS /api/rpa-kb
@@ -32,8 +27,9 @@ export async function OPTIONS(request: NextRequest) {
  * Deduplicates based on: app_name, element_path, definition
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
-  
+
   try {
     const body = await request.json();
 
@@ -226,8 +222,9 @@ export async function POST(request: NextRequest) {
  * List steps with pagination and basic filtering
  */
 export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
-  
+
   try {
     const { searchParams } = new URL(request.url);
     

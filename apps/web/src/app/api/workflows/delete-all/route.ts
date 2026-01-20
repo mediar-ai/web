@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -19,6 +10,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // Delete ALL workflows for this user
     const { error } = await supabaseAdmin
       .from('low_level_workflows')

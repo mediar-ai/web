@@ -1,6 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import path from 'path';
+import { getSupabaseAdmin } from './supabase-server';
 
 export interface WorkflowFile {
   path: string;
@@ -21,14 +22,11 @@ export interface FileUploadResult {
 }
 
 export class WorkflowFileManager {
-  private supabase;
+  private supabase: SupabaseClient;
   private bucketName = 'workflow-files';
 
   constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    this.supabase = getSupabaseAdmin();
   }
 
   /**
@@ -437,6 +435,3 @@ export class WorkflowFileManager {
     }
   }
 }
-
-// Export singleton instance
-export const workflowFileManager = new WorkflowFileManager();

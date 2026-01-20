@@ -6,14 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateStepEmbeddings } from '@/lib/vertex-embeddings';
 import { getCorsHeaders, corsJsonResponse } from '@/lib/cors';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * OPTIONS /api/rpa-kb/[id]
@@ -33,8 +28,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
-  
+
   try {
     const { id } = await params;
 
@@ -98,8 +94,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
-  
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -237,8 +234,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
-  
+
   try {
     const { id } = await params;
 

@@ -1,16 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-// Initialize Supabase admin client
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * GET /api/workflows/executions/screenshot/[executionId]/[filename]
@@ -33,6 +23,8 @@ export async function GET(
     }
 
     const { executionId, filename } = await params;
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Get the workflow execution and check organization access
     const { data: execution, error: executionError } = await supabaseAdmin

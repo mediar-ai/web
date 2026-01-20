@@ -1,13 +1,8 @@
 import { Octokit } from '@octokit/rest';
 import yaml from 'js-yaml';
-import { createClient } from '@supabase/supabase-js';
 import { createClerkClient } from '@clerk/backend';
 import { getAuthenticatedOctokit } from './github-app-auth';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from './supabase-server';
 
 export interface GitHubWorkflowResult {
   success: boolean;
@@ -68,6 +63,7 @@ export class GitHubWorkflowManager {
     updates: { name?: string; description?: string },
     userContext?: UserContext
   ): Promise<GitHubWorkflowResult> {
+    const supabase = getSupabaseAdmin();
     try {
       // Get workflow's github_path from Supabase
       const { data: workflow, error: fetchError } = await supabase
@@ -174,6 +170,7 @@ export class GitHubWorkflowManager {
     organizationId?: string,
     userContext?: UserContext
   ): Promise<GitHubWorkflowResult> {
+    const supabase = getSupabaseAdmin();
     try {
       // Validate YAML
       yaml.load(yamlContent);
@@ -360,6 +357,7 @@ ${message || 'Workflow created via Mediar UI'}
     workflowId: number;
     isNew: boolean;
   } | null> {
+    const supabase = getSupabaseAdmin();
     // Check if folder already mapped
     const { data: existing } = await supabase
       .from('deployed_workflows')

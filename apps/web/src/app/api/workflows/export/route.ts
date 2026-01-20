@@ -1,18 +1,9 @@
 import { WORKFLOW_EXPORT_ENHANCEMENT_PROMPT } from '@/lib/prompts';
 import { getVertexGenAI } from '@/lib/vertexai';
 import { generateEnhancedWorkflowYAML } from '@/lib/workflowExportHelpers';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { trackLLMUsageAsync } from '@/lib/llm-tracking';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 interface WorkflowExportRequest {
   userId: string;
@@ -90,7 +81,7 @@ async function fetchSampleWorkflows(): Promise<ExampleWorkflow[]> {
   console.log('📋 [EXPORT] Fetching sample workflows from deployed_workflows...');
   const startTime = Date.now();
   
-  const { data: workflows, error } = await supabaseAdmin
+  const { data: workflows, error } = await getSupabaseAdmin()
     .from('deployed_workflows_with_sequence')
     .select(`
       id,
@@ -414,7 +405,7 @@ export async function POST(req: NextRequest) {
     console.log(`📋 [EXPORT] Step 2: Fetching workflow details for ID ${workflowId}...`, { requestId });
     const workflowFetchStart = Date.now();
     
-    const { data: targetWorkflow, error: workflowError } = await supabaseAdmin
+    const { data: targetWorkflow, error: workflowError } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .select(`
         id, 
@@ -460,7 +451,7 @@ export async function POST(req: NextRequest) {
     let savedSynthesis: SavedSynthesis | null = null;
 
     if (targetWorkflow.synthesis_session_id) {
-      const { data: synthesis, error: synthesisError } = await supabaseAdmin
+      const { data: synthesis, error: synthesisError } = await getSupabaseAdmin()
         .from('saved_workflow_syntheses')
         .select('id, title, workflow_context, synthesis_process_data, created_at')
         .eq('synthesis_session_id', targetWorkflow.synthesis_session_id)
@@ -500,7 +491,7 @@ export async function POST(req: NextRequest) {
     console.log('📋 [EXPORT] Step 4: Fetching timeline annotations...', { requestId });
     const annotationsStart = Date.now();
     
-    const { data: timelineAnnotations, error: timelineError } = await supabaseAdmin
+    const { data: timelineAnnotations, error: timelineError } = await getSupabaseAdmin()
       .from('raw_timeline_event_annotations')
       .select(`
         analysis_id,

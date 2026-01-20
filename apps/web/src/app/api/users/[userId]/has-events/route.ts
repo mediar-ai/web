@@ -1,14 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 interface Params {
   params: Promise<{
@@ -19,9 +10,10 @@ interface Params {
 export async function GET(request: Request, { params }: Params) {
   try {
     const { userId } = await params;
-    
+    const supabaseAdmin = getSupabaseAdmin();
+
     console.log(`[API] Checking if user ${userId} has raw events`);
-    
+
     // For now, since there's a schema mismatch between Clerk user IDs (text) and database UUIDs,
     // let's check if this user exists in mediar_users. If they don't, they definitely don't have events.
     const { data: userCheck, error: userCheckError } = await supabaseAdmin
