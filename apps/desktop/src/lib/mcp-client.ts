@@ -158,6 +158,18 @@ export class McpClient {
               console.log("🔌 [MCP-CLIENT] Transport closed (user stop)");
             } else {
               console.error("🔌 [MCP-CLIENT] Transport closed unexpectedly!");
+              // FIX: Abort pending request so Promise.race rejects immediately
+              // This prevents the spinner from staying stuck
+              if (this.currentRequestAbortController) {
+                console.log("🔌 [MCP-CLIENT] Aborting pending request due to unexpected transport close");
+                this.currentRequestAbortController.abort();
+              }
+              // Dispatch event so UI can reset state (liveStepStatus, etc.)
+              window.dispatchEvent(
+                new CustomEvent("mcp-transport-error", {
+                  detail: { reason: "transport_closed", message: "MCP transport closed unexpectedly" },
+                })
+              );
             }
             if (this.serverInfo) {
               this.serverInfo.isConnected = false;
@@ -171,6 +183,17 @@ export class McpClient {
               console.log("🔌 [MCP-CLIENT] Transport error during stop (expected):", error);
             } else {
               console.error("🔌 [MCP-CLIENT] Transport error:", error);
+              // FIX: Abort pending request so Promise.race rejects immediately
+              if (this.currentRequestAbortController) {
+                console.log("🔌 [MCP-CLIENT] Aborting pending request due to transport error");
+                this.currentRequestAbortController.abort();
+              }
+              // Dispatch event so UI can reset state
+              window.dispatchEvent(
+                new CustomEvent("mcp-transport-error", {
+                  detail: { reason: "transport_error", message: error?.message || "MCP transport error" },
+                })
+              );
             }
             if (this.serverInfo) {
               this.serverInfo.isConnected = false;
@@ -417,6 +440,18 @@ export class McpClient {
                 console.log(`🌊 [MCP-TRANSPORT] Stream closed (user stop)`);
               } else {
                 console.error(`🌊 [MCP-TRANSPORT] Stream processing error:`, error);
+                // FIX: Abort pending request so Promise.race rejects immediately
+                // This prevents the spinner from staying stuck when SSE stream dies
+                if (this.currentRequestAbortController) {
+                  console.log("🌊 [MCP-TRANSPORT] Aborting pending request due to stream error");
+                  this.currentRequestAbortController.abort();
+                }
+                // Dispatch event so UI can reset state (liveStepStatus, etc.)
+                window.dispatchEvent(
+                  new CustomEvent("mcp-transport-error", {
+                    detail: { reason: "stream_error", message: (error as any)?.message || "SSE stream error" },
+                  })
+                );
               }
               // Don't reconnect for POST SSE streams (isReconnectable=false)
               if (isReconnectable) {
@@ -975,7 +1010,28 @@ export class McpClient {
         );
       }
 
-      const result = (await Promise.race(promises)) as any;
+      // Add JavaScript-level timeout as safety net (SDK timeout may not trigger in all cases)
+      // This ensures Promise.race always resolves/rejects, preventing stuck UI state
+      const effectiveTimeout = timeout || 600000; // Default 10 minutes if not specified
+      let timeoutId: NodeJS.Timeout | undefined;
+      promises.push(
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            console.warn(`[MCP] Tool ${name} timed out after ${effectiveTimeout}ms (JS-level safety timeout)`);
+            reject(new Error(`Tool ${name} timed out after ${effectiveTimeout / 1000}s`));
+          }, effectiveTimeout + 5000); // Add 5s buffer beyond SDK timeout
+        })
+      );
+
+      let result: any;
+      try {
+        result = (await Promise.race(promises)) as any;
+      } finally {
+        // Always clear the timeout to prevent memory leaks
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
       console.log(`[PERF] SDK client.callTool(${name}): ${(performance.now() - sdkCallStart).toFixed(1)}ms`);
 
       this.currentRequestAbortController = null;
