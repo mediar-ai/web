@@ -393,11 +393,6 @@ Write-Host "Selected port: $selectedPort" -ForegroundColor Green
 # This must happen before npm install, cargo, or bun commands which may memory-map this file
 $tauriConfigPath = "src-tauri\tauri.conf.json"
 if (Test-Path $tauriConfigPath) {
-    # Wait for any lingering locks on tauri.conf.json
-    if (-not (Wait-FileLockRelease -FilePath $tauriConfigPath -TimeoutSeconds 5)) {
-        Write-Host "  WARNING: tauri.conf.json may be locked, config update might fail" -ForegroundColor Yellow
-    }
-
     $tauriConfig = Get-Content $tauriConfigPath -Raw
     $expectedDevUrl = "http://localhost:$selectedPort"
 
@@ -407,12 +402,38 @@ if (Test-Path $tauriConfigPath) {
         if ($currentDevUrl -ne $expectedDevUrl) {
             Write-Host "Updating tauri.conf.json devUrl: $currentDevUrl -> $expectedDevUrl" -ForegroundColor Yellow
             $tauriConfig = $tauriConfig -replace '"devUrl"\s*:\s*"[^"]+"', "`"devUrl`": `"$expectedDevUrl`""
+
+            # Use copy-delete-rename pattern to bypass memory-mapped file locks
+            # This works even when the file is locked because we replace rather than modify
+            $tempPath = "$tauriConfigPath.tmp"
+            $updateSuccess = $false
+
             try {
-                $tauriConfig | Set-Content $tauriConfigPath -NoNewline -ErrorAction Stop
-                Write-Host "  [OK] tauri.conf.json updated" -ForegroundColor Green
+                # Step 1: Write to temp file
+                $tauriConfig | Set-Content $tempPath -NoNewline -ErrorAction Stop
+
+                # Step 2: Delete original (may fail if locked, but often works)
+                Remove-Item $tauriConfigPath -Force -ErrorAction Stop
+
+                # Step 3: Rename temp to original
+                Rename-Item $tempPath $tauriConfigPath -ErrorAction Stop
+
+                $updateSuccess = $true
+                Write-Host "  [OK] tauri.conf.json updated (copy-delete-rename)" -ForegroundColor Green
             } catch {
-                Write-Host "  WARNING: Failed to update tauri.conf.json: $_" -ForegroundColor Yellow
-                Write-Host "  You may need to manually set devUrl to $expectedDevUrl" -ForegroundColor Yellow
+                # Fallback: try direct write (might work if lock was transient)
+                if (Test-Path $tempPath) {
+                    Remove-Item $tempPath -Force -ErrorAction SilentlyContinue
+                }
+
+                try {
+                    $tauriConfig | Set-Content $tauriConfigPath -NoNewline -ErrorAction Stop
+                    $updateSuccess = $true
+                    Write-Host "  [OK] tauri.conf.json updated (direct write)" -ForegroundColor Green
+                } catch {
+                    Write-Host "  WARNING: Failed to update tauri.conf.json: $_" -ForegroundColor Yellow
+                    Write-Host "  You may need to manually set devUrl to $expectedDevUrl" -ForegroundColor Yellow
+                }
             }
         }
     }
