@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Supabase environment variables are not set');
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // GET /api/machines/[machineId] - Get specific machine details
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     const { machineId } = await params;
     const machineIdNum = parseInt(machineId);
@@ -200,6 +192,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     const { machineId } = await params;
     const machineIdNum = parseInt(machineId);
@@ -299,6 +292,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     const { machineId } = await params;
     const machineIdNum = parseInt(machineId);

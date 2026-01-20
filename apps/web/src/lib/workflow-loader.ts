@@ -3,9 +3,9 @@
  * GitHub sync happens separately via API routes to keep versions in sync
  */
 
-import { createClient } from '@supabase/supabase-js';
 import yaml from 'js-yaml';
 import { githubWorkflowManager } from './github-workflow-manager';
+import { getSupabaseAdmin } from './supabase-server';
 
 export interface LoadedWorkflow {
   id: number;
@@ -30,10 +30,7 @@ export class WorkflowLoader {
   private supabase;
 
   constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    this.supabase = getSupabaseAdmin();
   }
 
   /**
@@ -310,5 +307,22 @@ export class WorkflowLoader {
   }
 }
 
-// Export singleton instance
-export const workflowLoader = new WorkflowLoader();
+// Lazy-loaded singleton instance
+let _workflowLoader: WorkflowLoader | null = null;
+
+export function getWorkflowLoader(): WorkflowLoader {
+  if (!_workflowLoader) {
+    _workflowLoader = new WorkflowLoader();
+  }
+  return _workflowLoader;
+}
+
+// For backward compatibility, use a Proxy to defer instantiation
+export const workflowLoader = new Proxy({} as WorkflowLoader, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getWorkflowLoader(), prop, receiver);
+  },
+  set(_target, prop, value, receiver) {
+    return Reflect.set(getWorkflowLoader(), prop, value, receiver);
+  }
+});

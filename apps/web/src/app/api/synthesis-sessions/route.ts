@@ -1,14 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // GET a user's synthesis session
 export async function GET(req: NextRequest) {
@@ -20,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('synthesis_sessions')
       .select('*')
       .eq('user_id', userId)
@@ -56,7 +47,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('synthesis_sessions')
       .insert({
         user_id: userId,

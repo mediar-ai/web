@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
@@ -23,7 +14,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ sess
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('synthesis_sessions')
       .update({
         session_state: session_state,
@@ -59,7 +50,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
   }
 
   try {
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('synthesis_sessions')
       .delete()
       .eq('id', sessionId);

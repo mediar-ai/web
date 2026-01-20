@@ -1,14 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +12,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { data: sessionData, error: sessionError } = await supabaseAdmin
+    const { data: sessionData, error: sessionError } = await getSupabaseAdmin()
       .from('session_metadata')
       .select('user_id')
       .eq('id', sessionId)
@@ -36,7 +27,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const { data: events, error: eventsError } = await supabaseAdmin
+    const { data: events, error: eventsError } = await getSupabaseAdmin()
       .from('low_level_events')
       .select('*')
       .eq('session_id', sessionId)

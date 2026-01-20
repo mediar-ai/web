@@ -3,19 +3,9 @@ import { NotificationService } from '@/lib/notification-service';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 import { clerkClient } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 const notificationService = NotificationService.getInstance();
-
-// Create service role client to bypass RLS for workflow_executions queries
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Cache for non-existent orgs to avoid repeated 404 errors
 const nonExistentOrgs = new Set<string>();
@@ -124,6 +114,7 @@ export async function GET(request: NextRequest) {
 
         if (alert.execution_id) {
           // Use service role client to bypass RLS for workflow_executions
+          const supabaseAdmin = getSupabaseAdmin();
           const { data: execution } = await supabaseAdmin
             .from('workflow_executions')
             .select('status')

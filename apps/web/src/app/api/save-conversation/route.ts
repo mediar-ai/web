@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +18,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if there's already a conversation workflow for this user
-    const { data: existingConversation, error: selectError } = await supabaseAdmin
+    const { data: existingConversation, error: selectError } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .select('id, chat_history')
       .eq('user_id', userId)
@@ -62,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (existingConversation) {
       console.log('Updating existing conversation:', existingConversation.id);
       // Update existing conversation
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await getSupabaseAdmin()
         .from('low_level_workflows')
         .update(conversationData)
         .eq('id', existingConversation.id)
@@ -77,7 +68,7 @@ export async function POST(req: NextRequest) {
     } else {
       console.log('Creating new conversation');
       // Create new conversation
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await getSupabaseAdmin()
         .from('low_level_workflows')
         .insert(conversationData)
         .select()

@@ -6,7 +6,7 @@ import {
 import { auth } from '@clerk/nextjs/server';
 import type { FunctionDeclaration, Content } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -19,12 +19,6 @@ interface WorkflowContext {
   jsFiles: Record<string, string>;
   jsFilesError: string | null;
 }
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 // Simple in-memory cache for execution context (avoids re-fetching workflow + JS files)
 const contextCache = new Map<
@@ -141,6 +135,8 @@ async function sendMessageWithRetry(
 }
 
 export async function POST(request: Request) {
+  const supabase = getSupabaseAdmin();
+
   try {
     // Get authenticated user
     const { userId } = await auth();

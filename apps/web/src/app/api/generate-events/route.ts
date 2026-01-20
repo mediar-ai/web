@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateMultiActivityEventAnalysis } from '@/lib/analysis';
 import { EVENTS_PROMPT } from '@/lib/prompts';
 import type { ActivityItem, Event } from '@/types';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // This function will be called periodically to generate events from recent activities.
 export async function POST(request: Request) {
@@ -23,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     // 1. Fetch recent, unprocessed activity items for the session.
-    const { data: activityData, error: activityError } = await supabaseAdmin
+    const { data: activityData, error: activityError } = await getSupabaseAdmin()
       .from('user_activity_data')
       .select('*')
       .eq('session_id', sessionId)
@@ -63,7 +54,7 @@ export async function POST(request: Request) {
         activity_ids: activityItems.map(a => a.id),
       };
 
-      await supabaseAdmin.from('user_activity_data').insert({
+      await getSupabaseAdmin().from('user_activity_data').insert({
         session_id: sessionId,
         user_id: userId,
         item_type: 'event',

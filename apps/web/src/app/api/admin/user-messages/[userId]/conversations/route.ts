@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isMediarAdmin, getEffectiveOrgId } from '@/lib/mediarAuth';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * GET /api/admin/user-messages/[userId]/conversations
@@ -17,6 +12,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const isAdmin = await isMediarAdmin();
   if (!isAdmin) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -84,6 +80,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const isAdmin = await isMediarAdmin();
   if (!isAdmin) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });

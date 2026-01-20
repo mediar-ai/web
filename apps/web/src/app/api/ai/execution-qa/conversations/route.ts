@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * GET /api/ai/execution-qa/conversations?executionId=123
  * Load conversation history for an execution
  */
 export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Get authenticated user
     const { userId } = await auth();
@@ -81,6 +77,7 @@ export async function GET(request: NextRequest) {
  * Save/update conversation
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const { userId } = await auth();
     if (!userId) {

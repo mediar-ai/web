@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
@@ -7,11 +7,6 @@ import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { Octokit } from '@octokit/rest';
 import { Buffer } from 'buffer';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
@@ -21,6 +16,7 @@ const octokit = new Octokit({
  * GitHub Webhook - Folder name maps to workflow ID via github_folder column
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const signature = request.headers.get('x-hub-signature-256');
     const body = await request.text();

@@ -1,15 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function POST(
   request: NextRequest,
@@ -45,7 +36,7 @@ export async function POST(
     console.log(`[recording/stop] Stopping recording for session ${sessionId}`);
 
     // Mark session as stopped
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await getSupabaseAdmin()
       .from('session_metadata')
       .update({
         stopped: true,
@@ -62,7 +53,7 @@ export async function POST(
     // Get current pending count
     let pendingCount = 0;
     if (userId) {
-      const { data } = await supabaseAdmin
+      const { data } = await getSupabaseAdmin()
         .rpc('count_unprocessed_events_by_timestamp', { p_user_id: userId });
       pendingCount = data || 0;
     }

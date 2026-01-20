@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { isMediarAdmin } from '@/lib/mediarAuth';
 import { promises as dns } from 'dns';
 import { DefaultAzureCredential } from '@azure/identity';
 import { ComputeManagementClient } from '@azure/arm-compute';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Check authentication
     const { userId } = await auth();

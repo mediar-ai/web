@@ -1,22 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getNumericWorkflowId } from '@/lib/workflow-id-resolver';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Supabase environment variables are not set');
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // GET /api/workflows/[workflowId]/machines - Get machine assignments for workflow
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { userId: authenticatedUserId, has, orgId } = await auth();
@@ -270,6 +262,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { userId: authenticatedUserId, has, orgId } = await auth();
@@ -502,6 +495,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { userId: authenticatedUserId, has, orgId } = await auth();
@@ -691,6 +685,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { userId: authenticatedUserId, has, orgId } = await auth();

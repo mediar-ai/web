@@ -1,15 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { mapClerkIdToDbId } from '@/lib/orgIdMapping';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -23,7 +14,7 @@ export async function GET(request: Request) {
   const dbOrgId = mapClerkIdToDbId(clerkOrgId);
 
   try {
-    const { data: accessData, error } = await supabaseAdmin
+    const { data: accessData, error } = await getSupabaseAdmin()
       .from('organization_data_access')
       .select('data_access_scope')
       .eq('clerk_organization_id', dbOrgId)

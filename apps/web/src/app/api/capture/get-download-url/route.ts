@@ -1,15 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 const downloadUrlSchema = z.object({
   path: z.string().min(1, { message: "Path is required" }),
@@ -39,7 +30,7 @@ export async function POST(request: Request) {
     
     // Generate a signed URL that's valid for 10 minutes.
     // This provides temporary, secure access to the private file.
-    const { data, error } = await supabaseAdmin.storage
+    const { data, error } = await getSupabaseAdmin().storage
       .from('low-level-event-screenshots')
       .createSignedUrl(path, 600); // 10 minutes = 600 seconds
 

@@ -1,14 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // Helper function to extract clean values from UI tree JSON and find keyword matches
 function extractCleanValues(uiTreeString: string, keyword?: string) {
@@ -142,7 +133,7 @@ export async function GET(request: NextRequest) {
     
     // Step 1: First get UI tree events efficiently using indexed columns (like other routes do)
     // This avoids the expensive JSONB path search and uses optimized indexes
-    let query = supabaseAdmin
+    let query = getSupabaseAdmin()
       .from('low_level_events_enriched')
       .select('id, created_at, payload, app_name')
       .eq('user_id', userId)

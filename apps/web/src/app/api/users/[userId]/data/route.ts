@@ -1,17 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import type { ActivityItem, Event, RunningAnalysis } from '@/types';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic'; // Prevent caching
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 function isRunningAnalysis(item: unknown): item is RunningAnalysis {
   if (typeof item !== 'object' || item === null) {
@@ -43,6 +34,8 @@ export async function GET(
   }
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+
     // Fetch user's name
     const { data: userData, error: userError } = await supabaseAdmin
       .from('mediar_users')

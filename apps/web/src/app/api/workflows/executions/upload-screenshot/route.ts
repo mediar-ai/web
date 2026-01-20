@@ -1,16 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-// Initialize Supabase admin client
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 const uploadSchema = z.object({
   execution_id: z.string().min(1),
@@ -56,7 +46,7 @@ export async function POST(request: Request) {
     const path = `workflow-screenshots/${execution_id}/monitor_${monitor_index + 1}.png`;
 
     // Upload to Supabase Storage
-    const { data, error } = await supabaseAdmin.storage
+    const { data, error } = await getSupabaseAdmin().storage
       .from('workflow-screenshots')
       .upload(path, buffer, {
         contentType: 'image/png',
@@ -72,7 +62,7 @@ export async function POST(request: Request) {
     }
 
     // Get public URL for the uploaded file
-    const { data: urlData } = supabaseAdmin.storage
+    const { data: urlData } = getSupabaseAdmin().storage
       .from('workflow-screenshots')
       .getPublicUrl(path);
 

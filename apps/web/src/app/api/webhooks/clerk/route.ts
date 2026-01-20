@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { getPostHogClient } from '@/lib/posthog-server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { addToLoops } from '@/lib/loops';
 import { encryptSecret } from '@/lib/crypto';
 import { randomBytes } from 'crypto';
@@ -11,18 +11,13 @@ const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
 const MEDIAR_ORG_IDS = ['org_2yynzGa53bNM1GTPLp5mc2lYRyD', 'org_2yydAO45WOB4RaCE4F4BNUPtw9c'];
 const ORG_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for org tokens
 
-// Initialize Supabase client for querying survey submissions
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 /**
  * Create ORG_TOKEN for an organization
  * - Creates a desktop session token for the org admin
  * - Encrypts and stores it in org_secrets as ORG_TOKEN
  */
 async function createOrgTokenForOrg(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   orgId: string,
   createdBy: string,
   creatorEmail: string
@@ -83,6 +78,7 @@ async function createOrgTokenForOrg(
 }
 
 export async function POST(req: Request) {
+  const supabase = getSupabaseAdmin();
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
   if (!WEBHOOK_SECRET) {
@@ -394,7 +390,7 @@ export async function POST(req: Request) {
 
     // Create ORG_TOKEN for API access (KV, etc.) - for all orgs
     if (created_by && creatorEmail !== 'unknown') {
-      const orgTokenResult = await createOrgTokenForOrg(orgId, created_by, creatorEmail);
+      const orgTokenResult = await createOrgTokenForOrg(supabase, orgId, created_by, creatorEmail);
       if (!orgTokenResult.success) {
         console.error(`[Clerk Webhook] ✗ Failed to create ORG_TOKEN for ${name}: ${orgTokenResult.error}`);
       }

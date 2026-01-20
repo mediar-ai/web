@@ -1,14 +1,9 @@
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { validateWorkflowOutputParser } from '@/lib/workflow-validation';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import * as yaml from 'js-yaml';
 import { NextRequest, NextResponse } from 'next/server';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 interface CreateWorkflowRequest {
   name: string;
@@ -30,6 +25,7 @@ interface CreateWorkflowRequest {
  * POST /api/workflows/create - Create a brand new workflow from scratch
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Check authentication and organization using unified auth helper
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');

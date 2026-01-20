@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { promises as dns } from 'dns';
 import { DefaultAzureCredential } from '@azure/identity';
 import { ComputeManagementClient } from '@azure/arm-compute';
-
-// Initialize Supabase client with service role for storage access
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ executionId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     const { executionId } = await params;
 

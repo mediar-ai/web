@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // Convert pool steps to full workflow YAML
 function createWorkflowYaml(name: string, description: string, steps: any[]): string {
@@ -75,6 +70,7 @@ export async function OPTIONS(_request: NextRequest) {
 
 // POST: Create a new workflow from selected pool steps
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // Dual authentication: Desktop token or Clerk session
     let authenticatedUserId: string | null = null;

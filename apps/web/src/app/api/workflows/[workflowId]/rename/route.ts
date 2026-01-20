@@ -1,13 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import * as yaml from 'js-yaml';
 import { resolveWorkflowId } from '@/lib/workflow-id-resolver';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * PATCH /api/workflows/[workflowId]/rename - Rename a workflow
@@ -16,6 +11,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ workflowId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { auth } = await import('@clerk/nextjs/server');

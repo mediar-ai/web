@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { NotificationService } from '@/lib/notification-service';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * POST /api/internal/cron-auto-pause-alert
  * Called by database trigger when a workflow is auto-paused due to consecutive failures
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const body = await request.json();
     const { workflow_id, workflow_name, consecutive_failures, failure_message, execution_id } = body;

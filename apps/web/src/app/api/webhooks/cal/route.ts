@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import crypto from 'crypto';
-
-// Initialize Supabase client with service role for webhook processing
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 // Cal.com webhook secret for verification (set in Cal.com webhook settings)
 const CAL_WEBHOOK_SECRET = process.env.CAL_WEBHOOK_SECRET;
@@ -77,6 +71,7 @@ function verifyCalSignature(payload: string, signature: string | null): boolean 
  * Receives booking notifications and updates mediar_users.booked_cal_call
  */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const rawBody = await req.text();
     const signature = req.headers.get('x-cal-signature-256');

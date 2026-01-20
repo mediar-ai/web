@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // Copying type from frontend for consistency. In a refactor, move to a shared types file.
 interface LowLevelEvent {
@@ -11,15 +11,6 @@ interface LowLevelEvent {
   is_counted?: boolean;
   source?: string;
 }
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +38,7 @@ export async function GET(
 
   try {
     // user_id is now TEXT and stores Clerk IDs directly - query by user_id column
-    let query = supabaseAdmin
+    let query = getSupabaseAdmin()
       .from('low_level_events_enriched')
       .select('*')
       .eq('user_id', userId);
@@ -109,7 +100,7 @@ export async function GET(
     // Only fetch session count if no specific session is requested
     let sessionCountData = 0;
     if (!sessionId) {
-      const { data: countData, error: countError } = await supabaseAdmin
+      const { data: countData, error: countError } = await getSupabaseAdmin()
         .rpc('count_distinct_sessions', { p_user_id: userId });
 
       if (countError) {
@@ -120,7 +111,7 @@ export async function GET(
     }
 
     // Get the total event count for the user from session_metadata
-    const { data: totalCountData, error: totalCountError } = await supabaseAdmin
+    const { data: totalCountData, error: totalCountError } = await getSupabaseAdmin()
       .from('session_metadata')
       .select('event_count')
       .eq('user_id', userId);
@@ -132,7 +123,7 @@ export async function GET(
     const totalEventCount = totalCountData?.reduce((sum, row) => sum + (row.event_count || 0), 0) || 0;
 
     // Get the total number of UI tree events (steps)
-    const { count: totalStepsCount, error: stepsCountError } = await supabaseAdmin
+    const { count: totalStepsCount, error: stepsCountError } = await getSupabaseAdmin()
       .from('low_level_events_enriched')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)

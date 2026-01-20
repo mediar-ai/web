@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * Authenticate request - supports both Clerk auth and desktop token
@@ -50,6 +45,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 

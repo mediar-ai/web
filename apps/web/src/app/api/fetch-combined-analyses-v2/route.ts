@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +14,7 @@ export async function GET(request: NextRequest) {
     // Fetch analyses first, then get labels separately (Supabase doesn't support complex LEFT JOINs in the client)
     console.log(`🔍 Fetching analyses for userId: ${userId}, limit: ${limit}`);
 
-    const { data: analysesData, error: analysesError } = await supabaseAdmin
+    const { data: analysesData, error: analysesError } = await getSupabaseAdmin()
       .from('low_level_workflow_analyses')
       .select('id, client_timestamp, window_title, llm_structured_output')
       .eq('user_id', userId)
@@ -45,7 +36,7 @@ export async function GET(request: NextRequest) {
     const analysisIds = analysesData?.map(item => item.id) || [];
     
     // Fetch labels for these analyses
-    const { data: labelsData, error: labelsError } = await supabaseAdmin
+    const { data: labelsData, error: labelsError } = await getSupabaseAdmin()
       .from('low_level_workflow_labeling')
       .select('low_level_workflow_analysis_id, selected_labels')
       .in('low_level_workflow_analysis_id', analysisIds);

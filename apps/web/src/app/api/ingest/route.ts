@@ -1,21 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // Route segment config for large payloads (UI trees can exceed 10MB)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Helper function to extract UI tree from payload structure
 function extractUITree(payload: any): string | null {
@@ -104,7 +95,7 @@ export async function POST(request: NextRequest) {
         // Use a shorter 10-second window for UI tree duplicates since we're matching exact timestamps
         const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
 
-        const { data: recentEvents, error: checkError } = await supabaseAdmin
+        const { data: recentEvents, error: checkError } = await getSupabaseAdmin()
           .from('low_level_events')
           .select('id, payload')
           .eq('user_id', effectiveUserId)
@@ -157,7 +148,7 @@ export async function POST(request: NextRequest) {
     // user_id column is TEXT, so we can store Clerk IDs directly
     console.log(`[INGEST] Inserting event with user_id=${effectiveUserId}, session_id=${session_id}`);
 
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('low_level_events')
       .insert({
         session_id,

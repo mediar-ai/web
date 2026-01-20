@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
 import { getCorsHeaders } from '@/lib/cors';
 import { mapClerkUserIdToDbUserId } from '@/lib/orgIdMapping';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * Authenticate request - supports both Clerk auth and desktop token
@@ -48,6 +43,7 @@ export async function OPTIONS(request: NextRequest) {
  * List chat sessions for current user (single global session model)
  */
 export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 
@@ -95,6 +91,7 @@ export async function GET(request: NextRequest) {
  * Body: { redisSessionId, messages, title? }
  */
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 
@@ -210,6 +207,7 @@ export async function POST(request: NextRequest) {
  * Delete a chat session
  */
 export async function DELETE(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 

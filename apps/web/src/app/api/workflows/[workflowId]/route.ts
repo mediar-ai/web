@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ workflowId: string }> }) {
   const { workflowId } = await params;
@@ -29,7 +20,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ work
     }
 
     // 2. Verify workflow ownership BEFORE allowing update
-    const { data: existingWorkflow, error: fetchError } = await supabaseAdmin
+    const { data: existingWorkflow, error: fetchError } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .select('user_id')
       .eq('id', workflowId)
@@ -67,7 +58,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ work
     if (updatedData.steps) updateFields.steps = updatedData.steps;
     if (updatedData.businessLogic) updateFields.business_logic = updatedData.businessLogic;
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .update(updateFields)
       .eq('id', workflowId)
@@ -102,7 +93,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ w
     }
 
     // 2. Verify workflow ownership BEFORE allowing deletion
-    const { data: workflow, error: fetchError } = await supabaseAdmin
+    const { data: workflow, error: fetchError } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .select('user_id, title')
       .eq('id', workflowId)
@@ -119,7 +110,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ w
     }
 
     // 4. Now safe to delete
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .delete()
       .eq('id', workflowId)

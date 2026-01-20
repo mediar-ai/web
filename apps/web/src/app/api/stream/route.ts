@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 interface StreamedItem {
   id: string;
@@ -13,15 +13,6 @@ interface StreamPayload {
   itemType: 'activity_item' | 'event' | 'log' | 'screenshot_metadata';
   item: StreamedItem;
 }
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Helper function to recursively convert timestamp-like strings to ISO format
 function normalizeTimestamps(obj: unknown): unknown {
@@ -64,7 +55,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Payload missing required fields (sessionId, userId, itemType, item.id, item.timestamp)' }, { status: 400 });
     }
 
-    await supabaseAdmin.from('users').upsert({ id: userId }, { onConflict: 'id' });
+    await getSupabaseAdmin().from('users').upsert({ id: userId }, { onConflict: 'id' });
     
     {
         const { id, timestamp, ...item_data } = item;
@@ -81,7 +72,7 @@ export async function POST(request: Request) {
           clientTimestamp = new Date().toISOString(); // Fallback to current time
         }
         
-        const { error } = await supabaseAdmin.from('user_activity_data').upsert({
+        const { error } = await getSupabaseAdmin().from('user_activity_data').upsert({
             session_id: sessionId,
             user_id: userId,
             item_type: itemType,
@@ -100,7 +91,7 @@ export async function POST(request: Request) {
     }
     
     // After successful insert, trigger the metadata update
-    // const { error: rpcError } = await supabaseAdmin.rpc('update_session_metadata_from_all_events');
+    // const { error: rpcError } = await getSupabaseAdmin().rpc('update_session_metadata_from_all_events');
     // if (rpcError) {
     //   console.error('[API/STREAM] Error calling RPC function for session ${sessionId}:', rpcError);
     // }

@@ -1,16 +1,7 @@
 import { Function_ } from 'modal';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
 import { validateDesktopToken } from '@/lib/auth/validateDesktopToken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function POST(
   request: NextRequest,
@@ -49,7 +40,7 @@ export async function POST(
     console.log(`[recording/synthesize] Starting synthesis for session ${sessionId}, user ${userId}`);
 
     // Get session timestamps for boundaries
-    const { data: session, error: sessionError } = await supabaseAdmin
+    const { data: session, error: sessionError } = await getSupabaseAdmin()
       .from('session_metadata')
       .select('first_event_timestamp, last_event_timestamp, stopped')
       .eq('session_id', sessionId)
@@ -70,7 +61,7 @@ export async function POST(
     }
 
     // Verify processing is complete
-    const { data: pendingCount } = await supabaseAdmin
+    const { data: pendingCount } = await getSupabaseAdmin()
       .rpc('count_unprocessed_events_by_timestamp', { p_user_id: userId });
 
     if ((pendingCount || 0) > 0) {
@@ -85,7 +76,7 @@ export async function POST(
     }
 
     // Mark session as synthesizing
-    await supabaseAdmin
+    await getSupabaseAdmin()
       .from('session_metadata')
       .update({ synthesizing: true })
       .eq('session_id', sessionId);
@@ -138,7 +129,7 @@ export async function POST(
 
               const synthesisTitle = `Recording ${sessionId.substring(0, 8)} - ${new Date().toLocaleDateString()}`;
 
-              const { data: savedSynthesis, error: saveError } = await supabaseAdmin
+              const { data: savedSynthesis, error: saveError } = await getSupabaseAdmin()
                 .from('saved_workflow_syntheses')
                 .insert({
                   user_id: userId,
@@ -174,7 +165,7 @@ export async function POST(
             }
 
             // Mark session as complete
-            await supabaseAdmin
+            await getSupabaseAdmin()
               .from('session_metadata')
               .update({
                 synthesizing: false,
@@ -194,7 +185,7 @@ export async function POST(
             console.error('[recording/synthesize] Error:', error);
 
             // Mark session as not synthesizing on error
-            await supabaseAdmin
+            await getSupabaseAdmin()
               .from('session_metadata')
               .update({ synthesizing: false })
               .eq('session_id', sessionId);

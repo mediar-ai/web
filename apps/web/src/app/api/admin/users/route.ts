@@ -1,16 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 // Update user name
 export async function PUT(request: Request) {
+  const supabase = getSupabaseAdmin();
   const { userId: clerkUserId } = await auth();
 
   if (!clerkUserId) {
@@ -42,6 +38,7 @@ export async function PUT(request: Request) {
 
 // Delete user and their data
 export async function DELETE(request: Request) {
+  const supabase = getSupabaseAdmin();
   const { userId: clerkUserId } = await auth();
 
   if (!clerkUserId) {

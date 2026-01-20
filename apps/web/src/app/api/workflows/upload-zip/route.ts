@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { extractCronConfigFromYAML } from '@/lib/cronParser';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 
@@ -82,12 +82,8 @@ function detectSuspiciousContent(content: string): { safe: boolean; issues: stri
   };
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     // STEP 1: Authenticate
     const { userId: authenticatedUserId, has, orgId, sessionClaims } = await auth();

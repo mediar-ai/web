@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase URL or Service Role Key');
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   const { userId } = await params;
@@ -19,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
 
   try {
     // Get the most recent conversation for this user from workflows table
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .select('id, chat_history')
       .eq('user_id', userId)
@@ -66,7 +57,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ u
 
   try {
     // Delete conversation workflows for this user
-    const { error } = await supabaseAdmin
+    const { error } = await getSupabaseAdmin()
       .from('low_level_workflows')
       .delete()
       .eq('user_id', userId)

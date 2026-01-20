@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { getOrganizationNames, getUserDisplayNames } from '@/lib/clerk-cache';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Supabase environment variables are not set');
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 // GET /api/machines - List machines the user's organization has access to
 export async function GET(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'active';
@@ -307,6 +299,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/machines - Register a new machine
 export async function POST(request: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const body = await request.json();
 
