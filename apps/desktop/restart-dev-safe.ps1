@@ -366,6 +366,58 @@ if ($allLocksReleased) {
 # Small additional delay to ensure all handles are released
 Start-Sleep -Seconds 1
 
+# Auto-detect available port EARLY - before any operations that might lock config files
+Write-Host "`n=== Port Configuration ===" -ForegroundColor Cyan
+$selectedPort = $PreferredPort
+
+if (!(Test-PortAvailable -Port $PreferredPort)) {
+    Write-Host "[WARN] Port $PreferredPort is currently in use!" -ForegroundColor Yellow
+
+    # Show what's using the port
+    $blockingProcess = Get-ProcessUsingPort -Port $PreferredPort
+    if ($blockingProcess) {
+        Write-Host "  Process using port $PreferredPort`: $($blockingProcess.ProcessName) (PID: $($blockingProcess.ProcessId))" -ForegroundColor Yellow
+        if ($blockingProcess.ProcessPath) {
+            Write-Host "  Path: $($blockingProcess.ProcessPath)" -ForegroundColor Gray
+        }
+    }
+
+    # Find an alternative port
+    Write-Host "`nSearching for an available port..." -ForegroundColor Yellow
+    $selectedPort = Find-AvailablePort -StartPort $PreferredPort
+}
+
+Write-Host "Selected port: $selectedPort" -ForegroundColor Green
+
+# Update tauri.conf.json devUrl EARLY - before any cargo/bun operations that might lock the file
+# This must happen before npm install, cargo, or bun commands which may memory-map this file
+$tauriConfigPath = "src-tauri\tauri.conf.json"
+if (Test-Path $tauriConfigPath) {
+    # Wait for any lingering locks on tauri.conf.json
+    if (-not (Wait-FileLockRelease -FilePath $tauriConfigPath -TimeoutSeconds 5)) {
+        Write-Host "  WARNING: tauri.conf.json may be locked, config update might fail" -ForegroundColor Yellow
+    }
+
+    $tauriConfig = Get-Content $tauriConfigPath -Raw
+    $expectedDevUrl = "http://localhost:$selectedPort"
+
+    # Check if devUrl needs updating
+    if ($tauriConfig -match '"devUrl"\s*:\s*"([^"]+)"') {
+        $currentDevUrl = $Matches[1]
+        if ($currentDevUrl -ne $expectedDevUrl) {
+            Write-Host "Updating tauri.conf.json devUrl: $currentDevUrl -> $expectedDevUrl" -ForegroundColor Yellow
+            $tauriConfig = $tauriConfig -replace '"devUrl"\s*:\s*"[^"]+"', "`"devUrl`": `"$expectedDevUrl`""
+            try {
+                $tauriConfig | Set-Content $tauriConfigPath -NoNewline -ErrorAction Stop
+                Write-Host "  [OK] tauri.conf.json updated" -ForegroundColor Green
+            } catch {
+                Write-Host "  WARNING: Failed to update tauri.conf.json: $_" -ForegroundColor Yellow
+                Write-Host "  You may need to manually set devUrl to $expectedDevUrl" -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
 # Check if node_modules exists, install if missing
 if (!(Test-Path "node_modules")) {
     Write-Host "node_modules not found, installing dependencies..." -ForegroundColor Yellow
@@ -580,55 +632,15 @@ if (Test-Path $tauriCachePath) {
     }
 }
 
-# Auto-detect available port
-Write-Host "`n=== Port Configuration ===" -ForegroundColor Cyan
-$selectedPort = $PreferredPort
-
-if (!(Test-PortAvailable -Port $PreferredPort)) {
-    Write-Host "[WARN] Port $PreferredPort is currently in use!" -ForegroundColor Yellow
-
-    # Show what's using the port
-    $blockingProcess = Get-ProcessUsingPort -Port $PreferredPort
-    if ($blockingProcess) {
-        Write-Host "  Process using port $PreferredPort`: $($blockingProcess.ProcessName) (PID: $($blockingProcess.ProcessId))" -ForegroundColor Yellow
-        if ($blockingProcess.ProcessPath) {
-            Write-Host "  Path: $($blockingProcess.ProcessPath)" -ForegroundColor Gray
-        }
-    }
-
-    # Find an alternative port
-    Write-Host "`nSearching for an available port..." -ForegroundColor Yellow
-    $selectedPort = Find-AvailablePort -StartPort $PreferredPort
-}
-
-Write-Host "`n🚀 Starting Mediar on port $selectedPort" -ForegroundColor Green
-
 # Set debug logging if not disabled
 if (!$NoDebug) {
     $env:RUST_LOG = "terminator_mcp_agent=debug,terminator=debug,info"
     Write-Host "Debug logging enabled" -ForegroundColor Green
 }
 
-# Update environment variables for Vite to use the selected port
+# Update environment variables for Vite to use the selected port (already determined earlier)
 $env:VITE_PORT = $selectedPort
 $env:PORT = $selectedPort
-
-# Update tauri.conf.json devUrl to match selected port
-$tauriConfigPath = "src-tauri\tauri.conf.json"
-if (Test-Path $tauriConfigPath) {
-    $tauriConfig = Get-Content $tauriConfigPath -Raw
-    $expectedDevUrl = "http://localhost:$selectedPort"
-
-    # Check if devUrl needs updating
-    if ($tauriConfig -match '"devUrl"\s*:\s*"([^"]+)"') {
-        $currentDevUrl = $Matches[1]
-        if ($currentDevUrl -ne $expectedDevUrl) {
-            Write-Host "Updating tauri.conf.json devUrl: $currentDevUrl -> $expectedDevUrl" -ForegroundColor Yellow
-            $tauriConfig = $tauriConfig -replace '"devUrl"\s*:\s*"[^"]+"', "`"devUrl`": `"$expectedDevUrl`""
-            $tauriConfig | Set-Content $tauriConfigPath -NoNewline
-        }
-    }
-}
 
 # Read API URL from .env file if it exists
 $apiUrlFromEnv = $null
