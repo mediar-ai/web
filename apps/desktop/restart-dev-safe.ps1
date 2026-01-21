@@ -308,6 +308,24 @@ foreach ($procId in $mcpAgentPids) {
     Wait-ProcessExit -ProcessId $procId -TimeoutSeconds 10 | Out-Null
 }
 
+# Kill bun.exe running from target directory (locks sidecar binary during rebuild)
+# This is critical because tauri-build copies bun to target/debug/bun.exe and it can get locked
+$bunProcesses = Get-Process -Name "bun" -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -like "$targetDirResolved*"
+}
+$bunPids = @()
+foreach ($proc in $bunProcesses) {
+    Write-Host "  Stopping bun from target dir (PID: $($proc.Id))" -ForegroundColor Red
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    $bunPids += $proc.Id
+    "Killed bun from target (PID: $($proc.Id))" | Out-File -Append logs\debug.log
+}
+
+# Wait for bun processes to fully terminate
+foreach ($procId in $bunPids) {
+    Wait-ProcessExit -ProcessId $procId -TimeoutSeconds 10 | Out-Null
+}
+
 # Kill node/bun processes running in current workspace directory
 Stop-MediarProcess -ProcessName "node" -PathPattern $WORKSPACE_NAME -WaitForExit
 Stop-MediarProcess -ProcessName "bun" -PathPattern $WORKSPACE_NAME -WaitForExit
@@ -338,7 +356,8 @@ $criticalFiles = @(
     "src-tauri\target\debug\mediar.exe",
     "src-tauri\target\debug\terminator-mcp-agent.exe",
     "..\..\target\debug\mediar.exe",
-    "..\..\target\debug\terminator-mcp-agent.exe"
+    "..\..\target\debug\terminator-mcp-agent.exe",
+    "..\..\target\debug\bun.exe"  # tauri-build copies bun sidecar here
 )
 
 $lockWaitStart = Get-Date
