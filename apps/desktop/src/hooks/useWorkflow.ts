@@ -2974,6 +2974,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         // Always reset executing ref after completion
         isExecutingRef.current = false;
+        // FIX: Clear live step status to stop spinner animation after completion
+        setLiveStepStatus({});
       } catch (error) {
         console.error("❌ [WORKFLOW] Full workflow execution error:", error);
 
@@ -3032,6 +3034,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         // Always reset executing ref after error
         isExecutingRef.current = false;
+        // FIX: Clear live step status to stop spinner animation after error
+        setLiveStepStatus({});
       }
     },
     [currentWorkflow, callTool, clearHighlight, getStepIdByIndex, stopActiveHighlights, focusManager, serverInfo]
@@ -3386,6 +3390,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         // Always reset executing ref after completion
         isExecutingRef.current = false;
+        // FIX: Clear live step status to stop spinner animation after range completion
+        setLiveStepStatus({});
       } catch (error) {
         console.error("❌ [WORKFLOW] Step range execution error:", error);
         setWorkflowState("idle");
@@ -3412,6 +3418,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         // Always reset executing ref after error
         isExecutingRef.current = false;
+        // FIX: Clear live step status to stop spinner animation after range error
+        setLiveStepStatus({});
       }
     },
     [currentWorkflow, callTool, clearHighlight, getStepIdByIndex, stopActiveHighlights, focusManager, serverInfo]
