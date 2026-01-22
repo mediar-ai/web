@@ -1,3 +1,5 @@
 - Fixed spinner getting stuck when MCP connection drops unexpectedly
 - Improved workflow UI state reset on transport errors
 - Performance: 30-50x faster UI tree building with caching
+- Fixed event delivery reliability with flush before runner completion
+- Fixed startup delays on Azure VMs (non-blocking chcp)
