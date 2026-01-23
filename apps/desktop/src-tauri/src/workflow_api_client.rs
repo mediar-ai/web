@@ -69,7 +69,7 @@ pub struct ApiWorkflow {
     // TypeScript workflow UUID folder name
     pub github_folder: Option<String>,
     // Workflow UUID for zip download endpoint
-    pub uuid: Option<String>,    // Step count from database (pre-computed)
+    pub uuid: Option<String>, // Step count from database (pre-computed)
     pub step_count: Option<i32>,
     // Tags for filtering/categorization
     pub tags: Option<Vec<String>>,
@@ -543,15 +543,29 @@ pub async fn list_workflows(view_org_id: Option<String>) -> Result<Vec<WorkflowS
 
 /// List all community/public workflows (is_public = true)
 /// These are workflows shared by the community, shown separately from user's workflows
-pub async fn list_community_workflows() -> Result<Vec<WorkflowSummary>, String> {
+/// If view_org_id is "ALL" (admin only), returns ALL workflows from all orgs instead of just public ones
+pub async fn list_community_workflows(view_org_id: Option<String>) -> Result<Vec<WorkflowSummary>, String> {
     let token = get_auth_token().await?;
     let client = Client::new();
     let api_base = get_api_base();
-    // Use the community endpoint with version=latest for desktop
-    let url = format!(
-        "{}/api/remote-workflows/community?version=latest&limit=100",
-        api_base
-    );
+
+    // When view_org_id is "ALL", admins want to see ALL workflows, not just public ones
+    // Use the main list endpoint with viewOrgId=ALL to get everything
+    let url = match &view_org_id {
+        Some(org_id) if org_id == "ALL" => {
+            format!(
+                "{}/api/remote-workflows/list?version=latest&limit=500&viewOrgId=ALL",
+                api_base
+            )
+        }
+        _ => {
+            // Default: use community endpoint for public workflows only
+            format!(
+                "{}/api/remote-workflows/community?version=latest&limit=100",
+                api_base
+            )
+        }
+    };
 
     info!("🌐 Fetching community workflows from: {}", url);
 
@@ -568,7 +582,10 @@ pub async fn list_community_workflows() -> Result<Vec<WorkflowSummary>, String> 
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        error!("❌ Failed to list community workflows: {} - {}", status, error_text);
+        error!(
+            "❌ Failed to list community workflows: {} - {}",
+            status, error_text
+        );
         return Err(format!(
             "Network error: Failed to retrieve community workflows (status: {})",
             status
