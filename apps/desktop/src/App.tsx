@@ -5142,6 +5142,31 @@ export default function App() {
                           onCloseSettings={() => setShowSettings(false)}
                           experimentalFeatures={experimentalFeatures}
                           onExperimentalFeaturesChange={handleExperimentalFeaturesChange}
+                          onViewOrgIdChange={async () => {
+                            // Refresh workflow lists when admin view org changes
+                            await loadWorkflows();
+                            // Also refresh community workflows if they were loaded
+                            if (communityWorkflows.length > 0) {
+                              setIsLoadingCommunityWorkflows(true);
+                              try {
+                                const result = await loadCommunityWorkflows();
+                                setCommunityWorkflows(
+                                  result.map(w => ({
+                                    id: w.id,
+                                    name: w.name,
+                                    description: w.description,
+                                    stepCount: w.stepCount,
+                                    isCloudOnly: w.isCloudOnly,
+                                    githubFolder: w.githubFolder,
+                                    uuid: w.uuid,
+                                    tags: w.tags,
+                                  })) as WorkflowCardData[]
+                                );
+                              } finally {
+                                setIsLoadingCommunityWorkflows(false);
+                              }
+                            }
+                          }}
                         />
                       </Suspense>
                     </div>

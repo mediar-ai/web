@@ -26,8 +26,7 @@ use crate::workflow_api_client::{
     get_workflow as api_get_workflow, list_all_organizations as api_list_all_organizations,
     list_workflows as api_list_workflows, set_workflow_visibility as api_set_workflow_visibility,
     update_workflow_content as api_update_workflow_content, update_workflow_metadata as api_update_workflow_metadata,
-    update_workflow_tags as api_update_workflow_tags,
-    ListOrgsResponse, WorkflowSummary,
+    update_workflow_tags as api_update_workflow_tags, ListOrgsResponse, WorkflowSummary,
 };
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -163,13 +162,30 @@ pub async fn list_saved_workflows() -> Result<Vec<WorkflowSummary>, String> {
 /// List all community/public workflows
 /// Returns workflows that are marked as is_public = true
 /// These are shown separately from the user's own workflows
+/// If view_org_id is "ALL" (admin only), returns all workflows instead of just public ones
 #[command]
 pub async fn list_community_workflows() -> Result<Vec<WorkflowSummary>, String> {
     use crate::workflow_api_client::list_community_workflows as api_list_community_workflows;
-    
+
     info!("🌐 Listing community workflows");
 
-    let workflows = with_retry(|| api_list_community_workflows()).await?;
+    // Get view_org_id from settings for admin org switching
+    let view_org_id = match load_settings().await {
+        Ok(settings) => settings.view_org_id,
+        Err(e) => {
+            warn!(
+                "Failed to load settings for view_org_id: {}, using default",
+                e
+            );
+            None
+        }
+    };
+
+    if view_org_id.is_some() {
+        info!("🔍 Using view_org_id for community: {:?}", view_org_id);
+    }
+
+    let workflows = with_retry(|| api_list_community_workflows(view_org_id.clone())).await?;
 
     info!("✅ Retrieved {} community workflows", workflows.len());
     Ok(workflows)
