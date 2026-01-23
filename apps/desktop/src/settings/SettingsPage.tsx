@@ -79,6 +79,7 @@ interface SettingsPageProps {
   onCloseSettings?: () => void;
   experimentalFeatures?: ExperimentalFeatures;
   onExperimentalFeaturesChange?: (features: ExperimentalFeatures) => void;
+  onViewOrgIdChange?: (orgId: string | null) => void;
 }
 
 export default function SettingsPage({
@@ -88,6 +89,7 @@ export default function SettingsPage({
   onCloseSettings,
   experimentalFeatures,
   onExperimentalFeaturesChange,
+  onViewOrgIdChange,
 }: SettingsPageProps) {
   const [settings, setSettings] = useState<AppSettings>({
     workflow_recording: true,
@@ -302,8 +304,9 @@ export default function SettingsPage({
     setViewOrgId(newOrgId);
     try {
       await invoke("set_view_org_id", { orgId: newOrgId });
-      // Notify user that they need to refresh workflows
       console.log("View org ID updated to:", newOrgId);
+      // Notify parent to refresh workflows with new org filter
+      onViewOrgIdChange?.(newOrgId);
     } catch (error) {
       console.error("Failed to set view_org_id:", error);
     }
@@ -909,8 +912,7 @@ export default function SettingsPage({
                   ) : (
                     <div className="space-y-3">
                       <div className="text-sm text-muted-foreground mb-2">
-                        Select an organization to view their workflows. Changes take effect when you return to the main
-                        view.
+                        Select an organization to view their workflows.
                       </div>
                       <select
                         value={viewOrgId || ""}
