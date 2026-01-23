@@ -295,7 +295,14 @@ export function UserMessagesModal({ userId, userEmail, open, onOpenChange }: Use
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: userPrompt,
-          userMessages: allUserMessages,
+          // Only send essential fields to avoid exceeding request body limits
+          // (full messages include large toolInvocations/parts that aren't needed for analysis)
+          userMessages: allUserMessages.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp,
+          })),
           chatHistory: chatMessages,
         }),
       });
