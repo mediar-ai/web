@@ -9,7 +9,10 @@ interface WorkflowProgress {
 }
 
 interface WorkflowProgressIndicatorProps {
+  /** Whether something is actively loading/executing (controls visibility) */
   isExecuting: boolean;
+  /** Whether a workflow is actually executing (vs just AI chat loading) */
+  isWorkflowExecuting?: boolean;
   /** Optional loading status for basic AI chat (no workflow progress events) */
   loadingStatus?: {
     phase: string;
@@ -18,7 +21,11 @@ interface WorkflowProgressIndicatorProps {
   } | null;
 }
 
-export function WorkflowProgressIndicator({ isExecuting, loadingStatus }: WorkflowProgressIndicatorProps) {
+export function WorkflowProgressIndicator({
+  isExecuting,
+  isWorkflowExecuting,
+  loadingStatus,
+}: WorkflowProgressIndicatorProps) {
   const [progress, setProgress] = useState<WorkflowProgress | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
@@ -31,6 +38,14 @@ export function WorkflowProgressIndicator({ isExecuting, loadingStatus }: Workfl
       setElapsedMs(0);
     }
   }, [isExecuting, loadingStatus?.startTime]);
+
+  // FIX: Clear step progress when workflow execution ends (even if AI chat is still loading)
+  // This prevents showing stale "Step X of Y" when the workflow has completed
+  useEffect(() => {
+    if (isWorkflowExecuting === false) {
+      setProgress(null);
+    }
+  }, [isWorkflowExecuting]);
 
   // Update elapsed time continuously while executing
   useEffect(() => {
