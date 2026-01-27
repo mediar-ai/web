@@ -2162,6 +2162,13 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         console.log(`[PERF] doExecuteStep total: ${(performance.now() - doExecuteStepStart).toFixed(1)}ms`);
         setStepResult(stepResult);
 
+        // FIX: Update live step status to reflect actual result (success/failure)
+        // This ensures the sidebar shows the correct status instead of staying stuck on "running"
+        setLiveStepStatus(prev => ({
+          ...prev,
+          [stepToExecute]: stepResult.success ? "completed" : "failed",
+        }));
+
         // Store execution logs for this step
         const stepEndTime = Date.now();
         // Extract detailed error data from MCP response if available
@@ -2296,6 +2303,14 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         setStepResult(stepResult);
         setWorkflowState("idle");
+
+        // FIX: Update live step status to "failed" in catch block
+        // This ensures the sidebar shows failure status instead of staying stuck on "running"
+        setLiveStepStatus(prev => ({
+          ...prev,
+          [stepToExecute]: "failed",
+        }));
+
         console.log("[WORKFLOW-AUTO-TRIGGER-REMOVED] Block 2 removed - use button in error dialog");
 
         // Upload execution logs even on error for AI debugging
