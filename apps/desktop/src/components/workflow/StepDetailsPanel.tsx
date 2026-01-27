@@ -2700,8 +2700,16 @@ export function StepDetailsPanel({
         }
 
         // Get the step ID for looking up execution logs from file
+        // FIX: Use same fallback logic as getStepIdByIndex in useWorkflow.ts
+        // If step.id is not set, generate it from step.name (snake_case)
         const step = steps[selection.index];
-        const stepId = step?.id;
+        let stepId = step?.id;
+        if (!stepId && step && "name" in step && typeof step.name === "string") {
+          stepId = step.name
+            .toLowerCase()
+            .replace(/\s+/g, "_")
+            .replace(/[^a-z0-9_]/g, "");
+        }
 
         return (
           <SectionView
