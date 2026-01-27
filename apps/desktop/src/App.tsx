@@ -5908,6 +5908,7 @@ export default function App() {
                                           {(isExecuting || isLoading) && (
                                             <WorkflowProgressIndicator
                                               isExecuting={isExecuting || isLoading}
+                                              isWorkflowExecuting={isExecuting}
                                               loadingStatus={loadingStatus}
                                             />
                                           )}
