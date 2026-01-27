@@ -8,6 +8,7 @@ import { fetchJson } from '@/lib/fetch-utils';
 
 interface TraceData {
   hostname: string;
+  deploymentType: string;
   count: number;
 }
 
@@ -126,6 +127,7 @@ export default function ObservabilityPage() {
               <tr>
                 <th className="font-mono text-xs uppercase text-left px-4 py-2">#</th>
                 <th className="font-mono text-xs uppercase text-left px-4 py-2">Hostname</th>
+                <th className="font-mono text-xs uppercase text-left px-4 py-2">Deployment</th>
                 <th className="font-mono text-xs uppercase text-right px-4 py-2">Trace Count</th>
                 <th className="font-mono text-xs uppercase text-right px-4 py-2">% of Total</th>
               </tr>
@@ -133,9 +135,16 @@ export default function ObservabilityPage() {
             <tbody>
               {traces.map((trace, index) => {
                 const percentage = totalCount > 0 ? ((trace.count / totalCount) * 100).toFixed(1) : '0';
+                const deploymentColor = trace.deploymentType === 'oss'
+                  ? 'bg-green-100 text-green-800'
+                  : trace.deploymentType === 'desktop-client'
+                    ? 'bg-blue-100 text-blue-800'
+                    : trace.deploymentType === 'backend-vm'
+                      ? 'bg-purple-100 text-purple-800'
+                      : 'bg-gray-100 text-gray-800';
                 return (
                   <tr
-                    key={trace.hostname}
+                    key={`${trace.hostname}-${trace.deploymentType}`}
                     className={`border-t border-gray-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                   >
                     <td className="font-mono text-sm px-4 py-2 text-gray-500">{index + 1}</td>
@@ -144,6 +153,11 @@ export default function ObservabilityPage() {
                         <Server className="w-4 h-4 text-gray-400" />
                         {trace.hostname}
                       </div>
+                    </td>
+                    <td className="font-mono text-sm px-4 py-2">
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${deploymentColor}`}>
+                        {trace.deploymentType}
+                      </span>
                     </td>
                     <td className="font-mono text-sm px-4 py-2 text-right font-bold">
                       {trace.count.toLocaleString()}
