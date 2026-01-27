@@ -1731,10 +1731,13 @@ function SectionView({
 
   // Load execution log from file when component mounts or stepId/logsRefreshKey changes
   useEffect(() => {
-    if (sectionType !== "step" || !workflowId || !stepId) return;
+    if (sectionType !== "step" || !workflowId || !stepId) {
+      console.log("[SectionView] Skipping log load:", { sectionType, workflowId, stepId });
+      return;
+    }
 
     const loadExecutionLog = async () => {
-      console.log("[SectionView] Loading log from file:", { stepId, logsRefreshKey });
+      console.log("[SectionView] Loading log from file:", { workflowId, stepId, logsRefreshKey });
       setExecutionLogLoading(true);
       try {
         const result = await invoke<{
@@ -1746,15 +1749,24 @@ function SectionView({
           workflowId: String(workflowId),
           stepId,
         });
+        console.log("[SectionView] get_step_execution_log result:", {
+          found: result.found,
+          filePath: result.file_path,
+          hasContent: !!result.content,
+          contentLength: result.content?.length,
+          timestamp: result.timestamp,
+        });
         if (result.found && result.content) {
           // Pretty-print the JSON for display
           try {
             const parsed = JSON.parse(result.content);
             setExecutionLogContent(JSON.stringify(parsed, null, 2));
+            console.log("[SectionView] Log content set successfully");
           } catch {
             setExecutionLogContent(result.content);
           }
         } else {
+          console.log("[SectionView] No log found for stepId:", stepId);
           setExecutionLogContent(null);
         }
       } catch (error) {
@@ -2704,12 +2716,21 @@ export function StepDetailsPanel({
         // If step.id is not set, generate it from step.name (snake_case)
         const step = steps[selection.index];
         let stepId = step?.id;
+        console.log("[StepDetailsPanel] Step lookup:", {
+          selectionIndex: selection.index,
+          stepExists: !!step,
+          stepId: step?.id,
+          stepName: step && "name" in step ? step.name : undefined,
+          stepKeys: step ? Object.keys(step) : [],
+        });
         if (!stepId && step && "name" in step && typeof step.name === "string") {
           stepId = step.name
             .toLowerCase()
             .replace(/\s+/g, "_")
             .replace(/[^a-z0-9_]/g, "");
+          console.log("[StepDetailsPanel] Generated stepId from name:", stepId);
         }
+        console.log("[StepDetailsPanel] Final stepId for log lookup:", stepId, "workflowId:", workflow.id);
 
         return (
           <SectionView
