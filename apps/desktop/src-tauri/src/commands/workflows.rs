@@ -2607,33 +2607,18 @@ pub struct StepExecutionLogResult {
 
 /// Get the most recent execution log for a specific step
 /// Searches in the workflow's executions/ subfolder for matching step_id
+/// Execution logs are stored by UUID: workflows/{UUID}/executions/
 #[tauri::command]
 #[specta::specta]
 pub async fn get_step_execution_log(workflow_id: String, step_id: String) -> Result<StepExecutionLogResult, String> {
     use std::fs;
 
-    // Get workflows directory and resolve UUID to actual folder path
+    // Get workflows directory - use UUID directly as folder name for execution logs
+    // Execution logs are always stored in the UUID folder, not the human-readable folder
     let workflows_dir = get_workflows_directory_sync()?;
-    let workflows_path = PathBuf::from(&workflows_dir);
-
-    // Find workflow by UUID (resolves to actual folder path like "test" instead of UUID)
-    let workflow_path = match find_workflow_path_by_uuid(&workflows_path, &workflow_id) {
-        Some(path) => path,
-        None => {
-            info!(
-                "[get_step_execution_log] Workflow not found for UUID {}",
-                workflow_id
-            );
-            return Ok(StepExecutionLogResult {
-                found: false,
-                file_path: None,
-                content: None,
-                timestamp: None,
-            });
-        }
-    };
-
-    let executions_dir = workflow_path.join("executions");
+    let executions_dir = PathBuf::from(&workflows_dir)
+        .join(&workflow_id)
+        .join("executions");
     info!(
         "[get_step_execution_log] Scanning workflow dir: {:?}",
         executions_dir
