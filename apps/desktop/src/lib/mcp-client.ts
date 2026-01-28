@@ -63,6 +63,15 @@ export class McpClient {
   private connectionId: number = 0;
   // Track if transport close was intentional (user clicked STOP) to avoid false error logs
   private isIntentionalClose: boolean = false;
+  // Track last activity time for each active request (for stale detection)
+  // Key: requestId, Value: timestamp of last activity (progress notification or start)
+  private requestActivityMap: Map<string, number> = new Map();
+  // Current request ID being executed (for linking progress notifications)
+  private currentRequestId: string | null = null;
+  // Stale request detection interval (check every 10 seconds)
+  private staleRequestCheckInterval: ReturnType<typeof setInterval> | null = null;
+  // Stale threshold: 60 seconds without any progress = consider request stale
+  private readonly STALE_REQUEST_THRESHOLD_MS = 60000;
 
   async connect(port: number): Promise<void> {
     // If already connected to this port, reuse the connection
@@ -231,6 +240,13 @@ export class McpClient {
           const total = notification.params?.total;
           const message = notification.params?.message || "";
           const level = notification.params?.level || "log";
+
+          // MCP best practice: Reset stale timeout on progress notification
+          // This implements "MAY reset the timeout clock when receiving a progress notification"
+          if (this.currentRequestId) {
+            this.requestActivityMap.set(this.currentRequestId, Date.now());
+            console.log(`📡 [MCP-CLIENT] Progress received, reset activity timer for ${this.currentRequestId}`);
+          }
 
           // Dispatch workflow-progress event for UI components (chat progress indicator)
           window.dispatchEvent(
@@ -822,6 +838,75 @@ export class McpClient {
     return this.stopExecution();
   }
 
+  /**
+   * Start monitoring for stale requests
+   * MCP best practice: "Implementations SHOULD establish timeouts for all sent requests"
+   */
+  private startStaleRequestMonitoring(): void {
+    if (this.staleRequestCheckInterval) {
+      return; // Already monitoring
+    }
+
+    this.staleRequestCheckInterval = setInterval(() => {
+      this.checkForStaleRequests();
+    }, 10000); // Check every 10 seconds
+
+    console.log("🔍 [MCP-CLIENT] Started stale request monitoring");
+  }
+
+  /**
+   * Stop monitoring for stale requests
+   */
+  private stopStaleRequestMonitoring(): void {
+    if (this.staleRequestCheckInterval) {
+      clearInterval(this.staleRequestCheckInterval);
+      this.staleRequestCheckInterval = null;
+      console.log("🔍 [MCP-CLIENT] Stopped stale request monitoring");
+    }
+  }
+
+  /**
+   * Check for stale requests and cancel them
+   * MCP best practice: "When the request has not received a success or error response
+   * within the timeout period, the sender SHOULD issue a cancellation notification"
+   */
+  private checkForStaleRequests(): void {
+    const now = Date.now();
+    const staleRequests: string[] = [];
+
+    for (const [requestId, lastActivity] of this.requestActivityMap) {
+      const elapsedMs = now - lastActivity;
+      if (elapsedMs > this.STALE_REQUEST_THRESHOLD_MS) {
+        console.warn(
+          `⚠️ [MCP-CLIENT] Request ${requestId} appears stale (${Math.round(elapsedMs / 1000)}s since last activity)`
+        );
+        staleRequests.push(requestId);
+      }
+    }
+
+    // If we have stale requests and they match the current request, trigger cancellation
+    if (staleRequests.length > 0 && this.currentRequestId && staleRequests.includes(this.currentRequestId)) {
+      console.error(
+        `🚨 [MCP-CLIENT] Current request ${this.currentRequestId} is stale, triggering cancellation`
+      );
+
+      // Dispatch event for UI to show warning
+      window.dispatchEvent(
+        new CustomEvent("mcp-request-stale", {
+          detail: {
+            requestId: this.currentRequestId,
+            elapsedMs: now - (this.requestActivityMap.get(this.currentRequestId) || now),
+          },
+        })
+      );
+
+      // Abort the current request
+      if (this.currentRequestAbortController) {
+        this.currentRequestAbortController.abort();
+      }
+    }
+  }
+
   async callTool(
     name: string,
     arguments_: any,
@@ -863,6 +948,15 @@ export class McpClient {
 
     // Generate unique request ID for tracking
     const requestId = `tool-${name}-${Date.now()}-${++this.requestCounter}`;
+
+    // Track this request for stale detection (MCP best practice)
+    this.currentRequestId = requestId;
+    this.requestActivityMap.set(requestId, Date.now());
+
+    // Start stale request monitoring if this is the first active request
+    if (this.activeToolExecutions === 1) {
+      this.startStaleRequestMonitoring();
+    }
 
     // Store the progress callback for this tool execution
     if (progressCallback) {
@@ -1329,6 +1423,17 @@ export class McpClient {
     } finally {
       // Always decrement active tool executions counter
       this.activeToolExecutions = Math.max(0, this.activeToolExecutions - 1);
+
+      // Clean up stale request tracking
+      this.requestActivityMap.delete(requestId);
+      if (this.currentRequestId === requestId) {
+        this.currentRequestId = null;
+      }
+
+      // Stop stale request monitoring when no more active tools
+      if (this.activeToolExecutions === 0) {
+        this.stopStaleRequestMonitoring();
+      }
 
       // Notify backend when all tools have finished (so backend resumes health checks)
       if (this.activeToolExecutions === 0) {
