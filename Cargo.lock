@@ -9099,7 +9099,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-computer-use"
-version = "0.24.22"
+version = "0.24.26"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -9113,7 +9113,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.24.22"
+version = "0.24.26"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9147,7 +9147,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.24.22"
+version = "0.24.26"
 dependencies = [
  "arboard",
  "async-stream",
