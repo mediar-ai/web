@@ -5160,6 +5160,7 @@ export default function App() {
                                     githubFolder: w.githubFolder,
                                     uuid: w.uuid,
                                     tags: w.tags,
+                                    lastModified: w.lastModified || Date.now(),
                                   })) as WorkflowCardData[]
                                 );
                               } finally {
