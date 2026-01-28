@@ -1,5 +1,6 @@
-- Fixed spinner getting stuck when MCP connection drops unexpectedly
-- Improved workflow UI state reset on transport errors
-- Performance: 30-50x faster UI tree building with caching
-- Fixed event delivery reliability with flush before runner completion
-- Fixed startup delays on Azure VMs (non-blocking chcp)
+- Fixed stale request handling during workflow execution
+- Improved step progress tracking and live status updates
+- Added admin org filtering for community workflows
+- Fixed browser targeting for multi-browser extension support
+- Improved error log extraction for failed workflow executions
+- Fixed legacy browser extension compatibility
