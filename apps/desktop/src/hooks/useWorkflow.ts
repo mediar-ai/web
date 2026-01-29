@@ -1686,9 +1686,9 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
       console.log("🚀 [WORKFLOW] Executing step using execute_sequence:", stepToExecute + 1);
 
-      // Clear previous status and immediately mark new step as running
+      // Immediately mark new step as running, preserving status of previously completed steps
       // This prevents race condition where stale currentStep + stepResult shows wrong step as failed
-      setLiveStepStatus({ [stepToExecute]: "running" });
+      setLiveStepStatus(prev => ({ ...prev, [stepToExecute]: "running" }));
 
       const step = currentWorkflow.content.steps[stepToExecute];
       setWorkflowState("executing");
@@ -1923,12 +1923,12 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         // Check for workflow-level execution errors (module errors, syntax errors, etc.)
         // These have exit_code and stderr in originalError.data
         // Track if we show the execution error modal (to skip AI analysis)
+        // Show error popup for any execution error, not just those with stderr/exit_code
         let showedExecutionErrorModal = false;
         if (
           result.isError &&
           result.originalError?.data &&
-          result.originalError.data.error_type !== "invalid_step" &&
-          (result.originalError.data.exit_code !== undefined || result.originalError.data.stderr)
+          result.originalError.data.error_type !== "invalid_step"
         ) {
           console.log("[WORKFLOW] Detected workflow execution error:", result.originalError.data);
           showedExecutionErrorModal = true;
@@ -2257,11 +2257,10 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         const isValidationError = originalErrorData?.error_type === "invalid_step";
 
         // Check if this is a workflow execution error (module errors, syntax errors, etc.)
-        // These have exit_code and stderr in originalError.data
+        // Show error for any execution error, not just those with stderr/exit_code
         const isExecutionError =
           originalErrorData &&
-          originalErrorData.error_type !== "invalid_step" &&
-          (originalErrorData.exit_code !== undefined || originalErrorData.stderr);
+          originalErrorData.error_type !== "invalid_step";
 
         let showedExecutionErrorModalInCatch = false;
 
@@ -2432,7 +2431,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
       console.log("🚀 [WORKFLOW] Executing all workflow steps from beginning");
 
-      // Clear previous status and immediately mark first step as running
+      // Immediately mark first step as running (full workflow clears all previous status)
       // This prevents race condition where stale currentStep + stepResult shows wrong step as failed
       setLiveStepStatus({ 0: "running" });
 
@@ -2944,13 +2943,15 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           console.log("⚠️ [WORKFLOW] Workflow completed with errors, awaiting user action");
 
           // Dispatch workflow-execution-error event to show error modal
+          // Always dispatch when workflow failed - don't require specific error fields like stderr/exit_code
+          // The MCP server may return errors without these fields (e.g., inline step failures)
           const errorData = result.originalError?.data;
-          if (errorData && (errorData.exit_code !== undefined || errorData.stderr || fullFailure || partialFailure)) {
+          if (fullFailure || partialFailure || errorData) {
             console.log("[WORKFLOW] Dispatching workflow-execution-error from executeFullWorkflow (Block 3)");
             window.dispatchEvent(
               new CustomEvent("workflow-execution-error", {
                 detail: {
-                  errorData: errorData,
+                  errorData: errorData || { error: workflowResult.error },
                   message: workflowResult.error || "Workflow execution failed",
                   workflowName: currentWorkflow?.name,
                   workflowId: currentWorkflow?.id,
@@ -3004,21 +3005,20 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         setWorkflowState("idle");
 
         // Dispatch workflow-execution-error event to show error modal (exception path)
+        // Always dispatch on exception - don't require specific error fields like stderr/exit_code
         const errorAny = error as any;
         const originalErrorData = errorAny?.originalError?.data;
-        if (originalErrorData && (originalErrorData.exit_code !== undefined || originalErrorData.stderr)) {
-          console.log("[WORKFLOW] Dispatching workflow-execution-error from executeFullWorkflow (Block 4 - exception)");
-          window.dispatchEvent(
-            new CustomEvent("workflow-execution-error", {
-              detail: {
-                errorData: originalErrorData,
-                message: error instanceof Error ? error.message : "Workflow execution failed",
-                workflowName: currentWorkflow?.name,
-                workflowId: currentWorkflow?.id,
-              },
-            })
-          );
-        }
+        console.log("[WORKFLOW] Dispatching workflow-execution-error from executeFullWorkflow (Block 4 - exception)");
+        window.dispatchEvent(
+          new CustomEvent("workflow-execution-error", {
+            detail: {
+              errorData: originalErrorData || { error: error instanceof Error ? error.message : String(error) },
+              message: error instanceof Error ? error.message : "Workflow execution failed",
+              workflowName: currentWorkflow?.name,
+              workflowId: currentWorkflow?.id,
+            },
+          })
+        );
 
         // Reset full workflow mode
         setIsFullWorkflowMode(false);
@@ -3107,7 +3107,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
       console.log(`🎯 [WORKFLOW] Executing step range: ${actualStart} to ${actualEnd}`);
 
-      // Clear previous status and immediately mark first step in range as running
+      // Immediately mark first step in range as running (range execution clears all previous status)
       // This prevents race condition where stale currentStep + stepResult shows wrong step as failed
       setLiveStepStatus({ [actualStart]: "running" });
 
@@ -3615,6 +3615,40 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       window.removeEventListener("workflow-set-state", handleWorkflowSetState as EventListener);
     };
   }, []);
+
+  // Handle stale MCP request detection - auto-interrupt stuck executions
+  useEffect(() => {
+    const handleStaleRequest = (event: CustomEvent) => {
+      const { requestId } = event.detail || {};
+      console.warn(`🚨 [WORKFLOW] Stale request detected (${requestId}), auto-interrupting...`);
+
+      // Force interrupt the step if we're executing
+      if (workflowState === "executing") {
+        console.log("🛑 [WORKFLOW] Auto-interrupting stale execution");
+        setIsInterrupted(true);
+        setWasInterruptedByUser(false); // Not user-initiated
+
+        // Abort the current request
+        if (workflowAbortControllerRef.current) {
+          workflowAbortControllerRef.current.abort();
+          workflowAbortControllerRef.current = null;
+        }
+
+        // Reset state to idle
+        setWorkflowState("idle");
+        isExecutingRef.current = false;
+        setExecutingRange(null);
+        setIsFullWorkflowMode(false);
+        setLiveStepStatus({});
+      }
+    };
+
+    window.addEventListener("mcp-request-stale", handleStaleRequest as EventListener);
+
+    return () => {
+      window.removeEventListener("mcp-request-stale", handleStaleRequest as EventListener);
+    };
+  }, [workflowState]);
 
   // Start workflow execution from step 1
   const startExecution = useCallback(() => {
