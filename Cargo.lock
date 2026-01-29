@@ -4317,7 +4317,7 @@ dependencies = [
 
 [[package]]
 name = "mediar"
-version = "1.0.18"
+version = "1.0.19"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
@@ -9099,7 +9099,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-computer-use"
-version = "0.24.26"
+version = "0.24.28"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -9113,7 +9113,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.24.26"
+version = "0.24.28"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9147,7 +9147,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.24.26"
+version = "0.24.28"
 dependencies = [
  "arboard",
  "async-stream",
