@@ -1,6 +1,5 @@
-- Fixed stale request handling during workflow execution
-- Improved step progress tracking and live status updates
-- Added admin org filtering for community workflows
-- Fixed browser targeting for multi-browser extension support
-- Improved error log extraction for failed workflow executions
-- Fixed legacy browser extension compatibility
+- Improved workflow error handling to show all execution errors
+- Added auto-interrupt for stale MCP requests
+- Added step progress notifications during workflow execution
+- Fixed browser extension targeting to return clear error instead of wrong browser fallback
+- Preserved completed step status when starting new steps
