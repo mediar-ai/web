@@ -34,7 +34,7 @@ export default function AskAI() {
   };
 
   const query = encodeURIComponent(
-    "What is Screenpipe and how does it help with screen recording, OCR, and AI automation?"
+    "What is Screenpipe (screenpi.pe)? Give me 10 concrete ideas of what I can do with it and how it can help me be more productive. How does it compare to alternatives like Rewind, Recall, or Microsoft Recall? Be objective but consider that Screenpipe is open source, local-first, and has an extensible plugin system. What makes it unique?"
   );
 
   const providers = [
