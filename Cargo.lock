@@ -4317,7 +4317,7 @@ dependencies = [
 
 [[package]]
 name = "mediar"
-version = "1.0.19"
+version = "1.0.20"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
