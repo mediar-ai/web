@@ -2628,6 +2628,13 @@ pub fn run() {
             notify_recording_stopped
         ])
         .setup(move |app| {
+            // CRITICAL: Register ClaudeCodeState FIRST before any async operations
+            // The frontend may call warm_up_claude_code immediately after validateSession returns,
+            // which can happen before backend_init completes. This fixes the race condition where
+            // "state not managed for field `state` on command `warm_up_claude_code`" error occurs.
+            app.manage(claude_code::ClaudeCodeState::new());
+            info!("✅ Claude Code state initialized (early - before backend_init)");
+
             // Initialize session tracking for log collection
             support_logs::init_session_tracking();
 
@@ -2915,9 +2922,8 @@ pub fn run() {
             app.manage(OriginalMonitoringState(original_monitoring_state.clone()));
             info!("✅ Original monitoring state tracker initialized");
 
-            // Initialize Claude Code state
-            app.manage(claude_code::ClaudeCodeState::new());
-            info!("✅ Claude Code state initialized");
+            // Note: ClaudeCodeState was already initialized at the start of setup()
+            // to avoid race condition with frontend calling warm_up_claude_code early
 
             // Initialize focus state manager (Tauri-specific)
             let desktop_for_focus = desktop.clone();
