@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import { Loader2, Monitor, LayoutDashboard, Cloud, CircleDot } from 'lucide-react';
 import { LaunchVmDialog } from '@/components/vm/LaunchVmDialog';
+import AskAI from '@/components/homepage/AskAI';
 // COMMENTED OUT: Purchase flow imports
 // import { useSearchParams } from 'next/navigation';
 // import { useCallback } from 'react';
@@ -405,6 +406,9 @@ function HomePageContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Ask AI Section */}
+          <AskAI />
         </div>
       </div>
 
