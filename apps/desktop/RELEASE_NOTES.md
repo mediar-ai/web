@@ -1,5 +1,4 @@
-- Improved workflow error handling to show all execution errors
-- Added auto-interrupt for stale MCP requests
+- Fixed Claude Code initialization race condition on app startup
+- Improved workflow error handling with better log extraction
+- Fixed browser extension targeting to return clear errors
 - Added step progress notifications during workflow execution
-- Fixed browser extension targeting to return clear error instead of wrong browser fallback
-- Preserved completed step status when starting new steps
