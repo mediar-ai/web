@@ -136,7 +136,7 @@ I noticed you signed up for Mediar but haven't downloaded the desktop app yet.
 
 The magic happens on your desktop - that's where you can record and automate any workflow on your computer.
 
-Download directly: https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64
+Download directly: https://cdn.crabnebula.app/download/mediarai/mediar/latest/platform/windows-x86_64
 
 If you're stuck or have questions, just reply to this email. I read every one.
 

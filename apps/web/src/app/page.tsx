@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Loader2, Monitor, LayoutDashboard, Cloud, CircleDot } from 'lucide-react';
 import { LaunchVmDialog } from '@/components/vm/LaunchVmDialog';
 import AskAI from '@/components/homepage/AskAI';
+import { DESKTOP_DOWNLOAD_URL } from '@/lib/constants';
 // COMMENTED OUT: Purchase flow imports
 // import { useSearchParams } from 'next/navigation';
 // import { useCallback } from 'react';
@@ -185,8 +186,7 @@ function HomePageContent() {
   const handleDownloadClick = () => {
     posthog?.capture('desktop_app_download_clicked', {
       user_id: userId,
-      download_url:
-        'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64',
+      download_url: DESKTOP_DOWNLOAD_URL,
       platform: 'windows',
       source: 'homepage',
       timestamp: new Date().toISOString(),
@@ -354,7 +354,7 @@ function HomePageContent() {
                     Automate any task on your computer
                   </p>
                   <a
-                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
+                    href={DESKTOP_DOWNLOAD_URL}
                     download
                     onClick={handleDownloadClick}
                   >

@@ -29,6 +29,7 @@ import { AlertCircle, CheckCircle, Clock, Copy, Loader2, Zap, Upload, FileArchiv
 import { useEffect, useState } from 'react';
 import { YamlEditorWithHighlight } from '@/components/YamlEditorWithHighlight';
 import { toast } from 'sonner';
+import { DESKTOP_DOWNLOAD_URL } from '@/lib/constants';
 
 interface WorkflowTemplate {
   name: string;
@@ -445,7 +446,7 @@ export function CreateWorkflowDialog({
                 Want to create workflows on your computer? Download the Mediar desktop app to record and automate workflows locally.
               </p>
               <a
-                href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
+                href={DESKTOP_DOWNLOAD_URL}
                 download
               >
                 <Button className="bg-black text-white hover:bg-gray-800 font-mono">

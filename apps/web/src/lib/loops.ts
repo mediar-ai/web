@@ -63,7 +63,7 @@ export async function addToLoops(
 
 Thanks for signing up for Mediar! Here's how to get started:
 
-1. Download the desktop app: https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64
+1. Download the desktop app: https://cdn.crabnebula.app/download/mediarai/mediar/latest/platform/windows-x86_64
 2. Sign in with your account
 3. Create your first workflow
 

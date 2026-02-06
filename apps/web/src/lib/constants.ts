@@ -1,3 +1,6 @@
+// Desktop app download URL (CrabNebula CDN)
+export const DESKTOP_DOWNLOAD_URL = 'https://cdn.crabnebula.app/download/mediarai/mediar/latest/platform/windows-x86_64';
+
 // Mediar organization IDs
 export const MEDIAR_ORG_IDS = [
   'org_2yynzGa53bNM1GTPLp5mc2lYRyD', // Current Mediar organization

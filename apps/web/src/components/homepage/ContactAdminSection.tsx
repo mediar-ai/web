@@ -7,6 +7,7 @@ import { Play, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { usePostHog } from 'posthog-js/react';
 import { useEffect, useState } from 'react';
+import { DESKTOP_DOWNLOAD_URL } from '@/lib/constants';
 
 interface ContactAdminSectionProps {
   userId: string;
@@ -89,8 +90,7 @@ export default function ContactAdminSection({
   const handleDownloadClick = () => {
     posthog?.capture('desktop_app_download_clicked', {
       user_id: userId,
-      download_url:
-        'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64',
+      download_url: DESKTOP_DOWNLOAD_URL,
       platform: 'windows',
       source: 'homepage',
       timestamp: new Date().toISOString(),
@@ -181,7 +181,7 @@ export default function ContactAdminSection({
                     Build automated workflows
                   </p>
                   <a
-                    href="https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64"
+                    href={DESKTOP_DOWNLOAD_URL}
                     download
                     onClick={handleDownloadClick}
                   >

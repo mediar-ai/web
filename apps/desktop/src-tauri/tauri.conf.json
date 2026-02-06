@@ -15,7 +15,7 @@
         {
           "identifier": "window-control",
           "description": "Allow window control operations and global shortcuts",
-          "windows": ["main", "recording-bar", "execution-bar", "ai-thinking-bar", "action-review"],
+          "windows": ["main", "recording-bar", "execution-bar", "ai-thinking-bar"],
           "permissions": [
             "core:window:allow-set-size",
             "core:window:allow-inner-size",
@@ -56,8 +56,8 @@
       {
         "label": "main",
         "title": "Mediar Agent",
-        "width": 1500,
-        "height": 1000,
+        "width": 1280,
+        "height": 800,
         "minWidth": 450,
         "minHeight": 600,
         "center": true,
@@ -141,6 +141,7 @@
     "resources": {
       "../scripts/add-defender-exclusions.bat": "",
       "../scripts/add-defender-exclusions.ps1": "",
+      "vcredist/*": "",
       "resources/demo/greenway.html": "resources/demo/",
       "resources/demo/lc360.html": "resources/demo/"
     },
