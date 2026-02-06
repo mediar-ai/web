@@ -201,7 +201,7 @@ try {
 # ==============================================================================
 Write-Host 'Installing Mediar Desktop App...'
 try {
-  Invoke-WebRequest -Uri 'https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64' -OutFile 'C:\\Temp\\mediar-setup.exe' -UseBasicParsing
+  Invoke-WebRequest -Uri 'https://cdn.crabnebula.app/download/mediarai/mediar/latest/platform/windows-x86_64' -OutFile 'C:\\Temp\\mediar-setup.exe' -UseBasicParsing
   Start-Process -FilePath 'C:\\Temp\\mediar-setup.exe' -ArgumentList '/S' -Wait
   Remove-Item 'C:\\Temp\\mediar-setup.exe' -Force -ErrorAction SilentlyContinue
   Write-Host 'Mediar Desktop App installed successfully'

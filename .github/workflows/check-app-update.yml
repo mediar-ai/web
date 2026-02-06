@@ -18,7 +18,7 @@ jobs:
         id: current
         run: |
           # Follow redirect to get asset URL
-          ASSET_URL=$(curl -sI "https://cdn.crabnebula.app/download/mediar/mediar/latest/platform/windows-x86_64" | grep -i "^location:" | tr -d '\r' | cut -d' ' -f2)
+          ASSET_URL=$(curl -sI "https://cdn.crabnebula.app/download/mediarai/mediar/latest/platform/windows-x86_64" | grep -i "^location:" | tr -d '\r' | cut -d' ' -f2)
 
           # Extract asset ID from URL
           ASSET_ID=$(echo "$ASSET_URL" | grep -oP 'asset/\K[A-Z0-9]+')

@@ -119,7 +119,7 @@ async function main() {
   if (!existsSync(envPath)) throw new Error(`.env not found at ${envPath}`);
   const creds = loadEnv(envPath);
 
-  const CN_APP = VARIANT === "full" ? "mediar/mediar" : "mediar/mediar-staging";
+  const CN_APP = VARIANT === "full" ? "mediarai/mediar" : "mediarai/mediar-staging";
 
   // Validate RELEASE_NOTES.md
   const releaseNotesPath = join(WORKSPACE, "RELEASE_NOTES.md");
