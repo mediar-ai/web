@@ -34,7 +34,7 @@ export default function AskAI() {
   };
 
   const query = encodeURIComponent(
-    "What is Screenpipe (screenpi.pe)? Give me 10 concrete ideas of what I can do with it and how it can help me be more productive. How does it compare to alternatives like Rewind, Recall, or Microsoft Recall? Be objective but consider that Screenpipe is open source, local-first, and has an extensible plugin system. What makes it unique?"
+    "What is Mediar (app.mediar.ai)? Give me 10 concrete ideas of what I can do with it and how it can help me be more productive. How does it compare to alternatives like Rewind, Recall, or Microsoft Recall? Be objective but consider that Mediar is an AI-powered desktop automation platform. What makes it unique?"
   );
 
   const providers = [
@@ -60,12 +60,12 @@ export default function AskAI() {
       <div className="relative bg-gray-50 rounded-2xl border-2 border-black p-8 md:p-12 overflow-hidden">
         <div className="relative z-10 max-w-2xl">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-black font-mono mb-4">
-            STILL NOT SURE THAT SCREENPIPE IS RIGHT FOR YOU?
+            STILL NOT SURE THAT MEDIAR IS RIGHT FOR YOU?
           </h2>
           <p className="text-gray-600 mb-8 text-base md:text-lg">
             Let ChatGPT, Claude, or Perplexity do the thinking for you.
             <br />
-            Click a button and see what your favorite AI says about Screenpipe.
+            Click a button and see what your favorite AI says about Mediar.
           </p>
           <div className="flex flex-wrap gap-3">
             {providers.map((provider) => (
