@@ -170,7 +170,7 @@ async function callVertexAIRest(params: {
 import { getCorsHeaders } from '@/lib/cors';
 
 // Allowed models (per workspace rule)
-const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-pro-preview'] as const;
+const VERTEX_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-pro-latest'] as const;
 const ANTHROPIC_MODELS = ['claude-sonnet-4-5-20250929'] as const;
 const ALLOWED_MODELS = [...VERTEX_MODELS, ...ANTHROPIC_MODELS] as const;
 type AllowedModel = (typeof ALLOWED_MODELS)[number];
