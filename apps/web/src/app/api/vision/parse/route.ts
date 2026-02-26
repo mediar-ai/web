@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Use Gemini 3 Pro Preview for quality vision detection
-    const modelName = 'gemini-3-pro-preview';
+    const modelName = 'gemini-pro-latest';
 
     console.log(`[Vision API] Calling ${modelName} for UI element detection...`);
 
