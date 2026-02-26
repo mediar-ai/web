@@ -55,7 +55,7 @@ export async function POST(
       googleAuthOptions: { credentials },
     });
 
-    const modelName = 'gemini-3-pro-preview';
+    const modelName = 'gemini-pro-latest';
 
     // Format user messages for context
     const formattedMessages = userMessages
