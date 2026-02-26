@@ -33,7 +33,7 @@ export interface VertexTool {
 }
 
 export interface VertexRequest {
-  model?: "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-3-pro-preview" | "claude-code";
+  model?: "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-pro-latest" | "claude-code";
   sessionId?: string; // Server-side session ID (preferred for KV-backed history)
   input?: string; // User message (omit when sending tool results)
   history?: VertexMessage[]; // Full conversation history (fallback for client-side history)
