@@ -363,7 +363,7 @@ async fn get_vertex_token() -> Result<VertexTokenInfo, String> {
 /// Map model name to actual Vertex AI model
 fn get_vertex_model_name(model: &str) -> &str {
     match model {
-        "gemini-3-pro" | "gemini-3-pro-preview" => "gemini-3-pro-preview",
+        "gemini-3-pro" | "gemini-3-pro-preview" | "gemini-pro-latest" => "gemini-pro-latest",
         "gemini-2.5-pro" => "gemini-2.5-pro",
         "gemini-2.5-flash" | _ => "gemini-2.5-flash",
     }
@@ -371,7 +371,7 @@ fn get_vertex_model_name(model: &str) -> &str {
 
 /// Check if model requires global endpoint
 fn is_gemini3_model(model: &str) -> bool {
-    model.contains("gemini-3")
+    model.contains("gemini-3") || model == "gemini-pro-latest"
 }
 
 /// Build Vertex AI REST API URL
@@ -1264,10 +1264,10 @@ mod tests {
     fn test_build_vertex_url_gemini3_uses_global() {
         let url = build_vertex_url("my-project", "us-central1", "gemini-3-pro");
 
-        // Gemini 3 should use global endpoint
+        // Gemini 3 / pro-latest should use global endpoint
         assert!(url.contains("aiplatform.googleapis.com"));
         assert!(url.contains("/locations/global/"));
-        assert!(url.contains("gemini-3-pro-preview"));
+        assert!(url.contains("gemini-pro-latest"));
     }
 
     #[test]
@@ -1279,11 +1279,15 @@ mod tests {
         assert_eq!(get_vertex_model_name("gemini-2.5-pro"), "gemini-2.5-pro");
         assert_eq!(
             get_vertex_model_name("gemini-3-pro"),
-            "gemini-3-pro-preview"
+            "gemini-pro-latest"
         );
         assert_eq!(
             get_vertex_model_name("gemini-3-pro-preview"),
-            "gemini-3-pro-preview"
+            "gemini-pro-latest"
+        );
+        assert_eq!(
+            get_vertex_model_name("gemini-pro-latest"),
+            "gemini-pro-latest"
         );
         // Unknown models default to flash
         assert_eq!(get_vertex_model_name("unknown-model"), "gemini-2.5-flash");
@@ -1293,6 +1297,7 @@ mod tests {
     fn test_is_gemini3_model() {
         assert!(is_gemini3_model("gemini-3-pro"));
         assert!(is_gemini3_model("gemini-3-pro-preview"));
+        assert!(is_gemini3_model("gemini-pro-latest"));
         assert!(!is_gemini3_model("gemini-2.5-flash"));
         assert!(!is_gemini3_model("gemini-2.5-pro"));
     }
