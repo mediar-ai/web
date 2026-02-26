@@ -73,7 +73,7 @@ export default function WorkflowTabContent({
   const [workflowContext, setWorkflowContext] = useState<WorkflowContext | null>(null);
   const [synthesizedWorkflows, setSynthesizedWorkflows] = useState<SynthesizedWorkflow[]>([]);
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<number>>(new Set());
-  const [model, setModel] = useState('gemini-3-pro-preview');
+  const [model, setModel] = useState('gemini-pro-latest');
 
   // Date range state - default to last 24 hours
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -604,7 +604,7 @@ export default function WorkflowTabContent({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
+                  <SelectItem value="gemini-pro-latest">Gemini Pro (Latest)</SelectItem>
                   <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
                   <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</SelectItem>
                 </SelectContent>
