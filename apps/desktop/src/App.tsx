@@ -5784,20 +5784,20 @@ export default function App() {
                                         e.target.value as
                                           | "gemini-2.5-pro"
                                           | "gemini-2.5-flash"
-                                          | "gemini-3-pro-preview"
+                                          | "gemini-pro-latest"
                                           | "claude-code"
                                       )
                                     }
                                     className="h-5 px-1 py-0 text-[10px] border border-black rounded focus:outline-none cursor-pointer appearance-none bg-[length:10px] bg-[center_right_0.2rem] bg-no-repeat pr-4 [.theme-classic_&]:bg-white [.theme-classic_&]:text-black [.theme-classic_&]:hover:bg-gray-100 [.theme-classic_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')] [.theme-inverted_&]:bg-black [.theme-inverted_&]:text-white [.theme-inverted_&]:hover:bg-black/90 [.theme-inverted_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')]"
                                     title="Select AI model"
                                   >
-                                    <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
+                                    <option value="gemini-pro-latest">Gemini Pro (Latest)</option>
                                     <option value="claude-code">Claude Code Opus 4-5</option>
                                     <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                     <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                   </select>
                                   {/* Thinking Level Toggle - only for Gemini 3 */}
-                                  {selectedModel === "gemini-3-pro-preview" && (
+                                  {selectedModel === "gemini-pro-latest" && (
                                     <button
                                       onClick={() => setThinkingLevel(thinkingLevel === "low" ? "high" : "low")}
                                       className={`h-5 px-1 text-[8px] font-mono border border-black rounded cursor-pointer transition-colors ${
