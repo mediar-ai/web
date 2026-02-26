@@ -277,9 +277,10 @@ export function getVertexModelName(inputModelName: string): string {
     'gemini-2.5-pro-preview-05-06': 'gemini-2.5-pro', // Map preview to stable
     'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro', // Map preview to stable
     
-    // 🔥 GEMINI 3 (Latest Generation - requires global endpoint)
-    'gemini-3-pro': 'gemini-3-pro-preview',
-    'gemini-3-pro-preview': 'gemini-3-pro-preview',
+    // 🔥 GEMINI PRO LATEST (auto-updated alias)
+    'gemini-pro-latest': 'gemini-pro-latest',
+    'gemini-3-pro': 'gemini-pro-latest',
+    'gemini-3-pro-preview': 'gemini-pro-latest',
 
     'gemini-2.5-flash': 'gemini-2.5-flash',
     'gemini-2.5-flash-preview-09-2025': 'gemini-2.5-flash-preview-09-2025', // Latest preview
@@ -464,7 +465,7 @@ export async function callVertexWithStructuredOutput(
 
   // Check if this is a Gemini 3 model - requires global endpoint
   const mappedModelName = getVertexModelName(modelName);
-  const isGemini3 = mappedModelName.includes('gemini-3');
+  const isGemini3 = mappedModelName.includes('gemini-3') || mappedModelName === 'gemini-pro-latest';
   const location = isGemini3 ? 'global' : undefined;
 
   console.log('🚀 Using Vertex AI with structured output for model:', modelName);
