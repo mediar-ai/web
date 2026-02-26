@@ -1,6 +1,6 @@
 // API Configuration constants
 pub const GEMINI_API_KEY: &str = "AIzaSyDjZz9jHMxXiY03PmUmVE5pOONh5ccY4M4";
-pub const GEMINI_MODEL: &str = "gemini-3-pro-preview";
+pub const GEMINI_MODEL: &str = "gemini-pro-latest";
 pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // Analytics constants
