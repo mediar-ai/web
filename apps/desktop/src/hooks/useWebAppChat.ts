@@ -329,7 +329,7 @@ export function useWebAppChat(options?: {
   const [suggestionsWorkflowName, setSuggestionsWorkflowName] = useState<string>("");
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
   const [selectedModel, setSelectedModel] = useState<
-    "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-3-pro-preview" | "claude-code"
+    "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-pro-latest" | "claude-code"
   >("claude-code");
   const [thinkingLevel, setThinkingLevelState] = useState<"low" | "high">(() => {
     try {
@@ -1606,7 +1606,7 @@ export function useWebAppChat(options?: {
           history: history,
           system: systemPrompt || undefined,
           tools: tools.length > 0 ? tools : undefined,
-          thinkingLevel: selectedModel === "gemini-3-pro-preview" ? thinkingLevel : undefined,
+          thinkingLevel: selectedModel === "gemini-pro-latest" ? thinkingLevel : undefined,
           mode: effectiveMode,
           inlineImages: imagesToInclude.length > 0 ? imagesToInclude : undefined,
           generationConfig: {
@@ -2733,7 +2733,7 @@ export function useWebAppChat(options?: {
             history: accumulatedHistory,
             system: systemPrompt || undefined,
             tools: tools.length > 0 ? tools : undefined,
-            thinkingLevel: selectedModel === "gemini-3-pro-preview" ? thinkingLevel : undefined,
+            thinkingLevel: selectedModel === "gemini-pro-latest" ? thinkingLevel : undefined,
             mode: effectiveMode,
             generationConfig: {
               temperature: 0.7,
