@@ -265,15 +265,15 @@ function ExecutionCard({ execution, isExpanded, onToggleExpand, onDismiss, isDis
       : 0;
 
   const statusColors = {
-    running: "border-blue-500/50 bg-blue-500/10",
-    completed: "border-green-500/50 bg-green-500/10",
-    failed: "border-red-500/50 bg-red-500/10",
+    running: "border-border bg-background",
+    completed: "border-border bg-background",
+    failed: "border-border bg-background",
   };
 
   const statusIcons = {
-    running: <Loader2 className="h-4 w-4 animate-spin text-blue-400" />,
-    completed: <CheckCircle2 className="h-4 w-4 text-green-400" />,
-    failed: <XCircle className="h-4 w-4 text-red-400" />,
+    running: <Loader2 className="h-4 w-4 animate-spin text-foreground" />,
+    completed: <CheckCircle2 className="h-4 w-4 text-foreground" />,
+    failed: <XCircle className="h-4 w-4 text-foreground" />,
   };
 
   // Get recent steps for display
@@ -301,12 +301,12 @@ function ExecutionCard({ execution, isExpanded, onToggleExpand, onDismiss, isDis
             </div>
           )}
           {execution.status === "completed" && (
-            <div className="text-xs text-green-400">
+            <div className="text-xs text-muted-foreground">
               Completed {execution.steps.filter(s => s.type === "completed").length} steps
             </div>
           )}
           {execution.status === "failed" && execution.error && (
-            <div className="text-xs text-red-400 truncate">{execution.error}</div>
+            <div className="text-xs text-muted-foreground truncate">{execution.error}</div>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -320,7 +320,7 @@ function ExecutionCard({ execution, isExpanded, onToggleExpand, onDismiss, isDis
               e.stopPropagation();
               onDismiss();
             }}
-            className="p-1 hover:bg-white/10 rounded"
+            className="p-1 hover:bg-muted rounded"
           >
             <X className="h-3 w-3 text-muted-foreground" />
           </button>
@@ -330,15 +330,15 @@ function ExecutionCard({ execution, isExpanded, onToggleExpand, onDismiss, isDis
       {/* Progress bar for running */}
       {execution.status === "running" && execution.totalSteps && (
         <div className="px-3 pb-2">
-          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+          <div className="h-1 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </div>
       )}
 
       {/* Expanded step logs */}
       {isExpanded && recentSteps.length > 0 && (
-        <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto border-t border-white/10">
+        <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto border-t border-border">
           <div className="pt-2">
             {recentSteps.map((step, i) => (
               <div key={i} className="flex items-start gap-2 text-xs py-1">
@@ -353,10 +353,10 @@ function ExecutionCard({ execution, isExpanded, onToggleExpand, onDismiss, isDis
                 <span
                   className={cn(
                     "flex-shrink-0",
-                    step.type === "started" && "text-blue-400",
-                    step.type === "completed" && "text-green-400",
-                    step.type === "failed" && "text-red-400",
-                    step.type === "progress" && "text-yellow-400"
+                    step.type === "started" && "text-muted-foreground",
+                    step.type === "completed" && "text-foreground",
+                    step.type === "failed" && "text-foreground",
+                    step.type === "progress" && "text-muted-foreground"
                   )}
                 >
                   {step.type === "started" && "▸"}

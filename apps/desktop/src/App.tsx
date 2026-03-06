@@ -830,6 +830,9 @@ export default function App() {
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Track if user manually scrolled up during streaming - prevents auto-scroll hijacking
+  const userScrolledAwayRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Ref for autoclone confirmation - allows useChat to call it before it's defined
   const requestAutocloneConfirmationRef = useRef<
@@ -2386,6 +2389,8 @@ export default function App() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
+    // Reset scroll lock when user sends a new message
+    userScrolledAwayRef.current = false;
     sendMessage(input);
   };
 
@@ -2791,28 +2796,67 @@ export default function App() {
       });
   }, [messages, contextMetrics, contextLimit, isLoading, updateMessage, regenerateMessage, forkFromMessage]);
 
-  // Auto-scroll to bottom when new messages arrive (only if user is near bottom)
+  // Helper: scroll chat container to bottom without affecting other panels
+  // Uses scrollTop instead of scrollIntoView to avoid scrolling ancestor elements
+  const scrollChatToBottom = useCallback((smooth = true) => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    isAutoScrollingRef.current = true;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: smooth ? "smooth" : "instant",
+    });
+    setTimeout(() => { isAutoScrollingRef.current = false; }, 300);
+  }, []);
+
+  // Detect user manual scroll vs programmatic scroll on the chat container
   useEffect(() => {
     const container = chatContainerRef.current;
-    if (!container) {
-      // Container not mounted yet, scroll anyway (initial load)
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      return;
-    }
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Skip if this scroll was triggered by our auto-scroll code
+      if (isAutoScrollingRef.current) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+      if (distanceFromBottom > 200) {
+        // User scrolled away from bottom
+        userScrolledAwayRef.current = true;
+        console.log("[SCROLL] user scrolled away, auto-scroll disabled");
+      } else if (distanceFromBottom < 50) {
+        // User scrolled back to bottom - re-enable auto-scroll
+        userScrolledAwayRef.current = false;
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive (only if user hasn't scrolled away)
+  useEffect(() => {
+    // If user manually scrolled up, don't fight their scroll position
+    if (userScrolledAwayRef.current) return;
+
+    const container = chatContainerRef.current;
+    if (!container) return;
 
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     const isNearBottom = distanceFromBottom < 150;
 
     if (isNearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollChatToBottom();
     }
-  }, [messages]);
+  }, [messages, scrollChatToBottom]);
 
-  // Auto-scroll when workflow progress events occur
+  // Auto-scroll when workflow progress events occur (respect user scroll)
   useEffect(() => {
     const scrollToBottom = () => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (userScrolledAwayRef.current) return;
+      scrollChatToBottom();
     };
 
     window.addEventListener("workflow-progress", scrollToBottom);
@@ -2822,7 +2866,7 @@ export default function App() {
       window.removeEventListener("workflow-progress", scrollToBottom);
       window.removeEventListener("workflow-step-started", scrollToBottom);
     };
-  }, []);
+  }, [scrollChatToBottom]);
 
   // Debug feedback notification state changes
   useEffect(() => {}, [showFeedbackNotification]);
@@ -4171,7 +4215,8 @@ export default function App() {
   const handleClose = async () => {
     try {
       const appWindow = getCurrentWindow();
-      await appWindow.close();
+      console.log("[close] hiding main window to tray");
+      await appWindow.hide();
     } catch (error) {}
   };
 
@@ -4959,8 +5004,9 @@ export default function App() {
                           const success = await loadPreviousSession(sessionId);
                           if (success) {
                             // Scroll to bottom after loading session
+                            userScrolledAwayRef.current = false;
                             setTimeout(() => {
-                              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                              scrollChatToBottom();
                             }, 100);
                           }
                           return success;
@@ -5791,8 +5837,8 @@ export default function App() {
                                     className="h-5 px-1 py-0 text-[10px] border border-black rounded focus:outline-none cursor-pointer appearance-none bg-[length:10px] bg-[center_right_0.2rem] bg-no-repeat pr-4 [.theme-classic_&]:bg-white [.theme-classic_&]:text-black [.theme-classic_&]:hover:bg-gray-100 [.theme-classic_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')] [.theme-inverted_&]:bg-black [.theme-inverted_&]:text-white [.theme-inverted_&]:hover:bg-black/90 [.theme-inverted_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')]"
                                     title="Select AI model"
                                   >
-                                    <option value="gemini-pro-latest">Gemini Pro (Latest)</option>
-                                    <option value="claude-code">Claude Code Opus 4-5</option>
+                                    <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
+                                    <option value="claude-code">Claude Code Opus 4.6</option>
                                     <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                     <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                   </select>

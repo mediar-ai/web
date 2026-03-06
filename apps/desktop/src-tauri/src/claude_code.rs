@@ -804,7 +804,8 @@ impl AcpWorker {
         // Configure Vertex AI
         let vertex_project = "mediar-394022";
         let vertex_region = "us-east5";
-        let model = "claude-opus-4-5@20251101";
+        let model = "claude-opus-4-6";
+        log::info!("[claude_code] warm_up: MODEL_v3_no_date_suffix model={}", model);
 
         log::info!(
             "[claude_code] warm_up: Using Vertex AI: project={}, region={}, model={}",
