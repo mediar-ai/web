@@ -1916,6 +1916,22 @@ pub async fn publish_typescript_workflow(
         error!("Failed to save sync metadata: {}", e);
     }
 
+    // Update local package.json version to match the cloud version
+    // Without this, the UI shows the stale local version instead of the published one
+    let package_json_path = workflow_path.join("package.json");
+    if let Ok(pkg_content) = fs::read_to_string(&package_json_path) {
+        if let Ok(mut pkg_json) = serde_json::from_str::<serde_json::Value>(&pkg_content) {
+            pkg_json["version"] = serde_json::Value::String(result.version.clone());
+            if let Ok(updated) = serde_json::to_string_pretty(&pkg_json) {
+                if let Err(e) = fs::write(&package_json_path, updated) {
+                    warn!("Failed to update local package.json version: {}", e);
+                } else {
+                    info!("[publish] Updated local package.json version to {}", result.version);
+                }
+            }
+        }
+    }
+
     Ok(PublishTypescriptWorkflowResult {
         success: true,
         cloud_workflow_id: result.workflow_id,

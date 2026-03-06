@@ -199,6 +199,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Update current_version on the main workflow record so the list API returns the correct version
+    const { error: versionUpdateError } = await supabase
+      .from('deployed_workflows')
+      .update({ current_version: newVersionNumber })
+      .eq('id', workflowId);
+
+    if (versionUpdateError) {
+      console.warn(`[publish] Failed to update current_version on deployed_workflows: ${versionUpdateError.message}`);
+    } else {
+      console.log(`[publish] Updated deployed_workflows.current_version to ${newVersionNumber}`);
+    }
+
     // Push files to GitHub using GitHub App or PAT
     try {
       console.log(`📤 Pushing ${body.files?.length || 0} files to GitHub...`);
