@@ -56,8 +56,8 @@ use remote_features::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Listener, Manager, State};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::{Emitter, Listener, Manager, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 // Import for unified logging
 // sentry is already available through tauri-plugin-sentry
@@ -221,6 +221,7 @@ pub fn update_tray_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error
     };
 
     let separator = PredefinedMenuItem::separator(app)?;
+    let open_item = MenuItem::with_id(app, "open", "Open Mediar", true, None::<&str>)?;
     let send_logs_item = MenuItem::with_id(app, "send_logs", "Send Logs to Support", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
@@ -228,6 +229,7 @@ pub fn update_tray_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error
         Menu::with_items(
             app,
             &[
+                &open_item,
                 &version_item,
                 &recording_toggle_item,
                 &separator,
@@ -240,6 +242,7 @@ pub fn update_tray_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error
         Menu::with_items(
             app,
             &[
+                &open_item,
                 &version_item,
                 &monitoring_toggle_item,
                 &separator,
@@ -3103,8 +3106,16 @@ pub fn run() {
                 .on_menu_event(move |_app, event| {
                     let app_handle = app_handle_for_tray.clone();
                     match event.id.as_ref() {
+                        "open" => {
+                            info!("open mediar from tray menu");
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
                         "quit" => {
-                            info!("🚪 Quit requested from tray menu");
+                            info!("quit requested from tray menu");
                             app_handle.exit(0);
                         }
                         "send_logs" => {
@@ -3285,6 +3296,17 @@ pub fn run() {
                         }
                     }
                 })
+                .on_tray_icon_event(|tray, event| {
+                    // Left-click on tray icon shows the main window
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        let app_handle = tray.app_handle();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
                 .build(app)?;
 
             // Initial tray menu setup
@@ -3307,6 +3329,16 @@ pub fn run() {
 
             info!("✅ Application setup completed - tray icon active, always recording, autostart enabled");
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Hide main window to tray instead of exiting when user clicks X
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    info!("close requested on main window - hiding to tray instead of exiting");
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

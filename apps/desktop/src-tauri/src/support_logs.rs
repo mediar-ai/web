@@ -382,8 +382,8 @@ pub fn get_all_log_files(log_dir: &PathBuf) -> Vec<(PathBuf, std::time::SystemTi
 
 /// Zip all log files into a single archive (in memory)
 /// Returns the zip data and the number of files successfully added
-/// Maximum total size for all log files combined (5MB)
-const MAX_TOTAL_LOG_SIZE: usize = 5 * 1024 * 1024;
+/// Each file is tailed to MAX_PER_FILE_SIZE so all sessions fit in the zip.
+const MAX_PER_FILE_SIZE: usize = 512 * 1024; // 512KB per file - keeps tail (most useful for crash analysis)
 
 pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(Vec<u8>, usize), String> {
     let mut buffer = Cursor::new(Vec::new());
@@ -393,14 +393,12 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
 
     {
         let mut zip = ZipWriter::new(&mut buffer);
-        // Use Stored (no compression) to avoid memory-intensive deflate operations
-        // that can crash on large files. The upload size increase is acceptable.
-        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         // log_files is already sorted by modification time (most recent first)
         for (idx, (path, _modified)) in log_files.iter().enumerate() {
             info!(
-                "[ZIP] Starting iteration {} of {}, path: {:?}",
+                "[ZIP] file {} of {}: {:?}",
                 idx + 1,
                 log_files.len(),
                 path
@@ -410,15 +408,11 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown.log".to_string());
-            info!("[ZIP] Got filename: {}", file_name);
 
-            // Try to read the file - use read_to_string for better Windows compatibility
-            // with files that might be open by other processes
-            info!("[ZIP] About to read file: {}", file_name);
-            let contents = match read_file_with_shared_access(path) {
+            let mut contents = match read_file_with_shared_access(path) {
                 Ok(data) => {
                     info!(
-                        "[ZIP] Successfully read {} bytes from {}",
+                        "[ZIP] read {} bytes from {}",
                         data.len(),
                         file_name
                     );
@@ -432,42 +426,26 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
                 }
             };
 
-            // Check if adding this file would exceed the total size limit
-            if total_size + contents.len() > MAX_TOTAL_LOG_SIZE {
-                if files_added == 0 {
-                    // First file is too large - skip it and try the next one
-                    info!(
-                        "[ZIP] Skipping {} ({} bytes) - exceeds {}MB limit, trying next file",
-                        file_name,
-                        contents.len(),
-                        MAX_TOTAL_LOG_SIZE / 1024 / 1024
-                    );
-                    continue;
-                } else {
-                    // We have files already, stop here
-                    info!(
-                        "[ZIP] Stopping at {} files ({} bytes) - adding {} ({} bytes) would exceed {}MB limit",
-                        files_added,
-                        total_size,
-                        file_name,
-                        contents.len(),
-                        MAX_TOTAL_LOG_SIZE / 1024 / 1024
-                    );
-                    break;
-                }
+            // Tail large files - keep the end which has crash/exit info
+            if contents.len() > MAX_PER_FILE_SIZE {
+                let skip = contents.len() - MAX_PER_FILE_SIZE;
+                info!(
+                    "[ZIP] tailing {} from {} bytes to {} bytes (skipping first {} bytes)",
+                    file_name, contents.len(), MAX_PER_FILE_SIZE, skip
+                );
+                // Find next newline after skip point to avoid cutting mid-line
+                let start = contents[skip..].iter().position(|&b| b == b'\n')
+                    .map(|p| skip + p + 1)
+                    .unwrap_or(skip);
+                contents = contents[start..].to_vec();
             }
 
-            info!("[ZIP] About to start zip entry for: {}", file_name);
             if let Err(e) = zip.start_file(&file_name, options) {
                 let err_msg = format!("Failed to start zip entry for {}: {}", file_name, e);
                 warn!("{}", err_msg);
                 last_error = Some(err_msg);
                 continue;
             }
-            info!(
-                "[ZIP] Started zip entry, about to write {} bytes",
-                contents.len()
-            );
 
             if let Err(e) = zip.write_all(&contents) {
                 let err_msg = format!("Failed to write zip entry for {}: {}", file_name, e);
@@ -477,17 +455,12 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
             }
             total_size += contents.len();
             info!(
-                "Added {} to zip ({} bytes, total: {} bytes)",
+                "[ZIP] added {} ({} bytes, total: {} bytes)",
                 file_name,
                 contents.len(),
                 total_size
             );
             files_added += 1;
-            info!(
-                "[ZIP] Completed iteration {}, files_added = {}",
-                idx + 1,
-                files_added
-            );
         }
 
         info!(

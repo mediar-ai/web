@@ -43,7 +43,9 @@ import { homedir, tmpdir } from "os";
 // Config
 // ============================================
 const VARIANT = process.argv.includes("--staging") ? "staging" : "full";
-const WORKSPACE = process.cwd();
+const DESKTOP_DIR = process.cwd();
+// Cargo workspace root is 2 levels up from apps/desktop
+const WORKSPACE_ROOT = join(DESKTOP_DIR, "..", "..");
 const HOME = homedir();
 const LOCALAPPDATA = process.env.LOCALAPPDATA || join(HOME, "AppData", "Local");
 
@@ -106,7 +108,8 @@ async function main() {
   console.log("Mediar Release Script");
   console.log("========================================");
   console.log(`Variant: ${VARIANT}`);
-  console.log(`Workspace: ${WORKSPACE}`);
+  console.log(`Desktop dir: ${DESKTOP_DIR}`);
+  console.log(`Workspace root: ${WORKSPACE_ROOT}`);
   console.log(`SSL.com: ${SSL_DIR}`);
   console.log(`CodeSignTool: ${CODE_SIGN_TOOL}`);
 
@@ -122,7 +125,7 @@ async function main() {
   const CN_APP = VARIANT === "full" ? "mediarai/mediar" : "mediarai/mediar-staging";
 
   // Validate RELEASE_NOTES.md
-  const releaseNotesPath = join(WORKSPACE, "RELEASE_NOTES.md");
+  const releaseNotesPath = join(DESKTOP_DIR, "RELEASE_NOTES.md");
   if (!existsSync(releaseNotesPath)) {
     throw new Error("RELEASE_NOTES.md not found. Create it with changelog first.");
   }
@@ -137,10 +140,10 @@ async function main() {
   console.log("Step 1: Preparing Tauri Config");
   console.log("========================================\n");
 
-  const tauriConfig = join(WORKSPACE, "src-tauri", "tauri.conf.json");
-  const tauriBackup = join(WORKSPACE, "src-tauri", "tauri.conf.json.backup");
+  const tauriConfig = join(DESKTOP_DIR, "src-tauri", "tauri.conf.json");
+  const tauriBackup = join(DESKTOP_DIR, "src-tauri", "tauri.conf.json.backup");
   const variantConfig = join(
-    WORKSPACE,
+    DESKTOP_DIR,
     "src-tauri",
     VARIANT === "full" ? "tauri.conf.prod.json" : "tauri.conf.staging.json"
   );
@@ -153,8 +156,8 @@ async function main() {
 
   // Check if release binary needs rebuild due to identifier mismatch
   // Tauri embeds identifier at compile time - changing config doesn't trigger rebuild
-  const releaseBinary = join(WORKSPACE, "target", "release", "mediar.exe");
-  const releaseMarker = join(WORKSPACE, "target", "release", ".tauri-identifier");
+  const releaseBinary = join(WORKSPACE_ROOT, "target", "release", "mediar.exe");
+  const releaseMarker = join(WORKSPACE_ROOT, "target", "release", ".tauri-identifier");
 
   const configContent = readFileSync(tauriConfig, "utf-8");
   const identifierMatch = configContent.match(/"identifier":\s*"([^"]+)"/);
@@ -175,7 +178,7 @@ async function main() {
 
   // Update marker with current identifier
   try {
-    const releaseDir = join(WORKSPACE, "target", "release");
+    const releaseDir = join(WORKSPACE_ROOT, "target", "release");
     if (!existsSync(releaseDir)) mkdirSync(releaseDir, { recursive: true });
     writeFileSync(releaseMarker, currentIdentifier);
   } catch {
@@ -250,7 +253,7 @@ async function main() {
   console.log("Step 4: Signing Installer");
   console.log("========================================\n");
 
-  const bundlePath = join(WORKSPACE, "target", "release", "bundle", "nsis");
+  const bundlePath = join(WORKSPACE_ROOT, "target", "release", "bundle", "nsis");
   const pattern = VARIANT === "full" ? /^mediar_.*_x64-setup\.exe$/ : /^mediar-staging_.*_x64-setup\.exe$/;
 
   const files = (await Array.fromAsync(new Bun.Glob("*.exe").scan(bundlePath))).filter(f => pattern.test(f));
