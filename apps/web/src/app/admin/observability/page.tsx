@@ -62,7 +62,7 @@ export default function ObservabilityPage() {
             SENTRY TRACES BY HOSTNAME
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
-            Total spans for: terminator::new
+            Sentry traces for: mediar-terminator-mcp
           </p>
         </div>
         <div className="flex items-center gap-2">
