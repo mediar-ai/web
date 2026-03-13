@@ -124,161 +124,45 @@ fn report_llm_trace(user_id: String, org_id: String, model: String, session_id: 
 // Vertex AI Credentials for Claude Code (Workload Identity Federation)
 // =============================================================================
 
-// GCP Workload Identity Federation configuration
-const GCP_PROJECT_NUMBER: &str = "1059104235351";
-const GCP_WORKLOAD_POOL: &str = "mediar-desktop-pool";
-const GCP_OIDC_PROVIDER: &str = "mediar-webapp-provider";
-const GCP_SERVICE_ACCOUNT: &str = "vertex-ai-service-account@mediar-394022.iam.gserviceaccount.com";
-
-// Token refresh interval: 50 minutes (token expires in 60 min, refresh early)
-const TOKEN_REFRESH_INTERVAL_SECS: u64 = 50 * 60;
-
-/// Fetch subject token (JWT) from our web app endpoint
-async fn fetch_subject_token(desktop_token: &str) -> std::result::Result<String, String> {
+/// Fetch Anthropic API key from our web app backend
+async fn fetch_anthropic_api_key(desktop_token: &str) -> std::result::Result<String, String> {
     let api_base = get_api_base_url();
-    let subject_token_url = format!("{}/api/auth/desktop-vertex-subject-token", api_base);
+    let url = format!("{}/api/auth/desktop-anthropic-key", api_base);
 
-    log::info!(
-        "[claude_code] Fetching subject token from: {}",
-        subject_token_url
-    );
+    log::info!("[claude_code] Fetching Anthropic API key from: {}", url);
 
     let client = Client::new();
     let response = client
-        .get(&subject_token_url)
+        .get(&url)
         .header("Authorization", format!("Bearer {}", desktop_token))
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch subject token: {}", e))?;
+        .map_err(|e| format!("Failed to fetch Anthropic API key: {}", e))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(format!(
-            "Subject token request failed: {} - {}",
+            "Anthropic API key request failed: {} - {}",
             status, body
         ));
     }
 
-    let token = response
-        .text()
+    let json: serde_json::Value = response
+        .json()
         .await
-        .map_err(|e| format!("Failed to read subject token response: {}", e))?;
+        .map_err(|e| format!("Failed to parse Anthropic API key response: {}", e))?;
+
+    let api_key = json["apiKey"]
+        .as_str()
+        .ok_or("Missing apiKey in response")?
+        .to_string();
 
     log::info!(
-        "[claude_code] Subject token fetched successfully (len={})",
-        token.len()
+        "[claude_code] Anthropic API key fetched successfully (len={})",
+        api_key.len()
     );
-    Ok(token)
-}
-
-/// Write subject token to a local file for Google SDK to read
-fn write_subject_token_file(subject_token: &str) -> std::result::Result<PathBuf, String> {
-    let temp_dir = std::env::temp_dir();
-    let token_file = temp_dir.join("mediar-vertex-subject-token.txt");
-
-    std::fs::write(&token_file, subject_token).map_err(|e| format!("Failed to write subject token file: {}", e))?;
-
-    log::info!("[claude_code] Subject token written to: {:?}", token_file);
-    Ok(token_file)
-}
-
-/// Write external_account ADC file that uses file-sourced credentials.
-/// Google SDK will read the subject token from a local file instead of making HTTP calls.
-/// Returns the path to the ADC file.
-fn write_external_account_adc(subject_token_file: &PathBuf) -> std::result::Result<PathBuf, String> {
-    log::info!("[claude_code] Writing external_account ADC file (file-sourced)");
-
-    // Build the external_account ADC configuration with file-sourced credentials
-    // Google SDK will:
-    // 1. Read subject token from local file (no HTTP call!)
-    // 2. Exchange it with Google STS for an access token
-    // 3. Use service account impersonation to get final access token
-    let adc_json = serde_json::json!({
-        "type": "external_account",
-        "audience": format!(
-            "//iam.googleapis.com/projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
-            GCP_PROJECT_NUMBER, GCP_WORKLOAD_POOL, GCP_OIDC_PROVIDER
-        ),
-        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-        "token_url": "https://sts.googleapis.com/v1/token",
-        "credential_source": {
-            "file": subject_token_file.to_string_lossy(),
-            "format": {
-                "type": "text"
-            }
-        },
-        "service_account_impersonation_url": format!(
-            "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateAccessToken",
-            GCP_SERVICE_ACCOUNT
-        )
-    });
-
-    // Write to temp file
-    let temp_dir = std::env::temp_dir();
-    let adc_file = temp_dir.join("mediar-vertex-adc.json");
-    let file_existed = adc_file.exists();
-
-    let adc_content = serde_json::to_string_pretty(&adc_json).map_err(|e| format!("Failed to serialize ADC: {}", e))?;
-
-    std::fs::write(&adc_file, &adc_content).map_err(|e| format!("Failed to write ADC file: {}", e))?;
-
-    log::info!(
-        "[claude_code] ADC file {} (file-sourced): {:?}",
-        if file_existed { "updated" } else { "created" },
-        adc_file
-    );
-    log::info!("[claude_code] Subject token file: {:?}", subject_token_file);
-
-    Ok(adc_file)
-}
-
-/// Background task that refreshes the subject token file periodically
-/// Runs until abort signal is received or an error occurs
-async fn token_refresh_loop(
-    desktop_token: String,
-    token_file: PathBuf,
-    mut abort_rx: tokio::sync::oneshot::Receiver<()>,
-) {
-    use tokio::time::{interval, Duration};
-
-    let mut refresh_interval = interval(Duration::from_secs(TOKEN_REFRESH_INTERVAL_SECS));
-    // Skip the first tick (we already have a fresh token)
-    refresh_interval.tick().await;
-
-    loop {
-        tokio::select! {
-            _ = refresh_interval.tick() => {
-                log::info!("[claude_code] Refreshing subject token...");
-                match fetch_subject_token(&desktop_token).await {
-                    Ok(new_token) => {
-                        if let Err(e) = std::fs::write(&token_file, &new_token) {
-                            log::error!("[claude_code] Failed to write refreshed token: {}", e);
-                            // Continue running - old token might still work for a bit
-                        } else {
-                            log::info!("[claude_code] Subject token refreshed successfully");
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("[claude_code] Failed to refresh subject token: {}", e);
-                        // Continue running - old token might still work for a bit
-                    }
-                }
-            }
-            _ = &mut abort_rx => {
-                log::info!("[claude_code] Token refresh task stopped (session ended)");
-                break;
-            }
-        }
-    }
-}
-
-/// Cleanup credentials file - currently a no-op to allow Google SDK token caching across sessions
-/// The stable ADC file (mediar-vertex-adc.json) is intentionally kept to avoid re-authentication
-fn cleanup_credentials_file(_path: &PathBuf) {
-    // No-op: We keep the ADC file so Google Cloud SDK can cache the access token
-    // This saves ~3 seconds on subsequent session starts (within 1-hour token lifetime)
-    log::debug!("[claude_code] Keeping ADC file for token caching");
+    Ok(api_key)
 }
 
 /// Events emitted to the frontend
@@ -682,12 +566,6 @@ impl acp::Client for ClaudeCodeClient {
 struct WarmConnection {
     connection: Arc<acp::ClientSideConnection>,
     child: tokio::process::Child,
-    /// Path to ADC credentials file (kept for cleanup)
-    credentials_file: PathBuf,
-    /// Path to subject token file (refreshed periodically, kept for cleanup)
-    subject_token_file: PathBuf,
-    /// Abort handle for token refresh task (kept to stop refresh on shutdown)
-    token_refresh_abort: Option<tokio::sync::oneshot::Sender<()>>,
     /// User ID for trace reporting
     user_id: Option<String>,
     /// Org ID for trace reporting
@@ -774,45 +652,18 @@ impl AcpWorker {
             }
         };
 
-        // Fetch subject token from server and write to local file
-        log::info!("[claude_code] warm_up: Setting up Workload Identity Federation (file-sourced)...");
-        let subject_token = fetch_subject_token(&desktop_token).await?;
-        let subject_token_file = write_subject_token_file(&subject_token)?;
-        let credentials_file = write_external_account_adc(&subject_token_file)?;
-        log::info!(
-            "[claude_code] warm_up: ADC file written to: {:?}",
-            credentials_file
-        );
-
-        // Spawn background task to refresh token every 50 minutes
-        let (abort_tx, abort_rx) = tokio::sync::oneshot::channel::<()>();
-        let refresh_desktop_token = desktop_token.clone();
-        let refresh_token_file = subject_token_file.clone();
-        tokio::spawn(async move {
-            token_refresh_loop(refresh_desktop_token, refresh_token_file, abort_rx).await;
-        });
-        log::info!(
-            "[claude_code] Token refresh task started (interval={}s)",
-            TOKEN_REFRESH_INTERVAL_SECS
-        );
+        // Fetch Anthropic API key from backend
+        log::info!("[claude_code] warm_up: Fetching Anthropic API key from backend...");
+        let anthropic_api_key = fetch_anthropic_api_key(&desktop_token).await?;
+        log::info!("[claude_code] warm_up: Got Anthropic API key (direct API mode)");
 
         // Spawn claude-code-acp subprocess using bundled bun
         let bun_path =
             find_bundled_bun().ok_or_else(|| "Bundled bun not found. Please reinstall the app.".to_string())?;
         log::info!("[claude_code] warm_up: Using bundled bun: {:?}", bun_path);
 
-        // Configure Vertex AI
-        let vertex_project = "mediar-394022";
-        let vertex_region = "us-east5";
         let model = "claude-opus-4-6";
-        log::info!("[claude_code] warm_up: MODEL_v3_no_date_suffix model={}", model);
-
-        log::info!(
-            "[claude_code] warm_up: Using Vertex AI: project={}, region={}, model={}",
-            vertex_project,
-            vertex_region,
-            model
-        );
+        log::info!("[claude_code] warm_up: Using direct Anthropic API, model={}", model);
 
         let mut cmd = Command::new(&bun_path);
         cmd.args([
@@ -825,14 +676,14 @@ impl AcpWorker {
             "user,project,local",
         ])
         .current_dir(&cwd)
-        .env("GOOGLE_APPLICATION_CREDENTIALS", &credentials_file)
-        .env("CLAUDE_CODE_USE_VERTEX", "1")
-        .env("ANTHROPIC_VERTEX_PROJECT_ID", vertex_project)
-        .env("CLOUD_ML_REGION", vertex_region)
-        .env("GOOGLE_CLOUD_PROJECT", vertex_project)
-        .env("GOOGLE_CLOUD_LOCATION", vertex_region)
+        .env("ANTHROPIC_API_KEY", &anthropic_api_key)
         .env("ANTHROPIC_MODEL", model)
         .env("ANTHROPIC_DEFAULT_SONNET_MODEL", model)
+        // Prevent "nested session" detection if launched from within Claude Code
+        .env_remove("CLAUDECODE")
+        // Remove any inherited Vertex env vars
+        .env_remove("CLAUDE_CODE_USE_VERTEX")
+        .env_remove("GOOGLE_APPLICATION_CREDENTIALS")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -845,7 +696,6 @@ impl AcpWorker {
         }
 
         let mut child = cmd.spawn().map_err(|e| {
-            cleanup_credentials_file(&credentials_file);
             format!("Failed to spawn claude-code-acp via bun: {}", e)
         })?;
 
@@ -894,9 +744,6 @@ impl AcpWorker {
         self.warm_connection = Some(WarmConnection {
             connection: Arc::new(conn),
             child,
-            credentials_file,
-            subject_token_file,
-            token_refresh_abort: Some(abort_tx),
             user_id,
             org_id,
             model: model.to_string(),
