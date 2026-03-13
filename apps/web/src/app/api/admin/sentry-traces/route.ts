@@ -36,8 +36,8 @@ export async function GET(request: Request) {
   const statsPeriod = searchParams.get('statsPeriod') || '7d';
 
   try {
-    // Query traces grouped by server_name and deployment_type tags
-    const url = `https://sentry.io/api/0/organizations/${SENTRY_ORG}/events/?field=tags[server_name]&field=tags[deployment_type]&field=count()&per_page=100&query=&statsPeriod=${statsPeriod}&sort=-count()`;
+    // Query traces grouped by server_name and deployment_type tags, filtered to terminator project only
+    const url = `https://sentry.io/api/0/organizations/${SENTRY_ORG}/events/?field=tags[server_name]&field=tags[deployment_type]&field=count()&per_page=100&query=project%3Amediar-terminator-mcp&statsPeriod=${statsPeriod}&sort=-count()`;
 
     console.log('[sentry-traces] Fetching from Sentry:', url);
 
