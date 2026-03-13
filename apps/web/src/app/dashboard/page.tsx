@@ -48,6 +48,7 @@ import {
 } from '@/lib/workflow-types';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
 import { toast } from 'sonner';
+import { EntityNameChangeModal } from '@/components/EntityNameChangeModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LaunchVmDialog, CreditsDisplay } from '@/components/vm';
 
@@ -1908,6 +1909,7 @@ function DashboardContent() {
           />
         )}
       </div>
+      <EntityNameChangeModal />
     </DashboardLayout>
   );
 }
