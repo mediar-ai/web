@@ -1,6 +1,7 @@
-# 1.0.23
+# 1.0.24
 
-- Fixed workflow version sync after publish (cloud + local)
-- Updated Gemini model to gemini-pro-latest
-- Improved workflow step progress notifications
-- Fixed browser extension bridge error handling
+- Switched Claude Code from Vertex AI to direct Anthropic API
+- Fixed notification handling in workflow execution
+- Improved browser extension bridge error handling
+- Fixed MCP error log extraction for failed workflows
+- Fixed legacy browser extension compatibility
