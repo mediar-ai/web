@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
                 WORKFLOW_STEP_ANALYSIS_SCHEMA,
                 "application/json",
                 true, // 🔥 ENABLE USAGE METADATA TRACKING
-                { trackingSource: 'step_processing' as const }
+                { trackingSource: 'step_processing' as const, trackingUserId: context?.userId }
             );
 
             console.log(`[SUCCESS] [${requestId}] Vertex AI step analysis successful`);

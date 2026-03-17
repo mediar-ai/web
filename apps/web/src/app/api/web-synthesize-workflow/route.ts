@@ -394,7 +394,8 @@ Note: This data comes from web-based screen capture and activity analysis.`;
         },
         maxRetries: 3, // More retries for synthesis due to complexity
         retryDelayMs: 2000, // 2 second initial delay
-        trackingSource: 'workflow_synthesis' as const
+        trackingSource: 'workflow_synthesis' as const,
+        trackingUserId: context.userId
       };
 
       const startTime = Date.now();
@@ -491,7 +492,7 @@ Note: This data comes from web-based screen capture and activity analysis.`;
         WORKFLOW_SYNTHESIS_SCHEMA,
         "application/json",
         true,
-        { trackingSource: 'workflow_synthesis' as const }
+        { trackingSource: 'workflow_synthesis' as const, trackingUserId: context.userId }
       );
 
       return NextResponse.json({

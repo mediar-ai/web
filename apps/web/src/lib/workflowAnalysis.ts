@@ -97,7 +97,10 @@ export async function generateWorkflowStepAnalysisWithSchema(
       fullPrompt,
       {}, // Empty context since prompt already includes all needed data
       modelName,
-      WORKFLOW_STEP_ANALYSIS_SCHEMA
+      WORKFLOW_STEP_ANALYSIS_SCHEMA,
+      "application/json",
+      false,
+      { trackingSource: 'workflow_analysis' as const }
     );
 
     // Add metadata

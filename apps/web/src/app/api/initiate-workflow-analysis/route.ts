@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
           WORKFLOW_IDENTIFICATION_SCHEMA,
           "application/json",
           false,
-          { trackingSource: 'workflow_analysis' as const }
+          { trackingSource: 'workflow_analysis' as const, trackingUserId: userId }
         );
         let workflowNames = initialIdentification.workflow_names || [];
         controller.enqueue(toSSE({ status: 'Initial workflows identified.', progress: 33, data: { workflowNames } }));
@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
           CONTEXT_SYNTHESIS_SCHEMA,
           "application/json",
           false,
-          { trackingSource: 'workflow_analysis' as const }
+          { trackingSource: 'workflow_analysis' as const, trackingUserId: userId }
         );
         controller.enqueue(toSSE({ status: 'User context synthesized.', progress: 66, data: { workflowContext } }));
 
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
             WORKFLOW_REFINEMENT_SCHEMA,
             "application/json",
             false,
-            { trackingSource: 'workflow_analysis' as const }
+            { trackingSource: 'workflow_analysis' as const, trackingUserId: userId }
           );
 
           // Update context with all fields from refinement

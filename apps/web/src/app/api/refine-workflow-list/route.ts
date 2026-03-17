@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       WORKFLOW_REFINEMENT_SCHEMA,
       "application/json",
       false,
-      { trackingSource: 'workflow_analysis' as const }
+      { trackingSource: 'workflow_analysis' as const, trackingUserId: userId }
     );
 
     const refined_workflow_names = refinementResult.refined_workflow_names;

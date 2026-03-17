@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         WORKFLOW_LABEL_SUGGESTION_SCHEMA,
         "application/json",
         false,
-        { timeoutMs: 240000, trackingSource: 'label_suggestion' as const } // 4 minutes (240s) to stay under 5min Vercel function limit
+        { timeoutMs: 240000, trackingSource: 'label_suggestion' as const, trackingUserId: context?.userId } // 4 minutes (240s) to stay under 5min Vercel function limit
     );
 
     console.log('[SUCCESS] Vertex AI label suggestion successful');
