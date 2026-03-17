@@ -166,7 +166,7 @@
       "active": true,
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBNTU0NENGRDc5OUY3OTQKUldTVTk1blh6MFJWaXU4di8zNU16Q3BOb05SVjBVajdvazJIVWZyWjJDT1NiMmNFWXZvZFBiWUEK",
-      "endpoints": ["https://cdn.crabnebula.app/update/mediar/mediar-staging/{{target}}-{{arch}}/{{current_version}}"],
+      "endpoints": ["https://cdn.crabnebula.app/update/mediarai/mediar-staging/{{target}}-{{arch}}/{{current_version}}"],
       "windows": {
         "installMode": "passive"
       }
