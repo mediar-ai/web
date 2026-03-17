@@ -1,7 +1,6 @@
-# 1.0.24
+# 1.1.0
 
-- Switched Claude Code from Vertex AI to direct Anthropic API
-- Fixed notification handling in workflow execution
-- Improved browser extension bridge error handling
-- Fixed MCP error log extraction for failed workflows
-- Fixed legacy browser extension compatibility
+- Added MCP progress notifications for Gemini computer use
+- Added llms.txt guardrails for safer AI interactions
+- Scoped Sentry traces to terminator project for cleaner monitoring
+- Improved workflow step progress notifications
