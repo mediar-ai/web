@@ -177,7 +177,7 @@ ${JSON.stringify(analyses, null, 2)}`;
         WORKFLOW_BOUNDARIES_SCHEMA,
         "application/json",
         false,
-        { trackingSource: 'workflow_analysis' as const }
+        { trackingSource: 'workflow_analysis' as const, trackingUserId: context.userId }
     );
 
     console.log('[SUCCESS] Vertex AI workflow boundaries successful');

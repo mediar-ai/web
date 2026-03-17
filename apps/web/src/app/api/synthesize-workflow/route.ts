@@ -388,7 +388,8 @@ Note: Each event contains embedded labels where available.`;
         },
         maxRetries: 3, // More retries for synthesis due to complexity
         retryDelayMs: 2000, // 2 second initial delay
-        trackingSource: 'workflow_synthesis' as const
+        trackingSource: 'workflow_synthesis' as const,
+        trackingUserId: context.userId
       };
       
       const startTime = Date.now();

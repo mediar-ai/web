@@ -45,7 +45,7 @@ export async function trackLLMUsage(params: TrackLLMUsageParams): Promise<void> 
     }
 
     console.log(
-      `[LLM Tracking] ${params.source}: model=${params.model}, input=${params.inputTokens}, output=${params.outputTokens}`
+      `[LLM Tracking] ${params.source}: model=${params.model}, input=${params.inputTokens}, output=${params.outputTokens}, userId=${params.userId || 'system(missing)'}`
     );
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
