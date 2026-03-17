@@ -577,9 +577,36 @@ impl WorkflowScheduler {
                 }
 
                 info!("Workflow '{}' SSE stream completed", workflow.workflow_name);
+
+                // Clean up MCP session by sending HTTP DELETE per MCP spec
+                if let Some(ref sid) = session_id {
+                    let del_result = client
+                        .delete(&mcp_url)
+                        .header("mcp-session-id", sid)
+                        .timeout(Duration::from_secs(5))
+                        .send()
+                        .await;
+                    match del_result {
+                        Ok(_) => info!("[scheduler] Sent session close DELETE for '{}'", workflow.workflow_name),
+                        Err(e) => warn!("[scheduler] Failed to close session for '{}': {}", workflow.workflow_name, e),
+                    }
+                }
+
                 Ok(())
             }
-            Err(e) => Err(format!("Failed to call MCP: {}", e)),
+            Err(e) => {
+                // Clean up MCP session even on error
+                if let Some(ref sid) = session_id {
+                    let _ = client
+                        .delete(&mcp_url)
+                        .header("mcp-session-id", sid)
+                        .timeout(Duration::from_secs(5))
+                        .send()
+                        .await;
+                    info!("[scheduler] Sent session close DELETE after error for '{}'", workflow.workflow_name);
+                }
+                Err(format!("Failed to call MCP: {}", e))
+            }
         }
     }
 
