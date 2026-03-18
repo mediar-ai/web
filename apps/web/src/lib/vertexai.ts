@@ -277,10 +277,10 @@ export function getVertexModelName(inputModelName: string): string {
     'gemini-2.5-pro-preview-05-06': 'gemini-2.5-pro', // Map preview to stable
     'gemini-2.5-pro-preview-03-25': 'gemini-2.5-pro', // Map preview to stable
     
-    // 🔥 GEMINI PRO LATEST (auto-updated alias)
-    'gemini-pro-latest': 'gemini-pro-latest',
-    'gemini-3-pro': 'gemini-pro-latest',
-    'gemini-3-pro-preview': 'gemini-pro-latest',
+    // 🔥 GEMINI PRO LATEST → maps to gemini-2.5-pro (gemini-pro-latest not available on Vertex AI)
+    'gemini-pro-latest': 'gemini-2.5-pro',
+    'gemini-3-pro': 'gemini-2.5-pro',
+    'gemini-3-pro-preview': 'gemini-2.5-pro',
 
     'gemini-2.5-flash': 'gemini-2.5-flash',
     'gemini-2.5-flash-preview-09-2025': 'gemini-2.5-flash-preview-09-2025', // Latest preview
