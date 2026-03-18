@@ -51,11 +51,11 @@ export async function POST(
     const genAI = new GoogleGenAI({
       vertexai: true,
       project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-      location: 'global', // Required for Gemini 3
+      location: process.env.VERTEX_AI_LOCATION || 'us-central1',
       googleAuthOptions: { credentials },
     });
 
-    const modelName = 'gemini-pro-latest';
+    const modelName = 'gemini-2.5-pro';
 
     // Format user messages for context
     const formattedMessages = userMessages

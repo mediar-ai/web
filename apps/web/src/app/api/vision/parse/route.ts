@@ -215,14 +215,13 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenAI({
       vertexai: true,
       project: process.env.GOOGLE_CLOUD_PROJECT || 'mediar-394022',
-      location: 'global', // Gemini 3 requires global endpoint
+      location: process.env.VERTEX_AI_LOCATION || 'us-central1',
       googleAuthOptions: {
         credentials,
       },
     });
 
-    // Use Gemini 3 Pro Preview for quality vision detection
-    const modelName = 'gemini-pro-latest';
+    const modelName = 'gemini-2.5-pro';
 
     console.log(`[Vision API] Calling ${modelName} for UI element detection...`);
 
