@@ -2107,7 +2107,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.7.4",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -3447,7 +3447,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -3467,7 +3467,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.56.0",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -4317,7 +4317,7 @@ dependencies = [
 
 [[package]]
 name = "mediar"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
@@ -6373,7 +6373,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -6410,7 +6410,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -9099,7 +9099,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-computer-use"
-version = "0.24.29"
+version = "0.24.30"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -9113,7 +9113,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.24.29"
+version = "0.24.30"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9147,7 +9147,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.24.29"
+version = "0.24.30"
 dependencies = [
  "arboard",
  "async-stream",

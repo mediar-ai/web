@@ -1,6 +1,4 @@
-# 1.1.0
+# 1.1.1
 
-- Added MCP progress notifications for Gemini computer use
-- Added llms.txt guardrails for safer AI interactions
-- Scoped Sentry traces to terminator project for cleaner monitoring
-- Improved workflow step progress notifications
+- Fixed log file growth with 5MB rotation and 20MB total size limit
+- Pruned dead MCP broadcast peers on new connection
