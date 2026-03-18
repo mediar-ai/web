@@ -2060,34 +2060,50 @@ fn rotate_existing_log_file(log_dir: &std::path::Path) {
         }
     }
 
-    // Cleanup old rotated logs (keep only 10 most recent)
-    cleanup_old_log_files(log_dir, 10);
+    // Cleanup old rotated logs (keep only 5 most recent, max 20MB total)
+    cleanup_old_log_files(log_dir, 5);
 }
 
 /// Remove old rotated log files, keeping only the N most recent
+/// Also enforces a total size cap of 20MB across all log files
+const MAX_LOG_DIR_SIZE: u64 = 20 * 1024 * 1024; // 20MB total cap for log directory
+
 fn cleanup_old_log_files(log_dir: &std::path::Path, keep_count: usize) {
     let log_prefix = if cfg!(debug_assertions) {
         "mediar-dev-"
     } else {
         "mediar-"
     };
+    let current_log = if cfg!(debug_assertions) {
+        "mediar-dev.log"
+    } else {
+        "mediar.log"
+    };
 
-    let mut rotated_files: Vec<(std::path::PathBuf, std::time::SystemTime)> = vec![];
+    let mut rotated_files: Vec<(std::path::PathBuf, std::time::SystemTime, u64)> = vec![];
 
     if let Ok(entries) = std::fs::read_dir(log_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                // Match rotated files like mediar-2025-11-27_12-55-41.log
-                // but NOT the current mediar.log or mediar-dev.log
-                if filename.starts_with(log_prefix)
+                // Skip the current session log file
+                if filename == current_log {
+                    continue;
+                }
+                // Match rotated files:
+                // - Timestamp-based: mediar-2025-11-27_12-55-41.log
+                // - Plugin-based: mediar.log.1, mediar-dev.log.1
+                let is_timestamp_rotated = filename.starts_with(log_prefix)
                     && filename.ends_with(".log")
-                    && filename.len() > log_prefix.len() + 4
-                // Has timestamp
-                {
+                    && filename.len() > log_prefix.len() + 4;
+                let is_plugin_rotated = filename.starts_with(current_log)
+                    && filename.len() > current_log.len();
+
+                if is_timestamp_rotated || is_plugin_rotated {
                     if let Ok(metadata) = entry.metadata() {
+                        let size = metadata.len();
                         if let Ok(modified) = metadata.modified() {
-                            rotated_files.push((path, modified));
+                            rotated_files.push((path, modified, size));
                         }
                     }
                 }
@@ -2098,14 +2114,41 @@ fn cleanup_old_log_files(log_dir: &std::path::Path, keep_count: usize) {
     // Sort by modification time (newest first)
     rotated_files.sort_by(|a, b| b.1.cmp(&a.1));
 
-    // Remove files beyond keep_count
-    for (path, _) in rotated_files.into_iter().skip(keep_count) {
-        if let Err(e) = std::fs::remove_file(&path) {
-            eprintln!("Warning: Failed to remove old log file {:?}: {}", path, e);
+    // Phase 1: Remove files beyond keep_count
+    let mut kept_files: Vec<(std::path::PathBuf, u64)> = vec![];
+    for (idx, (path, _, size)) in rotated_files.into_iter().enumerate() {
+        if idx >= keep_count {
+            if let Err(e) = std::fs::remove_file(&path) {
+                eprintln!("Warning: Failed to remove old log file {:?}: {}", path, e);
+            } else {
+                println!("Cleaned up old log file (count): {:?}", path.file_name());
+            }
         } else {
-            println!("Cleaned up old log file: {:?}", path.file_name());
+            kept_files.push((path, size));
         }
     }
+
+    // Phase 2: Enforce total size cap (remove oldest files until under limit)
+    let mut total_size: u64 = kept_files.iter().map(|(_, s)| s).sum();
+    // Also count current session log size
+    let current_log_path = log_dir.join(current_log);
+    if let Ok(meta) = std::fs::metadata(&current_log_path) {
+        total_size += meta.len();
+    }
+
+    // Remove from oldest (end of list) until under cap
+    while total_size > MAX_LOG_DIR_SIZE && !kept_files.is_empty() {
+        if let Some((path, size)) = kept_files.pop() {
+            if let Err(e) = std::fs::remove_file(&path) {
+                eprintln!("Warning: Failed to remove log file for size cap {:?}: {}", path, e);
+            } else {
+                total_size -= size;
+                println!("Cleaned up log file (size cap): {:?}", path.file_name());
+            }
+        }
+    }
+
+    println!("[log-cleanup] Log dir total size after cleanup: {}KB", total_size / 1024);
 }
 
 /// Read the app identifier from tauri.conf.json
@@ -2401,10 +2444,11 @@ pub fn run() {
         )
         .plugin(
             tauri_plugin_log::Builder::new()
-                // We do our own rotation on startup (rotate_existing_log_file)
-                // This just prevents the plugin from rotating mid-session
-                .rotation_strategy(RotationStrategy::KeepAll)
-                .max_file_size(100_000_000) // 100MB - effectively no mid-session rotation
+                // Mid-session rotation: when log hits 5MB, plugin rotates it
+                // KeepOne = plugin keeps at most 1 backup (.log.1) during session
+                // Our startup cleanup handles the rest (timestamp-based rotation + size cap)
+                .rotation_strategy(RotationStrategy::KeepOne)
+                .max_file_size(5_000_000) // 5MB - triggers mid-session rotation to prevent bloat
                 .targets([
                     // Write to mediar.log (stable path for current session)
                     // Previous sessions are rotated to mediar-{timestamp}.log on startup
