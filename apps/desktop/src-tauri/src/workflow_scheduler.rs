@@ -3,7 +3,7 @@ use futures::StreamExt;
 use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -153,6 +153,9 @@ pub struct ExecutionLogEntry {
 /// Maximum number of execution logs to keep per workflow
 const MAX_EXECUTION_LOGS: usize = 50;
 
+/// Maximum SSE buffer size before draining (10MB)
+const MAX_SSE_BUFFER: usize = 10 * 1024 * 1024;
+
 /// Event payload for scheduler status changes
 #[derive(Debug, Clone, Serialize)]
 pub struct SchedulerEvent {
@@ -184,6 +187,7 @@ pub struct WorkflowScheduler {
     scheduled_workflows: HashMap<String, ScheduledWorkflow>,
     monitoring_active: bool,
     mcp_port: Option<u16>,
+    currently_executing: HashSet<String>,
 }
 
 impl Default for WorkflowScheduler {
@@ -198,6 +202,7 @@ impl WorkflowScheduler {
             scheduled_workflows: HashMap::new(),
             monitoring_active: false,
             mcp_port: None,
+            currently_executing: HashSet::new(),
         }
     }
 
@@ -515,6 +520,17 @@ impl WorkflowScheduler {
                             if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                                 buffer.push_str(&text);
 
+                                // Cap buffer to prevent unbounded memory growth
+                                if buffer.len() > MAX_SSE_BUFFER {
+                                    warn!(
+                                        "[SCHEDULER] SSE buffer exceeded {}MB for '{}', draining",
+                                        MAX_SSE_BUFFER / 1024 / 1024,
+                                        workflow.workflow_name
+                                    );
+                                    buffer.clear();
+                                    continue;
+                                }
+
                                 // Process complete SSE events (lines ending with \n\n)
                                 while let Some(event_end) = buffer.find("\n\n") {
                                     let event_text = buffer[..event_end].to_string();
@@ -595,6 +611,12 @@ impl WorkflowScheduler {
                 Ok(())
             }
             Err(e) => {
+                if e.is_timeout() {
+                    error!(
+                        "[SCHEDULER] Workflow '{}' timed out after 5 minutes",
+                        workflow.workflow_name
+                    );
+                }
                 // Clean up MCP session even on error
                 if let Some(ref sid) = session_id {
                     let _ = client
@@ -799,125 +821,168 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
             for workflow in workflows {
                 if let TriggerConfig::Cron { ref schedule, jitter_minutes, .. } = workflow.trigger {
                     if WorkflowScheduler::should_execute_cron(schedule, workflow.last_executed) {
+                        // Skip if this workflow is already executing (prevents overlap)
+                        {
+                            let scheduler = WORKFLOW_SCHEDULER.read().await;
+                            if scheduler.currently_executing.contains(&workflow.workflow_id) {
+                                warn!(
+                                    "[SCHEDULER] Workflow '{}' is still executing, skipping this tick",
+                                    workflow.workflow_name
+                                );
+                                continue;
+                            }
+                        }
+
+                        // Mark as currently executing
+                        {
+                            let mut scheduler = WORKFLOW_SCHEDULER.write().await;
+                            scheduler.currently_executing.insert(workflow.workflow_id.clone());
+                        }
+
                         info!(
-                            "Cron trigger fired for workflow '{}'",
+                            "[SCHEDULER] Cron trigger fired for workflow '{}'",
                             workflow.workflow_name
                         );
 
-                        // Apply jitter delay if configured (for anti-detection)
-                        if let Some(jitter) = jitter_minutes {
-                            if jitter > 0 {
-                                use rand::Rng;
-                                let delay_secs = rand::thread_rng().gen_range(0..=(jitter * 60));
-                                info!(
-                                    "[SCHEDULER] Applying {}s jitter delay (max {}min) for workflow '{}'",
-                                    delay_secs, jitter, workflow.workflow_name
-                                );
-                                tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+                        // Spawn execution in its own task so a panic doesn't kill
+                        // the scheduler loop. We await the handle so workflows run
+                        // sequentially (one MCP server, one desktop).
+                        let app_handle_for_task = app_handle_clone.clone();
+                        let workflow_clone = workflow.clone();
+                        let workflow_id_for_cleanup = workflow.workflow_id.clone();
+                        let workflow_name_for_cleanup = workflow.workflow_name.clone();
+
+                        let handle = tokio::spawn(async move {
+                            let workflow = workflow_clone;
+
+                            // Apply jitter delay if configured (for anti-detection)
+                            if let Some(jitter) = jitter_minutes {
+                                if jitter > 0 {
+                                    use rand::Rng;
+                                    let delay_secs = rand::thread_rng().gen_range(0..=(jitter * 60));
+                                    info!(
+                                        "[SCHEDULER] Applying {}s jitter delay (max {}min) for workflow '{}'",
+                                        delay_secs, jitter, workflow.workflow_name
+                                    );
+                                    tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+                                }
                             }
-                        }
 
-                        // Record start time for execution logging
-                        let execution_id = uuid::Uuid::new_v4().to_string();
-                        let started_at = Utc::now();
+                            // Record start time for execution logging
+                            let execution_id = uuid::Uuid::new_v4().to_string();
+                            let started_at = Utc::now();
 
-                        // Emit event
-                        let _ = app_handle_clone.emit(
-                            "scheduler:workflow_executing",
-                            SchedulerEvent {
-                                event_type: "workflow_executing".to_string(),
-                                workflow_id: workflow.workflow_id.clone(),
-                                workflow_name: workflow.workflow_name.clone(),
-                                message: format!(
-                                    "Executing workflow '{}' on cron schedule",
-                                    workflow.workflow_name
-                                ),
-                                timestamp: started_at,
-                            },
-                        );
+                            // Emit event
+                            let _ = app_handle_for_task.emit(
+                                "scheduler:workflow_executing",
+                                SchedulerEvent {
+                                    event_type: "workflow_executing".to_string(),
+                                    workflow_id: workflow.workflow_id.clone(),
+                                    workflow_name: workflow.workflow_name.clone(),
+                                    message: format!(
+                                        "Executing workflow '{}' on cron schedule",
+                                        workflow.workflow_name
+                                    ),
+                                    timestamp: started_at,
+                                },
+                            );
 
-                        // Execute the workflow with SSE streaming for progress events
-                        let scheduler = WORKFLOW_SCHEDULER.read().await;
-                        let result = scheduler.execute_workflow(&workflow, &app_handle_clone).await;
-                        drop(scheduler);
+                            // Execute the workflow with SSE streaming for progress events
+                            let scheduler = WORKFLOW_SCHEDULER.read().await;
+                            let result = scheduler.execute_workflow(&workflow, &app_handle_for_task).await;
+                            drop(scheduler);
 
-                        let completed_at = Utc::now();
-                        let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
+                            let completed_at = Utc::now();
+                            let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
 
-                        // Update last_executed and execution_count
-                        // Use started_at (not completed_at) for last_executed to prevent
-                        // duplicate execution checks from failing when workflow takes > 1 minute
-                        let mut scheduler = WORKFLOW_SCHEDULER.write().await;
-                        let updated_workflow =
-                            if let Some(w) = scheduler.scheduled_workflows.get_mut(&workflow.workflow_id) {
-                                w.last_executed = Some(started_at);
-                                w.execution_count += 1;
-                                Some(w.clone())
-                            } else {
-                                None
+                            // Update last_executed, execution_count, and clear currently_executing
+                            // Use started_at (not completed_at) for last_executed to prevent
+                            // duplicate execution checks from failing when workflow takes > 1 minute
+                            let mut scheduler = WORKFLOW_SCHEDULER.write().await;
+                            scheduler.currently_executing.remove(&workflow.workflow_id);
+                            let updated_workflow =
+                                if let Some(w) = scheduler.scheduled_workflows.get_mut(&workflow.workflow_id) {
+                                    w.last_executed = Some(started_at);
+                                    w.execution_count += 1;
+                                    Some(w.clone())
+                                } else {
+                                    None
+                                };
+                            drop(scheduler);
+
+                            // Persist updated state to triggers.json
+                            if let Some(w) = updated_workflow {
+                                if let Err(e) = save_workflow_state(&w).await {
+                                    warn!("Failed to persist workflow state: {}", e);
+                                }
+                            }
+
+                            // Create and save execution log entry
+                            let (status, error_msg) = match &result {
+                                Ok(()) => ("executed_without_error".to_string(), None),
+                                Err(e) => ("executed_with_error".to_string(), Some(e.clone())),
                             };
-                        drop(scheduler);
 
-                        // Persist updated state to triggers.json
-                        if let Some(w) = updated_workflow {
-                            if let Err(e) = save_workflow_state(&w).await {
-                                warn!("Failed to persist workflow state: {}", e);
+                            let log_entry = ExecutionLogEntry {
+                                id: execution_id,
+                                workflow_id: workflow.workflow_id.clone(),
+                                started_at,
+                                completed_at: Some(completed_at),
+                                status: status.clone(),
+                                duration_ms: Some(duration_ms),
+                                error: error_msg.clone(),
+                            };
+
+                            if let Err(e) = save_execution_log(&workflow.workflow_path, &log_entry) {
+                                warn!("Failed to save execution log: {}", e);
                             }
-                        }
 
-                        // Create and save execution log entry
-                        let (status, error_msg) = match &result {
-                            Ok(()) => ("executed_without_error".to_string(), None),
-                            Err(e) => ("executed_with_error".to_string(), Some(e.clone())),
-                        };
-
-                        let log_entry = ExecutionLogEntry {
-                            id: execution_id,
-                            workflow_id: workflow.workflow_id.clone(),
-                            started_at,
-                            completed_at: Some(completed_at),
-                            status: status.clone(),
-                            duration_ms: Some(duration_ms),
-                            error: error_msg.clone(),
-                        };
-
-                        if let Err(e) = save_execution_log(&workflow.workflow_path, &log_entry) {
-                            warn!("Failed to save execution log: {}", e);
-                        }
-
-                        match result {
-                            Ok(()) => {
-                                info!(
-                                    "Scheduled workflow '{}' completed successfully in {}ms",
-                                    workflow.workflow_name, duration_ms
-                                );
-                                let _ = app_handle_clone.emit(
-                                    "scheduler:workflow_completed",
-                                    SchedulerEvent {
-                                        event_type: "workflow_completed".to_string(),
-                                        workflow_id: workflow.workflow_id.clone(),
-                                        workflow_name: workflow.workflow_name.clone(),
-                                        message: format!("Workflow '{}' completed", workflow.workflow_name),
-                                        timestamp: completed_at,
-                                    },
-                                );
+                            match result {
+                                Ok(()) => {
+                                    info!(
+                                        "[SCHEDULER] Workflow '{}' completed successfully in {}ms",
+                                        workflow.workflow_name, duration_ms
+                                    );
+                                    let _ = app_handle_for_task.emit(
+                                        "scheduler:workflow_completed",
+                                        SchedulerEvent {
+                                            event_type: "workflow_completed".to_string(),
+                                            workflow_id: workflow.workflow_id.clone(),
+                                            workflow_name: workflow.workflow_name.clone(),
+                                            message: format!("Workflow '{}' completed", workflow.workflow_name),
+                                            timestamp: completed_at,
+                                        },
+                                    );
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "[SCHEDULER] Workflow '{}' failed after {}ms: {}",
+                                        workflow.workflow_name, duration_ms, e
+                                    );
+                                    let _ = app_handle_for_task.emit(
+                                        "scheduler:workflow_failed",
+                                        SchedulerEvent {
+                                            event_type: "workflow_failed".to_string(),
+                                            workflow_id: workflow.workflow_id.clone(),
+                                            workflow_name: workflow.workflow_name.clone(),
+                                            message: format!("Workflow '{}' failed: {}", workflow.workflow_name, e),
+                                            timestamp: completed_at,
+                                        },
+                                    );
+                                }
                             }
-                            Err(e) => {
-                                error!(
-                                    "Scheduled workflow '{}' failed after {}ms: {}",
-                                    workflow.workflow_name, duration_ms, e
-                                );
-                                let _ = app_handle_clone.emit(
-                                    "scheduler:workflow_failed",
-                                    SchedulerEvent {
-                                        event_type: "workflow_failed".to_string(),
-                                        workflow_id: workflow.workflow_id.clone(),
-                                        workflow_name: workflow.workflow_name.clone(),
-                                        message: format!("Workflow '{}' failed: {}", workflow.workflow_name, e),
-                                        timestamp: completed_at,
-                                    },
-                                );
-                            }
+                        });
+
+                        // Await the spawned task - keeps execution sequential.
+                        // If the task panicked, catch it here so the scheduler loop survives.
+                        if let Err(join_err) = handle.await {
+                            error!(
+                                "[SCHEDULER] Workflow '{}' panicked: {:?}",
+                                workflow_name_for_cleanup, join_err
+                            );
+                            // Clean up currently_executing since the task didn't get to do it
+                            let mut scheduler = WORKFLOW_SCHEDULER.write().await;
+                            scheduler.currently_executing.remove(&workflow_id_for_cleanup);
                         }
                     }
                 }
