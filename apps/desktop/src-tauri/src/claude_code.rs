@@ -662,7 +662,7 @@ impl AcpWorker {
             find_bundled_bun().ok_or_else(|| "Bundled bun not found. Please reinstall the app.".to_string())?;
         log::info!("[claude_code] warm_up: Using bundled bun: {:?}", bun_path);
 
-        let model = "claude-opus-4-6";
+        let model = "claude-sonnet-4-6";
         log::info!("[claude_code] warm_up: Using direct Anthropic API, model={}", model);
 
         let mut cmd = Command::new(&bun_path);
