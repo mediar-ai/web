@@ -5838,7 +5838,7 @@ export default function App() {
                                     title="Select AI model"
                                   >
                                     <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
-                                    <option value="claude-code">Claude Code Opus 4.6</option>
+                                    <option value="claude-code">Claude Code Sonnet 4.6</option>
                                     <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                     <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                   </select>
