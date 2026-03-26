@@ -82,6 +82,114 @@ interface SettingsPageProps {
   onViewOrgIdChange?: (orgId: string | null) => void;
 }
 
+/** Claude Code Account card - usage bar + personal OAuth connect */
+function ClaudeCodeAccountCard() {
+  const [usage, setUsage] = useState<{ limitUsd: number; hasOAuth: boolean } | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [costUsd, setCostUsd] = useState(0);
+  const [bridgeMode, setBridgeMode] = useState("builtin");
+
+  useEffect(() => {
+    // Fetch usage info on mount
+    invoke<{ limitUsd: number; hasOAuth: boolean }>("get_claude_code_usage")
+      .then(data => {
+        console.log("[SETTINGS] Claude Code usage:", data);
+        setUsage(data);
+      })
+      .catch(e => console.warn("[SETTINGS] Failed to get usage:", e));
+
+    // Listen for usage updates from the backend
+    let unlisten: (() => void) | null = null;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen<{ type: string; cumulativeCostUsd?: number; limitUsd?: number; bridgeMode?: string }>(
+        "claude-code-event",
+        event => {
+          if (event.payload.type === "usageUpdate") {
+            setCostUsd(event.payload.cumulativeCostUsd ?? 0);
+            setBridgeMode(event.payload.bridgeMode ?? "builtin");
+          }
+        }
+      ).then(fn => { unlisten = fn; });
+    });
+    return () => { unlisten?.(); };
+  }, []);
+
+  const limitUsd = usage?.limitUsd ?? 10;
+  const remaining = Math.max(0, limitUsd - costUsd);
+  const pct = Math.min(100, (costUsd / limitUsd) * 100);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Claude Code
+        </CardTitle>
+        <CardDescription>
+          {bridgeMode === "personal"
+            ? "Using your personal Claude account"
+            : "Using builtin credit"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Mode indicator */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Mode</span>
+          <span className="font-medium">
+            {bridgeMode === "personal" ? "Personal Account" : "Builtin"}
+          </span>
+        </div>
+
+        {/* Connect / Disconnect button */}
+        {usage?.hasOAuth ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={async () => {
+              try {
+                await invoke("disconnect_claude_oauth");
+                setUsage(prev => prev ? { ...prev, hasOAuth: false } : prev);
+                setBridgeMode("builtin");
+                toast.success("Personal Claude account disconnected");
+              } catch (e) {
+                toast.error("Failed to disconnect: " + String(e));
+              }
+            }}
+          >
+            Disconnect Personal Account
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={isConnecting}
+            onClick={async () => {
+              try {
+                setIsConnecting(true);
+                await invoke("start_claude_oauth");
+                const result = await invoke<string>("wait_for_claude_oauth");
+                if (result === "connected") {
+                  setUsage(prev => prev ? { ...prev, hasOAuth: true } : prev);
+                  setBridgeMode("personal");
+                  toast.success("Personal Claude account connected");
+                }
+              } catch (e) {
+                toast.error("Failed to connect: " + String(e));
+              } finally {
+                setIsConnecting(false);
+              }
+            }}
+          >
+            {isConnecting ? "Connecting..." : "Connect Personal Claude Account"}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage({
   user,
   onLogout,
@@ -943,6 +1051,9 @@ export default function SettingsPage({
                 </CardContent>
               </Card>
             )}
+
+            {/* Claude Code Account */}
+            <ClaudeCodeAccountCard />
           </TabsContent>
 
           {/* Advanced Tab */}
