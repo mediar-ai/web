@@ -28,6 +28,14 @@ interface LLMTraceRequest {
   }>;
   latencyMs?: number;
   stopReason?: string;
+  /** Real cost from ACP meta (patched entry) - when provided, skip Vertex token counting */
+  costUsd?: number;
+  /** Real input tokens from ACP meta */
+  inputTokens?: number;
+  /** Real output tokens from ACP meta */
+  outputTokens?: number;
+  /** Bridge mode: 'builtin' or 'personal' */
+  claudeCodeMode?: string;
 }
 
 // Generate Google OAuth access token for Vertex AI
@@ -163,6 +171,10 @@ export async function POST(request: Request) {
       toolCalls,
       latencyMs,
       stopReason,
+      costUsd: clientCostUsd,
+      inputTokens: clientInputTokens,
+      outputTokens: clientOutputTokens,
+      claudeCodeMode,
     } = body;
 
     // Validate required fields
@@ -192,16 +204,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get Vertex AI access token and count tokens
-    console.log(`[LLM Trace] Counting tokens for ${source} session=${sessionId} turn=${turnNumber}`);
-    const accessToken = await generateVertexAccessToken();
+    // Use client-provided token counts if available (from ACP meta), otherwise count via Vertex AI
+    let inputTokens: number;
+    let outputTokens: number;
 
-    const [inputTokens, outputTokens] = await Promise.all([
-      countTokens(accessToken, model, inputText || ''),
-      countTokens(accessToken, model, outputText || ''),
-    ]);
-
-    console.log(`[LLM Trace] Token counts - input: ${inputTokens}, output: ${outputTokens}`);
+    if (clientInputTokens != null && clientOutputTokens != null) {
+      inputTokens = clientInputTokens;
+      outputTokens = clientOutputTokens;
+      console.log(`[LLM Trace] Using client token counts - input: ${inputTokens}, output: ${outputTokens}, cost: $${clientCostUsd ?? 'n/a'}`);
+    } else if (source === 'claude_code') {
+      // Claude Code traces come via ACP, not Vertex - don't attempt Vertex token counting
+      inputTokens = 0;
+      outputTokens = 0;
+      console.log(`[LLM Trace] Claude Code source without client tokens - storing 0 (cost: $${clientCostUsd ?? 'n/a'})`);
+    } else {
+      console.log(`[LLM Trace] Counting tokens via Vertex for ${source} session=${sessionId} turn=${turnNumber}`);
+      const accessToken = await generateVertexAccessToken();
+      [inputTokens, outputTokens] = await Promise.all([
+        countTokens(accessToken, model, inputText || ''),
+        countTokens(accessToken, model, outputText || ''),
+      ]);
+      console.log(`[LLM Trace] Vertex token counts - input: ${inputTokens}, output: ${outputTokens}`);
+    }
 
     // Insert into mediar_llm_traces with extended fields
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -219,6 +243,8 @@ export async function POST(request: Request) {
       tool_calls: toolCalls ? JSON.stringify(toolCalls) : null,
       latency_ms: latencyMs,
       stop_reason: stopReason,
+      cost_usd: clientCostUsd ?? null,
+      claude_code_mode: claudeCodeMode ?? null,
     });
 
     if (insertError) {
@@ -236,6 +262,7 @@ export async function POST(request: Request) {
       success: true,
       inputTokens,
       outputTokens,
+      costUsd: clientCostUsd ?? null,
       processingTimeMs: processingTime,
     });
   } catch (error) {
