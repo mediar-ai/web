@@ -1,0 +1,8 @@
+{
+  "name": "mediar-acp-patched",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@zed-industries/claude-agent-acp": "0.18.0"
+  }
+}
