@@ -48,7 +48,9 @@ export type ClaudeCodeEvent =
   | { type: "statusUpdate"; phase: string; message: string }
   | { type: "sessionEnd"; sessionId: string; reason: string }
   | { type: "error"; message: string; sessionId: string }
-  | { type: "authRequired"; message: string };
+  | { type: "authRequired"; message: string }
+  | { type: "creditExhausted"; cumulativeCostUsd: number; limitUsd: number }
+  | { type: "usageUpdate"; cumulativeCostUsd: number; limitUsd: number; bridgeMode: string };
 
 /**
  * Stream events for the chat interface
@@ -423,6 +425,16 @@ export function getCurrentSession(): ClaudeCodeSession | null {
  */
 export function hasActiveSession(): boolean {
   return currentSession !== null && currentSession.isActive;
+}
+
+/**
+ * Clear the current session reference without calling backend.
+ * Used after ForceRewarm which already killed the ACP process and cleared sessions on Rust side.
+ * Next prompt will auto-create a new session.
+ */
+export function clearCurrentSession(): void {
+  console.log("[CLAUDE-CODE] clearCurrentSession: clearing stale session ref after ForceRewarm");
+  currentSession = null;
 }
 
 // =============================================================================
