@@ -82,14 +82,16 @@ agent-client-protocol = "0.9"
 async-trait = "0.1"
 
 once_cell = "1.19"
+open = "5"  # Open URLs in default browser (OAuth callback)
 sysinfo = "0.35.2"
 regex = "1.10"
 image = "0.25.6"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 base64 = "0.22.1"
 similar = "2.6"  # Text diffing for UI tree comparison
-# sha2 removed - was causing SIGILL crashes on some CPUs due to SIMD instructions
-# Now using pure Rust FNV-1a hash instead (see edit_history.rs)
+# sha2 for PKCE OAuth (default-features=false = pure Rust, no SIMD/asm that caused SIGILL)
+sha2 = { version = "0.10", default-features = false }
+# Note: edit_history.rs uses FNV-1a instead of sha2 for its hashing
 trash = "5.2"  # Move files to trash instead of permanent delete
 
 # Sentry error tracking
