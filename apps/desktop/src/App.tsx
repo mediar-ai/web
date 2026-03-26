@@ -77,6 +77,7 @@ import { RecordingModeDialog, type RecordingMode } from "@/components/ui/recordi
 import { TargetAppDialog, type ApplicationInfo } from "@/components/ui/target-app-dialog";
 import { getToolInlineHint } from "@/components/ui/tool-results";
 import { UpdateModal, type UpdateInfo } from "@/components/ui/update-modal";
+import { clearCurrentSession } from "@/services/claude-code-service";
 import { ValidationErrorDialog } from "@/components/ui/validation-error-dialog";
 import { ProcessingModal } from "@/components/ui/processing-modal";
 import {
@@ -124,6 +125,11 @@ import {
   trackSettingsOpened,
   trackNewChatStarted,
   trackRunWorkflowButton,
+  trackClaudeCodeTurnCompleted,
+  trackClaudeCodeCreditExhausted,
+  trackClaudeCodeOAuthStarted,
+  trackClaudeCodeOAuthCompleted,
+  trackClaudeCodeModeSwitch,
 } from "./lib/analytics";
 import { clearWorkflowSession } from "./lib/session-storage";
 // import { useAiSdkChat as useChat } from './hooks/useAiSdkChat'; // OLD: Direct Vertex AI from frontend
@@ -760,6 +766,13 @@ export default function App() {
   const [isUpdateReadyToInstall, setIsUpdateReadyToInstall] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isWindowsArranged, setIsWindowsArranged] = useState(false);
+
+  // Claude Code credit / usage state
+  const [showCreditExhaustedModal, setShowCreditExhaustedModal] = useState(false);
+  const [claudeCodeUsage, setClaudeCodeUsage] = useState({ costUsd: 0, limitUsd: 10, bridgeMode: "builtin" });
+  const claudeCodeUsageRef = useRef(claudeCodeUsage);
+  claudeCodeUsageRef.current = claudeCodeUsage;
+  const [isOAuthConnecting, setIsOAuthConnecting] = useState(false);
 
   // Validation error dialog state
   const [validationError, setValidationError] = useState<
@@ -3869,6 +3882,62 @@ export default function App() {
     checkAndShowUpdate();
   }, [currentWorkflow, updateInfo, showUpdateModal, isUpdateReadyToInstall]);
 
+  // Listen for Claude Code credit/usage events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    const setup = async () => {
+      unlisten = await listen<{ type: string; cumulativeCostUsd?: number; limitUsd?: number; bridgeMode?: string; turnCostUsd?: number; inputTokens?: number; outputTokens?: number }>(
+        "claude-code-event",
+        event => {
+          const data = event.payload;
+          if (data.type === "creditExhausted") {
+            console.log("[CREDIT] Credit exhausted event received:", data);
+            trackClaudeCodeCreditExhausted(data.cumulativeCostUsd ?? 0, data.limitUsd ?? 10);
+            setClaudeCodeUsage(prev => ({
+              ...prev,
+              costUsd: data.cumulativeCostUsd ?? prev.costUsd,
+              limitUsd: data.limitUsd ?? prev.limitUsd,
+            }));
+            setShowCreditExhaustedModal(true);
+          } else if (data.type === "usageUpdate") {
+            const prevMode = claudeCodeUsageRef.current?.bridgeMode ?? "builtin";
+            const newMode = data.bridgeMode ?? "builtin";
+            // Track per-turn cost (usageUpdate fires after each turn with turn-level data)
+            if (data.turnCostUsd && data.turnCostUsd > 0) {
+              trackClaudeCodeTurnCompleted(
+                data.turnCostUsd,
+                data.cumulativeCostUsd ?? 0,
+                data.limitUsd ?? 10,
+                newMode,
+                data.inputTokens,
+                data.outputTokens
+              );
+            }
+            // Track mode switch
+            if (prevMode !== newMode) {
+              trackClaudeCodeModeSwitch(prevMode, newMode, data.cumulativeCostUsd ?? 0);
+            }
+            setClaudeCodeUsage({
+              costUsd: data.cumulativeCostUsd ?? 0,
+              limitUsd: data.limitUsd ?? 10,
+              bridgeMode: newMode,
+            });
+          }
+        }
+      );
+      // After listener is registered, check credit status to catch missed events
+      try {
+        const result = await invoke<{ cumulativeCostUsd: number; limitUsd: number; overLimit: boolean; hasOAuth: boolean }>("check_claude_code_credit");
+        console.log("[CREDIT] check_claude_code_credit result:", result);
+        // The command will emit CreditExhausted event if needed, which our listener above will catch
+      } catch (e) {
+        console.warn("[CREDIT] check_claude_code_credit failed:", e);
+      }
+    };
+    setup().catch(console.error);
+    return () => { unlisten?.(); };
+  }, []);
+
   // Listen for Tauri events from AI thinking bar
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -6440,6 +6509,67 @@ export default function App() {
           isReadyToInstall={isUpdateReadyToInstall}
           onInstallAndRestart={handleInstallAndRestart}
         />
+
+        {/* Credit Exhausted Modal */}
+        {showCreditExhaustedModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50">
+            <div className="bg-white border border-foreground rounded-lg p-6 max-w-md mx-4 shadow-lg">
+              <h2 className="text-lg font-bold mb-2">Credit Limit Reached</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Your builtin Claude Code credit has been used up.
+                Connect your personal Claude account to continue using Claude Code.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 px-4 py-2 text-sm font-medium border border-foreground rounded hover:bg-muted transition-colors"
+                  onClick={() => setShowCreditExhaustedModal(false)}
+                >
+                  Dismiss
+                </button>
+                <button
+                  className="flex-1 px-4 py-2 text-sm font-medium border border-foreground rounded hover:bg-muted transition-colors disabled:opacity-50"
+                  disabled={isOAuthConnecting}
+                  onClick={async () => {
+                    try {
+                      setIsOAuthConnecting(true);
+                      console.log("[CREDIT] Starting OAuth flow...");
+                      trackClaudeCodeOAuthStarted();
+                      await invoke("start_claude_oauth");
+                      // Poll for completion
+                      const result = await invoke<string>("wait_for_claude_oauth");
+                      if (result === "connected") {
+                        console.log("[CREDIT] OAuth connected, force rewarming...");
+                        // Force tear down old Builtin connection and rebuild with OAuth token
+                        const cwd = await invoke<string>("get_home_dir").catch(() => ".");
+                        try {
+                          await invoke("force_rewarm_claude_code", { cwd });
+                          // Clear stale session ref - ForceRewarm killed old ACP process
+                          clearCurrentSession();
+                          console.log("[CREDIT] Force rewarm complete - session cleared, now in Personal mode");
+                        } catch (e) {
+                          console.warn("[CREDIT] Force rewarm failed, will retry on next prompt:", e);
+                        }
+                        trackClaudeCodeOAuthCompleted(true);
+                        trackClaudeCodeModeSwitch("builtin", "personal", claudeCodeUsage.costUsd);
+                        setClaudeCodeUsage(prev => ({ ...prev, bridgeMode: "personal" }));
+                        setShowCreditExhaustedModal(false);
+                        toast.success("Personal Claude account connected");
+                      }
+                    } catch (e) {
+                      console.error("[CREDIT] OAuth failed:", e);
+                      trackClaudeCodeOAuthCompleted(false, String(e));
+                      toast.error("Failed to connect account: " + String(e));
+                    } finally {
+                      setIsOAuthConnecting(false);
+                    }
+                  }}
+                >
+                  {isOAuthConnecting ? "Connecting..." : "Connect Personal Account"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Onboarding Booking Modal - opt-in via top bar button */}
         <WelcomeModal
