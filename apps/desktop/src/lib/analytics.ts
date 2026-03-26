@@ -335,3 +335,59 @@ export function trackMcpReconnected(): void {
 export function trackMcpRestartInitiated(): void {
   trackEvent("desktop_mcp_restart_initiated");
 }
+
+// ========================================
+// CLAUDE CODE CREDIT & OAUTH EVENTS
+// ========================================
+
+export function trackClaudeCodeTurnCompleted(
+  costUsd: number,
+  cumulativeCostUsd: number,
+  limitUsd: number,
+  bridgeMode: string,
+  inputTokens?: number,
+  outputTokens?: number
+): void {
+  trackEvent("desktop_claude_code_turn", {
+    cost_usd: costUsd,
+    cumulative_cost_usd: cumulativeCostUsd,
+    limit_usd: limitUsd,
+    bridge_mode: bridgeMode,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    remaining_usd: Math.max(0, limitUsd - cumulativeCostUsd),
+  });
+}
+
+export function trackClaudeCodeCreditExhausted(
+  cumulativeCostUsd: number,
+  limitUsd: number
+): void {
+  trackEvent("desktop_claude_code_credit_exhausted", {
+    cumulative_cost_usd: cumulativeCostUsd,
+    limit_usd: limitUsd,
+  });
+}
+
+export function trackClaudeCodeOAuthStarted(): void {
+  trackEvent("desktop_claude_code_oauth_started");
+}
+
+export function trackClaudeCodeOAuthCompleted(success: boolean, error?: string): void {
+  trackEvent("desktop_claude_code_oauth_completed", {
+    success,
+    error,
+  });
+}
+
+export function trackClaudeCodeModeSwitch(
+  fromMode: string,
+  toMode: string,
+  cumulativeCostUsd: number
+): void {
+  trackEvent("desktop_claude_code_mode_switch", {
+    from_mode: fromMode,
+    to_mode: toMode,
+    cumulative_cost_usd: cumulativeCostUsd,
+  });
+}
