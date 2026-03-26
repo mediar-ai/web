@@ -31,6 +31,21 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 // =============================================================================
+// Bridge Mode & Cost Limits
+// =============================================================================
+
+/// Whether using builtin (shared) API key or personal OAuth token
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BridgeMode {
+    Builtin,
+    Personal,
+}
+
+/// $10 lifetime cap for the shared builtin API key
+pub const BUILTIN_COST_CAP_USD: f64 = 10.0;
+
+// =============================================================================
 // LLM Trace Tracking (per-turn token usage reporting)
 // =============================================================================
 
@@ -63,7 +78,17 @@ struct ToolCallTrace {
 
 /// Report LLM trace to web app (fire-and-forget, async)
 /// This sends the full turn data to /api/llm-usage/trace for token counting and storage
-fn report_llm_trace(user_id: String, org_id: String, model: String, session_id: String, turn_data: TurnData) {
+fn report_llm_trace(
+    user_id: String,
+    org_id: String,
+    model: String,
+    session_id: String,
+    turn_data: TurnData,
+    cost_usd: Option<f64>,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    bridge_mode: Option<String>,
+) {
     // Fire and forget - spawn async task
     tokio::spawn(async move {
         let desktop_token = match retrieve_auth_token() {
@@ -95,6 +120,10 @@ fn report_llm_trace(user_id: String, org_id: String, model: String, session_id: 
                 "toolCalls": turn_data.tool_calls,
                 "latencyMs": latency_ms,
                 "stopReason": "end_turn",
+                "costUsd": cost_usd,
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens,
+                "claudeCodeMode": bridge_mode,
             }))
             .send()
             .await;
@@ -165,6 +194,93 @@ async fn fetch_anthropic_api_key(desktop_token: &str) -> std::result::Result<Str
     Ok(api_key)
 }
 
+/// Fetch cumulative cost from backend for builtin mode
+async fn fetch_cumulative_cost(desktop_token: &str) -> std::result::Result<f64, String> {
+    let api_base = get_api_base_url();
+    let url = format!("{}/api/llm-usage/cumulative-cost", api_base);
+
+    log::info!("[claude_code] Fetching cumulative cost from: {}", url);
+
+    let client = Client::new();
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", desktop_token))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch cumulative cost: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Cumulative cost request failed: {} - {}", status, body));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse cumulative cost response: {}", e))?;
+
+    let cost = json["costUsd"].as_f64().unwrap_or(0.0);
+    log::info!("[claude_code] Cumulative cost: ${:.4}", cost);
+    Ok(cost)
+}
+
+/// Resolve the acp-resources directory.
+/// In dev: src-tauri/acp-resources/
+/// In production: next to the exe in _up_/resources/acp-resources/
+fn resolve_acp_resources_dir() -> PathBuf {
+    // Dev mode: check relative to Cargo manifest
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("acp-resources");
+    if dev_path.exists() {
+        log::info!("[claude_code] Using dev acp-resources: {:?}", dev_path);
+        return dev_path;
+    }
+
+    // Production: next to the exe
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Tauri bundles resources next to the exe (Windows)
+            let prod_path = exe_dir.join("acp-resources");
+            if prod_path.exists() {
+                log::info!("[claude_code] Using bundled acp-resources: {:?}", prod_path);
+                return prod_path;
+            }
+        }
+    }
+
+    // Fallback to dev path
+    log::warn!("[claude_code] acp-resources not found, using dev fallback: {:?}", dev_path);
+    dev_path
+}
+
+/// Ensure ACP dependencies are installed in the acp-resources directory.
+/// Runs `bun install` if node_modules is missing.
+async fn ensure_acp_dependencies(acp_dir: &PathBuf, bun_path: &PathBuf) -> std::result::Result<(), String> {
+    let node_modules = acp_dir.join("node_modules");
+    if node_modules.exists() {
+        return Ok(());
+    }
+
+    log::info!("[claude_code] Installing ACP dependencies in {:?}", acp_dir);
+
+    let output = Command::new(bun_path)
+        .args(["install"])
+        .current_dir(acp_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run bun install: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("bun install failed: {}", stderr));
+    }
+
+    log::info!("[claude_code] ACP dependencies installed successfully");
+    Ok(())
+}
+
 /// Events emitted to the frontend
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -229,6 +345,28 @@ pub enum ClaudeCodeEvent {
     },
     /// Authentication required
     AuthRequired { message: String },
+    /// Builtin credit limit reached - user must connect personal account
+    CreditExhausted {
+        #[serde(rename = "cumulativeCostUsd")]
+        cumulative_cost_usd: f64,
+        #[serde(rename = "limitUsd")]
+        limit_usd: f64,
+    },
+    /// Usage update after each query (for progress bar + analytics)
+    UsageUpdate {
+        #[serde(rename = "cumulativeCostUsd")]
+        cumulative_cost_usd: f64,
+        #[serde(rename = "limitUsd")]
+        limit_usd: f64,
+        #[serde(rename = "bridgeMode")]
+        bridge_mode: String,
+        #[serde(rename = "turnCostUsd")]
+        turn_cost_usd: f64,
+        #[serde(rename = "inputTokens")]
+        input_tokens: u64,
+        #[serde(rename = "outputTokens")]
+        output_tokens: u64,
+    },
 }
 
 /// File location affected by a tool call
@@ -265,6 +403,11 @@ enum AcpCommand {
     },
     EndSession {
         session_id: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// Force tear down warm connection so next warm_up rebuilds with fresh credentials
+    ForceRewarm {
+        cwd: PathBuf,
         reply: oneshot::Sender<Result<(), String>>,
     },
     Shutdown,
@@ -572,6 +715,10 @@ struct WarmConnection {
     org_id: Option<String>,
     /// Model being used
     model: String,
+    /// Bridge mode: builtin (shared key) or personal (OAuth)
+    bridge_mode: BridgeMode,
+    /// Cumulative cost in USD for builtin mode (lifetime total)
+    cumulative_cost_usd: Arc<StdMutex<f64>>,
 }
 
 /// Session-specific data (multiple sessions can share one WarmConnection)
@@ -590,6 +737,8 @@ struct AcpWorker {
     sessions: std::collections::HashMap<String, SessionData>,
     /// Session-aware client for handling callbacks
     session_turn_data: Arc<std::sync::RwLock<std::collections::HashMap<String, SessionTurnData>>>,
+    /// Force Personal mode on next warm_up (set by ForceRewarm after OAuth)
+    force_personal: bool,
 }
 
 /// Per-session turn tracking data
@@ -608,12 +757,13 @@ impl AcpWorker {
             warm_connection: None,
             sessions: std::collections::HashMap::new(),
             session_turn_data: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            force_personal: false,
         }
     }
 
     /// Pre-warm the ACP connection by spawning the process and initializing
     /// Call this on login for fast session creation later
-    async fn warm_up(&mut self, cwd: PathBuf) -> Result<(), String> {
+    async fn warm_up(&mut self, _cwd: PathBuf) -> Result<(), String> {
         log::info!("[claude_code] warm_up: Starting pre-warming process...");
 
         // If already warm, just log and return
@@ -652,31 +802,107 @@ impl AcpWorker {
             }
         };
 
-        // Fetch Anthropic API key from backend
-        log::info!("[claude_code] warm_up: Fetching Anthropic API key from backend...");
-        let anthropic_api_key = fetch_anthropic_api_key(&desktop_token).await?;
-        log::info!("[claude_code] warm_up: Got Anthropic API key (direct API mode)");
+        // Determine bridge mode: check for personal OAuth token first
+        let has_oauth = crate::claude_oauth::has_stored_credentials();
+        let cumulative_cost = fetch_cumulative_cost(&desktop_token).await.unwrap_or(0.0);
+        log::info!("[claude_code] warm_up: cumulative_cost=${:.4}, has_oauth={}", cumulative_cost, has_oauth);
 
-        // Spawn claude-code-acp subprocess using bundled bun
+        let bridge_mode = if self.force_personal && has_oauth {
+            log::info!("[claude_code] warm_up: force_personal flag set, using personal OAuth");
+            self.force_personal = false;
+            BridgeMode::Personal
+        } else if cumulative_cost >= BUILTIN_COST_CAP_USD && has_oauth {
+            log::info!("[claude_code] warm_up: Cost cap reached, using personal OAuth");
+            BridgeMode::Personal
+        } else if cumulative_cost >= BUILTIN_COST_CAP_USD {
+            log::warn!("[claude_code] warm_up: Cost cap reached, no OAuth - will emit CreditExhausted after delay");
+            // Emit CreditExhausted with delay to ensure frontend listener is registered
+            // Also re-emit a few times to handle HMR/late mount scenarios
+            let app_handle_clone = self.app_handle.clone();
+            let cost = cumulative_cost;
+            tokio::task::spawn_local(async move {
+                for i in 0..3 {
+                    let delay_ms = match i {
+                        0 => 2000,
+                        1 => 5000,
+                        _ => 10000,
+                    };
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    log::info!("[claude_code] Emitting CreditExhausted (attempt {})", i + 1);
+                    let _ = app_handle_clone.emit(
+                        "claude-code-event",
+                        ClaudeCodeEvent::CreditExhausted {
+                            cumulative_cost_usd: cost,
+                            limit_usd: BUILTIN_COST_CAP_USD,
+                        },
+                    );
+                }
+            });
+            // Still start in builtin mode, but pre-query guard will block
+            BridgeMode::Builtin
+        } else {
+            BridgeMode::Builtin
+        };
+
+        // Emit initial usage update
+        let _ = self.app_handle.emit(
+            "claude-code-event",
+            ClaudeCodeEvent::UsageUpdate {
+                cumulative_cost_usd: cumulative_cost,
+                limit_usd: BUILTIN_COST_CAP_USD,
+                bridge_mode: format!("{:?}", bridge_mode).to_lowercase(),
+                turn_cost_usd: 0.0,
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+        );
+
+        // Get API key based on bridge mode
+        // For Personal mode: ACP SDK reads OAuth credentials from ~/.claude/.credentials.json
+        // directly (same as Claude Code CLI). We do NOT pass ANTHROPIC_API_KEY.
+        // For Builtin mode: we set ANTHROPIC_API_KEY with our shared key.
+        let api_key: Option<String> = match &bridge_mode {
+            BridgeMode::Builtin => {
+                log::info!("[claude_code] warm_up: Fetching Anthropic API key from backend...");
+                Some(fetch_anthropic_api_key(&desktop_token).await?)
+            }
+            BridgeMode::Personal => {
+                // Ensure credentials are valid and written to ~/.claude/.credentials.json
+                log::info!("[claude_code] warm_up: Personal mode - ACP will read OAuth from ~/.claude/.credentials.json");
+                crate::claude_oauth::ensure_valid_token().await?;
+                None // Don't pass as env var - let ACP find it
+            }
+        };
+        if let Some(ref key) = api_key {
+            log::info!("[claude_code] warm_up: Got API key (mode={:?}, len={})", bridge_mode, key.len());
+        } else {
+            log::info!("[claude_code] warm_up: Personal mode - no API key env var, ACP reads from credentials file");
+        }
+
+        // Spawn claude-code-acp subprocess using bundled bun with patched entry
         let bun_path =
             find_bundled_bun().ok_or_else(|| "Bundled bun not found. Please reinstall the app.".to_string())?;
         log::info!("[claude_code] warm_up: Using bundled bun: {:?}", bun_path);
 
+        // Resolve and prepare acp-resources directory
+        let acp_dir = resolve_acp_resources_dir();
+        ensure_acp_dependencies(&acp_dir, &bun_path).await?;
+        let patched_entry = acp_dir.join("patched-acp-entry.mjs");
+        log::info!("[claude_code] warm_up: Using patched ACP entry: {:?}", patched_entry);
+
         let model = "claude-sonnet-4-6";
-        log::info!("[claude_code] warm_up: Using direct Anthropic API, model={}", model);
+        log::info!("[claude_code] warm_up: Using direct Anthropic API, model={}, mode={:?}", model, bridge_mode);
 
         let mut cmd = Command::new(&bun_path);
         cmd.args([
-            "x",
-            "@zed-industries/claude-code-acp",
+            patched_entry.to_str().unwrap_or("patched-acp-entry.mjs"),
             "--",
             "--model",
             model,
             "--setting-sources",
             "user,project,local",
         ])
-        .current_dir(&cwd)
-        .env("ANTHROPIC_API_KEY", &anthropic_api_key)
+        .current_dir(&acp_dir)
         .env("ANTHROPIC_MODEL", model)
         .env("ANTHROPIC_DEFAULT_SONNET_MODEL", model)
         // Prevent "nested session" detection if launched from within Claude Code
@@ -688,6 +914,17 @@ impl AcpWorker {
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
+
+        // Only set ANTHROPIC_API_KEY for Builtin mode (shared key).
+        // For Personal mode, ACP reads OAuth from ~/.claude/.credentials.json
+        if let Some(ref key) = api_key {
+            cmd.env("ANTHROPIC_API_KEY", key);
+            log::info!("[claude_code] warm_up: Set ANTHROPIC_API_KEY env var (Builtin mode)");
+        } else {
+            // Personal mode: ensure ANTHROPIC_API_KEY is NOT inherited from parent
+            cmd.env_remove("ANTHROPIC_API_KEY");
+            log::info!("[claude_code] warm_up: Removed ANTHROPIC_API_KEY env var (Personal mode - ACP reads OAuth)");
+        }
 
         #[cfg(target_os = "windows")]
         {
@@ -747,6 +984,8 @@ impl AcpWorker {
             user_id,
             org_id,
             model: model.to_string(),
+            bridge_mode,
+            cumulative_cost_usd: Arc::new(StdMutex::new(cumulative_cost)),
         });
 
         log::info!("[claude_code] warm_up: Pre-warming complete, ready for fast session creation");
@@ -882,6 +1121,22 @@ impl AcpWorker {
         // Get warm connection
         let warm = self.warm_connection.as_ref().ok_or("No warm connection")?;
 
+        // --- Checkpoint 2: Pre-query guard ---
+        if warm.bridge_mode == BridgeMode::Builtin {
+            let cost = *warm.cumulative_cost_usd.lock().unwrap();
+            if cost >= BUILTIN_COST_CAP_USD {
+                log::warn!("[claude_code] Pre-query guard: cost ${:.4} >= cap ${:.2}", cost, BUILTIN_COST_CAP_USD);
+                let _ = self.app_handle.emit(
+                    "claude-code-event",
+                    ClaudeCodeEvent::CreditExhausted {
+                        cumulative_cost_usd: cost,
+                        limit_usd: BUILTIN_COST_CAP_USD,
+                    },
+                );
+                return Err("Builtin credit limit reached. Connect your personal Claude account in Settings.".into());
+            }
+        }
+
         log::info!(
             "[claude_code] Sending prompt to session {}: {}",
             session_id,
@@ -910,19 +1165,113 @@ impl AcpWorker {
                 vec![message.into()],
             ))
             .await
-            .map_err(|e| format!("Failed to send prompt: {}", e));
+            .map_err(|e| {
+                // --- Checkpoint: Credit exhaustion from API errors ---
+                let err_str = format!("{}", e);
+                let credit_patterns = [
+                    "credit balance is too low",
+                    "insufficient_credit",
+                    "insufficient_funds",
+                    "insufficient_balance",
+                    "hit your.*limit",
+                    "out of extra usage",
+                ];
+                let is_credit_error = credit_patterns.iter().any(|p| {
+                    err_str.to_lowercase().contains(&p.replace(".*", ""))
+                });
+                if is_credit_error {
+                    log::warn!("[claude_code] API credit error detected: {}", err_str);
+                    let _ = self.app_handle.emit(
+                        "claude-code-event",
+                        ClaudeCodeEvent::CreditExhausted {
+                            cumulative_cost_usd: *warm.cumulative_cost_usd.lock().unwrap(),
+                            limit_usd: BUILTIN_COST_CAP_USD,
+                        },
+                    );
+                }
+                format!("Failed to send prompt: {}", e)
+            });
+
+        // --- Checkpoint 3: Extract cost from meta and accumulate ---
+        let mut turn_cost_usd: Option<f64> = None;
+        let mut turn_input_tokens: Option<u64> = None;
+        let mut turn_output_tokens: Option<u64> = None;
+
+        if let Ok(ref prompt_response) = prompt_result {
+            // Extract costUsd from _meta (set by patched-acp-entry.mjs)
+            let cost = prompt_response.meta
+                .as_ref()
+                .and_then(|m| m.get("costUsd"))
+                .and_then(|v| v.as_f64());
+
+            if let Some(c) = cost {
+                turn_cost_usd = Some(c);
+                log::info!("[claude_code] Turn cost from ACP meta: ${:.6}", c);
+            }
+
+            // Extract usage tokens from the response (set by patched-acp-entry.mjs as top-level "usage")
+            // Note: The patched entry adds usage at the top level of the response,
+            // but ACP schema only has stop_reason and _meta. So usage comes through _meta too.
+            // Let's check meta for usage as well.
+            if let Some(meta) = prompt_response.meta.as_ref() {
+                if let Some(usage) = meta.get("usage") {
+                    turn_input_tokens = usage.get("inputTokens").and_then(|v| v.as_u64());
+                    turn_output_tokens = usage.get("outputTokens").and_then(|v| v.as_u64());
+                }
+            }
+
+            // Accumulate cost for builtin mode
+            if warm.bridge_mode == BridgeMode::Builtin {
+                if let Some(c) = cost {
+                    let mut cumulative = warm.cumulative_cost_usd.lock().unwrap();
+                    *cumulative += c;
+                    let current = *cumulative;
+                    log::info!("[claude_code] Cumulative cost: ${:.4} / ${:.2}", current, BUILTIN_COST_CAP_USD);
+
+                    // Emit usage update
+                    let _ = self.app_handle.emit(
+                        "claude-code-event",
+                        ClaudeCodeEvent::UsageUpdate {
+                            cumulative_cost_usd: current,
+                            limit_usd: BUILTIN_COST_CAP_USD,
+                            bridge_mode: "builtin".to_string(),
+                            turn_cost_usd: c,
+                            input_tokens: turn_input_tokens.unwrap_or(0),
+                            output_tokens: turn_output_tokens.unwrap_or(0),
+                        },
+                    );
+
+                    // Check if we just hit the cap
+                    if current >= BUILTIN_COST_CAP_USD {
+                        log::warn!("[claude_code] Post-query: cost cap reached! ${:.4}", current);
+                        let _ = self.app_handle.emit(
+                            "claude-code-event",
+                            ClaudeCodeEvent::CreditExhausted {
+                                cumulative_cost_usd: current,
+                                limit_usd: BUILTIN_COST_CAP_USD,
+                            },
+                        );
+                    }
+                }
+            }
+        }
 
         // Report trace after prompt completes (success or error)
+        let bridge_mode_str = match warm.bridge_mode {
+            BridgeMode::Builtin => "builtin",
+            BridgeMode::Personal => "personal",
+        };
         if let (Some(user_id), Some(org_id)) = (warm.user_id.clone(), warm.org_id.clone()) {
             if let Ok(session_data_map) = self.session_turn_data.read() {
                 if let Some(session_data) = session_data_map.get(session_id) {
                     let turn_data = session_data.turn_data.clone();
                     log::info!(
-                        "[claude_code] Turn {} completed: input_len={} output_len={} tools={}",
+                        "[claude_code] Turn {} completed: input_len={} output_len={} tools={} cost=${:.6}",
                         turn_data.turn_number,
                         turn_data.input_text.len(),
                         turn_data.output_text.len(),
-                        turn_data.tool_calls.len()
+                        turn_data.tool_calls.len(),
+                        turn_cost_usd.unwrap_or(0.0),
                     );
                     report_llm_trace(
                         user_id,
@@ -930,6 +1279,10 @@ impl AcpWorker {
                         warm.model.clone(),
                         session_id.to_string(),
                         turn_data,
+                        turn_cost_usd,
+                        turn_input_tokens,
+                        turn_output_tokens,
+                        Some(bridge_mode_str.to_string()),
                     );
                 }
             }
@@ -1098,6 +1451,22 @@ impl ClaudeCodeManager {
                     let result = worker.end_session(&session_id);
                     let _ = reply.send(result);
                 }
+                AcpCommand::ForceRewarm { cwd, reply } => {
+                    log::info!("[claude_code] Worker: ForceRewarm - tearing down warm connection for OAuth mode switch");
+                    // Kill existing sessions
+                    worker.sessions.clear();
+                    // Tear down existing warm connection (kills child process)
+                    if let Some(mut warm) = worker.warm_connection.take() {
+                        let _ = warm.child.kill();
+                        log::info!("[claude_code] ForceRewarm: killed old ACP process");
+                    }
+                    // Force Personal mode on next warm_up (uses OAuth creds regardless of DB cost)
+                    worker.force_personal = true;
+                    log::info!("[claude_code] ForceRewarm: set force_personal=true");
+                    // Now warm_up will rebuild with fresh credentials
+                    let result = worker.warm_up(cwd).await;
+                    let _ = reply.send(result);
+                }
                 AcpCommand::Shutdown => {
                     log::info!("[claude_code] Worker shutting down");
                     break;
@@ -1113,6 +1482,21 @@ impl ClaudeCodeManager {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.cmd_tx
             .send(AcpCommand::WarmUp {
+                cwd,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| "Worker channel closed")?;
+        reply_rx.await.map_err(|_| "Worker reply failed")?
+    }
+
+    /// Force tear down warm connection and rebuild with fresh credentials
+    /// Call after OAuth to switch from Builtin to Personal mode
+    pub async fn force_rewarm(&self, cwd: PathBuf) -> Result<(), String> {
+        log::info!("[claude_code] force_rewarm: Sending ForceRewarm command to worker");
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.cmd_tx
+            .send(AcpCommand::ForceRewarm {
                 cwd,
                 reply: reply_tx,
             })
@@ -1368,6 +1752,65 @@ pub async fn warm_up_claude_code(
 
     // Actually wait for warm-up to complete (it's fast if already warmed)
     manager.warm_up(cwd_path).await
+}
+
+/// Force rewarm Claude Code after OAuth - tears down existing connection and rebuilds
+/// with fresh credentials so it switches from Builtin to Personal mode.
+#[tauri::command]
+#[specta::specta]
+pub async fn force_rewarm_claude_code(
+    cwd: String,
+    state: tauri::State<'_, ClaudeCodeState>,
+) -> Result<(), String> {
+    log::info!("[claude_code] CMD: force_rewarm_claude_code after OAuth");
+
+    let manager_guard = state.0.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Claude Code not initialized")?;
+
+    let cwd_path = PathBuf::from(&cwd);
+    manager.force_rewarm(cwd_path).await
+}
+
+/// Check Claude Code credit status and emit CreditExhausted if over limit.
+/// Called by frontend on mount to handle race condition where event fires before listener is registered.
+#[tauri::command]
+#[specta::specta]
+pub async fn check_claude_code_credit(
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    log::info!("[claude_code] check_claude_code_credit called by frontend");
+
+    // Get the desktop token
+    let token = crate::auth::retrieve_auth_token()
+        .map_err(|e| format!("Auth error: {}", e))?
+        .ok_or_else(|| "No auth token available".to_string())?;
+
+    let cumulative = fetch_cumulative_cost(&token).await.unwrap_or(0.0);
+    let has_oauth = crate::claude_oauth::has_stored_credentials();
+    let over_limit = cumulative >= BUILTIN_COST_CAP_USD;
+
+    log::info!("[claude_code] check_credit: cumulative=${:.4}, limit=${:.2}, over={}, oauth={}",
+        cumulative, BUILTIN_COST_CAP_USD, over_limit, has_oauth);
+
+    if over_limit && !has_oauth {
+        log::info!("[claude_code] check_credit: Emitting CreditExhausted from frontend request");
+        let _ = app_handle.emit(
+            "claude-code-event",
+            ClaudeCodeEvent::CreditExhausted {
+                cumulative_cost_usd: cumulative,
+                limit_usd: BUILTIN_COST_CAP_USD,
+            },
+        );
+    }
+
+    Ok(serde_json::json!({
+        "cumulativeCostUsd": cumulative,
+        "limitUsd": BUILTIN_COST_CAP_USD,
+        "overLimit": over_limit,
+        "hasOAuth": has_oauth,
+    }))
 }
 
 /// Set the current mode (ask/act) on the terminator MCP server
