@@ -3,6 +3,7 @@ pub mod analytics;
 pub mod auth;
 pub mod backend_init;
 pub mod claude_code;
+pub mod claude_oauth;
 pub mod commands;
 pub mod config;
 pub mod constants;
@@ -2657,11 +2658,18 @@ pub fn run() {
             vertex_ai::call_vertex_ai_stream,
             vertex_ai::clear_vertex_token_cache,
             claude_code::warm_up_claude_code,
+            claude_code::force_rewarm_claude_code,
+            claude_code::check_claude_code_credit,
             claude_code::start_claude_code_session,
             claude_code::send_claude_code_prompt,
             claude_code::cancel_claude_code,
             claude_code::end_claude_code_session,
             claude_code::set_terminator_mode,
+            claude_oauth::start_claude_oauth,
+            claude_oauth::wait_for_claude_oauth,
+            claude_oauth::get_claude_oauth_status,
+            claude_oauth::disconnect_claude_oauth,
+            claude_oauth::get_claude_code_usage,
             workflow_scheduler::get_scheduled_workflows,
             workflow_scheduler::schedule_workflow,
             workflow_scheduler::unschedule_workflow,
