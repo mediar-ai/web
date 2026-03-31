@@ -19,6 +19,10 @@ interface TokenData {
   vertexTotal: number;
   tracedDailyTokens: number[];
   tracedTotal: number;
+  vertexTracedDailyTokens: number[];
+  vertexTracedTotal: number;
+  nonVertexTracedDailyTokens: number[];
+  nonVertexTracedTotal: number;
   error?: string;
 }
 
@@ -78,7 +82,7 @@ export default function UserTokensPage() {
             USER TOKEN CONSUMPTION
           </h1>
           <p className="font-mono text-sm text-gray-600 mt-1">
-            Last 3 days - Vertex AI token usage by user
+            Last 7 days - traced usage by user with Vertex reconciliation
           </p>
         </div>
         <AutoRefreshControls
@@ -103,24 +107,26 @@ export default function UserTokensPage() {
       ) : (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-5 gap-4 mb-6">
             <div className="border-2 border-black p-3">
               <div className="font-mono text-xs text-gray-600 uppercase">Users</div>
               <div className="font-mono font-bold text-xl">{data.users.length}</div>
             </div>
             <div className="border-2 border-black p-3">
-              <div className="font-mono text-xs text-gray-600 uppercase">Traced Total</div>
+              <div className="font-mono text-xs text-gray-600 uppercase">All Traced</div>
               <div className="font-mono font-bold text-xl">{formatTokens(data.tracedTotal)}</div>
             </div>
             <div className="border-2 border-black p-3">
-              <div className="font-mono text-xs text-gray-600 uppercase">Vertex Total</div>
-              <div className="font-mono font-bold text-xl">{formatTokens(data.vertexTotal)}</div>
+              <div className="font-mono text-xs text-gray-600 uppercase">Vertex Traced</div>
+              <div className="font-mono font-bold text-xl text-green-700">{formatTokens(data.vertexTracedTotal)}</div>
             </div>
             <div className="border-2 border-black p-3">
-              <div className="font-mono text-xs text-gray-600 uppercase">Untraced</div>
-              <div className="font-mono font-bold text-xl text-orange-600">
-                {formatTokens(data.vertexTotal - data.tracedTotal)}
-              </div>
+              <div className="font-mono text-xs text-gray-600 uppercase">Non-Vertex</div>
+              <div className="font-mono font-bold text-xl text-blue-700">{formatTokens(data.nonVertexTracedTotal)}</div>
+            </div>
+            <div className="border-2 border-black p-3">
+              <div className="font-mono text-xs text-gray-600 uppercase">Vertex Cloud</div>
+              <div className="font-mono font-bold text-xl">{formatTokens(data.vertexTotal)}</div>
             </div>
           </div>
 
@@ -199,7 +205,7 @@ export default function UserTokensPage() {
                     {/* Traced Total Row */}
                     <tr className="border-t-2 border-black bg-gray-50">
                       <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-50">
-                        Traced Total
+                        All Traced
                       </td>
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black">
                         {formatTokens(data.tracedTotal)}
@@ -212,9 +218,43 @@ export default function UserTokensPage() {
                     </tr>
 
                     {/* Vertex AI Total Row */}
+                    <tr className="bg-green-50">
+                      <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-green-50 text-green-700">
+                        Vertex Traced
+                      </td>
+                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-green-700">
+                        {formatTokens(data.vertexTracedTotal)}
+                      </td>
+                      {dateIndices.map((idx, i) => {
+                        const tokens = data.vertexTracedDailyTokens[idx] || 0;
+                        return (
+                          <td key={i} className="text-right p-3 font-mono text-sm font-bold text-green-700">
+                            {tokens > 0 ? formatTokens(tokens) : '-'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+
+                    <tr className="bg-blue-50">
+                      <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-blue-50 text-blue-700">
+                        Non-Vertex Traced
+                      </td>
+                      <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-blue-700">
+                        {formatTokens(data.nonVertexTracedTotal)}
+                      </td>
+                      {dateIndices.map((idx, i) => {
+                        const tokens = data.nonVertexTracedDailyTokens[idx] || 0;
+                        return (
+                          <td key={i} className="text-right p-3 font-mono text-sm font-bold text-blue-700">
+                            {tokens > 0 ? formatTokens(tokens) : '-'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+
                     <tr className="bg-gray-100">
                       <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-gray-100">
-                        Vertex AI Total
+                        Vertex Cloud
                       </td>
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-green-700">
                         {formatTokens(data.vertexTotal)}
@@ -232,14 +272,14 @@ export default function UserTokensPage() {
                     {/* Untraced Row */}
                     <tr className="bg-orange-50">
                       <td className="p-3 font-mono text-sm font-bold sticky left-0 bg-orange-50 text-orange-600">
-                        Untraced
+                        Vertex Gap
                       </td>
                       <td className="text-right p-3 font-mono text-sm font-bold border-l-2 border-black text-orange-600">
-                        {formatTokens(data.vertexTotal - data.tracedTotal)}
+                        {formatTokens(data.vertexTotal - data.vertexTracedTotal)}
                       </td>
                       {dateIndices.map((idx, i) => {
                         const vertexTokens = data.vertexDailyTokens[idx] || 0;
-                        const tracedTokens = data.tracedDailyTokens[idx] || 0;
+                        const tracedTokens = data.vertexTracedDailyTokens[idx] || 0;
                         const discrepancy = vertexTokens - tracedTokens;
                         return (
                           <td

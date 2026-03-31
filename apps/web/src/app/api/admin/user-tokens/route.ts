@@ -8,6 +8,30 @@ export const dynamic = 'force-dynamic';
 
 const PROJECT_ID = 'mediar-394022';
 
+const VERTEX_TRACED_SOURCES = new Set([
+  'vertex_chat',
+  'execution_qa',
+  'web_ai',
+]);
+
+function labelUser(userId: string, emailMap: Map<string, string>): string {
+  const sessionEmail = emailMap.get(userId);
+  if (sessionEmail) {
+    return sessionEmail;
+  }
+
+  if (userId.startsWith('fazm:')) {
+    return `Fazm / ${userId.slice('fazm:'.length)}`;
+  }
+
+  if (userId.startsWith('fazm_uid:')) {
+    const uid = userId.slice('fazm_uid:'.length);
+    return `Fazm / ${uid.slice(0, 8)}...`;
+  }
+
+  return userId.slice(0, 8) + '...';
+}
+
 // Google Cloud auth helpers
 function base64url(input: string | Buffer): string {
   const base64 = typeof input === 'string'
@@ -122,7 +146,14 @@ export async function GET() {
     console.log('[user-tokens] Traces query from:', sevenDaysAgo.toISOString());
 
     // Fetch all traces using pagination
-    const allTraces: Array<{user_id: string; input_tokens: number; output_tokens: number; cached_tokens: number; created_at: string}> = [];
+    const allTraces: Array<{
+      user_id: string;
+      input_tokens: number;
+      output_tokens: number;
+      cached_tokens: number;
+      created_at: string;
+      source: string | null;
+    }> = [];
     const pageSize = 1000;
     let offset = 0;
     let hasMore = true;
@@ -130,7 +161,7 @@ export async function GET() {
     while (hasMore) {
       const { data: traces, error: tracesError } = await supabase
         .from('mediar_llm_traces')
-        .select('user_id, input_tokens, output_tokens, cached_tokens, created_at')
+        .select('user_id, input_tokens, output_tokens, cached_tokens, created_at, source')
         .gte('created_at', sevenDaysAgo.toISOString())
         .order('created_at', { ascending: true })
         .range(offset, offset + pageSize - 1);
@@ -173,6 +204,8 @@ export async function GET() {
 
     // Aggregate by user and date
     const dataMap: Record<string, Record<string, number>> = {};
+    const vertexTracedDataMap: Record<string, number> = {};
+    const nonVertexTracedDataMap: Record<string, number> = {};
     const cachedDataMap: Record<string, number> = {};
     const datesSet = new Set<string>();
 
@@ -186,6 +219,12 @@ export async function GET() {
       const tokens = (trace.input_tokens || 0) + (trace.output_tokens || 0);
       dataMap[trace.user_id][dateStr] = (dataMap[trace.user_id][dateStr] || 0) + tokens;
 
+      if (VERTEX_TRACED_SOURCES.has(trace.source || '')) {
+        vertexTracedDataMap[dateStr] = (vertexTracedDataMap[dateStr] || 0) + tokens;
+      } else {
+        nonVertexTracedDataMap[dateStr] = (nonVertexTracedDataMap[dateStr] || 0) + tokens;
+      }
+
       cachedDataMap[dateStr] = (cachedDataMap[dateStr] || 0) + (trace.cached_tokens || 0);
     }
 
@@ -193,7 +232,7 @@ export async function GET() {
 
     const users = Object.entries(dataMap).map(([uId, dailyData]) => ({
       id: uId,
-      label: emailMap.get(uId) || uId.slice(0, 8) + '...',
+      label: labelUser(uId, emailMap),
       dailyTokens: dates.map(date => dailyData[date] || 0),
     }));
 
@@ -221,6 +260,10 @@ export async function GET() {
       users.reduce((sum, u) => sum + u.dailyTokens[i], 0)
     );
     const tracedTotal = tracedDailyTokens.reduce((sum, t) => sum + t, 0);
+    const vertexTracedDailyTokens = dates.map(date => vertexTracedDataMap[date] || 0);
+    const vertexTracedTotal = vertexTracedDailyTokens.reduce((sum, t) => sum + t, 0);
+    const nonVertexTracedDailyTokens = dates.map(date => nonVertexTracedDataMap[date] || 0);
+    const nonVertexTracedTotal = nonVertexTracedDailyTokens.reduce((sum, t) => sum + t, 0);
 
     const cachedDailyTokens = dates.map(date => cachedDataMap[date] || 0);
     const cachedTotal = cachedDailyTokens.reduce((sum, t) => sum + t, 0);
@@ -232,6 +275,10 @@ export async function GET() {
       vertexTotal,
       tracedDailyTokens,
       tracedTotal,
+      vertexTracedDailyTokens,
+      vertexTracedTotal,
+      nonVertexTracedDailyTokens,
+      nonVertexTracedTotal,
       cachedDailyTokens,
       cachedTotal,
       timestamp: new Date().toISOString(),
