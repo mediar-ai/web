@@ -3216,11 +3216,17 @@ export function useWebAppChat(options?: {
           });
         }
 
+        // Check if error is an ACP rate limit (from Claude Code bridge)
+        const isAcpRateLimit =
+          error.message.toLowerCase().includes("rate limit hit") ||
+          error.message.toLowerCase().includes("hit your limit");
+
         // Check if error is related to session expiration
         const isSessionError =
+          !isAcpRateLimit && (
           error.message.toLowerCase().includes("session") ||
           error.message.toLowerCase().includes("not found") ||
-          error.message.toLowerCase().includes("expired");
+          error.message.toLowerCase().includes("expired"));
 
         if (isSessionError && sessionId) {
           console.warn("[WEB-APP-CHAT] Session error detected, clearing session:", error.message);
@@ -3247,8 +3253,8 @@ export function useWebAppChat(options?: {
                     isStreaming: false,
                     error: {
                       message: errorMessageText,
-                      type: isSessionError ? "session_expired" : "unknown",
-                      canRetry: true,
+                      type: isAcpRateLimit ? "rate_limited" : isSessionError ? "session_expired" : "unknown",
+                      canRetry: !isAcpRateLimit,
                       originalMessage: messageText,
                       partialContent: true, // Flag that this error has partial content above
                     },
@@ -3264,8 +3270,8 @@ export function useWebAppChat(options?: {
             content: "",
             error: {
               message: errorMessageText,
-              type: isSessionError ? "session_expired" : "unknown",
-              canRetry: true,
+              type: isAcpRateLimit ? "rate_limited" : isSessionError ? "session_expired" : "unknown",
+              canRetry: !isAcpRateLimit,
               originalMessage: messageText,
             },
             timestamp: new Date(),

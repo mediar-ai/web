@@ -269,9 +269,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                             </span>
                           )}
                         </div>
-                        {/* Show detailed message for connection errors */}
+                        {/* Show detailed message for connection/rate limit errors */}
                         {isConnection && (
                           <p className="text-[10px] text-gray-500 mt-0.5">Check that AI server is running</p>
+                        )}
+                        {isRateLimit && (
+                          <p className="text-[10px] text-gray-500 mt-0.5">{error.message}</p>
                         )}
                       </div>
                       {/* Retry/Continue button - inline */}
