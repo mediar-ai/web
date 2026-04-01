@@ -152,8 +152,7 @@ pub async fn stop_streaming_analysis() -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_streaming_analysis_stats() -> Result<StreamingStats, String> {
-    let (meaningful_count, completed_analyses, completed_labels) =
-        recording_processor::get_streaming_stats().await;
+    let (meaningful_count, completed_analyses, completed_labels) = recording_processor::get_streaming_stats().await;
     let is_streaming = recording_processor::is_streaming().await;
 
     Ok(StreamingStats {
