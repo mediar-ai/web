@@ -57,7 +57,7 @@ use remote_features::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 // Import for unified logging
@@ -377,8 +377,7 @@ fn get_app_version() -> String {
 #[specta::specta]
 fn get_home_dir() -> Result<String, String> {
     log::info!("[get_home_dir] called");
-    std::env::var("USERPROFILE")
-        .map_err(|_| "Could not determine home directory".to_string())
+    std::env::var("USERPROFILE").map_err(|_| "Could not determine home directory".to_string())
 }
 
 // Settings management commands
@@ -1177,7 +1176,7 @@ async fn arrange_windows(app: tauri::AppHandle) -> Result<bool, String> {
         use windows::Win32::Foundation::{HWND, LPARAM, RECT};
         use windows::Win32::UI::WindowsAndMessaging::{
             EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsIconic, IsWindowVisible, IsZoomed,
-            SetWindowPos, ShowWindow, SystemParametersInfoW, SPI_GETWORKAREA, SW_RESTORE, SWP_NOACTIVATE, SWP_NOZORDER,
+            SetWindowPos, ShowWindow, SystemParametersInfoW, SPI_GETWORKAREA, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
         };
 
         // Check if we have saved positions (meaning we should restore)
@@ -1444,7 +1443,10 @@ async fn start_recording_to_api(app_handle: tauri::AppHandle, workflow_path: Opt
         if let Some(folder_name) = path_buf.file_name().and_then(|n| n.to_str()) {
             // Check if folder name looks like a UUID
             if folder_name.len() == 36 && folder_name.chars().filter(|c| *c == '-').count() == 4 {
-                info!("[session_sync] Syncing session ID with workflow folder: {}", folder_name);
+                info!(
+                    "[session_sync] Syncing session ID with workflow folder: {}",
+                    folder_name
+                );
                 if let Err(e) = event_ingestion::set_session_id(folder_name.to_string()).await {
                     warn!("[session_sync] Failed to sync session ID: {}", e);
                 }
@@ -2097,8 +2099,7 @@ fn cleanup_old_log_files(log_dir: &std::path::Path, keep_count: usize) {
                 let is_timestamp_rotated = filename.starts_with(log_prefix)
                     && filename.ends_with(".log")
                     && filename.len() > log_prefix.len() + 4;
-                let is_plugin_rotated = filename.starts_with(current_log)
-                    && filename.len() > current_log.len();
+                let is_plugin_rotated = filename.starts_with(current_log) && filename.len() > current_log.len();
 
                 if is_timestamp_rotated || is_plugin_rotated {
                     if let Ok(metadata) = entry.metadata() {
@@ -2141,7 +2142,10 @@ fn cleanup_old_log_files(log_dir: &std::path::Path, keep_count: usize) {
     while total_size > MAX_LOG_DIR_SIZE && !kept_files.is_empty() {
         if let Some((path, size)) = kept_files.pop() {
             if let Err(e) = std::fs::remove_file(&path) {
-                eprintln!("Warning: Failed to remove log file for size cap {:?}: {}", path, e);
+                eprintln!(
+                    "Warning: Failed to remove log file for size cap {:?}: {}",
+                    path, e
+                );
             } else {
                 total_size -= size;
                 println!("Cleaned up log file (size cap): {:?}", path.file_name());
@@ -2149,7 +2153,10 @@ fn cleanup_old_log_files(log_dir: &std::path::Path, keep_count: usize) {
         }
     }
 
-    println!("[log-cleanup] Log dir total size after cleanup: {}KB", total_size / 1024);
+    println!(
+        "[log-cleanup] Log dir total size after cleanup: {}KB",
+        total_size / 1024
+    );
 }
 
 /// Read the app identifier from tauri.conf.json
@@ -3350,7 +3357,12 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     // Left-click on tray icon shows the main window
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         let app_handle = tray.app_handle();
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.show();

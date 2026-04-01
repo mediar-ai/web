@@ -38,20 +38,32 @@ fn register_for_browser(browser_path: &str, browser_name: &str) {
             } else {
                 "opened existing"
             };
-            info!("[browser_extension] {} {} registry key", action, browser_name);
+            info!(
+                "[browser_extension] {} {} registry key",
+                action, browser_name
+            );
 
             match key.set_value("update_url", &UPDATE_URL) {
                 Ok(()) => {
-                    info!("[browser_extension] {} extension registered for auto-install", browser_name);
+                    info!(
+                        "[browser_extension] {} extension registered for auto-install",
+                        browser_name
+                    );
                 }
                 Err(e) => {
-                    error!("[browser_extension] {} failed to set update_url: {}", browser_name, e);
+                    error!(
+                        "[browser_extension] {} failed to set update_url: {}",
+                        browser_name, e
+                    );
                 }
             }
         }
         Err(e) => {
             // This is normal if the browser isn't installed
-            info!("[browser_extension] {} not found or registry error: {}", browser_name, e);
+            info!(
+                "[browser_extension] {} not found or registry error: {}",
+                browser_name, e
+            );
         }
     }
 }
