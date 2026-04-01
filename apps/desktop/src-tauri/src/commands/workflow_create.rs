@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::PathBuf;
 use std::process::Command;
-use tracing::{info, error};
+use tracing::{error, info};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -345,20 +345,40 @@ pub fn generate_typescript_step(input: GenerateTypescriptStepInput) -> Result<Ge
     );
 
     // Parse the JSON array of events
-    info!("[ts_gen] DEBUG generate: events_json length = {}", input.events_json.len());
+    info!(
+        "[ts_gen] DEBUG generate: events_json length = {}",
+        input.events_json.len()
+    );
     if input.events_json.len() > 100 {
-        info!("[ts_gen] DEBUG generate: events_json first 100 chars = {:?}", &input.events_json[..100]);
-        info!("[ts_gen] DEBUG generate: events_json last 100 chars = {:?}", &input.events_json[input.events_json.len()-100..]);
+        info!(
+            "[ts_gen] DEBUG generate: events_json first 100 chars = {:?}",
+            &input.events_json[..100]
+        );
+        info!(
+            "[ts_gen] DEBUG generate: events_json last 100 chars = {:?}",
+            &input.events_json[input.events_json.len() - 100..]
+        );
     } else {
-        info!("[ts_gen] DEBUG generate: events_json = {:?}", &input.events_json);
+        info!(
+            "[ts_gen] DEBUG generate: events_json = {:?}",
+            &input.events_json
+        );
     }
     let events: Vec<WorkflowEvent> = serde_json::from_str(&input.events_json).map_err(|e| {
         error!("[ts_gen] JSON parse error in generate: {}", e);
-        if let Some(col) = e.to_string().split("column ").nth(1).and_then(|s| s.parse::<usize>().ok()) {
+        if let Some(col) = e
+            .to_string()
+            .split("column ")
+            .nth(1)
+            .and_then(|s| s.parse::<usize>().ok())
+        {
             let start = col.saturating_sub(50);
             let end = (col + 50).min(input.events_json.len());
             if end > start {
-                error!("[ts_gen] JSON context around error: ...{:?}...", &input.events_json[start..end]);
+                error!(
+                    "[ts_gen] JSON context around error: ...{:?}...",
+                    &input.events_json[start..end]
+                );
             }
         }
         format!("Failed to parse events JSON: {}", e)
@@ -452,7 +472,11 @@ fn scan_existing_steps(workflow_path: &PathBuf) -> Vec<ExistingStepInfo> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension().map_or(false, |e| e == "ts") {
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let file_name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
 
                 // Parse step number from filename (e.g., "01-recorded-step.ts" -> 1)
                 if let Some(num_str) = file_name.split('-').next() {
@@ -548,21 +572,38 @@ pub async fn save_recorded_typescript_workflow(
     };
 
     // Parse the events
-    info!("[ts_gen] DEBUG: events_json length = {}", input.events_json.len());
+    info!(
+        "[ts_gen] DEBUG: events_json length = {}",
+        input.events_json.len()
+    );
     if input.events_json.len() > 100 {
-        info!("[ts_gen] DEBUG: events_json first 100 chars = {:?}", &input.events_json[..100]);
-        info!("[ts_gen] DEBUG: events_json last 100 chars = {:?}", &input.events_json[input.events_json.len()-100..]);
+        info!(
+            "[ts_gen] DEBUG: events_json first 100 chars = {:?}",
+            &input.events_json[..100]
+        );
+        info!(
+            "[ts_gen] DEBUG: events_json last 100 chars = {:?}",
+            &input.events_json[input.events_json.len() - 100..]
+        );
     } else {
         info!("[ts_gen] DEBUG: events_json = {:?}", &input.events_json);
     }
     let events: Vec<WorkflowEvent> = serde_json::from_str(&input.events_json).map_err(|e| {
         error!("[ts_gen] JSON parse error: {}", e);
         // Show context around error position
-        if let Some(col) = e.to_string().split("column ").nth(1).and_then(|s| s.parse::<usize>().ok()) {
+        if let Some(col) = e
+            .to_string()
+            .split("column ")
+            .nth(1)
+            .and_then(|s| s.parse::<usize>().ok())
+        {
             let start = col.saturating_sub(50);
             let end = (col + 50).min(input.events_json.len());
             if end > start {
-                error!("[ts_gen] JSON context around error: ...{:?}...", &input.events_json[start..end]);
+                error!(
+                    "[ts_gen] JSON context around error: ...{:?}...",
+                    &input.events_json[start..end]
+                );
             }
         }
         format!("Failed to parse events JSON: {}", e)
@@ -593,12 +634,19 @@ pub async fn save_recorded_typescript_workflow(
         let file_name = format!("{:02}-recorded-step.ts", next_number);
         info!(
             "[ts_gen] Appending step {} (file: {}) to existing workflow with {} steps",
-            step_name, file_name, existing.len()
+            step_name,
+            file_name,
+            existing.len()
         );
         (next_number, step_name, file_name, existing)
     } else {
         // New workflow - start with step 1
-        (1, "recordedStep".to_string(), "01-recorded-step.ts".to_string(), Vec::new())
+        (
+            1,
+            "recordedStep".to_string(),
+            "01-recorded-step.ts".to_string(),
+            Vec::new(),
+        )
     };
 
     // Generate TypeScript step from events with the determined name

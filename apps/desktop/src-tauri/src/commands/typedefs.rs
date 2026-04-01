@@ -406,8 +406,7 @@ pub async fn get_workflow_type_packages(workflow_id: String) -> Result<Vec<Strin
     }
 
     // Add terminator as transitive dep - workflow types use import("@mediar-ai/terminator").Desktop
-    if packages.contains(&"@mediar-ai/workflow".to_string())
-        && !packages.contains(&"@mediar-ai/terminator".to_string())
+    if packages.contains(&"@mediar-ai/workflow".to_string()) && !packages.contains(&"@mediar-ai/terminator".to_string())
     {
         packages.push("@mediar-ai/terminator".to_string());
     }

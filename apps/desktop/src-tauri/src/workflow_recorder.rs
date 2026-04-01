@@ -142,7 +142,10 @@ fn increment_and_emit_continuous_action_count() {
 
     // Emit to recording bar
     if let Some(app) = get_app_handle() {
-        if let Err(e) = app.emit("recording-bar-action-count", serde_json::json!({ "count": new_count })) {
+        if let Err(e) = app.emit(
+            "recording-bar-action-count",
+            serde_json::json!({ "count": new_count }),
+        ) {
             warn!("Failed to emit recording-bar-action-count: {}", e);
         }
     }
@@ -1209,9 +1212,15 @@ async fn handle_step_by_step_event(
     // Add event to RECORDING_PROCESSOR for local Gemini analysis
     // This mirrors continuous mode behavior - events go to processor as they happen
     if let Err(e) = event_ingestion::add_event(event.clone()).await {
-        warn!("[ts_gen] Failed to add step-by-step event to recording processor: {}", e);
+        warn!(
+            "[ts_gen] Failed to add step-by-step event to recording processor: {}",
+            e
+        );
     } else {
-        info!("[ts_gen] Step-by-step event added to recording processor: {}", event_type);
+        info!(
+            "[ts_gen] Step-by-step event added to recording processor: {}",
+            event_type
+        );
     }
 
     // Serialize raw event to JSON
@@ -1220,7 +1229,11 @@ async fn handle_step_by_step_event(
     // Convert event to TypeScript code using SDK converter
     let converter = mcp_converter::McpConverter::new();
     let ts_conversion = converter.convert_event_to_typescript(event, None);
-    info!("[ts_gen] Recording display conversion: {} -> {}", event_type, ts_conversion.code.lines().next().unwrap_or("empty"));
+    info!(
+        "[ts_gen] Recording display conversion: {} -> {}",
+        event_type,
+        ts_conversion.code.lines().next().unwrap_or("empty")
+    );
 
     // Build payload for frontend with TypeScript code
     let payload = serde_json::json!({
@@ -1427,7 +1440,10 @@ async fn handle_merged_browser_click_event(
     // This mirrors continuous mode where BrowserClick and Click are sent separately
     let browser_click_event = TerminatorWorkflowEvent::BrowserClick(browser_click.clone());
     if let Err(e) = event_ingestion::add_event(browser_click_event).await {
-        warn!("[ts_gen] Failed to add BrowserClick to recording processor: {}", e);
+        warn!(
+            "[ts_gen] Failed to add BrowserClick to recording processor: {}",
+            e
+        );
     } else {
         info!("[ts_gen] Merged BrowserClick added to recording processor");
     }
@@ -1453,7 +1469,11 @@ async fn handle_merged_browser_click_event(
     // Convert browser click event to TypeScript code using SDK converter
     let converter = mcp_converter::McpConverter::new();
     let ts_conversion = converter.convert_browser_click_to_typescript(browser_click);
-    info!("[ts_gen] Browser click display conversion: {} -> {}", ts_conversion.description, ts_conversion.code.lines().next().unwrap_or("empty"));
+    info!(
+        "[ts_gen] Browser click display conversion: {} -> {}",
+        ts_conversion.description,
+        ts_conversion.code.lines().next().unwrap_or("empty")
+    );
 
     // Build payload for frontend with TypeScript code (explicit isPending: false to override pending state)
     let payload = serde_json::json!({
