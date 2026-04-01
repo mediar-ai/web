@@ -143,7 +143,9 @@
       "../scripts/add-defender-exclusions.ps1": "",
       "vcredist/*": "",
       "resources/demo/greenway.html": "resources/demo/",
-      "resources/demo/lc360.html": "resources/demo/"
+      "resources/demo/lc360.html": "resources/demo/",
+      "acp-resources/patched-acp-entry.mjs": "acp-resources/",
+      "acp-resources/package.json": "acp-resources/"
     },
     "externalBin": ["binaries/bun", "binaries/terminator-mcp-agent"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
