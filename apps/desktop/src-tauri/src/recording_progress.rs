@@ -43,15 +43,14 @@ pub struct SynthesisEvent {
 }
 
 /// Notify the backend that recording has started (triggers Modal processing)
-pub async fn notify_recording_started(
-    session_id: &str,
-    user_id: &str,
-    auth_token: &str,
-) -> Result<(), String> {
+pub async fn notify_recording_started(session_id: &str, user_id: &str, auth_token: &str) -> Result<(), String> {
     let client = Client::new();
     let url = format!("{}/api/recording/start", get_api_base_url());
 
-    info!("[recording_progress] notify_recording_started session={}", session_id);
+    info!(
+        "[recording_progress] notify_recording_started session={}",
+        session_id
+    );
 
     let response = client
         .post(&url)
@@ -68,7 +67,10 @@ pub async fn notify_recording_started(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("Recording start notification failed: {} - {}", status, body));
+        return Err(format!(
+            "Recording start notification failed: {} - {}",
+            status, body
+        ));
     }
 
     info!("[recording_progress] Recording start notified, Modal processing triggered");
@@ -76,14 +78,18 @@ pub async fn notify_recording_started(
 }
 
 /// Poll recording progress from the backend
-pub async fn poll_recording_progress(
-    session_id: &str,
-    auth_token: &str,
-) -> Result<RecordingProgress, String> {
+pub async fn poll_recording_progress(session_id: &str, auth_token: &str) -> Result<RecordingProgress, String> {
     let client = Client::new();
-    let url = format!("{}/api/recording/{}/progress", get_api_base_url(), session_id);
+    let url = format!(
+        "{}/api/recording/{}/progress",
+        get_api_base_url(),
+        session_id
+    );
 
-    debug!("[recording_progress] poll_recording_progress session={}", session_id);
+    debug!(
+        "[recording_progress] poll_recording_progress session={}",
+        session_id
+    );
 
     let response = client
         .get(&url)
@@ -106,15 +112,14 @@ pub async fn poll_recording_progress(
 }
 
 /// Notify the backend that recording has stopped
-pub async fn notify_recording_stopped(
-    session_id: &str,
-    user_id: &str,
-    auth_token: &str,
-) -> Result<i32, String> {
+pub async fn notify_recording_stopped(session_id: &str, user_id: &str, auth_token: &str) -> Result<i32, String> {
     let client = Client::new();
     let url = format!("{}/api/recording/{}/stop", get_api_base_url(), session_id);
 
-    info!("[recording_progress] notify_recording_stopped session={}", session_id);
+    info!(
+        "[recording_progress] notify_recording_stopped session={}",
+        session_id
+    );
 
     let response = client
         .post(&url)
@@ -130,7 +135,10 @@ pub async fn notify_recording_stopped(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("Recording stop notification failed: {} - {}", status, body));
+        return Err(format!(
+            "Recording stop notification failed: {} - {}",
+            status, body
+        ));
     }
 
     #[derive(Deserialize)]
@@ -144,7 +152,10 @@ pub async fn notify_recording_stopped(
         .await
         .map_err(|e| format!("Failed to parse stop response: {}", e))?;
 
-    info!("[recording_progress] Recording stopped. Pending: {}", stop_response.pending_count);
+    info!(
+        "[recording_progress] Recording stopped. Pending: {}",
+        stop_response.pending_count
+    );
     Ok(stop_response.pending_count)
 }
 
@@ -163,7 +174,10 @@ where
     let max_wait_time = Duration::from_secs(3600); // 1 hour max wait
     let start_time = Instant::now();
 
-    info!("[recording_progress] wait_for_processing_complete session={}", session_id);
+    info!(
+        "[recording_progress] wait_for_processing_complete session={}",
+        session_id
+    );
 
     loop {
         // Check cancellation
@@ -193,9 +207,7 @@ where
 
                 debug!(
                     "[recording_progress] Still processing: {}/{} ({}%)",
-                    progress.processed_count,
-                    progress.ui_tree_event_count,
-                    progress.progress_percent
+                    progress.processed_count, progress.ui_tree_event_count, progress.progress_percent
                 );
             }
             Err(e) => {
@@ -209,19 +221,21 @@ where
 
 /// Trigger workflow synthesis via SSE stream
 /// Returns synthesis events as they arrive
-pub async fn trigger_synthesis<F>(
-    session_id: &str,
-    user_id: &str,
-    auth_token: &str,
-    on_event: F,
-) -> Result<(), String>
+pub async fn trigger_synthesis<F>(session_id: &str, user_id: &str, auth_token: &str, on_event: F) -> Result<(), String>
 where
     F: Fn(SynthesisEvent),
 {
     let client = Client::new();
-    let url = format!("{}/api/recording/{}/synthesize", get_api_base_url(), session_id);
+    let url = format!(
+        "{}/api/recording/{}/synthesize",
+        get_api_base_url(),
+        session_id
+    );
 
-    info!("[recording_progress] trigger_synthesis session={}", session_id);
+    info!(
+        "[recording_progress] trigger_synthesis session={}",
+        session_id
+    );
 
     let response = client
         .post(&url)
@@ -273,7 +287,10 @@ where
                                     if event.error.is_some() {
                                         let err = event.error.unwrap_or_default();
                                         let details = event.details.unwrap_or_default();
-                                        error!("[recording_progress] Synthesis error: {} - {}", err, details);
+                                        error!(
+                                            "[recording_progress] Synthesis error: {} - {}",
+                                            err, details
+                                        );
                                         return Err(format!("Synthesis error: {} - {}", err, details));
                                     }
                                 }
@@ -309,15 +326,24 @@ where
     F1: Fn(RecordingProgress),
     F2: Fn(SynthesisEvent),
 {
-    info!("[recording_progress] stop_and_synthesize session={}", session_id);
+    info!(
+        "[recording_progress] stop_and_synthesize session={}",
+        session_id
+    );
 
     // 1. Notify backend that recording stopped
     let pending = notify_recording_stopped(session_id, user_id, auth_token).await?;
-    info!("[recording_progress] Recording stopped, {} events pending", pending);
+    info!(
+        "[recording_progress] Recording stopped, {} events pending",
+        pending
+    );
 
     // 2. Wait for processing to complete (if there are pending events)
     if pending > 0 {
-        info!("[recording_progress] Waiting for {} events to be processed...", pending);
+        info!(
+            "[recording_progress] Waiting for {} events to be processed...",
+            pending
+        );
         wait_for_processing_complete(session_id, auth_token, cancel_flag, on_progress).await?;
     }
 

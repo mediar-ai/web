@@ -121,7 +121,10 @@ pub struct RecordingProcessor {
 
 impl RecordingProcessor {
     pub fn new(session_id: String) -> Self {
-        info!("[RECORDING_PROCESSOR] Created new processor for session: {}", session_id);
+        info!(
+            "[RECORDING_PROCESSOR] Created new processor for session: {}",
+            session_id
+        );
         Self {
             events: Vec::new(),
             analyses: Vec::new(),
@@ -165,8 +168,7 @@ impl RecordingProcessor {
 }
 
 // Global processor instance
-static RECORDING_PROCESSOR: Lazy<Arc<RwLock<Option<RecordingProcessor>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(None)));
+static RECORDING_PROCESSOR: Lazy<Arc<RwLock<Option<RecordingProcessor>>>> = Lazy::new(|| Arc::new(RwLock::new(None)));
 
 // =============================================================================
 // Public API
@@ -174,14 +176,20 @@ static RECORDING_PROCESSOR: Lazy<Arc<RwLock<Option<RecordingProcessor>>>> =
 
 /// Initialize a new recording processor for a session
 pub async fn init_processor(session_id: String) {
-    info!("[RECORDING_PROCESSOR] Initializing processor for session: {}", session_id);
+    info!(
+        "[RECORDING_PROCESSOR] Initializing processor for session: {}",
+        session_id
+    );
     let mut guard = RECORDING_PROCESSOR.write().await;
     *guard = Some(RecordingProcessor::new(session_id));
 }
 
 /// Update the session_id to sync with workflow folder ID
 pub async fn set_session_id(session_id: String) {
-    info!("[RECORDING_PROCESSOR] Updating session_id to: {}", session_id);
+    info!(
+        "[RECORDING_PROCESSOR] Updating session_id to: {}",
+        session_id
+    );
     let mut guard = RECORDING_PROCESSOR.write().await;
     if let Some(processor) = guard.as_mut() {
         processor.session_id = session_id;
@@ -205,7 +213,10 @@ pub async fn add_event(event: WorkflowEventRequest) {
                 let meaningful_idx = processor.meaningful_event_indices.len();
                 processor.meaningful_event_indices.push(event_idx);
                 processor.analysis_queue.push(meaningful_idx);
-                info!("[STREAMING] Queued meaningful event {} (type: {}) for analysis", meaningful_idx, event_type);
+                info!(
+                    "[STREAMING] Queued meaningful event {} (type: {}) for analysis",
+                    meaningful_idx, event_type
+                );
                 true
             } else {
                 false
@@ -239,7 +250,12 @@ pub async fn get_event_count() -> usize {
 fn is_meaningful_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
-        "button_click" | "browser_click" | "text_input_completed" | "browser_tab_navigation" | "application_switch" | "file_opened"
+        "button_click"
+            | "browser_click"
+            | "text_input_completed"
+            | "browser_tab_navigation"
+            | "application_switch"
+            | "file_opened"
     )
 }
 
@@ -329,7 +345,13 @@ pub async fn process_analysis_queue() {
 /// Inner implementation of analysis queue processing
 async fn process_analysis_queue_inner() {
     // Collect data needed for spawning analyses
-    let analyses_to_spawn: Vec<(usize, WorkflowEventRequest, Vec<StepAnalysis>, Vec<WorkflowEventRequest>, Vec<WorkflowEventRequest>)> = {
+    let analyses_to_spawn: Vec<(
+        usize,
+        WorkflowEventRequest,
+        Vec<StepAnalysis>,
+        Vec<WorkflowEventRequest>,
+        Vec<WorkflowEventRequest>,
+    )> = {
         let mut guard = RECORDING_PROCESSOR.write().await;
         let processor = match guard.as_mut() {
             Some(p) if p.is_streaming => p,
@@ -368,24 +390,35 @@ async fn process_analysis_queue_inner() {
         }
 
         // Remove from queue
-        processor.analysis_queue.retain(|idx| !indices_to_remove.contains(idx));
+        processor
+            .analysis_queue
+            .retain(|idx| !indices_to_remove.contains(idx));
 
         to_spawn
     };
 
     // Spawn analysis tasks outside the lock
     for (meaningful_idx, event, previous, all_events, ui_trees) in analyses_to_spawn {
-        info!("[STREAMING] Gate passed for index {}, spawning analysis", meaningful_idx);
+        info!(
+            "[STREAMING] Gate passed for index {}, spawning analysis",
+            meaningful_idx
+        );
         tokio::spawn(async move {
             let ui_tree_refs: Vec<&WorkflowEventRequest> = ui_trees.iter().collect();
             match analyze_step(&event, &previous, &all_events, &ui_tree_refs).await {
                 Ok(analysis) => {
-                    info!("[STREAMING] Analysis complete for index {}: '{}'", meaningful_idx, analysis.step_title);
+                    info!(
+                        "[STREAMING] Analysis complete for index {}: '{}'",
+                        meaningful_idx, analysis.step_title
+                    );
                     // Store result and check for more work (spawns its own task)
                     store_analysis_result(meaningful_idx, analysis);
                 }
                 Err(e) => {
-                    warn!("[STREAMING] Analysis failed for index {}: {}", meaningful_idx, e);
+                    warn!(
+                        "[STREAMING] Analysis failed for index {}: {}",
+                        meaningful_idx, e
+                    );
                 }
             }
         });
@@ -400,8 +433,14 @@ fn store_analysis_result(meaningful_idx: usize, analysis: StepAnalysis) {
         {
             let mut guard = RECORDING_PROCESSOR.write().await;
             if let Some(processor) = guard.as_mut() {
-                processor.streaming_analyses.insert(meaningful_idx, analysis);
-                info!("[STREAMING] Stored analysis {}, total: {}", meaningful_idx, processor.streaming_analyses.len());
+                processor
+                    .streaming_analyses
+                    .insert(meaningful_idx, analysis);
+                info!(
+                    "[STREAMING] Stored analysis {}, total: {}",
+                    meaningful_idx,
+                    processor.streaming_analyses.len()
+                );
             }
         }
 
@@ -432,7 +471,12 @@ async fn process_labeling_queue_inner() {
         let mut to_spawn = Vec::new();
 
         for (&idx, analysis) in &processor.streaming_analyses {
-            if check_labeling_gate(idx, total, &processor.streaming_analyses, &processor.streaming_labels) {
+            if check_labeling_gate(
+                idx,
+                total,
+                &processor.streaming_analyses,
+                &processor.streaming_labels,
+            ) {
                 // Collect neighbor analyses for context
                 let start = idx.saturating_sub(5);
                 let end = std::cmp::min(idx + 6, total);
@@ -451,22 +495,26 @@ async fn process_labeling_queue_inner() {
 
     // Spawn labeling tasks outside the lock
     for (idx, analysis, neighbors) in labeling_to_spawn {
-        info!("[STREAMING] Labeling gate passed for index {}, spawning labeling", idx);
+        info!(
+            "[STREAMING] Labeling gate passed for index {}, spawning labeling",
+            idx
+        );
         tokio::spawn(async move {
             // Build neighbor context string directly (matching add_label logic)
             let mut neighbor_context = String::new();
             for neighbor in &neighbors {
                 neighbor_context.push_str(&format!(
                     "[{}] {}: {}\n",
-                    neighbor.timestamp,
-                    neighbor.step_title,
-                    neighbor.step_summary
+                    neighbor.timestamp, neighbor.step_title, neighbor.step_summary
                 ));
             }
 
             match label_step_inline(&analysis, &neighbor_context).await {
                 Ok(label) => {
-                    info!("[STREAMING] Labeling complete for index {}: '{}'", idx, label);
+                    info!(
+                        "[STREAMING] Labeling complete for index {}: '{}'",
+                        idx, label
+                    );
                     store_label_result(idx, label).await;
                 }
                 Err(e) => {
@@ -487,9 +535,8 @@ async fn label_step_inline(target: &StepAnalysis, neighbor_context: &str) -> Res
         neighbor_context
     );
 
-    let response_schema: serde_json::Value =
-        serde_json::from_str(recording_prompts::LABEL_SUGGESTION_SCHEMA)
-            .map_err(|e| format!("Failed to parse label schema: {}", e))?;
+    let response_schema: serde_json::Value = serde_json::from_str(recording_prompts::LABEL_SUGGESTION_SCHEMA)
+        .map_err(|e| format!("Failed to parse label schema: {}", e))?;
 
     let request = VertexAIRequest {
         model: GEMINI_MODEL.to_string(),
@@ -517,8 +564,8 @@ async fn label_step_inline(target: &StepAnalysis, neighbor_context: &str) -> Res
         label: String,
     }
 
-    let label_response: LabelResponse = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse label response: {}", e))?;
+    let label_response: LabelResponse =
+        serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse label response: {}", e))?;
 
     Ok(label_response.label)
 }
@@ -530,7 +577,11 @@ async fn store_label_result(meaningful_idx: usize, label: String) {
         if let Some(analysis) = processor.streaming_analyses.get_mut(&meaningful_idx) {
             analysis.label = Some(label);
         }
-        info!("[STREAMING] Stored label for {}, total labeled: {}", meaningful_idx, processor.streaming_labels.len());
+        info!(
+            "[STREAMING] Stored label for {}, total labeled: {}",
+            meaningful_idx,
+            processor.streaming_labels.len()
+        );
     }
 }
 
@@ -584,7 +635,10 @@ pub async fn process_recording(
     workflow_folder: PathBuf,
     progress_callback: impl Fn(ProcessingProgress) + Send + Sync,
 ) -> Result<PathBuf, String> {
-    info!("[RECORDING_PROCESSOR] Starting local processing to: {:?}", workflow_folder);
+    info!(
+        "[RECORDING_PROCESSOR] Starting local processing to: {:?}",
+        workflow_folder
+    );
 
     // Stop streaming and get current state
     stop_streaming().await;
@@ -608,24 +662,33 @@ pub async fn process_recording(
     };
 
     let total_events = events.len();
-    info!("[RECORDING_PROCESSOR] Processing {} events for session {}", total_events, session_id);
-    info!("[RECORDING_PROCESSOR] Streaming state: {} analyses, {} labels completed during recording",
-        streaming_analyses.len(), streaming_labels.len());
+    info!(
+        "[RECORDING_PROCESSOR] Processing {} events for session {}",
+        total_events, session_id
+    );
+    info!(
+        "[RECORDING_PROCESSOR] Streaming state: {} analyses, {} labels completed during recording",
+        streaming_analyses.len(),
+        streaming_labels.len()
+    );
 
     if total_events == 0 {
         return Err("No events to process".to_string());
     }
 
     // Extract UI tree events for context (captured alongside action events)
-    let ui_tree_events: Vec<_> = events
-        .iter()
-        .filter(|e| e.r#type == "ui_tree")
-        .collect();
-    info!("[RECORDING_PROCESSOR] Found {} UI tree events for context", ui_tree_events.len());
+    let ui_tree_events: Vec<_> = events.iter().filter(|e| e.r#type == "ui_tree").collect();
+    info!(
+        "[RECORDING_PROCESSOR] Found {} UI tree events for context",
+        ui_tree_events.len()
+    );
 
     // Get meaningful events - use streaming indices if available, otherwise filter
     let meaningful_events: Vec<&WorkflowEventRequest> = if !meaningful_indices.is_empty() {
-        meaningful_indices.iter().filter_map(|&idx| events.get(idx)).collect()
+        meaningful_indices
+            .iter()
+            .filter_map(|&idx| events.get(idx))
+            .collect()
     } else {
         events
             .iter()
@@ -634,7 +697,10 @@ pub async fn process_recording(
     };
 
     let meaningful_count = meaningful_events.len();
-    info!("[RECORDING_PROCESSOR] Found {} meaningful events (click/text/nav/switch/file)", meaningful_count);
+    info!(
+        "[RECORDING_PROCESSOR] Found {} meaningful events (click/text/nav/switch/file)",
+        meaningful_count
+    );
 
     // Stage totals: [step_analysis, labeling, synthesis, generation]
     let remaining_analyses = meaningful_count.saturating_sub(streaming_analyses.len());
@@ -646,8 +712,11 @@ pub async fn process_recording(
         stage: "step_analysis".to_string(),
         current: streaming_analyses.len(),
         total: meaningful_count,
-        message: format!("Using {} analyses from streaming, completing {} remaining...",
-            streaming_analyses.len(), remaining_analyses),
+        message: format!(
+            "Using {} analyses from streaming, completing {} remaining...",
+            streaming_analyses.len(),
+            remaining_analyses
+        ),
         stage_index: 0,
         total_stages: TOTAL_STAGES,
         stage_totals: stage_totals.clone(),
@@ -658,7 +727,11 @@ pub async fn process_recording(
     for (i, event) in meaningful_events.iter().enumerate() {
         // Check if we have a streaming result for this index
         if let Some(analysis) = streaming_analyses.get(&i) {
-            info!("[RECORDING_PROCESSOR] Using streaming analysis for step {}: '{}'", i + 1, analysis.step_title);
+            info!(
+                "[RECORDING_PROCESSOR] Using streaming analysis for step {}: '{}'",
+                i + 1,
+                analysis.step_title
+            );
             analyses.push(analysis.clone());
         } else {
             // Need to analyze this event
@@ -674,19 +747,30 @@ pub async fn process_recording(
 
             match analyze_step(event, &analyses, &events, &ui_tree_events).await {
                 Ok(analysis) => {
-                    info!("[RECORDING_PROCESSOR] Step {} analyzed OK: '{}'", i + 1, analysis.step_title);
+                    info!(
+                        "[RECORDING_PROCESSOR] Step {} analyzed OK: '{}'",
+                        i + 1,
+                        analysis.step_title
+                    );
                     analyses.push(analysis);
                 }
                 Err(e) => {
-                    warn!("[RECORDING_PROCESSOR] Failed to analyze step {}: {}", i + 1, e);
+                    warn!(
+                        "[RECORDING_PROCESSOR] Failed to analyze step {}: {}",
+                        i + 1,
+                        e
+                    );
                     // Continue with other steps
                 }
             }
         }
     }
 
-    info!("[RECORDING_PROCESSOR] Analyzed {} steps successfully ({} from streaming)",
-        analyses.len(), streaming_analyses.len());
+    info!(
+        "[RECORDING_PROCESSOR] Analyzed {} steps successfully ({} from streaming)",
+        analyses.len(),
+        streaming_analyses.len()
+    );
 
     // Update stage_totals with actual labeling count
     stage_totals[1] = analyses.len();
@@ -697,8 +781,11 @@ pub async fn process_recording(
         stage: "labeling".to_string(),
         current: streaming_labels.len(),
         total: analyses.len(),
-        message: format!("Using {} labels from streaming, completing {} remaining...",
-            streaming_labels.len(), remaining_labels),
+        message: format!(
+            "Using {} labels from streaming, completing {} remaining...",
+            streaming_labels.len(),
+            remaining_labels
+        ),
         stage_index: 1,
         total_stages: TOTAL_STAGES,
         stage_totals: stage_totals.clone(),
@@ -707,7 +794,10 @@ pub async fn process_recording(
     for i in 0..analyses.len() {
         // Skip if already labeled during streaming
         if streaming_labels.contains(&i) {
-            debug!("[RECORDING_PROCESSOR] Step {} already labeled during streaming", i + 1);
+            debug!(
+                "[RECORDING_PROCESSOR] Step {} already labeled during streaming",
+                i + 1
+            );
             continue;
         }
 
@@ -726,7 +816,11 @@ pub async fn process_recording(
                 debug!("[RECORDING_PROCESSOR] Step {} labeled", i + 1);
             }
             Err(e) => {
-                warn!("[RECORDING_PROCESSOR] Failed to label step {}: {}", i + 1, e);
+                warn!(
+                    "[RECORDING_PROCESSOR] Failed to label step {}: {}",
+                    i + 1,
+                    e
+                );
             }
         }
     }
@@ -748,7 +842,10 @@ pub async fn process_recording(
         stage: "synthesis".to_string(),
         current: 1,
         total: 1,
-        message: format!("Synthesized {} workflow(s)", synthesis_result.workflows.len()),
+        message: format!(
+            "Synthesized {} workflow(s)",
+            synthesis_result.workflows.len()
+        ),
         stage_index: 2,
         total_stages: TOTAL_STAGES,
         stage_totals: stage_totals.clone(),
@@ -780,7 +877,10 @@ pub async fn process_recording(
 
     // Generate markdown output in recordings folder
     let md_path = generate_markdown_output(&workflow_folder, &session_id, &analyses, &synthesis_result)?;
-    info!("[RECORDING_PROCESSOR] Markdown analysis written to: {:?}", md_path);
+    info!(
+        "[RECORDING_PROCESSOR] Markdown analysis written to: {:?}",
+        md_path
+    );
 
     progress_callback(ProcessingProgress {
         stage: "generation".to_string(),
@@ -802,7 +902,10 @@ pub async fn process_recording(
         }
     }
 
-    info!("[RECORDING_PROCESSOR] Processing complete, output at: {:?}", workflow_folder);
+    info!(
+        "[RECORDING_PROCESSOR] Processing complete, output at: {:?}",
+        workflow_folder
+    );
     Ok(workflow_folder)
 }
 
@@ -823,7 +926,10 @@ pub async fn clear_processor() {
 fn find_surrounding_ui_trees<'a>(
     event_timestamp: &str,
     ui_tree_events: &'a [&WorkflowEventRequest],
-) -> (Option<&'a WorkflowEventRequest>, Option<&'a WorkflowEventRequest>) {
+) -> (
+    Option<&'a WorkflowEventRequest>,
+    Option<&'a WorkflowEventRequest>,
+) {
     if ui_tree_events.is_empty() {
         return (None, None);
     }
@@ -901,9 +1007,8 @@ fn extract_ui_tree_string(event: &WorkflowEventRequest) -> Option<&str> {
 
 /// Roman numerals for UI tree indentation (matching web app)
 const ROMAN_NUMERALS: &[&str] = &[
-    "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
-    "XXI", "XXII", "XXIII", "XXIV", "XXV", "XXVI", "XXVII", "XXVIII", "XXIX", "XXX",
+    "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII",
+    "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV", "XXV", "XXVI", "XXVII", "XXVIII", "XXIX", "XXX",
 ];
 
 /// Generate simplified UI tree string from raw JSON - matches web app format exactly
@@ -1028,9 +1133,7 @@ fn find_events_between_timestamps<'a>(
 ) -> Vec<&'a WorkflowEventRequest> {
     all_events
         .iter()
-        .filter(|e| {
-            e.timestamp.as_str() > start_timestamp && e.timestamp.as_str() <= end_timestamp
-        })
+        .filter(|e| e.timestamp.as_str() > start_timestamp && e.timestamp.as_str() <= end_timestamp)
         .filter(|e| {
             // Filter out ui_tree events, keep action events
             !matches!(e.r#type.as_str(), "ui_tree")
@@ -1070,9 +1173,8 @@ async fn analyze_step(
     );
 
     // Parse the schema for structured output
-    let response_schema: serde_json::Value =
-        serde_json::from_str(recording_prompts::STEP_ANALYSIS_SCHEMA)
-            .map_err(|e| format!("Failed to parse step analysis schema: {}", e))?;
+    let response_schema: serde_json::Value = serde_json::from_str(recording_prompts::STEP_ANALYSIS_SCHEMA)
+        .map_err(|e| format!("Failed to parse step analysis schema: {}", e))?;
 
     // Find screenshot_diff for this event (before/after images)
     let inline_images = find_screenshot_for_event(&event.timestamp, all_events)
@@ -1109,8 +1211,12 @@ async fn analyze_step(
             inline_images: inline_images.clone(),
         };
 
-        debug!("[RECORDING_PROCESSOR] Calling Vertex AI (attempt {}/{}) for step analysis (images: {})",
-            attempt, MAX_RETRIES, request.inline_images.as_ref().map(|i| i.len()).unwrap_or(0));
+        debug!(
+            "[RECORDING_PROCESSOR] Calling Vertex AI (attempt {}/{}) for step analysis (images: {})",
+            attempt,
+            MAX_RETRIES,
+            request.inline_images.as_ref().map(|i| i.len()).unwrap_or(0)
+        );
 
         match vertex_ai::call_vertex_ai(request).await {
             Ok(response) => {
@@ -1120,7 +1226,10 @@ async fn analyze_step(
                 if text.is_empty() {
                     last_error = "Empty response from Gemini".to_string();
                     if attempt < MAX_RETRIES {
-                        warn!("[RECORDING_PROCESSOR] Empty response, retrying ({}/{})", attempt, MAX_RETRIES);
+                        warn!(
+                            "[RECORDING_PROCESSOR] Empty response, retrying ({}/{})",
+                            attempt, MAX_RETRIES
+                        );
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                         continue;
                     }
@@ -1138,7 +1247,10 @@ async fn analyze_step(
                         Err(e) => {
                             last_error = format!("Failed to parse step analysis: {} - Response: {}", e, text);
                             if attempt < MAX_RETRIES {
-                                warn!("[RECORDING_PROCESSOR] Parse error, retrying ({}/{}): {}", attempt, MAX_RETRIES, e);
+                                warn!(
+                                    "[RECORDING_PROCESSOR] Parse error, retrying ({}/{}): {}",
+                                    attempt, MAX_RETRIES, e
+                                );
                                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                                 continue;
                             }
@@ -1149,7 +1261,10 @@ async fn analyze_step(
             Err(e) => {
                 last_error = e.clone();
                 if attempt < MAX_RETRIES {
-                    warn!("[RECORDING_PROCESSOR] API error, retrying ({}/{}): {}", attempt, MAX_RETRIES, e);
+                    warn!(
+                        "[RECORDING_PROCESSOR] API error, retrying ({}/{}): {}",
+                        attempt, MAX_RETRIES, e
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     continue;
                 }
@@ -1170,12 +1285,11 @@ fn build_step_context(
     let mut context = String::new();
 
     // Get current window title
-    let current_window_title = extract_window_title(event)
-        .or_else(|| {
-            // Try to get from nearest UI tree
-            let (tree_before, _) = find_surrounding_ui_trees(&event.timestamp, ui_tree_events);
-            tree_before.and_then(extract_window_title_from_ui_tree)
-        });
+    let current_window_title = extract_window_title(event).or_else(|| {
+        // Try to get from nearest UI tree
+        let (tree_before, _) = find_surrounding_ui_trees(&event.timestamp, ui_tree_events);
+        tree_before.and_then(extract_window_title_from_ui_tree)
+    });
 
     // Add current window title (matching web app: currentWindowTitle)
     if let Some(ref title) = current_window_title {
@@ -1189,25 +1303,29 @@ fn build_step_context(
 
     // Add event data (simplified)
     if let Some(ref click) = event.event.button_click {
-        let pos_str = click.click_position
+        let pos_str = click
+            .click_position
             .as_ref()
             .map(|p| format!("at ({}, {})", p.x, p.y))
             .unwrap_or_else(|| "position unknown".to_string());
-        context.push_str(&format!("Click: {} [{}] {}\n",
-            click.element_text,
-            click.element_role,
-            pos_str));
+        context.push_str(&format!(
+            "Click: {} [{}] {}\n",
+            click.element_text, click.element_role, pos_str
+        ));
     }
     if let Some(ref keyboard) = event.event.keyboard {
-        let key_str = keyboard.character
+        let key_str = keyboard
+            .character
             .map(|c| c.to_string())
             .unwrap_or_else(|| format!("keycode:{}", keyboard.key_code));
         context.push_str(&format!("Keyboard: {}\n", key_str));
     }
     if let Some(ref text_input) = event.event.text_input_completed {
-        context.push_str(&format!("Text Input: {} -> {}\n",
+        context.push_str(&format!(
+            "Text Input: {} -> {}\n",
             text_input.field_name.as_deref().unwrap_or("unknown"),
-            text_input.text_value));
+            text_input.text_value
+        ));
     }
     if let Some(ref nav) = event.event.browser_tab_navigation {
         let title = nav.to_title.as_deref().unwrap_or("unknown");
@@ -1215,7 +1333,10 @@ fn build_step_context(
         context.push_str(&format!("Navigation: {} -> {}\n", title, url));
     }
     if let Some(ref app_switch) = event.event.application_switch {
-        let from_app = app_switch.from_window_and_application_name.as_deref().unwrap_or("unknown");
+        let from_app = app_switch
+            .from_window_and_application_name
+            .as_deref()
+            .unwrap_or("unknown");
         let to_app = &app_switch.to_window_and_application_name;
         context.push_str(&format!("App Switch: {} -> {}\n", from_app, to_app));
     }
@@ -1224,9 +1345,9 @@ fn build_step_context(
     let (tree_before, tree_after) = find_surrounding_ui_trees(&event.timestamp, ui_tree_events);
 
     // Find same-window UI tree for more relevant diff (matching web app)
-    let same_window_tree = current_window_title.as_ref().and_then(|title| {
-        find_same_window_ui_tree(&event.timestamp, title, ui_tree_events)
-    });
+    let same_window_tree = current_window_title
+        .as_ref()
+        .and_then(|title| find_same_window_ui_tree(&event.timestamp, title, ui_tree_events));
 
     // Add UI tree structure explanation (matching web app)
     context.push_str("\nUI_TREE_STRUCTURE: The UI tree is a simplified representation of the accessibility tree. Each line has the format: 'LineNumber. RomanNumeralIndentation. [Role] 'Name' {Attributes}'.\n");
@@ -1250,7 +1371,10 @@ fn build_step_context(
     if let Some(before) = tree_before {
         if let Some(prev_title) = extract_window_title_from_ui_tree(before) {
             context.push_str(&format!("\nPREVIOUS_WINDOW_TITLE: {}\n", prev_title));
-            context.push_str(&format!("PREVIOUS_WINDOW_TIMESTAMP: {}\n", before.timestamp));
+            context.push_str(&format!(
+                "PREVIOUS_WINDOW_TIMESTAMP: {}\n",
+                before.timestamp
+            ));
         }
     }
 
@@ -1258,12 +1382,23 @@ fn build_step_context(
     if let Some(before) = tree_before {
         let events_between = find_events_between_timestamps(&before.timestamp, &event.timestamp, all_events);
         if !events_between.is_empty() {
-            context.push_str(&format!("\nEVENTS_SINCE_PREVIOUS_UI_TREE ({} events):\n", events_between.len()));
+            context.push_str(&format!(
+                "\nEVENTS_SINCE_PREVIOUS_UI_TREE ({} events):\n",
+                events_between.len()
+            ));
             for (i, evt) in events_between.iter().take(10).enumerate() {
-                context.push_str(&format!("  {}. {} at {}\n", i + 1, evt.r#type, evt.timestamp));
+                context.push_str(&format!(
+                    "  {}. {} at {}\n",
+                    i + 1,
+                    evt.r#type,
+                    evt.timestamp
+                ));
             }
             if events_between.len() > 10 {
-                context.push_str(&format!("  ... and {} more events\n", events_between.len() - 10));
+                context.push_str(&format!(
+                    "  ... and {} more events\n",
+                    events_between.len() - 10
+                ));
             }
         }
     }
@@ -1283,7 +1418,10 @@ fn build_step_context(
                 } else {
                     diff
                 };
-                context.push_str(&format!("\nUI_TREE_DIFF (what changed):\n{}\n", truncated_diff));
+                context.push_str(&format!(
+                    "\nUI_TREE_DIFF (what changed):\n{}\n",
+                    truncated_diff
+                ));
             }
         }
     }
@@ -1291,7 +1429,11 @@ fn build_step_context(
     // Add previous analyses (last 3, matching web app: previousAnalyses)
     if !previous_analyses.is_empty() {
         context.push_str("\nPREVIOUS_ANALYSES:\n");
-        let start = if previous_analyses.len() > 3 { previous_analyses.len() - 3 } else { 0 };
+        let start = if previous_analyses.len() > 3 {
+            previous_analyses.len() - 3
+        } else {
+            0
+        };
         for (i, analysis) in previous_analyses[start..].iter().enumerate() {
             context.push_str(&format!(
                 "{}. {} - {}\n   Intent: {}\n   Clicked: {}\n",
@@ -1328,9 +1470,7 @@ async fn add_label(analyses: &mut Vec<StepAnalysis>, index: usize) -> Result<(),
         let a = &analyses[i];
         neighbor_context.push_str(&format!(
             "[{}] {}: {}\n",
-            a.timestamp,
-            a.step_title,
-            a.step_summary
+            a.timestamp, a.step_title, a.step_summary
         ));
     }
 
@@ -1343,9 +1483,8 @@ async fn add_label(analyses: &mut Vec<StepAnalysis>, index: usize) -> Result<(),
     );
 
     // Parse the schema for structured output
-    let response_schema: serde_json::Value =
-        serde_json::from_str(recording_prompts::LABEL_SUGGESTION_SCHEMA)
-            .map_err(|e| format!("Failed to parse label schema: {}", e))?;
+    let response_schema: serde_json::Value = serde_json::from_str(recording_prompts::LABEL_SUGGESTION_SCHEMA)
+        .map_err(|e| format!("Failed to parse label schema: {}", e))?;
 
     let request = VertexAIRequest {
         model: GEMINI_MODEL.to_string(),
@@ -1375,8 +1514,8 @@ async fn add_label(analyses: &mut Vec<StepAnalysis>, index: usize) -> Result<(),
         label: String,
     }
 
-    let label_response: LabelResponse = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse label response: {}", e))?;
+    let label_response: LabelResponse =
+        serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse label response: {}", e))?;
 
     analyses[index].label = Some(label_response.label);
 
@@ -1386,7 +1525,9 @@ async fn add_label(analyses: &mut Vec<StepAnalysis>, index: usize) -> Result<(),
 /// Synthesize workflow from all analyses using structured output
 async fn synthesize_workflow(analyses: &[StepAnalysis]) -> Result<SynthesisResult, String> {
     if analyses.is_empty() {
-        return Ok(SynthesisResult { workflows: Vec::new() });
+        return Ok(SynthesisResult {
+            workflows: Vec::new(),
+        });
     }
 
     // Build timeline context
@@ -1410,9 +1551,8 @@ async fn synthesize_workflow(analyses: &[StepAnalysis]) -> Result<SynthesisResul
     );
 
     // Parse the schema for structured output
-    let response_schema: serde_json::Value =
-        serde_json::from_str(recording_prompts::WORKFLOW_SYNTHESIS_SCHEMA)
-            .map_err(|e| format!("Failed to parse synthesis schema: {}", e))?;
+    let response_schema: serde_json::Value = serde_json::from_str(recording_prompts::WORKFLOW_SYNTHESIS_SCHEMA)
+        .map_err(|e| format!("Failed to parse synthesis schema: {}", e))?;
 
     let request = VertexAIRequest {
         model: GEMINI_MODEL.to_string(),
@@ -1437,10 +1577,17 @@ async fn synthesize_workflow(analyses: &[StepAnalysis]) -> Result<SynthesisResul
 
     let json_str = extract_json(&response.text);
 
-    let result: SynthesisResult = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse synthesis result: {} - Response: {}", e, &response.text))?;
+    let result: SynthesisResult = serde_json::from_str(&json_str).map_err(|e| {
+        format!(
+            "Failed to parse synthesis result: {} - Response: {}",
+            e, &response.text
+        )
+    })?;
 
-    info!("[RECORDING_PROCESSOR] Synthesized {} workflows", result.workflows.len());
+    info!(
+        "[RECORDING_PROCESSOR] Synthesized {} workflows",
+        result.workflows.len()
+    );
 
     Ok(result)
 }
@@ -1455,17 +1602,18 @@ async fn generate_typescript_output(
     let src_dir = workflow_folder.join("src");
     let steps_dir = src_dir.join("steps");
 
-    fs::create_dir_all(&steps_dir)
-        .map_err(|e| format!("Failed to create steps directory: {}", e))?;
+    fs::create_dir_all(&steps_dir).map_err(|e| format!("Failed to create steps directory: {}", e))?;
 
     // Get first workflow (or create default)
-    let workflow = synthesis.workflows.first().cloned().unwrap_or_else(|| {
-        SynthesizedWorkflow {
+    let workflow = synthesis
+        .workflows
+        .first()
+        .cloned()
+        .unwrap_or_else(|| SynthesizedWorkflow {
             title: "Recorded Workflow".to_string(),
             description: "Workflow generated from recording session".to_string(),
             steps: Vec::new(),
-        }
-    });
+        });
 
     // Generate step comments
     let mut step_comments = String::new();
@@ -1500,7 +1648,10 @@ async fn generate_typescript_output(
         for substep in &step.substeps {
             for input in &substep.inputs {
                 if !detected_inputs.contains_key(input) {
-                    detected_inputs.insert(input.clone(), format!("// Found in step: {}", step.step_name));
+                    detected_inputs.insert(
+                        input.clone(),
+                        format!("// Found in step: {}", step.step_name),
+                    );
                 }
             }
         }
@@ -1559,10 +1710,12 @@ async fn generate_typescript_output(
         .replace("{input_fields}", &input_fields)
         .replace("{step_references}", &step_references);
 
-    fs::write(&terminator_path, content)
-        .map_err(|e| format!("Failed to write terminator.ts: {}", e))?;
+    fs::write(&terminator_path, content).map_err(|e| format!("Failed to write terminator.ts: {}", e))?;
 
-    info!("[RECORDING_PROCESSOR] Generated workflow at: {:?}", terminator_path);
+    info!(
+        "[RECORDING_PROCESSOR] Generated workflow at: {:?}",
+        terminator_path
+    );
 
     Ok(())
 }
@@ -1582,7 +1735,10 @@ fn generate_markdown_output(
     // Header
     content.push_str(&format!("# Recording Analysis\n\n"));
     content.push_str(&format!("**Session ID:** {}\n", session_id));
-    content.push_str(&format!("**Generated:** {}\n", Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    content.push_str(&format!(
+        "**Generated:** {}\n",
+        Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    ));
     content.push_str(&format!("**Total Steps Analyzed:** {}\n\n", analyses.len()));
 
     // Step Analysis Section
@@ -1603,7 +1759,10 @@ fn generate_markdown_output(
             content.push_str(&format!("**Typed:** {}\n\n", analysis.what_was_typed));
         }
         if !analysis.how_content_changed.is_empty() && analysis.how_content_changed != "Not available in data" {
-            content.push_str(&format!("**Content Changed:** {}\n\n", analysis.how_content_changed));
+            content.push_str(&format!(
+                "**Content Changed:** {}\n\n",
+                analysis.how_content_changed
+            ));
         }
         if !analysis.results_if_any.is_empty() && analysis.results_if_any != "Not available in data" {
             content.push_str(&format!("**Results:** {}\n\n", analysis.results_if_any));
@@ -1621,11 +1780,20 @@ fn generate_markdown_output(
         content.push_str("## Synthesized Workflows\n\n");
 
         for (w_idx, workflow) in synthesis.workflows.iter().enumerate() {
-            content.push_str(&format!("### Workflow {}: {}\n\n", w_idx + 1, workflow.title));
+            content.push_str(&format!(
+                "### Workflow {}: {}\n\n",
+                w_idx + 1,
+                workflow.title
+            ));
             content.push_str(&format!("{}\n\n", workflow.description));
 
             for (s_idx, step) in workflow.steps.iter().enumerate() {
-                content.push_str(&format!("#### Step {}.{}: {}\n\n", w_idx + 1, s_idx + 1, step.step_name));
+                content.push_str(&format!(
+                    "#### Step {}.{}: {}\n\n",
+                    w_idx + 1,
+                    s_idx + 1,
+                    step.step_name
+                ));
 
                 for substep in &step.substeps {
                     content.push_str(&format!("- **{}**\n", substep.substep_name));
@@ -1636,7 +1804,10 @@ fn generate_markdown_output(
                         content.push_str(&format!("  - Outputs: {}\n", substep.outputs.join(", ")));
                     }
                     if !substep.business_logic.is_empty() {
-                        content.push_str(&format!("  - Logic: {}\n", substep.business_logic.join("; ")));
+                        content.push_str(&format!(
+                            "  - Logic: {}\n",
+                            substep.business_logic.join("; ")
+                        ));
                     }
                 }
                 content.push_str("\n");
@@ -1645,21 +1816,18 @@ fn generate_markdown_output(
     }
 
     // Write markdown file
-    fs::write(&md_path, &content)
-        .map_err(|e| format!("Failed to write markdown analysis: {}", e))?;
+    fs::write(&md_path, &content).map_err(|e| format!("Failed to write markdown analysis: {}", e))?;
 
-    info!("[RECORDING_PROCESSOR] Generated markdown analysis at: {:?}", md_path);
+    info!(
+        "[RECORDING_PROCESSOR] Generated markdown analysis at: {:?}",
+        md_path
+    );
 
     Ok(md_path)
 }
 
 /// Generate a step file
-fn generate_step_file(
-    steps_dir: &PathBuf,
-    step_file: &str,
-    step_id: &str,
-    step: &WorkflowStep,
-) -> Result<(), String> {
+fn generate_step_file(steps_dir: &PathBuf, step_file: &str, step_id: &str, step: &WorkflowStep) -> Result<(), String> {
     let mut substep_comments = String::new();
     let mut input_list = String::new();
     let mut output_list = String::new();
@@ -1679,10 +1847,7 @@ fn generate_step_file(
             logic_list.push_str(&format!("    //   - {}\n", logic));
         }
 
-        step_todos.push_str(&format!(
-            "    // TODO: {}\n",
-            substep.substep_name
-        ));
+        step_todos.push_str(&format!("    // TODO: {}\n", substep.substep_name));
     }
 
     if input_list.is_empty() {
@@ -1700,7 +1865,10 @@ fn generate_step_file(
 
     let content = recording_prompts::STEP_TS_TEMPLATE
         .replace("{step_name}", &step.step_name)
-        .replace("{step_description}", &format!("Step from recorded workflow"))
+        .replace(
+            "{step_description}",
+            &format!("Step from recorded workflow"),
+        )
         .replace("{step_id}", step_id)
         .replace("{substep_comments}", &substep_comments)
         .replace("{input_list}", &input_list)
@@ -1709,8 +1877,7 @@ fn generate_step_file(
         .replace("{step_todos}", &step_todos);
 
     let path = steps_dir.join(format!("{}.ts", step_file));
-    fs::write(&path, content)
-        .map_err(|e| format!("Failed to write step file: {}", e))?;
+    fs::write(&path, content).map_err(|e| format!("Failed to write step file: {}", e))?;
 
     debug!("[RECORDING_PROCESSOR] Generated step file: {:?}", path);
 
@@ -1783,11 +1950,14 @@ fn to_snake_case(s: &str) -> String {
     }
     // Remove consecutive underscores
     let mut prev_underscore = false;
-    result.chars().filter(|&c| {
-        let skip = c == '_' && prev_underscore;
-        prev_underscore = c == '_';
-        !skip
-    }).collect()
+    result
+        .chars()
+        .filter(|&c| {
+            let skip = c == '_' && prev_underscore;
+            prev_underscore = c == '_';
+            !skip
+        })
+        .collect()
 }
 
 /// Convert string to kebab-case
@@ -1797,7 +1967,10 @@ fn to_kebab_case(s: &str) -> String {
 
 /// Convert string to camelCase
 fn to_camel_case(s: &str) -> String {
-    let parts: Vec<&str> = s.split(|c: char| !c.is_alphanumeric()).filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = s
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .collect();
     if parts.is_empty() {
         return String::new();
     }

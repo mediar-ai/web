@@ -51,8 +51,8 @@ pub struct SmartScreenshotManager {
     desktop: Arc<Desktop>,
     low_energy_mode: bool,
     workflow_path: Option<PathBuf>, // Path to current workflow folder for saving screenshots
-    screenshot_counter: u32, // Counter for screenshot filenames
-    event_counter: u32, // Counter for event batch filenames
+    screenshot_counter: u32,        // Counter for screenshot filenames
+    event_counter: u32,             // Counter for event batch filenames
     last_known_process: Option<String>, // Fallback process name when element.process_name() fails
 }
 
@@ -78,7 +78,10 @@ impl SmartScreenshotManager {
         self.screenshot_counter = 0; // Reset counter when workflow changes
         self.event_counter = 0; // Reset event counter when workflow changes
         if let Some(ref p) = self.workflow_path {
-            info!("📸 Screenshot/event path set to: {}/recordings", p.display());
+            info!(
+                "📸 Screenshot/event path set to: {}/recordings",
+                p.display()
+            );
         }
     }
 
@@ -126,7 +129,10 @@ impl SmartScreenshotManager {
 
         // Extract cursor position from the event for drawing on screenshot
         let cursor_screen_pos = get_cursor_position_from_event(event);
-        info!("[cursor] Cursor position from event: {:?}", cursor_screen_pos);
+        info!(
+            "[cursor] Cursor position from event: {:?}",
+            cursor_screen_pos
+        );
 
         // Generate timestamp for this capture
         let capture_timestamp = chrono::Utc::now().to_rfc3339();
@@ -147,7 +153,11 @@ impl SmartScreenshotManager {
                 Ok((screenshot, process_used, used_fallback)) => {
                     // Update last known process on successful capture (even if fallback was used)
                     self.last_known_process = Some(process_used.clone());
-                    let fallback_note = if used_fallback { " [used fallback]" } else { "" };
+                    let fallback_note = if used_fallback {
+                        " [used fallback]"
+                    } else {
+                        ""
+                    };
                     info!(
                         "[ss_fix] Window capture succeeded for: {} ({}){}",
                         event_description, screenshot.monitor_name, fallback_note
@@ -160,7 +170,9 @@ impl SmartScreenshotManager {
                         e
                     );
                     // Fall back to monitor capture
-                    let current_multi_screenshot = self.capture_all_monitors(ui_element.as_ref(), cursor_screen_pos).await?;
+                    let current_multi_screenshot = self
+                        .capture_all_monitors(ui_element.as_ref(), cursor_screen_pos)
+                        .await?;
                     self.select_primary_screenshot(&current_multi_screenshot, ui_element.as_ref())
                         .await?
                 }
@@ -292,7 +304,15 @@ impl SmartScreenshotManager {
             let cursor_pos = cursor_screen_pos;
 
             tauri::async_runtime::spawn(async move {
-                Self::capture_single_monitor(desktop_clone, monitor, monitor_name, timestamp_clone, save_path, cursor_pos).await
+                Self::capture_single_monitor(
+                    desktop_clone,
+                    monitor,
+                    monitor_name,
+                    timestamp_clone,
+                    save_path,
+                    cursor_pos,
+                )
+                .await
             })
         };
         screenshot_tasks.push(primary_task);
@@ -310,7 +330,15 @@ impl SmartScreenshotManager {
                     let cursor_pos = cursor_screen_pos;
 
                     let event_task = tauri::async_runtime::spawn(async move {
-                        Self::capture_single_monitor(desktop_clone, event_monitor, monitor_name, timestamp_clone, save_path, cursor_pos).await
+                        Self::capture_single_monitor(
+                            desktop_clone,
+                            event_monitor,
+                            monitor_name,
+                            timestamp_clone,
+                            save_path,
+                            cursor_pos,
+                        )
+                        .await
                     });
                     screenshot_tasks.push(event_task);
                 }
@@ -349,7 +377,7 @@ impl SmartScreenshotManager {
         monitor: terminator::Monitor,
         monitor_name: String,
         timestamp: String,
-        save_path: Option<PathBuf>, // If set, save PNG to this path
+        save_path: Option<PathBuf>,            // If set, save PNG to this path
         cursor_screen_pos: Option<(i32, i32)>, // Cursor position in screen coordinates
     ) -> Result<ScreenshotResult, String> {
         debug!("📸 Capturing screenshot from monitor: {}", monitor_name);
@@ -366,8 +394,10 @@ impl SmartScreenshotManager {
         if let Some((cursor_x, cursor_y)) = cursor_screen_pos {
             let img_x = cursor_x - monitor_origin.0;
             let img_y = cursor_y - monitor_origin.1;
-            info!("[cursor] Drawing on monitor capture: screen ({}, {}), origin ({}, {}), image ({}, {})",
-                cursor_x, cursor_y, monitor_origin.0, monitor_origin.1, img_x, img_y);
+            info!(
+                "[cursor] Drawing on monitor capture: screen ({}, {}), origin ({}, {}), image ({}, {})",
+                cursor_x, cursor_y, monitor_origin.0, monitor_origin.1, img_x, img_y
+            );
             screenshot.draw_cursor(img_x, img_y);
         }
 
@@ -406,7 +436,11 @@ impl SmartScreenshotManager {
 
         debug!(
             "[ss_fix] Encoded PNG for API: {}x{} -> {}x{} ({} bytes base64)",
-            width, height, final_width, final_height, base64_image.len()
+            width,
+            height,
+            final_width,
+            final_height,
+            base64_image.len()
         );
 
         Ok(ScreenshotResult {
@@ -428,7 +462,7 @@ impl SmartScreenshotManager {
         timestamp: String,
         save_path: Option<PathBuf>,
         cursor_screen_pos: Option<(i32, i32)>, // Cursor position in screen coordinates
-        fallback_process: Option<&str>, // Fallback process name from previous successful capture
+        fallback_process: Option<&str>,        // Fallback process name from previous successful capture
     ) -> Result<(ScreenshotResult, String, bool), String> {
         debug!("[ss_fix] Attempting window capture via process name");
 
@@ -439,7 +473,10 @@ impl SmartScreenshotManager {
             _ => {
                 // Element process failed or returned "unknown", try fallback
                 if let Some(fallback) = fallback_process {
-                    info!("[ss_fix] Element process unknown, using fallback: {}", fallback);
+                    info!(
+                        "[ss_fix] Element process unknown, using fallback: {}",
+                        fallback
+                    );
                     (fallback.to_string(), true)
                 } else {
                     // No fallback available, use "unknown" which will fail capture
@@ -452,7 +489,8 @@ impl SmartScreenshotManager {
 
         // Find window element to get proper window bounds for cursor translation
         // (element might be a button/control inside the window, we need window's top-left)
-        let window_origin = desktop.applications()
+        let window_origin = desktop
+            .applications()
             .ok()
             .and_then(|apps| {
                 let process_lower = process_name.to_lowercase();
@@ -473,17 +511,27 @@ impl SmartScreenshotManager {
         // Capture the full window by process name (like MCP does)
         let mut screenshot = desktop
             .capture_window_by_process(&process_name)
-            .map_err(|e| format!("Failed to capture window for process '{}': {e}", process_name))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to capture window for process '{}': {e}",
+                    process_name
+                )
+            })?;
 
         // Draw cursor on screenshot if position and origin are available (using terminator's method)
         if let (Some((cursor_x, cursor_y)), Some((origin_x, origin_y))) = (cursor_screen_pos, window_origin) {
             let img_x = cursor_x - origin_x;
             let img_y = cursor_y - origin_y;
-            info!("[cursor] Drawing on window capture: screen ({}, {}), origin ({}, {}), image ({}, {})",
-                cursor_x, cursor_y, origin_x, origin_y, img_x, img_y);
+            info!(
+                "[cursor] Drawing on window capture: screen ({}, {}), origin ({}, {}), image ({}, {})",
+                cursor_x, cursor_y, origin_x, origin_y, img_x, img_y
+            );
             screenshot.draw_cursor(img_x, img_y);
         } else if cursor_screen_pos.is_some() {
-            info!("[cursor] Cannot draw: cursor_pos={:?}, origin={:?}", cursor_screen_pos, window_origin);
+            info!(
+                "[cursor] Cannot draw: cursor_pos={:?}, origin={:?}",
+                cursor_screen_pos, window_origin
+            );
         }
 
         let original_width = screenshot.width;
@@ -491,7 +539,12 @@ impl SmartScreenshotManager {
 
         // Save to disk if path is provided (cursor already drawn on screenshot)
         if let Some(path) = save_path {
-            match save_screenshot_as_png(&screenshot.image_data, original_width, original_height, &path) {
+            match save_screenshot_as_png(
+                &screenshot.image_data,
+                original_width,
+                original_height,
+                &path,
+            ) {
                 Ok(_) => info!("[ss_fix] Window screenshot saved to: {}", path.display()),
                 Err(e) => warn!("[ss_fix] Failed to save window screenshot: {}", e),
             }
@@ -501,14 +554,20 @@ impl SmartScreenshotManager {
         let base64_image = screenshot
             .to_base64_png_resized(Some(1920))
             .map_err(|e| format!("Failed to encode PNG: {e}"))?;
-        
+
         let (final_width, final_height) = screenshot.resized_dimensions(1920);
-        
+
         let fallback_indicator = if used_fallback { " [FALLBACK]" } else { "" };
         info!(
             "[ss_fix] Window capture{}: '{}' (pid:{}) {}x{} -> {}x{} ({} KB)",
-            fallback_indicator, process_name, process_id, original_width, original_height,
-            final_width, final_height, base64_image.len() / 1024
+            fallback_indicator,
+            process_name,
+            process_id,
+            original_width,
+            original_height,
+            final_width,
+            final_height,
+            base64_image.len() / 1024
         );
 
         // Include fallback indicator in monitor_name for downstream consumers
@@ -518,14 +577,18 @@ impl SmartScreenshotManager {
             format!("window:{}", window_name)
         };
 
-        Ok((ScreenshotResult {
-            base64_image,
-            ocr_text: String::new(),
-            width: final_width,
-            height: final_height,
-            timestamp,
-            monitor_name,
-        }, process_name, used_fallback))
+        Ok((
+            ScreenshotResult {
+                base64_image,
+                ocr_text: String::new(),
+                width: final_width,
+                height: final_height,
+                timestamp,
+                monitor_name,
+            },
+            process_name,
+            used_fallback,
+        ))
     }
 
     /// Select the primary screenshot for backward compatibility
@@ -615,12 +678,7 @@ fn get_cursor_position_from_event(event: Option<&TerminatorWorkflowEvent>) -> Op
 
 /// Save screenshot as PNG to disk with resizing (max 1920px, same as MCP)
 /// Cursor should be drawn on the ScreenshotResult before calling this function
-fn save_screenshot_as_png(
-    image_data: &[u8],
-    width: u32,
-    height: u32,
-    path: &PathBuf,
-) -> Result<(), String> {
+fn save_screenshot_as_png(image_data: &[u8], width: u32, height: u32, path: &PathBuf) -> Result<(), String> {
     use image::codecs::png::PngEncoder;
     use image::imageops::FilterType;
     use image::ImageEncoder;
@@ -638,19 +696,19 @@ fn save_screenshot_as_png(
         .flat_map(|bgra| [bgra[2], bgra[1], bgra[0], bgra[3]]) // BGRA -> RGBA
         .collect();
 
-    let img = image::RgbaImage::from_raw(width, height, rgba_data)
-        .ok_or("Failed to create image from raw data")?;
+    let img = image::RgbaImage::from_raw(width, height, rgba_data).ok_or("Failed to create image from raw data")?;
 
     // Resize if needed (max 1920px on either dimension, same as MCP)
-    let (final_img, final_width, final_height) = if width > MAX_SCREENSHOT_DIMENSION || height > MAX_SCREENSHOT_DIMENSION {
-        let scale = (MAX_SCREENSHOT_DIMENSION as f32 / width.max(height) as f32).min(1.0);
-        let new_width = (width as f32 * scale).round() as u32;
-        let new_height = (height as f32 * scale).round() as u32;
-        let resized = image::imageops::resize(&img, new_width, new_height, FilterType::Lanczos3);
-        (resized, new_width, new_height)
-    } else {
-        (img, width, height)
-    };
+    let (final_img, final_width, final_height) =
+        if width > MAX_SCREENSHOT_DIMENSION || height > MAX_SCREENSHOT_DIMENSION {
+            let scale = (MAX_SCREENSHOT_DIMENSION as f32 / width.max(height) as f32).min(1.0);
+            let new_width = (width as f32 * scale).round() as u32;
+            let new_height = (height as f32 * scale).round() as u32;
+            let resized = image::imageops::resize(&img, new_width, new_height, FilterType::Lanczos3);
+            (resized, new_width, new_height)
+        } else {
+            (img, width, height)
+        };
 
     // Save as PNG
     let file = fs::File::create(path).map_err(|e| format!("Failed to create file: {e}"))?;
@@ -658,7 +716,12 @@ fn save_screenshot_as_png(
     let encoder = PngEncoder::new(writer);
 
     encoder
-        .write_image(&final_img, final_width, final_height, image::ExtendedColorType::Rgba8)
+        .write_image(
+            &final_img,
+            final_width,
+            final_height,
+            image::ExtendedColorType::Rgba8,
+        )
         .map_err(|e| format!("Failed to encode PNG: {e}"))?;
 
     Ok(())
@@ -670,10 +733,7 @@ fn save_screenshot_as_png(
 // }
 
 /// Save event batch as JSON to disk
-fn save_events_as_json(
-    events: &[terminator_workflow_recorder::WorkflowEvent],
-    path: &PathBuf,
-) -> Result<(), String> {
+fn save_events_as_json(events: &[terminator_workflow_recorder::WorkflowEvent], path: &PathBuf) -> Result<(), String> {
     use std::fs;
     use std::io::Write;
 
@@ -683,15 +743,18 @@ fn save_events_as_json(
     }
 
     // Serialize events to JSON
-    let json = serde_json::to_string_pretty(events)
-        .map_err(|e| format!("Failed to serialize events: {e}"))?;
+    let json = serde_json::to_string_pretty(events).map_err(|e| format!("Failed to serialize events: {e}"))?;
 
     // Write to file
     let mut file = fs::File::create(path).map_err(|e| format!("Failed to create file: {e}"))?;
     file.write_all(json.as_bytes())
         .map_err(|e| format!("Failed to write file: {e}"))?;
 
-    info!("📋 Event batch saved to: {} ({} events)", path.display(), events.len());
+    info!(
+        "📋 Event batch saved to: {} ({} events)",
+        path.display(),
+        events.len()
+    );
     Ok(())
 }
 
@@ -787,7 +850,9 @@ pub async fn capture_all_monitors_for_event(
 
             let ui_element = event.and_then(|e| e.ui_element().cloned());
             let cursor_screen_pos = get_cursor_position_from_event(event);
-            manager.capture_all_monitors(ui_element.as_ref(), cursor_screen_pos).await
+            manager
+                .capture_all_monitors(ui_element.as_ref(), cursor_screen_pos)
+                .await
         }
         None => Err("Smart screenshot system not initialized".to_string()),
     }
