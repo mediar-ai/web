@@ -222,9 +222,7 @@ impl UITreeCaptureManager {
         // Helper to serialize tree to string
         let serialize_tree = |window_tree: &terminator::UINode| -> String {
             match self.format {
-                UITreeFormat::Json => {
-                    serde_json::to_string_pretty(window_tree).unwrap_or_else(|_| "{}".to_string())
-                }
+                UITreeFormat::Json => serde_json::to_string_pretty(window_tree).unwrap_or_else(|_| "{}".to_string()),
                 UITreeFormat::CompactYaml => format_ui_node_as_compact_yaml(window_tree, 0).formatted,
             }
         };
@@ -235,10 +233,7 @@ impl UITreeCaptureManager {
             match desktop.get_window_tree_from_element(element, None) {
                 Ok(window_tree) => {
                     let tree = serialize_tree(&window_tree);
-                    info!(
-                        "🌳 UI tree captured via element ({} chars)",
-                        tree.len()
-                    );
+                    info!("🌳 UI tree captured via element ({} chars)", tree.len());
                     tree
                 }
                 Err(e) => {
@@ -353,9 +348,7 @@ impl UITreeCaptureManager {
         if pid.is_none() {
             let app_name_empty = application_name.as_ref().map_or(true, |s| s.is_empty());
             if app_name_empty {
-                debug!(
-                    "🔍 Skipping orphan element (no PID, no app_name) - likely transient UI element"
-                );
+                debug!("🔍 Skipping orphan element (no PID, no app_name) - likely transient UI element");
                 return Err("Orphan element without PID or app name".to_string());
             }
         }

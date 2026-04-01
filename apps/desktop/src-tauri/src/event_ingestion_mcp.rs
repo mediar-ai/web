@@ -236,7 +236,10 @@ fn build_enhanced_ui_element(event: &WorkflowEvent) -> Option<EnhancedUIElement>
         _ => (None, None),
     };
 
-    debug!("[build_enhanced_ui_element] process_name from event: {:?}", process_name);
+    debug!(
+        "[build_enhanced_ui_element] process_name from event: {:?}",
+        process_name
+    );
 
     // Defensive check: UI element doesn't exist - log warning and return None
     if ui_element.is_none() {
@@ -272,11 +275,17 @@ fn build_enhanced_ui_element(event: &WorkflowEvent) -> Option<EnhancedUIElement>
     // Prepend process: prefix to chained selector if we have process_name
     let chained_selector = match (&raw_chained_selector, &process_name) {
         (Some(sel), Some(proc)) => {
-            debug!("[build_enhanced_ui_element] Adding process prefix: process:{} >> {}", proc, sel);
+            debug!(
+                "[build_enhanced_ui_element] Adding process prefix: process:{} >> {}",
+                proc, sel
+            );
             Some(format!("process:{} >> {}", proc, sel))
         }
         (Some(sel), None) => {
-            warn!("[build_enhanced_ui_element] No process_name available, selector may fail: {}", sel);
+            warn!(
+                "[build_enhanced_ui_element] No process_name available, selector may fail: {}",
+                sel
+            );
             Some(sel.clone())
         }
         _ => None,
@@ -286,7 +295,10 @@ fn build_enhanced_ui_element(event: &WorkflowEvent) -> Option<EnhancedUIElement>
     let suggested_selectors = match &process_name {
         Some(proc) => {
             if !name.is_empty() {
-                vec![format!("process:{} >> role:{} && text:{}", proc, role, name)]
+                vec![format!(
+                    "process:{} >> role:{} && text:{}",
+                    proc, role, name
+                )]
             } else {
                 vec![format!("process:{} >> role:{}", proc, role)]
             }

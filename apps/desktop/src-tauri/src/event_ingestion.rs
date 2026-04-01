@@ -38,7 +38,12 @@ async fn acquire_write_lock(
     let start = Instant::now();
     debug!("🔒 [{}] Acquiring EVENT_INGESTION write lock...", caller);
 
-    match timeout(Duration::from_secs(LOCK_TIMEOUT_SECS), EVENT_INGESTION.write()).await {
+    match timeout(
+        Duration::from_secs(LOCK_TIMEOUT_SECS),
+        EVENT_INGESTION.write(),
+    )
+    .await
+    {
         Ok(guard) => {
             let elapsed = start.elapsed();
             if elapsed > Duration::from_secs(1) {
@@ -77,7 +82,12 @@ async fn acquire_read_lock(
     let start = Instant::now();
     debug!("🔒 [{}] Acquiring EVENT_INGESTION read lock...", caller);
 
-    match timeout(Duration::from_secs(LOCK_TIMEOUT_SECS), EVENT_INGESTION.read()).await {
+    match timeout(
+        Duration::from_secs(LOCK_TIMEOUT_SECS),
+        EVENT_INGESTION.read(),
+    )
+    .await
+    {
         Ok(guard) => {
             let elapsed = start.elapsed();
             if elapsed > Duration::from_secs(1) {
@@ -486,10 +496,16 @@ impl EventIngestionManager {
 
             tauri::async_runtime::spawn(async move {
                 if let (Some(uid), Some(token)) = (user_id, auth_token) {
-                    info!("[event_ingestion] First event - triggering Modal processing for session {}", session_id);
+                    info!(
+                        "[event_ingestion] First event - triggering Modal processing for session {}",
+                        session_id
+                    );
                     match crate::recording_progress::notify_recording_started(&session_id, &uid, &token).await {
                         Ok(()) => info!("[event_ingestion] Modal processing triggered successfully"),
-                        Err(e) => warn!("[event_ingestion] Failed to trigger Modal processing: {}", e),
+                        Err(e) => warn!(
+                            "[event_ingestion] Failed to trigger Modal processing: {}",
+                            e
+                        ),
                     }
                 } else {
                     warn!("[event_ingestion] Cannot trigger Modal - missing user_id or auth_token");
@@ -842,7 +858,10 @@ impl EventIngestionManager {
 
     /// Set the session_id to a specific value (used to sync with workflow folder ID)
     pub fn set_session_id(&mut self, session_id: String) {
-        info!("[session_sync] Setting session_id to match workflow: {}", session_id);
+        info!(
+            "[session_sync] Setting session_id to match workflow: {}",
+            session_id
+        );
         self.session_id = session_id;
     }
 }
@@ -1551,7 +1570,10 @@ pub async fn update_user_id(user_id: String) -> Result<(), String> {
 /// Set the session_id to sync with workflow folder ID
 /// This ensures backend events and local workflow use the same ID
 pub async fn set_session_id(session_id: String) -> Result<(), String> {
-    info!("[session_sync] Setting event ingestion session_id to: {}", session_id);
+    info!(
+        "[session_sync] Setting event ingestion session_id to: {}",
+        session_id
+    );
 
     // First update the session_id and stop the batch sender
     {
@@ -1672,9 +1694,16 @@ pub async fn drain_recorded_events_batch() -> Result<Vec<WorkflowEvent>, String>
         };
 
         // Update the index to current length
-        manager.last_batch_save_index.store(current_len, Ordering::SeqCst);
+        manager
+            .last_batch_save_index
+            .store(current_len, Ordering::SeqCst);
 
-        debug!("📦 Cloned {} events for batch save (index {} -> {})", events.len(), last_index, current_len);
+        debug!(
+            "📦 Cloned {} events for batch save (index {} -> {})",
+            events.len(),
+            last_index,
+            current_len
+        );
         Ok(events)
     } else {
         Err("Event ingestion not initialized".to_string())

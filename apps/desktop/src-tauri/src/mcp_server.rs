@@ -25,9 +25,9 @@ pub fn localhost_http_client() -> reqwest::Client {
 pub struct McpServerManager {
     port: u16,
     is_running: Arc<AtomicBool>,
-    is_ready: Arc<AtomicBool>,           // Only true when /mcp endpoint is fully initialized
-    is_restarting: Arc<AtomicBool>,      // Prevents concurrent restart attempts
-    is_tool_executing: Arc<AtomicBool>,  // Skip health checks during tool execution
+    is_ready: Arc<AtomicBool>,          // Only true when /mcp endpoint is fully initialized
+    is_restarting: Arc<AtomicBool>,     // Prevents concurrent restart attempts
+    is_tool_executing: Arc<AtomicBool>, // Skip health checks during tool execution
     start_time: Option<Instant>,
     auto_restart_enabled: bool,
     process_pid: Option<u32>,
@@ -817,7 +817,16 @@ pub async fn initialize_mcp_server(app_handle: tauri::AppHandle) {
             check_interval.tick().await;
 
             // Step 1: Get current state with brief lock
-            let (auto_restart_enabled, port, restart_count, process_pid, is_running, is_ready, is_restarting, is_tool_executing) = {
+            let (
+                auto_restart_enabled,
+                port,
+                restart_count,
+                process_pid,
+                is_running,
+                is_ready,
+                is_restarting,
+                is_tool_executing,
+            ) = {
                 let manager = server.lock().await;
                 (
                     manager.auto_restart_enabled,
@@ -1304,7 +1313,12 @@ async fn do_health_check_standalone(port: u16, process_pid: Option<u32>) -> bool
     );
 
     // Use localhost_http_client() to bypass system proxy (VPN software like Clash/V2Ray)
-    match tokio::time::timeout(Duration::from_secs(timeout_secs), localhost_http_client().get(&url).send()).await {
+    match tokio::time::timeout(
+        Duration::from_secs(timeout_secs),
+        localhost_http_client().get(&url).send(),
+    )
+    .await
+    {
         Ok(Ok(response)) => {
             let status = response.status();
             let is_success = status.is_success();

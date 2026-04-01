@@ -517,7 +517,10 @@ fn build_request_body(request: &VertexAIRequest, system: Option<&str>) -> serde_
     if let Some(ref config) = request.generation_config {
         if let Some(ref mime_type) = config.response_mime_type {
             gen_config["responseMimeType"] = serde_json::json!(mime_type);
-            log::debug!("[VERTEX] Using structured output with mime type: {}", mime_type);
+            log::debug!(
+                "[VERTEX] Using structured output with mime type: {}",
+                mime_type
+            );
         }
         if let Some(ref schema) = config.response_schema {
             gen_config["responseSchema"] = schema.clone();
@@ -1277,10 +1280,7 @@ mod tests {
             "gemini-2.5-flash"
         );
         assert_eq!(get_vertex_model_name("gemini-2.5-pro"), "gemini-2.5-pro");
-        assert_eq!(
-            get_vertex_model_name("gemini-3-pro"),
-            "gemini-pro-latest"
-        );
+        assert_eq!(get_vertex_model_name("gemini-3-pro"), "gemini-pro-latest");
         assert_eq!(
             get_vertex_model_name("gemini-3-pro-preview"),
             "gemini-pro-latest"
