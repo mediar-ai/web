@@ -1,8 +1,8 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use walkdir::WalkDir;
 
 /// Represents a saved version/snapshot of a workflow (stored as JSON + file copies)
@@ -52,8 +52,7 @@ struct VersionMetadata {
 
 /// Get the central local history directory: ~/.mediar/local-history/{workflow-id}/
 fn get_history_dir(workflow_id: &str) -> Result<PathBuf, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Could not find home directory".to_string())?;
     Ok(home.join(".mediar").join("local-history").join(workflow_id))
 }
 
@@ -146,8 +145,7 @@ pub async fn save_workflow_version(
 
     // Create history directory in ~/.mediar/local-history/{workflow-id}/
     let history_dir = get_history_dir(&workflow_id)?;
-    fs::create_dir_all(&history_dir)
-        .map_err(|e| format!("Failed to create history directory: {}", e))?;
+    fs::create_dir_all(&history_dir).map_err(|e| format!("Failed to create history directory: {}", e))?;
 
     // Generate version info
     let version_id = Uuid::new_v4().to_string();
@@ -156,8 +154,7 @@ pub async fn save_workflow_version(
 
     // Create version directory
     let version_dir = get_version_dir(&workflow_id, &version_id)?;
-    fs::create_dir_all(&version_dir)
-        .map_err(|e| format!("Failed to create version directory: {}", e))?;
+    fs::create_dir_all(&version_dir).map_err(|e| format!("Failed to create version directory: {}", e))?;
 
     // Get files to snapshot
     let files_to_copy = get_files_to_version(&workflow_path);
@@ -170,14 +167,12 @@ pub async fn save_workflow_version(
 
         // Create parent directories
         if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory for {}: {}", file, e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory for {}: {}", file, e))?;
         }
 
         // Copy file
         if src.exists() {
-            fs::copy(&src, &dst)
-                .map_err(|e| format!("Failed to copy file {}: {}", file, e))?;
+            fs::copy(&src, &dst).map_err(|e| format!("Failed to copy file {}: {}", file, e))?;
             changed_files.push(file.clone());
         }
     }
@@ -196,10 +191,9 @@ pub async fn save_workflow_version(
     };
 
     let metadata_path = version_dir.join("metadata.json");
-    let metadata_json = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
-    fs::write(&metadata_path, metadata_json)
-        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+    let metadata_json =
+        serde_json::to_string_pretty(&metadata).map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    fs::write(&metadata_path, metadata_json).map_err(|e| format!("Failed to write metadata: {}", e))?;
 
     tracing::info!(
         "[LOCAL_HISTORY] Saved version {} (v{}) for workflow {} - {} files",
@@ -223,9 +217,7 @@ pub async fn save_workflow_version(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn list_workflow_versions(
-    workflow_path: String,
-) -> Result<ListVersionsResult, String> {
+pub async fn list_workflow_versions(workflow_path: String) -> Result<ListVersionsResult, String> {
     let workflow_id = get_workflow_id_from_path(&workflow_path);
     let history_dir = get_history_dir(&workflow_id)?;
 
@@ -292,8 +284,7 @@ pub async fn restore_workflow_version(
     let metadata: VersionMetadata = fs::read_to_string(&metadata_path)
         .map_err(|e| format!("Failed to read version metadata: {}", e))
         .and_then(|content| {
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse version metadata: {}", e))
+            serde_json::from_str(&content).map_err(|e| format!("Failed to parse version metadata: {}", e))
         })?;
 
     let mut restored_files = Vec::new();
@@ -306,13 +297,11 @@ pub async fn restore_workflow_version(
         if src.exists() {
             // Create parent directories if needed
             if let Some(parent) = dst.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create directory for {}: {}", file, e))?;
+                fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory for {}: {}", file, e))?;
             }
 
             // Copy file back
-            fs::copy(&src, &dst)
-                .map_err(|e| format!("Failed to restore file {}: {}", file, e))?;
+            fs::copy(&src, &dst).map_err(|e| format!("Failed to restore file {}: {}", file, e))?;
             restored_files.push(file.clone());
         }
     }
@@ -332,10 +321,7 @@ pub async fn restore_workflow_version(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_workflow_version(
-    workflow_path: String,
-    version_id: String,
-) -> Result<(), String> {
+pub async fn delete_workflow_version(workflow_path: String, version_id: String) -> Result<(), String> {
     let workflow_id = get_workflow_id_from_path(&workflow_path);
     let version_dir = get_version_dir(&workflow_id, &version_id)?;
 
@@ -343,8 +329,7 @@ pub async fn delete_workflow_version(
         return Err(format!("Version {} not found", version_id));
     }
 
-    fs::remove_dir_all(&version_dir)
-        .map_err(|e| format!("Failed to delete version: {}", e))?;
+    fs::remove_dir_all(&version_dir).map_err(|e| format!("Failed to delete version: {}", e))?;
 
     tracing::info!("[LOCAL_HISTORY] Deleted version {}", version_id);
 

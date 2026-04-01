@@ -1926,7 +1926,10 @@ pub async fn publish_typescript_workflow(
                 if let Err(e) = fs::write(&package_json_path, updated) {
                     warn!("Failed to update local package.json version: {}", e);
                 } else {
-                    info!("[publish] Updated local package.json version to {}", result.version);
+                    info!(
+                        "[publish] Updated local package.json version to {}",
+                        result.version
+                    );
                 }
             }
         }

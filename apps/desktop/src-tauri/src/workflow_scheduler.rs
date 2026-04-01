@@ -587,7 +587,11 @@ impl WorkflowScheduler {
                         warn!(
                             "Workflow '{}' execution may have failed: {}",
                             workflow.workflow_name,
-                            if result_str.len() > 500 { &result_str[..500] } else { &result_str }
+                            if result_str.len() > 500 {
+                                &result_str[..500]
+                            } else {
+                                &result_str
+                            }
                         );
                     }
                 }
@@ -603,8 +607,14 @@ impl WorkflowScheduler {
                         .send()
                         .await;
                     match del_result {
-                        Ok(_) => info!("[scheduler] Sent session close DELETE for '{}'", workflow.workflow_name),
-                        Err(e) => warn!("[scheduler] Failed to close session for '{}': {}", workflow.workflow_name, e),
+                        Ok(_) => info!(
+                            "[scheduler] Sent session close DELETE for '{}'",
+                            workflow.workflow_name
+                        ),
+                        Err(e) => warn!(
+                            "[scheduler] Failed to close session for '{}': {}",
+                            workflow.workflow_name, e
+                        ),
                     }
                 }
 
@@ -625,7 +635,10 @@ impl WorkflowScheduler {
                         .timeout(Duration::from_secs(5))
                         .send()
                         .await;
-                    info!("[scheduler] Sent session close DELETE after error for '{}'", workflow.workflow_name);
+                    info!(
+                        "[scheduler] Sent session close DELETE after error for '{}'",
+                        workflow.workflow_name
+                    );
                 }
                 Err(format!("Failed to call MCP: {}", e))
             }
@@ -633,12 +646,7 @@ impl WorkflowScheduler {
     }
 
     /// Handle SSE events and emit Tauri events for progress updates
-    fn handle_sse_event(
-        &self,
-        json: &serde_json::Value,
-        workflow: &ScheduledWorkflow,
-        app_handle: &tauri::AppHandle,
-    ) {
+    fn handle_sse_event(&self, json: &serde_json::Value, workflow: &ScheduledWorkflow, app_handle: &tauri::AppHandle) {
         let method = json.get("method").and_then(|v| v.as_str());
         let params = json.get("params");
 
@@ -819,12 +827,20 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
             drop(scheduler); // Release read lock before executing
 
             for workflow in workflows {
-                if let TriggerConfig::Cron { ref schedule, jitter_minutes, .. } = workflow.trigger {
+                if let TriggerConfig::Cron {
+                    ref schedule,
+                    jitter_minutes,
+                    ..
+                } = workflow.trigger
+                {
                     if WorkflowScheduler::should_execute_cron(schedule, workflow.last_executed) {
                         // Skip if this workflow is already executing (prevents overlap)
                         {
                             let scheduler = WORKFLOW_SCHEDULER.read().await;
-                            if scheduler.currently_executing.contains(&workflow.workflow_id) {
+                            if scheduler
+                                .currently_executing
+                                .contains(&workflow.workflow_id)
+                            {
                                 warn!(
                                     "[SCHEDULER] Workflow '{}' is still executing, skipping this tick",
                                     workflow.workflow_name
@@ -836,7 +852,9 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
                         // Mark as currently executing
                         {
                             let mut scheduler = WORKFLOW_SCHEDULER.write().await;
-                            scheduler.currently_executing.insert(workflow.workflow_id.clone());
+                            scheduler
+                                .currently_executing
+                                .insert(workflow.workflow_id.clone());
                         }
 
                         info!(
@@ -889,7 +907,9 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
 
                             // Execute the workflow with SSE streaming for progress events
                             let scheduler = WORKFLOW_SCHEDULER.read().await;
-                            let result = scheduler.execute_workflow(&workflow, &app_handle_for_task).await;
+                            let result = scheduler
+                                .execute_workflow(&workflow, &app_handle_for_task)
+                                .await;
                             drop(scheduler);
 
                             let completed_at = Utc::now();
@@ -982,7 +1002,9 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
                             );
                             // Clean up currently_executing since the task didn't get to do it
                             let mut scheduler = WORKFLOW_SCHEDULER.write().await;
-                            scheduler.currently_executing.remove(&workflow_id_for_cleanup);
+                            scheduler
+                                .currently_executing
+                                .remove(&workflow_id_for_cleanup);
                         }
                     }
                 }
@@ -1025,7 +1047,14 @@ fn parse_trigger_from_typescript(terminator_ts_content: &str) -> Option<(Trigger
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str().to_string());
 
-    Some((TriggerConfig::Cron { schedule, timezone, jitter_minutes: None }, enabled))
+    Some((
+        TriggerConfig::Cron {
+            schedule,
+            timezone,
+            jitter_minutes: None,
+        },
+        enabled,
+    ))
 }
 
 /// Load scheduled workflows from the workflows directory
