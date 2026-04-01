@@ -397,12 +397,7 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
 
         // log_files is already sorted by modification time (most recent first)
         for (idx, (path, _modified)) in log_files.iter().enumerate() {
-            info!(
-                "[ZIP] file {} of {}: {:?}",
-                idx + 1,
-                log_files.len(),
-                path
-            );
+            info!("[ZIP] file {} of {}: {:?}", idx + 1, log_files.len(), path);
 
             let file_name = path
                 .file_name()
@@ -411,11 +406,7 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
 
             let mut contents = match read_file_with_shared_access(path) {
                 Ok(data) => {
-                    info!(
-                        "[ZIP] read {} bytes from {}",
-                        data.len(),
-                        file_name
-                    );
+                    info!("[ZIP] read {} bytes from {}", data.len(), file_name);
                     data
                 }
                 Err(e) => {
@@ -431,10 +422,15 @@ pub fn zip_log_files(log_files: &[(PathBuf, std::time::SystemTime)]) -> Result<(
                 let skip = contents.len() - MAX_PER_FILE_SIZE;
                 info!(
                     "[ZIP] tailing {} from {} bytes to {} bytes (skipping first {} bytes)",
-                    file_name, contents.len(), MAX_PER_FILE_SIZE, skip
+                    file_name,
+                    contents.len(),
+                    MAX_PER_FILE_SIZE,
+                    skip
                 );
                 // Find next newline after skip point to avoid cutting mid-line
-                let start = contents[skip..].iter().position(|&b| b == b'\n')
+                let start = contents[skip..]
+                    .iter()
+                    .position(|&b| b == b'\n')
                     .map(|p| skip + p + 1)
                     .unwrap_or(skip);
                 contents = contents[start..].to_vec();

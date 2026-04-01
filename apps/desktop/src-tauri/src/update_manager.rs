@@ -226,7 +226,10 @@ pub async fn skip_update_version(app: AppHandle, version: String) -> Result<(), 
     if !settings.skipped_update_versions.contains(&version) {
         settings.skipped_update_versions.push(version.clone());
         save_settings(&settings).await?;
-        info!("[UPDATE] Persisted skipped version {} to settings.json", version);
+        info!(
+            "[UPDATE] Persisted skipped version {} to settings.json",
+            version
+        );
     }
 
     // Clear pending update from memory
@@ -250,7 +253,10 @@ pub async fn set_update_remind_later() -> Result<(), String> {
     // 1 hour from now
     let remind_until = now + 3600;
 
-    info!("[UPDATE] set_update_remind_later: hiding until timestamp {}", remind_until);
+    info!(
+        "[UPDATE] set_update_remind_later: hiding until timestamp {}",
+        remind_until
+    );
 
     let mut settings = load_settings().await?;
     settings.update_remind_later_until = Some(remind_until);
@@ -283,7 +289,10 @@ pub async fn should_show_update(version: String) -> Result<bool, String> {
 
     // Check if version is skipped
     if settings.skipped_update_versions.contains(&version) {
-        info!("[UPDATE] should_show_update: version {} is skipped", version);
+        info!(
+            "[UPDATE] should_show_update: version {} is skipped",
+            version
+        );
         return Ok(false);
     }
 
@@ -295,12 +304,18 @@ pub async fn should_show_update(version: String) -> Result<bool, String> {
             .as_secs() as i64;
 
         if now < remind_until {
-            info!("[UPDATE] should_show_update: remind later active until {}, now is {}", remind_until, now);
+            info!(
+                "[UPDATE] should_show_update: remind later active until {}, now is {}",
+                remind_until, now
+            );
             return Ok(false);
         }
     }
 
-    info!("[UPDATE] should_show_update: version {} should be shown", version);
+    info!(
+        "[UPDATE] should_show_update: version {} should be shown",
+        version
+    );
     Ok(true)
 }
 
@@ -363,7 +378,10 @@ pub async fn start_background_update_checker(app_handle: AppHandle) {
                             };
 
                             if !should_show {
-                                info!("[UPDATE] Background: Update {} hidden (skipped or remind-later)", version);
+                                info!(
+                                    "[UPDATE] Background: Update {} hidden (skipped or remind-later)",
+                                    version
+                                );
                             } else {
                                 let current_version = app_handle.package_info().version.to_string();
                                 let info = UpdateInfo {
