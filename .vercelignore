@@ -13,8 +13,7 @@ __tests__/
 .github/
 supabase/
 
-# Lock files (Vercel uses package-lock.json)
-bun.lock
+# Lock files
 uv.lock
 
 # Python
