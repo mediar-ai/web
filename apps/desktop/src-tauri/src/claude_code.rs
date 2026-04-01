@@ -18,14 +18,17 @@ use agent_client_protocol::{
 };
 use anyhow::Result;
 use reqwest::Client;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -212,7 +215,10 @@ async fn fetch_cumulative_cost(desktop_token: &str) -> std::result::Result<f64, 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("Cumulative cost request failed: {} - {}", status, body));
+        return Err(format!(
+            "Cumulative cost request failed: {} - {}",
+            status, body
+        ));
     }
 
     let json: serde_json::Value = response
@@ -225,32 +231,153 @@ async fn fetch_cumulative_cost(desktop_token: &str) -> std::result::Result<f64, 
     Ok(cost)
 }
 
-/// Resolve the acp-resources directory.
-/// In dev: src-tauri/acp-resources/
-/// In production: next to the exe in _up_/resources/acp-resources/
-fn resolve_acp_resources_dir() -> PathBuf {
-    // Dev mode: check relative to Cargo manifest
-    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("acp-resources");
-    if dev_path.exists() {
-        log::info!("[claude_code] Using dev acp-resources: {:?}", dev_path);
-        return dev_path;
+const ACP_RUNTIME_STAMP_FILE: &str = ".source-stamp";
+
+fn dev_acp_resources_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("acp-resources")
+}
+
+fn acp_resource_file_names() -> [&'static str; 2] {
+    ["package.json", "patched-acp-entry.mjs"]
+}
+
+fn has_required_acp_files(dir: &Path) -> bool {
+    acp_resource_file_names()
+        .iter()
+        .all(|name| dir.join(name).exists())
+}
+
+fn resolve_acp_source_dir(app_handle: &AppHandle) -> std::result::Result<PathBuf, String> {
+    let dev_path = dev_acp_resources_dir();
+
+    #[cfg(debug_assertions)]
+    if has_required_acp_files(&dev_path) {
+        log::info!(
+            "[claude_code] Using dev acp-resources source: {:?}",
+            dev_path
+        );
+        return Ok(dev_path);
     }
 
-    // Production: next to the exe
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        candidates.push(resource_dir.join("acp-resources"));
+    }
+
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            // Tauri bundles resources next to the exe (Windows)
-            let prod_path = exe_dir.join("acp-resources");
-            if prod_path.exists() {
-                log::info!("[claude_code] Using bundled acp-resources: {:?}", prod_path);
-                return prod_path;
-            }
+            candidates.push(exe_dir.join("resources").join("acp-resources"));
+            candidates.push(exe_dir.join("_up_").join("resources").join("acp-resources"));
+            candidates.push(exe_dir.join("acp-resources"));
         }
     }
 
-    // Fallback to dev path
-    log::warn!("[claude_code] acp-resources not found, using dev fallback: {:?}", dev_path);
-    dev_path
+    for candidate in candidates {
+        if has_required_acp_files(&candidate) {
+            log::info!(
+                "[claude_code] Using bundled acp-resources source: {:?}",
+                candidate
+            );
+            return Ok(candidate);
+        }
+    }
+
+    if has_required_acp_files(&dev_path) {
+        log::warn!(
+            "[claude_code] Bundled acp-resources not found, falling back to dev source: {:?}",
+            dev_path
+        );
+        return Ok(dev_path);
+    }
+
+    Err("ACP resources not found in bundled resources or dev source".to_string())
+}
+
+fn compute_acp_source_stamp(source_dir: &Path) -> std::result::Result<String, String> {
+    let mut hasher = DefaultHasher::new();
+
+    for file_name in acp_resource_file_names() {
+        file_name.hash(&mut hasher);
+        let file_bytes =
+            fs::read(source_dir.join(file_name)).map_err(|e| format!("Failed to read {file_name}: {e}"))?;
+        file_bytes.hash(&mut hasher);
+    }
+
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+fn files_match(source: &Path, target: &Path) -> std::result::Result<bool, String> {
+    if !target.exists() {
+        return Ok(false);
+    }
+
+    let source_bytes = fs::read(source).map_err(|e| format!("Failed to read source file {:?}: {}", source, e))?;
+    let target_bytes = fs::read(target).map_err(|e| format!("Failed to read target file {:?}: {}", target, e))?;
+
+    Ok(source_bytes == target_bytes)
+}
+
+fn remove_runtime_artifact(path: &Path) -> std::result::Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    if path.is_dir() {
+        fs::remove_dir_all(path).map_err(|e| format!("Failed to remove directory {:?}: {}", path, e))?;
+    } else {
+        fs::remove_file(path).map_err(|e| format!("Failed to remove file {:?}: {}", path, e))?;
+    }
+
+    Ok(())
+}
+
+/// Copy bundled ACP source files into a writable runtime directory under app local data.
+fn prepare_acp_runtime_dir(app_handle: &AppHandle) -> std::result::Result<PathBuf, String> {
+    let source_dir = resolve_acp_source_dir(app_handle)?;
+    let runtime_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("Failed to resolve app local data dir for ACP resources: {e}"))?
+        .join("acp-resources");
+
+    fs::create_dir_all(&runtime_dir).map_err(|e| {
+        format!(
+            "Failed to create ACP runtime directory {:?}: {}",
+            runtime_dir, e
+        )
+    })?;
+
+    let source_stamp = compute_acp_source_stamp(&source_dir)?;
+    let stamp_path = runtime_dir.join(ACP_RUNTIME_STAMP_FILE);
+    let previous_stamp = fs::read_to_string(&stamp_path).ok();
+
+    for file_name in acp_resource_file_names() {
+        let source_path = source_dir.join(file_name);
+        let runtime_path = runtime_dir.join(file_name);
+
+        if !files_match(&source_path, &runtime_path)? {
+            fs::copy(&source_path, &runtime_path)
+                .map_err(|e| format!("Failed to copy ACP resource {:?}: {}", source_path, e))?;
+        }
+    }
+
+    if previous_stamp.as_deref() != Some(source_stamp.as_str()) {
+        remove_runtime_artifact(&runtime_dir.join("node_modules"))?;
+        remove_runtime_artifact(&runtime_dir.join("bun.lock"))?;
+        remove_runtime_artifact(&runtime_dir.join("bun.lockb"))?;
+    }
+
+    fs::write(&stamp_path, &source_stamp)
+        .map_err(|e| format!("Failed to write ACP runtime stamp {:?}: {}", stamp_path, e))?;
+
+    log::info!(
+        "[claude_code] Using writable ACP runtime directory: {:?} (source: {:?})",
+        runtime_dir,
+        source_dir
+    );
+
+    Ok(runtime_dir)
 }
 
 /// Ensure ACP dependencies are installed in the acp-resources directory.
@@ -351,6 +478,21 @@ pub enum ClaudeCodeEvent {
         cumulative_cost_usd: f64,
         #[serde(rename = "limitUsd")]
         limit_usd: f64,
+    },
+    /// API rate limit hit (temporary, resets at a given time)
+    RateLimited {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        /// "rejected", "warning", etc.
+        status: String,
+        /// Unix timestamp (seconds) when the limit resets
+        #[serde(rename = "resetsAt")]
+        resets_at: Option<f64>,
+        /// e.g. "seven_day", "daily"
+        #[serde(rename = "rateLimitType")]
+        rate_limit_type: Option<String>,
+        /// Human-readable message built by the Rust side
+        message: String,
     },
     /// Usage update after each query (for progress bar + analytics)
     UsageUpdate {
@@ -698,7 +840,62 @@ impl acp::Client for ClaudeCodeClient {
         Err(acp::Error::method_not_found())
     }
 
-    async fn ext_notification(&self, _args: acp::ExtNotification) -> acp::Result<()> {
+    async fn ext_notification(&self, args: acp::ExtNotification) -> acp::Result<()> {
+        let method = &args.method;
+        // params is Arc<RawValue> - parse to serde_json::Value
+        let params: serde_json::Value = serde_json::from_str(args.params.get()).unwrap_or(serde_json::Value::Null);
+
+        log::info!("[claude_code] ext_notification: method={}", method);
+
+        match &**method {
+            "mediar/rate_limit" => {
+                let session_id = params["sessionId"].as_str().unwrap_or("").to_string();
+                let status = params["status"].as_str().unwrap_or("unknown").to_string();
+                let resets_at = params["resetsAt"].as_f64();
+                let rate_limit_type = params["rateLimitType"].as_str().map(String::from);
+
+                // Build a user-friendly message
+                let message = if let Some(ts) = resets_at {
+                    let secs = ts as i64;
+                    let dt = chrono::DateTime::from_timestamp(secs, 0).map(|d| d.format("%b %d, %I:%M %p").to_string());
+                    format!(
+                        "Rate limit hit ({}). Resets {}",
+                        rate_limit_type.as_deref().unwrap_or("unknown"),
+                        dt.as_deref().unwrap_or("later")
+                    )
+                } else {
+                    format!(
+                        "Rate limit hit ({})",
+                        rate_limit_type.as_deref().unwrap_or("unknown")
+                    )
+                };
+
+                log::warn!(
+                    "[claude_code] Rate limited: session={}, status={}, message={}",
+                    session_id,
+                    status,
+                    message
+                );
+
+                let _ = self.app_handle.emit(
+                    "claude-code-event",
+                    ClaudeCodeEvent::RateLimited {
+                        session_id,
+                        status,
+                        resets_at,
+                        rate_limit_type,
+                        message,
+                    },
+                );
+            }
+            _ => {
+                log::debug!(
+                    "[claude_code] Unhandled ext_notification: method={}",
+                    method
+                );
+            }
+        }
+
         Ok(())
     }
 }
@@ -805,7 +1002,11 @@ impl AcpWorker {
         // Determine bridge mode: check for personal OAuth token first
         let has_oauth = crate::claude_oauth::has_stored_credentials();
         let cumulative_cost = fetch_cumulative_cost(&desktop_token).await.unwrap_or(0.0);
-        log::info!("[claude_code] warm_up: cumulative_cost=${:.4}, has_oauth={}", cumulative_cost, has_oauth);
+        log::info!(
+            "[claude_code] warm_up: cumulative_cost=${:.4}, has_oauth={}",
+            cumulative_cost,
+            has_oauth
+        );
 
         let bridge_mode = if self.force_personal && has_oauth {
             log::info!("[claude_code] warm_up: force_personal flag set, using personal OAuth");
@@ -868,13 +1069,19 @@ impl AcpWorker {
             }
             BridgeMode::Personal => {
                 // Ensure credentials are valid and written to ~/.claude/.credentials.json
-                log::info!("[claude_code] warm_up: Personal mode - ACP will read OAuth from ~/.claude/.credentials.json");
+                log::info!(
+                    "[claude_code] warm_up: Personal mode - ACP will read OAuth from ~/.claude/.credentials.json"
+                );
                 crate::claude_oauth::ensure_valid_token().await?;
                 None // Don't pass as env var - let ACP find it
             }
         };
         if let Some(ref key) = api_key {
-            log::info!("[claude_code] warm_up: Got API key (mode={:?}, len={})", bridge_mode, key.len());
+            log::info!(
+                "[claude_code] warm_up: Got API key (mode={:?}, len={})",
+                bridge_mode,
+                key.len()
+            );
         } else {
             log::info!("[claude_code] warm_up: Personal mode - no API key env var, ACP reads from credentials file");
         }
@@ -884,14 +1091,21 @@ impl AcpWorker {
             find_bundled_bun().ok_or_else(|| "Bundled bun not found. Please reinstall the app.".to_string())?;
         log::info!("[claude_code] warm_up: Using bundled bun: {:?}", bun_path);
 
-        // Resolve and prepare acp-resources directory
-        let acp_dir = resolve_acp_resources_dir();
+        // Materialize ACP runtime files into writable app-local storage.
+        let acp_dir = prepare_acp_runtime_dir(&self.app_handle)?;
         ensure_acp_dependencies(&acp_dir, &bun_path).await?;
         let patched_entry = acp_dir.join("patched-acp-entry.mjs");
-        log::info!("[claude_code] warm_up: Using patched ACP entry: {:?}", patched_entry);
+        log::info!(
+            "[claude_code] warm_up: Using patched ACP entry: {:?}",
+            patched_entry
+        );
 
         let model = "claude-sonnet-4-6";
-        log::info!("[claude_code] warm_up: Using direct Anthropic API, model={}, mode={:?}", model, bridge_mode);
+        log::info!(
+            "[claude_code] warm_up: Using direct Anthropic API, model={}, mode={:?}",
+            model,
+            bridge_mode
+        );
 
         let mut cmd = Command::new(&bun_path);
         cmd.args([
@@ -932,9 +1146,9 @@ impl AcpWorker {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let mut child = cmd.spawn().map_err(|e| {
-            format!("Failed to spawn claude-code-acp via bun: {}", e)
-        })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn claude-code-acp via bun: {}", e))?;
 
         let stdin = child
             .stdin
@@ -1125,7 +1339,11 @@ impl AcpWorker {
         if warm.bridge_mode == BridgeMode::Builtin {
             let cost = *warm.cumulative_cost_usd.lock().unwrap();
             if cost >= BUILTIN_COST_CAP_USD {
-                log::warn!("[claude_code] Pre-query guard: cost ${:.4} >= cap ${:.2}", cost, BUILTIN_COST_CAP_USD);
+                log::warn!(
+                    "[claude_code] Pre-query guard: cost ${:.4} >= cap ${:.2}",
+                    cost,
+                    BUILTIN_COST_CAP_USD
+                );
                 let _ = self.app_handle.emit(
                     "claude-code-event",
                     ClaudeCodeEvent::CreditExhausted {
@@ -1166,28 +1384,45 @@ impl AcpWorker {
             ))
             .await
             .map_err(|e| {
-                // --- Checkpoint: Credit exhaustion from API errors ---
+                // --- Checkpoint: Rate limit or credit exhaustion from API errors ---
                 let err_str = format!("{}", e);
-                let credit_patterns = [
-                    "credit balance is too low",
-                    "insufficient_credit",
-                    "insufficient_funds",
-                    "insufficient_balance",
-                    "hit your.*limit",
-                    "out of extra usage",
-                ];
-                let is_credit_error = credit_patterns.iter().any(|p| {
-                    err_str.to_lowercase().contains(&p.replace(".*", ""))
-                });
-                if is_credit_error {
-                    log::warn!("[claude_code] API credit error detected: {}", err_str);
+                let err_lower = err_str.to_lowercase();
+
+                // Check for temporary rate limit first (resets at a time)
+                let rate_limit_patterns = ["hit your limit", "rate limit", "rate_limit", "resets"];
+                let is_rate_limit = rate_limit_patterns.iter().any(|p| err_lower.contains(p));
+
+                if is_rate_limit {
+                    log::warn!("[claude_code] API rate limit detected: {}", err_str);
                     let _ = self.app_handle.emit(
                         "claude-code-event",
-                        ClaudeCodeEvent::CreditExhausted {
-                            cumulative_cost_usd: *warm.cumulative_cost_usd.lock().unwrap(),
-                            limit_usd: BUILTIN_COST_CAP_USD,
+                        ClaudeCodeEvent::RateLimited {
+                            session_id: session_id.to_string(),
+                            status: "rejected".to_string(),
+                            resets_at: None,
+                            rate_limit_type: None,
+                            message: err_str.clone(),
                         },
                     );
+                } else {
+                    let credit_patterns = [
+                        "credit balance is too low",
+                        "insufficient_credit",
+                        "insufficient_funds",
+                        "insufficient_balance",
+                        "out of extra usage",
+                    ];
+                    let is_credit_error = credit_patterns.iter().any(|p| err_lower.contains(p));
+                    if is_credit_error {
+                        log::warn!("[claude_code] API credit error detected: {}", err_str);
+                        let _ = self.app_handle.emit(
+                            "claude-code-event",
+                            ClaudeCodeEvent::CreditExhausted {
+                                cumulative_cost_usd: *warm.cumulative_cost_usd.lock().unwrap(),
+                                limit_usd: BUILTIN_COST_CAP_USD,
+                            },
+                        );
+                    }
                 }
                 format!("Failed to send prompt: {}", e)
             });
@@ -1199,7 +1434,8 @@ impl AcpWorker {
 
         if let Ok(ref prompt_response) = prompt_result {
             // Extract costUsd from _meta (set by patched-acp-entry.mjs)
-            let cost = prompt_response.meta
+            let cost = prompt_response
+                .meta
                 .as_ref()
                 .and_then(|m| m.get("costUsd"))
                 .and_then(|v| v.as_f64());
@@ -1226,7 +1462,11 @@ impl AcpWorker {
                     let mut cumulative = warm.cumulative_cost_usd.lock().unwrap();
                     *cumulative += c;
                     let current = *cumulative;
-                    log::info!("[claude_code] Cumulative cost: ${:.4} / ${:.2}", current, BUILTIN_COST_CAP_USD);
+                    log::info!(
+                        "[claude_code] Cumulative cost: ${:.4} / ${:.2}",
+                        current,
+                        BUILTIN_COST_CAP_USD
+                    );
 
                     // Emit usage update
                     let _ = self.app_handle.emit(
@@ -1243,7 +1483,10 @@ impl AcpWorker {
 
                     // Check if we just hit the cap
                     if current >= BUILTIN_COST_CAP_USD {
-                        log::warn!("[claude_code] Post-query: cost cap reached! ${:.4}", current);
+                        log::warn!(
+                            "[claude_code] Post-query: cost cap reached! ${:.4}",
+                            current
+                        );
                         let _ = self.app_handle.emit(
                             "claude-code-event",
                             ClaudeCodeEvent::CreditExhausted {
@@ -1452,7 +1695,9 @@ impl ClaudeCodeManager {
                     let _ = reply.send(result);
                 }
                 AcpCommand::ForceRewarm { cwd, reply } => {
-                    log::info!("[claude_code] Worker: ForceRewarm - tearing down warm connection for OAuth mode switch");
+                    log::info!(
+                        "[claude_code] Worker: ForceRewarm - tearing down warm connection for OAuth mode switch"
+                    );
                     // Kill existing sessions
                     worker.sessions.clear();
                     // Tear down existing warm connection (kills child process)
@@ -1758,10 +2003,7 @@ pub async fn warm_up_claude_code(
 /// with fresh credentials so it switches from Builtin to Personal mode.
 #[tauri::command]
 #[specta::specta]
-pub async fn force_rewarm_claude_code(
-    cwd: String,
-    state: tauri::State<'_, ClaudeCodeState>,
-) -> Result<(), String> {
+pub async fn force_rewarm_claude_code(cwd: String, state: tauri::State<'_, ClaudeCodeState>) -> Result<(), String> {
     log::info!("[claude_code] CMD: force_rewarm_claude_code after OAuth");
 
     let manager_guard = state.0.read().await;
@@ -1777,9 +2019,7 @@ pub async fn force_rewarm_claude_code(
 /// Called by frontend on mount to handle race condition where event fires before listener is registered.
 #[tauri::command]
 #[specta::specta]
-pub async fn check_claude_code_credit(
-    app_handle: tauri::AppHandle,
-) -> Result<serde_json::Value, String> {
+pub async fn check_claude_code_credit(app_handle: tauri::AppHandle) -> Result<serde_json::Value, String> {
     log::info!("[claude_code] check_claude_code_credit called by frontend");
 
     // Get the desktop token
@@ -1791,8 +2031,13 @@ pub async fn check_claude_code_credit(
     let has_oauth = crate::claude_oauth::has_stored_credentials();
     let over_limit = cumulative >= BUILTIN_COST_CAP_USD;
 
-    log::info!("[claude_code] check_credit: cumulative=${:.4}, limit=${:.2}, over={}, oauth={}",
-        cumulative, BUILTIN_COST_CAP_USD, over_limit, has_oauth);
+    log::info!(
+        "[claude_code] check_credit: cumulative=${:.4}, limit=${:.2}, over={}, oauth={}",
+        cumulative,
+        BUILTIN_COST_CAP_USD,
+        over_limit,
+        has_oauth
+    );
 
     if over_limit && !has_oauth {
         log::info!("[claude_code] check_credit: Emitting CreditExhausted from frontend request");

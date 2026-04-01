@@ -168,7 +168,10 @@ pub fn retrieve_auth_token() -> Result<Option<String>, String> {
             info!("🔐 [AUTH] Using MEDIAR_AUTH_TOKEN from environment (trial VM auto-auth)");
             // Store it encrypted for future use so we don't depend on env var forever
             if let Err(e) = store_auth_token(&token) {
-                warn!("⚠️ [AUTH] Failed to persist env token to encrypted storage: {}", e);
+                warn!(
+                    "⚠️ [AUTH] Failed to persist env token to encrypted storage: {}",
+                    e
+                );
             } else {
                 info!("✅ [AUTH] Env token persisted to encrypted storage");
             }
@@ -352,7 +355,10 @@ pub async fn poll_session_status(session_id: &str) -> Result<Option<(String, Use
                     let error_msg = session_response.error.unwrap_or_else(|| {
                         "Your account access has been restricted. Please contact us to upgrade.".to_string()
                     });
-                    warn!("❌ User blocked: {} (errorCode: {:?})", error_msg, session_response.error_code);
+                    warn!(
+                        "❌ User blocked: {} (errorCode: {:?})",
+                        error_msg, session_response.error_code
+                    );
                     return Err(error_msg);
                 }
             }
@@ -384,7 +390,10 @@ pub async fn poll_session_status(session_id: &str) -> Result<Option<(String, Use
             let error_msg = session_response.error.unwrap_or_else(|| {
                 "Your account access has been restricted. Please contact us to upgrade.".to_string()
             });
-            warn!("❌ User blocked: {} (errorCode: {:?})", error_msg, session_response.error_code);
+            warn!(
+                "❌ User blocked: {} (errorCode: {:?})",
+                error_msg, session_response.error_code
+            );
             Err(error_msg)
         }
         "expired" => {

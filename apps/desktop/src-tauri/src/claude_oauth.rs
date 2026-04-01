@@ -50,8 +50,7 @@ struct OAuthFlowState {
     callback_tx: Option<tokio::sync::oneshot::Sender<String>>,
 }
 
-static FLOW_STATE: Lazy<Arc<Mutex<Option<OAuthFlowState>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(None)));
+static FLOW_STATE: Lazy<Arc<Mutex<Option<OAuthFlowState>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 // =============================================================================
 // Credential Storage
@@ -71,13 +70,10 @@ fn load_credentials() -> Option<OAuthCredentials> {
 fn save_credentials(creds: &OAuthCredentials) -> Result<(), String> {
     let path = credentials_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create credentials dir: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create credentials dir: {}", e))?;
     }
-    let json = serde_json::to_string_pretty(creds)
-        .map_err(|e| format!("Failed to serialize credentials: {}", e))?;
-    std::fs::write(&path, json)
-        .map_err(|e| format!("Failed to write credentials: {}", e))?;
+    let json = serde_json::to_string_pretty(creds).map_err(|e| format!("Failed to serialize credentials: {}", e))?;
+    std::fs::write(&path, json).map_err(|e| format!("Failed to write credentials: {}", e))?;
     log::info!("[claude_oauth] Credentials saved to {:?}", path);
     Ok(())
 }
@@ -85,8 +81,7 @@ fn save_credentials(creds: &OAuthCredentials) -> Result<(), String> {
 fn delete_credentials() -> Result<(), String> {
     let path = credentials_path();
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete credentials: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete credentials: {}", e))?;
         log::info!("[claude_oauth] Credentials deleted");
     }
     // Also remove from Claude Code's credentials file
@@ -118,13 +113,20 @@ fn write_to_claude_credentials(creds: &OAuthCredentials) -> Result<(), String> {
         }
     });
 
-    let json = serde_json::to_string(&claude_creds)
-        .map_err(|e| format!("Failed to serialize Claude credentials: {}", e))?;
+    let json =
+        serde_json::to_string(&claude_creds).map_err(|e| format!("Failed to serialize Claude credentials: {}", e))?;
 
-    std::fs::write(&claude_creds_path, &json)
-        .map_err(|e| format!("Failed to write Claude credentials to {:?}: {}", claude_creds_path, e))?;
+    std::fs::write(&claude_creds_path, &json).map_err(|e| {
+        format!(
+            "Failed to write Claude credentials to {:?}: {}",
+            claude_creds_path, e
+        )
+    })?;
 
-    log::info!("[claude_oauth] Wrote credentials to {:?}", claude_creds_path);
+    log::info!(
+        "[claude_oauth] Wrote credentials to {:?}",
+        claude_creds_path
+    );
     Ok(())
 }
 
@@ -143,7 +145,10 @@ fn remove_from_claude_credentials() {
                     obj.remove("claudeAiOauth");
                     if let Ok(out) = serde_json::to_string(obj) {
                         let _ = std::fs::write(&claude_creds_path, out);
-                        log::info!("[claude_oauth] Removed claudeAiOauth from {:?}", claude_creds_path);
+                        log::info!(
+                            "[claude_oauth] Removed claudeAiOauth from {:?}",
+                            claude_creds_path
+                        );
                     }
                 }
             }
@@ -165,7 +170,9 @@ fn generate_code_verifier() -> String {
     let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
         .chars()
         .collect();
-    (0..64).map(|_| chars[rng.gen_range(0..chars.len())]).collect()
+    (0..64)
+        .map(|_| chars[rng.gen_range(0..chars.len())])
+        .collect()
 }
 
 fn generate_code_challenge(verifier: &str) -> String {
@@ -180,7 +187,9 @@ fn generate_state() -> String {
     let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
         .chars()
         .collect();
-    (0..32).map(|_| chars[rng.gen_range(0..chars.len())]).collect()
+    (0..32)
+        .map(|_| chars[rng.gen_range(0..chars.len())])
+        .collect()
 }
 
 // =============================================================================
@@ -189,12 +198,14 @@ fn generate_state() -> String {
 
 /// Get a valid access token, refreshing if needed
 pub async fn ensure_valid_token() -> Result<String, String> {
-    let creds = load_credentials()
-        .ok_or("No OAuth credentials stored. Connect your personal Claude account first.")?;
+    let creds = load_credentials().ok_or("No OAuth credentials stored. Connect your personal Claude account first.")?;
 
     // Always ensure ~/.claude/.credentials.json is up to date
     if let Err(e) = write_to_claude_credentials(&creds) {
-        log::warn!("[claude_oauth] ensure_valid_token: failed to write Claude credentials: {}", e);
+        log::warn!(
+            "[claude_oauth] ensure_valid_token: failed to write Claude credentials: {}",
+            e
+        );
     }
 
     // Check expiry
@@ -216,7 +227,10 @@ pub async fn ensure_valid_token() -> Result<String, String> {
                 save_credentials(&new_creds)?;
                 // Update Claude credentials file with refreshed token
                 if let Err(e) = write_to_claude_credentials(&new_creds) {
-                    log::warn!("[claude_oauth] Failed to update Claude credentials after refresh: {}", e);
+                    log::warn!(
+                        "[claude_oauth] Failed to update Claude credentials after refresh: {}",
+                        e
+                    );
                 }
                 return Ok(new_creds.access_token);
             }
@@ -319,9 +333,7 @@ async fn exchange_code_for_token(
         .ok_or("Missing access_token in response")?
         .to_string();
 
-    let refresh_token = token_data["refresh_token"]
-        .as_str()
-        .map(|s| s.to_string());
+    let refresh_token = token_data["refresh_token"].as_str().map(|s| s.to_string());
 
     let expires_in = token_data["expires_in"].as_u64().unwrap_or(31536000);
     let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in as i64);
@@ -399,14 +411,13 @@ pub async fn start_claude_oauth() -> Result<String, String> {
     let redir = redirect_uri.clone();
 
     tokio::spawn(async move {
-        log::info!("[claude_oauth] Waiting for OAuth callback on port {}...", port);
+        log::info!(
+            "[claude_oauth] Waiting for OAuth callback on port {}...",
+            port
+        );
 
         // Wait for connection with timeout (10 minutes)
-        let accept_result = tokio::time::timeout(
-            std::time::Duration::from_secs(600),
-            listener.accept(),
-        )
-        .await;
+        let accept_result = tokio::time::timeout(std::time::Duration::from_secs(600), listener.accept()).await;
 
         match accept_result {
             Ok(Ok((stream, _addr))) => {
@@ -499,7 +510,10 @@ pub async fn start_claude_oauth() -> Result<String, String> {
     });
 
     // Open browser
-    log::info!("[claude_oauth] Opening browser for OAuth: {}...", &auth_url[..80.min(auth_url.len())]);
+    log::info!(
+        "[claude_oauth] Opening browser for OAuth: {}...",
+        &auth_url[..80.min(auth_url.len())]
+    );
     if let Err(e) = open::that(&auth_url) {
         log::warn!("[claude_oauth] Failed to open browser: {}", e);
     }
@@ -510,9 +524,7 @@ pub async fn start_claude_oauth() -> Result<String, String> {
 /// Wait for the OAuth callback to complete (called after start_claude_oauth)
 #[tauri::command]
 #[specta::specta]
-pub async fn wait_for_claude_oauth(
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+pub async fn wait_for_claude_oauth(app_handle: tauri::AppHandle) -> Result<String, String> {
     // This is a simplified version - in practice the frontend polls get_claude_oauth_status
     // But we provide this for the modal flow
     let mut attempts = 0;
@@ -520,7 +532,10 @@ pub async fn wait_for_claude_oauth(
         // 2 minutes of polling
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         if has_stored_credentials() {
-            log::info!("[claude_oauth] OAuth credentials detected after {} seconds", attempts);
+            log::info!(
+                "[claude_oauth] OAuth credentials detected after {} seconds",
+                attempts
+            );
             // Bring app window to front after successful OAuth
             if let Some(window) = app_handle.get_webview_window("main") {
                 let _ = window.set_focus();
