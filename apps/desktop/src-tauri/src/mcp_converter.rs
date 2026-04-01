@@ -2915,7 +2915,9 @@ impl McpConverter {
         // This is REQUIRED for UIA selectors to avoid "Desktop-wide search not allowed" error
         let selector = if let Some(ref process_name) = event.process_name {
             // Strip .exe extension if present for cleaner selector
-            let clean_name = process_name.trim_end_matches(".exe").trim_end_matches(".EXE");
+            let clean_name = process_name
+                .trim_end_matches(".exe")
+                .trim_end_matches(".EXE");
             notes.push(format!("[ts_gen] Adding process prefix: {}", clean_name));
             format!("process:{} >> {}", clean_name, base_selector)
         } else {
@@ -3032,10 +3034,7 @@ impl McpConverter {
     }
 
     /// Convert browser click event to TypeScript SDK code
-    pub fn convert_browser_click_to_typescript(
-        &self,
-        event: &BrowserClickEvent,
-    ) -> TypeScriptConversionResult {
+    pub fn convert_browser_click_to_typescript(&self, event: &BrowserClickEvent) -> TypeScriptConversionResult {
         let mut notes = Vec::new();
         notes.push("[ts_gen] convert_browser_click_to_typescript".to_string());
 
@@ -3049,9 +3048,7 @@ impl McpConverter {
                 .iter()
                 .filter(|s| {
                     // Filter out XPath selectors and invalid ones
-                    !s.selector.starts_with('/')
-                        && !s.selector.contains("\\a")
-                        && !s.selector.contains("\\n")
+                    !s.selector.starts_with('/') && !s.selector.contains("\\a") && !s.selector.contains("\\n")
                 })
                 .map(|s| s.selector.replace('\\', "\\\\").replace('\'', "\\'"))
                 .collect()
@@ -3230,7 +3227,10 @@ impl McpConverter {
             }
         } else {
             // Fallback to window title selector
-            format!("role:Window && text:{}", event.to_window_and_application_name)
+            format!(
+                "role:Window && text:{}",
+                event.to_window_and_application_name
+            )
         };
 
         let escaped_selector = selector.replace('"', "\\\"");
@@ -3250,10 +3250,7 @@ impl McpConverter {
     }
 
     /// Convert clipboard event to TypeScript SDK code
-    pub fn convert_clipboard_to_typescript(
-        &self,
-        event: &ClipboardEvent,
-    ) -> TypeScriptConversionResult {
+    pub fn convert_clipboard_to_typescript(&self, event: &ClipboardEvent) -> TypeScriptConversionResult {
         let mut notes = Vec::new();
         notes.push("[ts_gen] convert_clipboard_to_typescript".to_string());
 
@@ -3292,30 +3289,18 @@ impl McpConverter {
         ui_context: Option<&EnhancedUIElement>,
     ) -> TypeScriptConversionResult {
         match event {
-            WorkflowEvent::Click(click_event) => {
-                self.convert_click_to_typescript(click_event, ui_context)
-            }
+            WorkflowEvent::Click(click_event) => self.convert_click_to_typescript(click_event, ui_context),
             WorkflowEvent::TextInputCompleted(text_event) => {
                 self.convert_text_input_to_typescript(text_event, ui_context)
             }
-            WorkflowEvent::Hotkey(hotkey_event) => {
-                self.convert_hotkey_to_typescript(hotkey_event)
-            }
-            WorkflowEvent::BrowserClick(browser_click) => {
-                self.convert_browser_click_to_typescript(browser_click)
-            }
+            WorkflowEvent::Hotkey(hotkey_event) => self.convert_hotkey_to_typescript(hotkey_event),
+            WorkflowEvent::BrowserClick(browser_click) => self.convert_browser_click_to_typescript(browser_click),
             WorkflowEvent::BrowserTextInput(browser_text) => {
                 self.convert_browser_text_input_to_typescript(browser_text)
             }
-            WorkflowEvent::BrowserTabNavigation(nav_event) => {
-                self.convert_browser_navigation_to_typescript(nav_event)
-            }
-            WorkflowEvent::ApplicationSwitch(app_switch) => {
-                self.convert_application_switch_to_typescript(app_switch)
-            }
-            WorkflowEvent::Clipboard(clipboard_event) => {
-                self.convert_clipboard_to_typescript(clipboard_event)
-            }
+            WorkflowEvent::BrowserTabNavigation(nav_event) => self.convert_browser_navigation_to_typescript(nav_event),
+            WorkflowEvent::ApplicationSwitch(app_switch) => self.convert_application_switch_to_typescript(app_switch),
+            WorkflowEvent::Clipboard(clipboard_event) => self.convert_clipboard_to_typescript(clipboard_event),
             // Events that don't have direct TypeScript equivalents
             WorkflowEvent::Mouse(_) => TypeScriptConversionResult {
                 code: "// Mouse movement event - no action needed".to_string(),
@@ -3338,14 +3323,17 @@ impl McpConverter {
                 notes: vec!["Drag and drop requires specialized handling".to_string()],
             },
             WorkflowEvent::FileOpened(file_event) => {
-                let path = file_event.primary_path.as_deref().unwrap_or(&file_event.filename);
+                let path = file_event
+                    .primary_path
+                    .as_deref()
+                    .unwrap_or(&file_event.filename);
                 let escaped_path = path.replace('"', "\\\"").replace('\\', "\\\\");
                 TypeScriptConversionResult {
                     code: format!(r#"// File opened: {}"#, escaped_path),
                     description: format!("File opened: {}", path),
                     notes: vec!["[ts_gen] convert_file_opened_to_typescript".to_string()],
                 }
-            },
+            }
             WorkflowEvent::PendingAction(_) => TypeScriptConversionResult {
                 code: "// Pending action - internal event".to_string(),
                 description: "Pending action".to_string(),
@@ -3355,12 +3343,7 @@ impl McpConverter {
     }
 
     /// Generate a complete TypeScript step file from a list of events
-    pub fn generate_typescript_step(
-        &self,
-        events: &[WorkflowEvent],
-        step_id: &str,
-        step_name: &str,
-    ) -> String {
+    pub fn generate_typescript_step(&self, events: &[WorkflowEvent], step_id: &str, step_name: &str) -> String {
         let mut code_lines: Vec<String> = Vec::new();
 
         for event in events {
