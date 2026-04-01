@@ -15,6 +15,15 @@ console.debug = console.error;
 
 import { ClaudeAcpAgent, runAcp } from "@zed-industries/claude-agent-acp/dist/acp-agent.js";
 
+// Write a raw JSON-RPC notification to stdout, bypassing the ACP SDK.
+// The Rust ACP crate routes `_`-prefixed methods to ext_notification,
+// so custom session updates (rate_limit, etc.) that the crate's SessionUpdate
+// enum doesn't know about can reach our handler without being dropped.
+function sendRawNotification(method, params) {
+  const msg = JSON.stringify({ jsonrpc: "2.0", method: `_${method}`, params }) + "\n";
+  process.stdout.write(msg);
+}
+
 // Patch createSession (called by newSession, resumeSession, loadSession, forkSession)
 // to wrap query.next() for cost/usage capture and SDK event forwarding.
 const originalCreateSession = ClaudeAcpAgent.prototype.createSession;
@@ -51,42 +60,33 @@ ClaudeAcpAgent.prototype.createSession = async function (params, creationOpts) {
         session._lastModelUsage = item.value.modelUsage;
       }
 
-      // --- Forward dropped system messages ---
+      // --- Forward dropped system messages via raw JSON-RPC ---
       if (item.value?.type === "system") {
         const subtype = item.value.subtype;
         try {
           if (subtype === "compact_boundary") {
-            await acpClient.sessionUpdate({
+            sendRawNotification("mediar/compact_boundary", {
               sessionId: sid,
-              update: {
-                sessionUpdate: "compact_boundary",
-                trigger: item.value.compact_metadata?.trigger ?? "auto",
-                preTokens: item.value.compact_metadata?.pre_tokens ?? 0,
-              },
+              trigger: item.value.compact_metadata?.trigger ?? "auto",
+              preTokens: item.value.compact_metadata?.pre_tokens ?? 0,
             });
           } else if (subtype === "status") {
-            await acpClient.sessionUpdate({
+            sendRawNotification("mediar/status_change", {
               sessionId: sid,
-              update: { sessionUpdate: "status_change", status: item.value.status },
+              status: item.value.status,
             });
           } else if (subtype === "task_started") {
-            await acpClient.sessionUpdate({
+            sendRawNotification("mediar/task_started", {
               sessionId: sid,
-              update: {
-                sessionUpdate: "task_started",
-                taskId: item.value.task_id ?? "",
-                description: item.value.description ?? "",
-              },
+              taskId: item.value.task_id ?? "",
+              description: item.value.description ?? "",
             });
           } else if (subtype === "task_notification") {
-            await acpClient.sessionUpdate({
+            sendRawNotification("mediar/task_notification", {
               sessionId: sid,
-              update: {
-                sessionUpdate: "task_notification",
-                taskId: item.value.task_id ?? "",
-                status: item.value.status ?? "",
-                summary: item.value.summary ?? "",
-              },
+              taskId: item.value.task_id ?? "",
+              status: item.value.status ?? "",
+              summary: item.value.summary ?? "",
             });
           }
         } catch (e) {
@@ -94,73 +94,62 @@ ClaudeAcpAgent.prototype.createSession = async function (params, creationOpts) {
         }
       }
 
-      // --- Forward rate_limit_event (dropped by ACP agent) ---
+      // --- Forward rate_limit_event via raw JSON-RPC (bypasses ACP SDK) ---
+      // The Rust ACP crate's SessionUpdate enum doesn't have a rate_limit variant,
+      // so acpClient.sessionUpdate() would send it but the Rust side silently drops it.
+      // Using sendRawNotification routes it to ext_notification instead.
       if (item.value?.type === "rate_limit_event") {
         try {
           const info = item.value.rate_limit_info ?? {};
-          await acpClient.sessionUpdate({
+          sendRawNotification("mediar/rate_limit", {
             sessionId: sid,
-            update: {
-              sessionUpdate: "rate_limit",
-              status: info.status ?? "unknown",
-              resetsAt: info.resetsAt ?? null,
-              rateLimitType: info.rateLimitType ?? null,
-              utilization: info.utilization ?? null,
-              overageStatus: info.overageStatus ?? null,
-              overageDisabledReason: info.overageDisabledReason ?? null,
-              isUsingOverage: info.isUsingOverage ?? false,
-              surpassedThreshold: info.surpassedThreshold ?? null,
-            },
+            status: info.status ?? "unknown",
+            resetsAt: info.resetsAt ?? null,
+            rateLimitType: info.rateLimitType ?? null,
+            utilization: info.utilization ?? null,
+            overageStatus: info.overageStatus ?? null,
+            overageDisabledReason: info.overageDisabledReason ?? null,
+            isUsingOverage: info.isUsingOverage ?? false,
+            surpassedThreshold: info.surpassedThreshold ?? null,
           });
+          console.error(`[patched-acp] Forwarded rate_limit via ext_notification for session ${sid}`);
         } catch (e) {
           console.error(`[patched-acp] Forward rate_limit_event: ${e}`);
         }
       }
 
-      // --- Forward dropped top-level messages ---
+      // --- Forward dropped top-level messages via raw JSON-RPC ---
       try {
         if (item.value?.type === "tool_progress") {
-          await acpClient.sessionUpdate({
+          sendRawNotification("mediar/tool_progress", {
             sessionId: sid,
-            update: {
-              sessionUpdate: "tool_progress",
-              toolUseId: item.value.tool_use_id ?? "",
-              toolName: item.value.tool_name ?? "",
-              elapsedTimeSeconds: item.value.elapsed_time_seconds ?? 0,
-            },
+            toolUseId: item.value.tool_use_id ?? "",
+            toolName: item.value.tool_name ?? "",
+            elapsedTimeSeconds: item.value.elapsed_time_seconds ?? 0,
           });
         }
         if (item.value?.type === "tool_use_summary") {
-          await acpClient.sessionUpdate({
+          sendRawNotification("mediar/tool_use_summary", {
             sessionId: sid,
-            update: {
-              sessionUpdate: "tool_use_summary",
-              summary: item.value.summary ?? "",
-              precedingToolUseIds: item.value.preceding_tool_use_ids ?? [],
-            },
+            summary: item.value.summary ?? "",
+            precedingToolUseIds: item.value.preceding_tool_use_ids ?? [],
           });
         }
       } catch (e) {
         console.error(`[patched-acp] Forward ${item.value?.type}: ${e}`);
       }
 
-      // --- Forward compaction stream chunks ---
+      // --- Forward compaction stream chunks via raw JSON-RPC ---
       if (item.value?.type === "stream_event") {
         const event = item.value.event;
         try {
           if (event?.type === "content_block_start" && event.content_block?.type === "compaction") {
-            await acpClient.sessionUpdate({
-              sessionId: sid,
-              update: { sessionUpdate: "compaction_start" },
-            });
+            sendRawNotification("mediar/compaction_start", { sessionId: sid });
           }
           if (event?.type === "content_block_delta" && event.delta?.type === "compaction_delta") {
-            await acpClient.sessionUpdate({
+            sendRawNotification("mediar/compaction_delta", {
               sessionId: sid,
-              update: {
-                sessionUpdate: "compaction_delta",
-                text: event.delta.text ?? event.delta.compaction ?? "",
-              },
+              text: event.delta.text ?? event.delta.compaction ?? "",
             });
           }
         } catch (_) {}
