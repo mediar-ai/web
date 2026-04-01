@@ -50,6 +50,14 @@ export type ClaudeCodeEvent =
   | { type: "error"; message: string; sessionId: string }
   | { type: "authRequired"; message: string }
   | { type: "creditExhausted"; cumulativeCostUsd: number; limitUsd: number }
+  | {
+      type: "rateLimited";
+      sessionId: string;
+      status: string;
+      resetsAt?: number;
+      rateLimitType?: string;
+      message: string;
+    }
   | { type: "usageUpdate"; cumulativeCostUsd: number; limitUsd: number; bridgeMode: string };
 
 /**
@@ -236,6 +244,11 @@ export async function* sendClaudeCodePrompt(
         break;
       case "authRequired":
         streamEvent = { type: "error", error: `Authentication required: ${payload.message}` };
+        isDone = true;
+        break;
+      case "rateLimited":
+        console.warn("[CLAUDE-CODE] Rate limited:", payload.message);
+        streamEvent = { type: "error", error: payload.message };
         isDone = true;
         break;
     }
