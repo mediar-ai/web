@@ -156,6 +156,10 @@ const MAX_EXECUTION_LOGS: usize = 50;
 /// Maximum SSE buffer size before draining (10MB)
 const MAX_SSE_BUFFER: usize = 10 * 1024 * 1024;
 
+/// Maximum execution time for scheduled workflows (30 minutes)
+/// After this, the scheduler sends stop_execution to the MCP server and kills the workflow.
+const MAX_SCHEDULED_EXECUTION_SECS: u64 = 30 * 60;
+
 /// Event payload for scheduler status changes
 #[derive(Debug, Clone, Serialize)]
 pub struct SchedulerEvent {
@@ -496,9 +500,12 @@ impl WorkflowScheduler {
             tool_request = tool_request.header("mcp-session-id", sid);
         }
 
+        // Use a long HTTP timeout (connect + initial response only).
+        // Actual execution time is enforced by a tokio wrapper in the caller
+        // that sends stop_execution to the MCP server on timeout.
         match tool_request
             .json(&request_body)
-            .timeout(Duration::from_secs(300)) // 5 minute timeout for workflow execution
+            .timeout(Duration::from_secs(MAX_SCHEDULED_EXECUTION_SECS + 60))
             .send()
             .await
         {
@@ -643,6 +650,83 @@ impl WorkflowScheduler {
                 Err(format!("Failed to call MCP: {}", e))
             }
         }
+    }
+
+    /// Send stop_execution to the MCP server to kill a running workflow.
+    /// Called when the scheduler's execution timeout fires to prevent orphaned processes.
+    async fn stop_mcp_execution(&self) -> Result<(), String> {
+        let port = self
+            .mcp_port
+            .ok_or_else(|| "MCP port not set".to_string())?;
+
+        let client = localhost_http_client();
+        let mcp_url = format!("http://127.0.0.1:{}/mcp", port);
+
+        // Create a fresh session just to send stop_execution
+        let init_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": { "name": "mediar-scheduler-stop", "version": "1.0.0" }
+            }
+        });
+
+        let init_resp = client
+            .post(&mcp_url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&init_body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| format!("stop init failed: {}", e))?;
+
+        let session_id = init_resp
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        // Send stop_execution tool call
+        let stop_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "stop_execution",
+                "arguments": {}
+            }
+        });
+
+        let mut stop_req = client
+            .post(&mcp_url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json");
+
+        if let Some(ref sid) = session_id {
+            stop_req = stop_req.header("mcp-session-id", sid);
+        }
+
+        let _ = stop_req
+            .json(&stop_body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await;
+
+        // Clean up session
+        if let Some(ref sid) = session_id {
+            let _ = client
+                .delete(&mcp_url)
+                .header("mcp-session-id", sid)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await;
+        }
+
+        Ok(())
     }
 
     /// Handle SSE events and emit Tauri events for progress updates
@@ -905,12 +989,40 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
                                 },
                             );
 
-                            // Execute the workflow with SSE streaming for progress events
-                            let scheduler = WORKFLOW_SCHEDULER.read().await;
-                            let result = scheduler
-                                .execute_workflow(&workflow, &app_handle_for_task)
-                                .await;
-                            drop(scheduler);
+                            // Execute the workflow with a hard timeout.
+                            // If the workflow exceeds MAX_SCHEDULED_EXECUTION_SECS, we send
+                            // stop_execution to the MCP server to kill the bun process.
+                            // Without this, orphaned workflows flood the frontend with SSE
+                            // progress events and eventually crash the tao event loop.
+                            let timeout_duration = Duration::from_secs(MAX_SCHEDULED_EXECUTION_SECS);
+                            let result = match tokio::time::timeout(timeout_duration, async {
+                                let scheduler = WORKFLOW_SCHEDULER.read().await;
+                                let r = scheduler
+                                    .execute_workflow(&workflow, &app_handle_for_task)
+                                    .await;
+                                drop(scheduler);
+                                r
+                            })
+                            .await
+                            {
+                                Ok(inner_result) => inner_result,
+                                Err(_elapsed) => {
+                                    error!(
+                                        "[SCHEDULER] Workflow '{}' exceeded {}s timeout, sending stop_execution",
+                                        workflow.workflow_name, MAX_SCHEDULED_EXECUTION_SECS
+                                    );
+                                    // Kill the running workflow on the MCP server
+                                    let scheduler = WORKFLOW_SCHEDULER.read().await;
+                                    if let Err(e) = scheduler.stop_mcp_execution().await {
+                                        warn!("[SCHEDULER] Failed to stop workflow: {}", e);
+                                    }
+                                    drop(scheduler);
+                                    Err(format!(
+                                        "Workflow timed out after {}s",
+                                        MAX_SCHEDULED_EXECUTION_SECS
+                                    ))
+                                }
+                            };
 
                             let completed_at = Utc::now();
                             let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
