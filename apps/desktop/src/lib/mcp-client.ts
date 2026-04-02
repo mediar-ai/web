@@ -72,6 +72,9 @@ export class McpClient {
   private staleRequestCheckInterval: ReturnType<typeof setInterval> | null = null;
   // Stale threshold: 60 seconds without any progress = consider request stale
   private readonly STALE_REQUEST_THRESHOLD_MS = 60000;
+  // Throttle progress notifications to prevent event flood (crash after hours of "Workflow running..." every 5s)
+  private lastProgressDispatchTime: number = 0;
+  private readonly PROGRESS_THROTTLE_MS = 30000; // dispatch at most once per 30s for heartbeat events
 
   async connect(port: number): Promise<void> {
     // If already connected to this port, reuse the connection
@@ -230,9 +233,6 @@ export class McpClient {
 
       // Set up notification handler BEFORE connecting (important for receiving all notifications)
       this.client.fallbackNotificationHandler = async (notification: any) => {
-        // Debug: log all incoming notifications to see what we're getting
-        console.log(`🔔 [MCP-CLIENT] Notification received: ${notification.method}`, notification.params);
-
         // Handle progress notifications from terminator-mcp-agent
         // Method name is "notifications/progress" per MCP spec
         if (notification.method === "notifications/progress" || notification.method === "progress") {
@@ -241,12 +241,21 @@ export class McpClient {
           const message = notification.params?.message || "";
           const level = notification.params?.level || "log";
 
-          // MCP best practice: Reset stale timeout on progress notification
-          // This implements "MAY reset the timeout clock when receiving a progress notification"
+          // MCP best practice: Reset stale timeout on progress notification (always, no throttle)
           if (this.currentRequestId) {
             this.requestActivityMap.set(this.currentRequestId, Date.now());
-            console.log(`📡 [MCP-CLIENT] Progress received, reset activity timer for ${this.currentRequestId}`);
           }
+
+          // Throttle heartbeat progress events to prevent event flood crash
+          // (MCP server sends "Workflow running..." every 5s; after hours this crashes tao event loop)
+          const now = Date.now();
+          const isHeartbeat = message.includes("Workflow running");
+          if (isHeartbeat && now - this.lastProgressDispatchTime < this.PROGRESS_THROTTLE_MS) {
+            return; // Skip this heartbeat, we dispatched one recently
+          }
+          this.lastProgressDispatchTime = now;
+
+          console.log(`[MCP-CLIENT] progress: ${message}`);
 
           // Dispatch workflow-progress event for UI components (chat progress indicator)
           window.dispatchEvent(
@@ -255,7 +264,7 @@ export class McpClient {
                 current,
                 total,
                 message,
-                timestamp: Date.now(),
+                timestamp: now,
               },
             })
           );
@@ -264,7 +273,7 @@ export class McpClient {
           if (this.currentProgressCallback) {
             this.currentProgressCallback({
               type: "console",
-              timestamp: Date.now(),
+              timestamp: now,
               message: message,
               level: level as "log" | "error" | "warn" | "info",
             });
@@ -279,11 +288,11 @@ export class McpClient {
         ) {
           const logger = notification.params?.logger;
 
-          // Handle real-time workflow step progress notifications
+          // Handle real-time workflow step progress notifications (these are important - no throttle)
           if (logger === "workflow") {
             const data = notification.params?.data;
             if (data?.type === "step_started") {
-              console.log(`📍 [MCP-CLIENT] Step started: ${data.name} (${data.step}/${data.total})`);
+              console.log(`[MCP-CLIENT] Step started: ${data.name} (${data.step}/${data.total})`);
               window.dispatchEvent(
                 new CustomEvent("workflow-step-started", {
                   detail: {
@@ -294,7 +303,7 @@ export class McpClient {
                 })
               );
             } else if (data?.type === "step_completed") {
-              console.log(`✅ [MCP-CLIENT] Step completed: ${data.name} (${data.duration_ms}ms)`);
+              console.log(`[MCP-CLIENT] Step completed: ${data.name} (${data.duration_ms}ms)`);
               window.dispatchEvent(
                 new CustomEvent("workflow-step-completed", {
                   detail: {
@@ -305,7 +314,7 @@ export class McpClient {
                 })
               );
             } else if (data?.type === "step_failed") {
-              console.log(`❌ [MCP-CLIENT] Step failed: ${data.name} - ${data.error}`);
+              console.log(`[MCP-CLIENT] Step failed: ${data.name} - ${data.error}`);
               window.dispatchEvent(
                 new CustomEvent("workflow-step-failed", {
                   detail: {
@@ -366,14 +375,14 @@ export class McpClient {
         // which doesn't work correctly in WebView2. We manually parse SSE events instead.
         transport._handleSseStream = (stream: any, options: any, isReconnectable: boolean) => {
           console.log(
-            `🌊 [MCP-TRANSPORT] _handleSseStream (WebView2 workaround), stream:`,
+            `[MCP-TRANSPORT] _handleSseStream (WebView2 workaround), stream:`,
             !!stream,
             `isReconnectable:`,
             isReconnectable
           );
 
           if (!stream) {
-            console.log(`🌊 [MCP-TRANSPORT] No stream provided, returning`);
+            console.log(`[MCP-TRANSPORT] No stream provided, returning`);
             return;
           }
 
@@ -387,7 +396,7 @@ export class McpClient {
               while (true) {
                 const { value, done } = await reader.read();
                 if (done) {
-                  console.log(`🌊 [MCP-TRANSPORT] Stream done`);
+                  console.log(`[MCP-TRANSPORT] Stream done`);
                   break;
                 }
 
@@ -419,9 +428,12 @@ export class McpClient {
 
                   if (!eventData) continue;
 
-                  console.log(
-                    `🌊 [MCP-TRANSPORT] SSE event: type=${eventType}, id=${eventId}, data=${eventData.substring(0, 100)}...`
-                  );
+                  // Only log non-notification SSE events to avoid flooding logs during workflow execution
+                  if (eventType !== "message" && eventType) {
+                    console.log(
+                      `[MCP-TRANSPORT] SSE event: type=${eventType}, id=${eventId}, data=${eventData.substring(0, 100)}...`
+                    );
+                  }
 
                   // Parse JSON-RPC message and dispatch
                   if (eventType === "message" || !eventType) {
@@ -431,7 +443,10 @@ export class McpClient {
                       // Check if this is a notification (has method, no id) or response (has id)
                       if (message.method && !("id" in message)) {
                         // This is a notification - dispatch through fallbackNotificationHandler
-                        console.log(`🔔 [MCP-TRANSPORT] Notification received: ${message.method}`);
+                        // Skip logging for frequent progress notifications
+                        if (message.method !== "notifications/progress") {
+                          console.log(`[MCP-TRANSPORT] Notification: ${message.method}`);
+                        }
                         if (this.client?.fallbackNotificationHandler) {
                           this.client.fallbackNotificationHandler({
                             method: message.method,
@@ -445,7 +460,7 @@ export class McpClient {
                         }
                       }
                     } catch (parseError) {
-                      console.error(`🌊 [MCP-TRANSPORT] Failed to parse SSE data:`, parseError, eventData);
+                      console.error(`[MCP-TRANSPORT] Failed to parse SSE data:`, parseError, eventData);
                     }
                   }
                 }
@@ -453,13 +468,13 @@ export class McpClient {
             } catch (error) {
               // Only log as error if this was truly unexpected (not user-initiated stop)
               if (this.isIntentionalClose) {
-                console.log(`🌊 [MCP-TRANSPORT] Stream closed (user stop)`);
+                console.log(`[MCP-TRANSPORT] Stream closed (user stop)`);
               } else {
-                console.error(`🌊 [MCP-TRANSPORT] Stream processing error:`, error);
+                console.error(`[MCP-TRANSPORT] Stream processing error:`, error);
                 // FIX: Abort pending request so Promise.race rejects immediately
                 // This prevents the spinner from staying stuck when SSE stream dies
                 if (this.currentRequestAbortController) {
-                  console.log("🌊 [MCP-TRANSPORT] Aborting pending request due to stream error");
+                  console.log("[MCP-TRANSPORT] Aborting pending request due to stream error");
                   this.currentRequestAbortController.abort();
                 }
                 // Dispatch event so UI can reset state (liveStepStatus, etc.)
@@ -471,7 +486,7 @@ export class McpClient {
               }
               // Don't reconnect for POST SSE streams (isReconnectable=false)
               if (isReconnectable) {
-                console.log(`🌊 [MCP-TRANSPORT] Would reconnect, but disabled for WebView2`);
+                console.log(`[MCP-TRANSPORT] Would reconnect, but disabled for WebView2`);
               }
             }
           };
@@ -479,7 +494,7 @@ export class McpClient {
           // Start processing (don't await - run in background)
           processStream();
         };
-        console.log("🌊 [MCP-CLIENT] SSE stream handler replaced (WebView2 workaround)");
+        console.log("[MCP-CLIENT] SSE stream handler replaced (WebView2 workaround)");
 
         // WORKAROUND: Disable GET SSE stream entirely - it doesn't work in WebView2
         // The GET SSE stream is OPTIONAL per MCP spec and is for server-initiated notifications
