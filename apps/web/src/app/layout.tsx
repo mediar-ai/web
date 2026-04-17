@@ -73,7 +73,7 @@ export default function RootLayout({
                 {children}
               </main>
               <Toaster position="top-center" />
-              <CrispChat />
+              {/* <CrispChat /> */}
             </ThemeProvider>
           </PHProvider>
         </body>
