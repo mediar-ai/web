@@ -289,7 +289,7 @@ export const COMMAND_METADATA: Record<TauriCommand, CommandMetadata> = {
   warm_up_claude_code: {
     description:
       "Pre-warm Claude Code ACP connection for fast session creation Call this after login to reduce first session startup time from ~20s to ~5s",
-    params: [{ name: "cwd", type: "string" }],
+    params: [{ name: "cwd", type: "string" }, { name: "model", type: "string | null" }],
     returnType: "void",
     category: "ai",
   },

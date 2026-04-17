@@ -328,9 +328,18 @@ export function useWebAppChat(options?: {
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
   const [suggestionsWorkflowName, setSuggestionsWorkflowName] = useState<string>("");
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<
-    "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-pro-latest" | "claude-code"
-  >("claude-code");
+  const [selectedModel, setSelectedModelState] = useState<
+    "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-pro-latest" | "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-haiku-4-5"
+  >(() => {
+    try {
+      const saved = localStorage.getItem("ai_selected_model");
+      if (saved === "claude-opus-4-7" || saved === "claude-haiku-4-5" || saved === "claude-sonnet-4-6"
+        || saved === "gemini-2.5-pro" || saved === "gemini-2.5-flash" || saved === "gemini-pro-latest") {
+        return saved as any;
+      }
+    } catch { /* ignore */ }
+    return "claude-sonnet-4-6";
+  });
   const [thinkingLevel, setThinkingLevelState] = useState<"low" | "high">(() => {
     try {
       const saved = localStorage.getItem("ai_thinking_level");
@@ -347,6 +356,22 @@ export function useWebAppChat(options?: {
       localStorage.setItem("ai_thinking_level", level);
     } catch {
       // Ignore localStorage errors
+    }
+  };
+
+  // Wrapper to persist selectedModel and rewarm Claude Code when Claude model changes
+  const setSelectedModel = (model: typeof selectedModel) => {
+    const prevModel = selectedModel;
+    setSelectedModelState(model);
+    try {
+      localStorage.setItem("ai_selected_model", model);
+    } catch { /* ignore */ }
+    // If switching between Claude models, rewarm ACP process with new model
+    if (model.startsWith("claude-") && prevModel.startsWith("claude-") && model !== prevModel) {
+      invoke<string>("get_home_dir")
+        .catch(() => "C:\\Users\\matt")
+        .then(cwd => invoke("force_rewarm_claude_code", { cwd, model: getClaudeModelId(model) }))
+        .catch(err => console.warn("[MODEL] Claude rewarm failed:", err));
     }
   };
 
@@ -401,7 +426,13 @@ export function useWebAppChat(options?: {
 
   // Check if Claude Code model is selected (uses ACP protocol via subprocess)
   const shouldUseClaudeCode = (model: string): boolean => {
-    return model === "claude-code";
+    return model.startsWith("claude-");
+  };
+
+  // Map UI model value to Anthropic model ID for ACP
+  const getClaudeModelId = (model: string): string => {
+    if (model === "claude-haiku-4-5") return "claude-haiku-4-5-20251001";
+    return model; // sonnet and opus use the value directly
   };
 
   // State for workflow failure context using log data

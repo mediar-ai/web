@@ -7,11 +7,20 @@ import { identifyUser, trackLoginInitiated, trackLoginSuccess, trackLogout } fro
  * Pre-warm Claude Code ACP connection after login for fast session creation
  * This spawns the process in background so first session starts in ~5s instead of ~20s
  */
+function getSavedClaudeModel(): string {
+  try {
+    const saved = localStorage.getItem("ai_selected_model");
+    if (saved && saved.startsWith("claude-")) return saved;
+  } catch { /* ignore */ }
+  return "claude-sonnet-4-6";
+}
+
 async function warmUpClaudeCode(): Promise<void> {
   try {
     const cwd = await invoke<string>("get_home_dir").catch(() => "C:\\Users\\matt");
-    console.log("[AUTH] Pre-warming Claude Code with cwd:", cwd);
-    await invoke("warm_up_claude_code", { cwd });
+    const model = getSavedClaudeModel();
+    console.log("[AUTH] Pre-warming Claude Code with cwd:", cwd, "model:", model);
+    await invoke("warm_up_claude_code", { cwd, model });
     console.log("[AUTH] Claude Code pre-warming initiated");
   } catch (err) {
     // Non-critical - just log warning and continue

@@ -65,6 +65,10 @@ impl ApiEndpoints {
     pub fn ingest_rpa_kb() -> String {
         format!("{}/api/rpa-kb", get_api_base_url())
     }
+
+    pub fn support_logs() -> String {
+        format!("{}/api/desktop/support-logs", get_api_base_url())
+    }
 }
 
 /// Check if running in local development mode

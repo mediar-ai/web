@@ -150,8 +150,9 @@ pub async fn send_logs_to_support(app: &tauri::AppHandle) -> Result<(), Box<dyn 
         .timeout(Duration::from_secs(10))
         .build()?;
 
-    // Test connectivity to Discord (simple HEAD request)
-    match client.head("https://discord.com").send().await {
+    // Test connectivity to Mediar API
+    let api_base = crate::config::get_api_base_url();
+    match client.head(&api_base).send().await {
         Ok(response) => {
             info!(
                 "Network connectivity test passed (status: {})",
@@ -165,8 +166,7 @@ pub async fn send_logs_to_support(app: &tauri::AppHandle) -> Result<(), Box<dyn 
             } else if e.is_connect() {
                 "Cannot send logs: Unable to connect to the internet. Please check your network connection."
             } else {
-                "Cannot send logs: Network error occurred. This may be due to a corporate firewall blocking the \
-                 request."
+                "Cannot send logs: Network error occurred. This may be due to a corporate firewall blocking the request."
             };
 
             error!("Network connectivity test failed: {}", e);
@@ -528,7 +528,7 @@ fn read_file_with_shared_access(path: &PathBuf) -> Result<Vec<u8>, std::io::Erro
     fs::read(path)
 }
 
-/// Upload logs to Discord webhook with enhanced error handling
+/// Upload log file + UI tree as a zip to the Mediar support API (emails via Resend)
 async fn upload_logs_to_discord(
     client: &reqwest::Client,
     app: &tauri::AppHandle,
@@ -536,156 +536,95 @@ async fn upload_logs_to_discord(
     ui_tree_json: &str,
     system_info: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let payload = serde_json::json!({
-        "username": "Mediar Logs",
-        "embeds": [{
-            "title": "Mediar App Logs",
-            "description": "Log file attached below",
-            "color": 3447003,
-            "fields": [
-                {
-                    "name": "System Info",
-                    "value": system_info,
-                    "inline": true
-                }
-            ]
-        }]
-    });
+    let mut zip_data = Vec::new();
+    {
+        let cursor = Cursor::new(&mut zip_data);
+        let mut zip = ZipWriter::new(cursor);
+        let options = SimpleFileOptions::default();
 
-    let webhook_url = "https://discord.com/api/webhooks/1371671614865014906/dhALTfbYBj3ehjpG2uVjijJ2APwH7J97XH6GQP7wFPQl_pwrZ7NOr-1SrGCye2WcDZJm";
+        let file_name = log_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        zip.start_file(&file_name, options)?;
+        zip.write_all(&fs::read(log_path)?)?;
 
-    // Read log file without compression
-    let file_contents = fs::read(log_path)?;
+        zip.start_file("ui_tree.json", options)?;
+        zip.write_all(ui_tree_json.as_bytes())?;
 
-    // Convert UI tree JSON to bytes without compression
-    let ui_tree_bytes = ui_tree_json.bytes().collect::<Vec<u8>>();
+        zip.finish()?;
+    }
 
-    let form = reqwest::multipart::Form::new()
-        .text("payload_json", serde_json::to_string(&payload)?)
-        .part(
-            "files[0]",
-            reqwest::multipart::Part::bytes(file_contents)
-                .file_name(log_path.file_name().unwrap().to_string_lossy().to_string()),
-        )
-        .part(
-            "files[1]",
-            reqwest::multipart::Part::bytes(ui_tree_bytes).file_name("ui_tree.json"),
-        );
+    let zip_filename = format!("mediar-logs-{}.zip", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"));
 
-    // Send with enhanced timeout handling
-    match client.post(webhook_url).multipart(form).send().await {
-        Ok(response) => {
-            let status = response.status();
-            if !status.is_success() {
-                if let Ok(error_text) = response.text().await {
-                    error!("Discord webhook error response: {}", error_text);
-                }
-
-                // Show user notification about upload failure
-                if let Err(e) = crate::notification::show_one_time_notification(
-                    app,
-                    "Failed to Send Logs",
-                    &format!("Upload failed with status: {status}. Please try again later."),
-                )
-                .await
-                {
-                    error!("Failed to show upload failure notification: {}", e);
-                }
-
-                return Err(format!("Discord webhook returned status: {status}").into());
-            }
-            info!("Successfully sent logs to Discord");
+    match upload_logs_to_api(client, zip_data, system_info, &zip_filename).await {
+        Ok(()) => {
+            info!("Successfully sent logs to support API");
             Ok(())
         }
         Err(e) => {
-            let error_msg = if e.is_timeout() {
+            let error_msg = if e.to_string().contains("timed out") {
                 "Upload timed out. This may be due to a slow internet connection or corporate firewall."
             } else {
                 "Upload failed due to network error. This may be due to a corporate firewall."
             };
-
             error!("Failed to upload logs: {}", e);
-
-            // Show user notification about upload failure
             if let Err(notification_err) =
                 crate::notification::show_one_time_notification(app, "Failed to Send Logs", error_msg).await
             {
-                error!(
-                    "Failed to show upload failure notification: {}",
-                    notification_err
-                );
+                error!("Failed to show upload failure notification: {}", notification_err);
             }
-
             Err(format!("{error_msg} Error details: {e}").into())
         }
     }
 }
 
-/// Upload zipped logs to Discord webhook
+/// Upload zipped logs to Mediar support API (emails via Resend)
 async fn upload_logs_zip(
     client: &reqwest::Client,
     zip_data: Vec<u8>,
     system_info: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let payload = serde_json::json!({
-        "username": "Mediar Logs",
-        "embeds": [{
-            "title": "Mediar App Logs (All Sessions)",
-            "description": "Zip archive containing all recent session logs",
-            "color": 3447003,
-            "fields": [
-                {
-                    "name": "System Info",
-                    "value": system_info,
-                    "inline": true
-                }
-            ]
-        }]
-    });
+    let zip_filename = format!("mediar-logs-{}.zip", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"));
+    upload_logs_to_api(client, zip_data, system_info, &zip_filename).await
+}
 
-    let webhook_url = "https://discord.com/api/webhooks/1371671614865014906/dhALTfbYBj3ehjpG2uVjijJ2APwH7J97XH6GQP7wFPQl_pwrZ7NOr-1SrGCye2WcDZJm";
-
-    // Generate filename with timestamp
-    let zip_filename = format!(
-        "mediar-logs-{}.zip",
-        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
-    );
+/// Core upload: POST zip + system_info to /api/desktop/support-logs which emails via Resend
+async fn upload_logs_to_api(
+    client: &reqwest::Client,
+    zip_data: Vec<u8>,
+    system_info: &str,
+    zip_filename: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let url = crate::config::ApiEndpoints::support_logs();
+    info!("Uploading logs to support API: {} (zip: {})", url, zip_filename);
 
     let form = reqwest::multipart::Form::new()
-        .text("payload_json", serde_json::to_string(&payload)?)
+        .text("system_info", system_info.to_string())
         .part(
-            "files[0]",
-            reqwest::multipart::Part::bytes(zip_data).file_name(zip_filename),
+            "logs_zip",
+            reqwest::multipart::Part::bytes(zip_data)
+                .file_name(zip_filename.to_string())
+                .mime_str("application/zip")?,
         );
 
-    // Send with timeout handling
-    match client.post(webhook_url).multipart(form).send().await {
+    match client.post(&url).multipart(form).send().await {
         Ok(response) => {
             let status = response.status();
             if !status.is_success() {
-                if let Ok(error_text) = response.text().await {
-                    error!("Discord API error response: {}", error_text);
-                    return Err(format!("Discord API returned error status {status}: {error_text}").into());
-                } else {
-                    return Err(format!("Discord API returned error status {status}").into());
-                }
+                let error_text = response.text().await.unwrap_or_default();
+                error!("Support API error response: {}", error_text);
+                return Err(format!("Support API returned status {status}: {error_text}").into());
             }
-            info!(
-                "Zip logs upload completed successfully (status: {})",
-                status
-            );
+            info!("Logs uploaded to support API successfully");
             Ok(())
         }
         Err(e) => {
             let error_msg = if e.is_timeout() {
                 "Network request timed out"
             } else if e.is_connect() {
-                "Unable to connect to Discord"
+                "Unable to connect to support API"
             } else {
                 "Network error occurred"
             };
-
-            error!("Failed to upload zip logs: {} - {}", error_msg, e);
+            error!("Failed to upload logs to API: {} - {}", error_msg, e);
             Err(format!("{error_msg}: {e}").into())
         }
     }

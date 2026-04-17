@@ -5900,14 +5900,18 @@ export default function App() {
                                           | "gemini-2.5-pro"
                                           | "gemini-2.5-flash"
                                           | "gemini-pro-latest"
-                                          | "claude-code"
+                                          | "claude-sonnet-4-6"
+                                          | "claude-opus-4-7"
+                                          | "claude-haiku-4-5"
                                       )
                                     }
                                     className="h-5 px-1 py-0 text-[10px] border border-black rounded focus:outline-none cursor-pointer appearance-none bg-[length:10px] bg-[center_right_0.2rem] bg-no-repeat pr-4 [.theme-classic_&]:bg-white [.theme-classic_&]:text-black [.theme-classic_&]:hover:bg-gray-100 [.theme-classic_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')] [.theme-inverted_&]:bg-black [.theme-inverted_&]:text-white [.theme-inverted_&]:hover:bg-black/90 [.theme-inverted_&]:bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')]"
                                     title="Select AI model"
                                   >
+                                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                                    <option value="claude-opus-4-7">Claude Opus 4.7</option>
+                                    <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
                                     <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
-                                    <option value="claude-code">Claude Code Sonnet 4.6</option>
                                     <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                     <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                   </select>
@@ -6542,7 +6546,8 @@ export default function App() {
                         // Force tear down old Builtin connection and rebuild with OAuth token
                         const cwd = await invoke<string>("get_home_dir").catch(() => ".");
                         try {
-                          await invoke("force_rewarm_claude_code", { cwd });
+                          const savedModel = (() => { try { const s = localStorage.getItem("ai_selected_model"); return s?.startsWith("claude-") ? s : "claude-sonnet-4-6"; } catch { return "claude-sonnet-4-6"; } })();
+                          await invoke("force_rewarm_claude_code", { cwd, model: savedModel });
                           // Clear stale session ref - ForceRewarm killed old ACP process
                           clearCurrentSession();
                           console.log("[CREDIT] Force rewarm complete - session cleared, now in Personal mode");
