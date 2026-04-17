@@ -1,4 +1,3 @@
-# 1.4.1
+# 1.4.3
 
-- Updated workflow scheduler
-- Improved MCP client
+- Fixed Claude models not working for users (ACP resources now properly bundled)

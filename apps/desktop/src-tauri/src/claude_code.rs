@@ -525,6 +525,7 @@ enum AcpCommand {
     /// Should be called on login for fast session creation
     WarmUp {
         cwd: PathBuf,
+        model: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
     StartSession {
@@ -550,6 +551,7 @@ enum AcpCommand {
     /// Force tear down warm connection so next warm_up rebuilds with fresh credentials
     ForceRewarm {
         cwd: PathBuf,
+        model: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
     Shutdown,
@@ -936,6 +938,8 @@ struct AcpWorker {
     session_turn_data: Arc<std::sync::RwLock<std::collections::HashMap<String, SessionTurnData>>>,
     /// Force Personal mode on next warm_up (set by ForceRewarm after OAuth)
     force_personal: bool,
+    /// Last model used for warm_up (used for respawn on dead connection)
+    preferred_model: String,
 }
 
 /// Per-session turn tracking data
@@ -955,13 +959,15 @@ impl AcpWorker {
             sessions: std::collections::HashMap::new(),
             session_turn_data: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             force_personal: false,
+            preferred_model: "claude-sonnet-4-6".to_string(),
         }
     }
 
     /// Pre-warm the ACP connection by spawning the process and initializing
     /// Call this on login for fast session creation later
-    async fn warm_up(&mut self, _cwd: PathBuf) -> Result<(), String> {
+    async fn warm_up(&mut self, _cwd: PathBuf, model: String) -> Result<(), String> {
         log::info!("[claude_code] warm_up: Starting pre-warming process...");
+        self.preferred_model = model.clone();
 
         // If already warm, just log and return
         if self.warm_connection.is_some() {
@@ -1100,7 +1106,6 @@ impl AcpWorker {
             patched_entry
         );
 
-        let model = "claude-sonnet-4-6";
         log::info!(
             "[claude_code] warm_up: Using direct Anthropic API, model={}, mode={:?}",
             model,
@@ -1112,13 +1117,13 @@ impl AcpWorker {
             patched_entry.to_str().unwrap_or("patched-acp-entry.mjs"),
             "--",
             "--model",
-            model,
+            &model,
             "--setting-sources",
             "user,project,local",
         ])
         .current_dir(&acp_dir)
-        .env("ANTHROPIC_MODEL", model)
-        .env("ANTHROPIC_DEFAULT_SONNET_MODEL", model)
+        .env("ANTHROPIC_MODEL", &model)
+        .env("ANTHROPIC_DEFAULT_SONNET_MODEL", &model)
         // Prevent "nested session" detection if launched from within Claude Code
         .env_remove("CLAUDECODE")
         // Remove any inherited Vertex env vars
@@ -1238,7 +1243,8 @@ impl AcpWorker {
 
         // No warm connection or it died, warm up
         log::info!("[claude_code] No warm connection, warming up...");
-        self.warm_up(cwd.clone()).await
+        let model = self.preferred_model.clone();
+        self.warm_up(cwd.clone(), model).await
     }
 
     async fn start_session(&mut self, cwd: PathBuf, mcp_port: u16) -> Result<String, String> {
@@ -1628,9 +1634,9 @@ impl ClaudeCodeManager {
 
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
-                AcpCommand::WarmUp { cwd, reply } => {
-                    log::info!("[claude_code] Worker: Received WarmUp command");
-                    let result = worker.warm_up(cwd).await;
+                AcpCommand::WarmUp { cwd, model, reply } => {
+                    log::info!("[claude_code] Worker: Received WarmUp command for model={}", model);
+                    let result = worker.warm_up(cwd, model).await;
                     let _ = reply.send(result);
                 }
                 AcpCommand::StartSession {
@@ -1694,9 +1700,10 @@ impl ClaudeCodeManager {
                     let result = worker.end_session(&session_id);
                     let _ = reply.send(result);
                 }
-                AcpCommand::ForceRewarm { cwd, reply } => {
+                AcpCommand::ForceRewarm { cwd, model, reply } => {
                     log::info!(
-                        "[claude_code] Worker: ForceRewarm - tearing down warm connection for OAuth mode switch"
+                        "[claude_code] Worker: ForceRewarm - tearing down warm connection for OAuth mode switch, model={}",
+                        model
                     );
                     // Kill existing sessions
                     worker.sessions.clear();
@@ -1708,8 +1715,8 @@ impl ClaudeCodeManager {
                     // Force Personal mode on next warm_up (uses OAuth creds regardless of DB cost)
                     worker.force_personal = true;
                     log::info!("[claude_code] ForceRewarm: set force_personal=true");
-                    // Now warm_up will rebuild with fresh credentials
-                    let result = worker.warm_up(cwd).await;
+                    // Now warm_up will rebuild with fresh credentials and new model
+                    let result = worker.warm_up(cwd, model).await;
                     let _ = reply.send(result);
                 }
                 AcpCommand::Shutdown => {
@@ -1722,12 +1729,13 @@ impl ClaudeCodeManager {
 
     /// Pre-warm the ACP connection (spawn process, init connection)
     /// Call this on login for fast session creation later
-    pub async fn warm_up(&self, cwd: PathBuf) -> Result<(), String> {
-        log::info!("[claude_code] warm_up: Sending WarmUp command to worker");
+    pub async fn warm_up(&self, cwd: PathBuf, model: String) -> Result<(), String> {
+        log::info!("[claude_code] warm_up: Sending WarmUp command to worker, model={}", model);
         let (reply_tx, reply_rx) = oneshot::channel();
         self.cmd_tx
             .send(AcpCommand::WarmUp {
                 cwd,
+                model,
                 reply: reply_tx,
             })
             .await
@@ -1736,13 +1744,14 @@ impl ClaudeCodeManager {
     }
 
     /// Force tear down warm connection and rebuild with fresh credentials
-    /// Call after OAuth to switch from Builtin to Personal mode
-    pub async fn force_rewarm(&self, cwd: PathBuf) -> Result<(), String> {
-        log::info!("[claude_code] force_rewarm: Sending ForceRewarm command to worker");
+    /// Call after OAuth to switch from Builtin to Personal mode, or when model changes
+    pub async fn force_rewarm(&self, cwd: PathBuf, model: String) -> Result<(), String> {
+        log::info!("[claude_code] force_rewarm: Sending ForceRewarm command to worker, model={}", model);
         let (reply_tx, reply_rx) = oneshot::channel();
         self.cmd_tx
             .send(AcpCommand::ForceRewarm {
                 cwd,
+                model,
                 reply: reply_tx,
             })
             .await
@@ -1978,11 +1987,13 @@ pub async fn end_claude_code_session(
 pub async fn warm_up_claude_code(
     app_handle: tauri::AppHandle,
     cwd: String,
+    model: Option<String>,
     state: tauri::State<'_, ClaudeCodeState>,
 ) -> Result<(), String> {
+    let model = model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
     log::info!(
-        "[claude_code] CMD: Pre-warming Claude Code with cwd={}",
-        cwd
+        "[claude_code] CMD: Pre-warming Claude Code with cwd={}, model={}",
+        cwd, model
     );
 
     // Initialize manager if not already done
@@ -1996,15 +2007,19 @@ pub async fn warm_up_claude_code(
     let cwd_path = PathBuf::from(&cwd);
 
     // Actually wait for warm-up to complete (it's fast if already warmed)
-    manager.warm_up(cwd_path).await
+    manager.warm_up(cwd_path, model).await
 }
 
-/// Force rewarm Claude Code after OAuth - tears down existing connection and rebuilds
-/// with fresh credentials so it switches from Builtin to Personal mode.
+/// Force rewarm Claude Code after OAuth or model change - tears down existing connection and rebuilds.
 #[tauri::command]
 #[specta::specta]
-pub async fn force_rewarm_claude_code(cwd: String, state: tauri::State<'_, ClaudeCodeState>) -> Result<(), String> {
-    log::info!("[claude_code] CMD: force_rewarm_claude_code after OAuth");
+pub async fn force_rewarm_claude_code(
+    cwd: String,
+    model: Option<String>,
+    state: tauri::State<'_, ClaudeCodeState>,
+) -> Result<(), String> {
+    let model = model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+    log::info!("[claude_code] CMD: force_rewarm_claude_code, model={}", model);
 
     let manager_guard = state.0.read().await;
     let manager = manager_guard
@@ -2012,7 +2027,7 @@ pub async fn force_rewarm_claude_code(cwd: String, state: tauri::State<'_, Claud
         .ok_or("Claude Code not initialized")?;
 
     let cwd_path = PathBuf::from(&cwd);
-    manager.force_rewarm(cwd_path).await
+    manager.force_rewarm(cwd_path, model).await
 }
 
 /// Check Claude Code credit status and emit CreditExhausted if over limit.
