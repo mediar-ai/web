@@ -6796,7 +6796,7 @@ export default function App() {
         <LiveExecutionConsole />
 
         {/* Crisp Chat Widget */}
-        <CrispChat />
+        {/* <CrispChat /> */}
       </div>
     </AIComponentProvider>
   );
