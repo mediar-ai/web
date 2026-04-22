@@ -14,10 +14,37 @@ const VERTEX_TRACED_SOURCES = new Set([
   'web_ai',
 ]);
 
+const ANALYTICS_TRACED_SOURCE_PREFIXES = [
+  'agentic_reply.',
+  'crm.',
+  'fazm_',
+  'firestore_tasks.',
+  'gemini.',
+  'orchestrator.',
+  'posthog.',
+  'session_recording.',
+];
+
+function isTrackedSource(source: string | null): boolean {
+  if (!source) {
+    return false;
+  }
+
+  if (VERTEX_TRACED_SOURCES.has(source)) {
+    return true;
+  }
+
+  return ANALYTICS_TRACED_SOURCE_PREFIXES.some((prefix) => source.startsWith(prefix));
+}
+
 function labelUser(userId: string, emailMap: Map<string, string>): string {
   const sessionEmail = emailMap.get(userId);
   if (sessionEmail) {
     return sessionEmail;
+  }
+
+  if (userId === 'analytics') {
+    return 'Analytics / Gemini';
   }
 
   if (userId.startsWith('fazm:')) {
@@ -219,7 +246,7 @@ export async function GET() {
       const tokens = (trace.input_tokens || 0) + (trace.output_tokens || 0);
       dataMap[trace.user_id][dateStr] = (dataMap[trace.user_id][dateStr] || 0) + tokens;
 
-      if (VERTEX_TRACED_SOURCES.has(trace.source || '')) {
+      if (isTrackedSource(trace.source || null)) {
         vertexTracedDataMap[dateStr] = (vertexTracedDataMap[dateStr] || 0) + tokens;
       } else {
         nonVertexTracedDataMap[dateStr] = (nonVertexTracedDataMap[dateStr] || 0) + tokens;
