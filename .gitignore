@@ -184,3 +184,12 @@ tmpclaude-*
 
 # Binary archives in repo
 apps/desktop/apps/vm-dashboard/public/*.zip
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# Agent-generated browser snapshots and state dumps
+/mediar-search-results.yml
+/page-snapshot
+/web-page-state
+/web-recording-state
