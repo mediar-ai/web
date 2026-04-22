@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import collections.abc
 import io
@@ -247,6 +249,7 @@ secrets = [
     modal.Secret.from_name("github-token"),
     modal.Secret.from_name("secrets-encryption-key"),
     modal.Secret.from_name("mediar-service-api-key"),
+    modal.Secret.from_name("gcp-credentials"),
 ]
 
 
