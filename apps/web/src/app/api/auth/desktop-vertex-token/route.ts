@@ -14,7 +14,9 @@ interface ServiceAccountCredentials {
  * Generate a 1-hour Google OAuth access token for Vertex AI
  * Uses service account credentials to generate token that desktop app
  * can use to call Vertex AI directly (for Gemini).
- * Note: Claude Code uses Workload Identity Federation instead (separate endpoint).
+ *
+ * Claude no longer routes through Vertex; it uses
+ * /api/auth/desktop-anthropic-key for direct Anthropic access.
  */
 async function generateVertexAccessToken(): Promise<{
   accessToken: string;
@@ -86,9 +88,6 @@ async function generateVertexAccessToken(): Promise<{
  *
  * Issues a 1-hour Google OAuth access token for Vertex AI
  * Desktop app uses this token to call Vertex AI directly (Gemini).
- *
- * Note: Claude Code uses Workload Identity Federation via
- * /api/auth/desktop-vertex-subject-token instead.
  *
  * Request:
  * - Header: Authorization: Bearer <desktop_session_token>
