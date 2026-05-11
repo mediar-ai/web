@@ -19,7 +19,8 @@ interface WorkflowUsage {
   name: string;
   executions: number;
   totalMinutes: number;
-  cost: number;
+  usageCost: number;
+  billedCost?: number;
 }
 
 interface MonthlyData {
@@ -234,7 +235,7 @@ function generateStatementPDF(monthData: MonthlyData) {
     doc.text(`#${wf.id} ${wf.name}`, 20, y);
     y += 6;
     doc.text(
-      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${wf.cost.toFixed(2)}`,
+      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${(wf.billedCost ?? wf.usageCost).toFixed(2)}`,
       20,
       y
     );
@@ -422,7 +423,7 @@ export default function AdminCustomerBillingPage() {
                           {wf.totalMinutes.toFixed(1)}
                         </div>
                         <div className="text-right font-mono text-sm">
-                          ${wf.cost.toFixed(2)}
+                          ${(wf.billedCost ?? wf.usageCost).toFixed(2)}
                         </div>
                         <div className="text-right">
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase bg-white border-2 border-black">

@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useOrganization } from '@clerk/nextjs';
 import { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import {
@@ -13,27 +13,42 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// Pricing: $0.50 per minute of execution
-const RATE_PER_MINUTE = 0.5;
+// Pricing (Imperial Treasure pilot terms): $0.15/min, $500/min charge per deployed workflow.
+// These are display-only fallbacks; the API is authoritative.
+const RATE_PER_MINUTE = 0.15;
+const MIN_PER_WORKFLOW = 500;
 
 interface WorkflowUsage {
   id: number;
   name: string;
   executions: number;
   totalMinutes: number;
-  cost: number;
+  usageCost: number;
+  billedCost: number;
+  minimumApplied: boolean;
+  estimated: boolean;
 }
 
 interface MonthlyData {
   key: string;
   name: string;
+  estimated: boolean;
+  partiallyEstimated: boolean;
+  workflowCount: number;
+  minimumCharge: number;
+  minimumApplied: boolean;
   workflows: WorkflowUsage[];
   totalMinutes: number;
+  usageCost: number;
   totalCost: number;
+  frozen?: boolean;
+  frozenAt?: string;
 }
 
 interface UsageData {
   ratePerMinute: number;
+  minPerWorkflow: number;
+  pilotStartDate: string;
   months: MonthlyData[];
 }
 
@@ -113,7 +128,9 @@ function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
     doc.text(item.description, 20, y);
     doc.text(item.quantity.toLocaleString(), 90, y);
     doc.text(item.unit, 115, y);
-    doc.text(`$${item.rate.toFixed(2)}/min`, 140, y);
+    const rateLabel =
+      item.unit === 'workflow' ? `$${item.rate.toFixed(2)}/wf` : `$${item.rate.toFixed(2)}/min`;
+    doc.text(rateLabel, 140, y);
     doc.text(
       `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       pageWidth - 20,
@@ -211,19 +228,56 @@ function generateStatementPDF(monthData: MonthlyData) {
   doc.text(`${hours.toFixed(1)}h`, pageWidth - 20, y, { align: 'right' });
 
   y += 8;
-  doc.text('Active Workflows:', 20, y);
-  doc.text(monthData.workflows.length.toString(), pageWidth - 20, y, {
+  doc.text('Deployed Workflows:', 20, y);
+  doc.text(monthData.workflowCount.toString(), pageWidth - 20, y, {
     align: 'right',
   });
 
   y += 8;
-  doc.text('Total Cost:', 20, y);
+  doc.text('Usage Cost:', 20, y);
+  doc.text(`$${monthData.usageCost.toFixed(2)}`, pageWidth - 20, y, {
+    align: 'right',
+  });
+
+  y += 8;
   doc.text(
-    `$${monthData.totalCost.toFixed(2)}`,
+    `Minimum (${monthData.workflowCount} x $${MIN_PER_WORKFLOW}):`,
+    20,
+    y
+  );
+  doc.text(
+    `$${monthData.minimumCharge.toFixed(2)}`,
     pageWidth - 20,
     y,
     { align: 'right' }
   );
+
+  y += 10;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Total Cost:', 20, y);
+  doc.text(`$${monthData.totalCost.toFixed(2)}`, pageWidth - 20, y, {
+    align: 'right',
+  });
+  doc.setFont('helvetica', 'normal');
+
+  if (monthData.minimumApplied) {
+    y += 6;
+    doc.setFontSize(8);
+    doc.text('(Minimum charge applied)', 20, y);
+    doc.setFontSize(10);
+  }
+  if (monthData.estimated || monthData.partiallyEstimated) {
+    y += 6;
+    doc.setFontSize(8);
+    doc.text(
+      monthData.estimated
+        ? '(Usage estimated from aggregate counters; row-level history pruned)'
+        : '(Usage partially estimated for pre-2026-01-18 period)',
+      20,
+      y
+    );
+    doc.setFontSize(10);
+  }
 
   // Workflow breakdown
   y += 20;
@@ -233,10 +287,11 @@ function generateStatementPDF(monthData: MonthlyData) {
   y += 10;
   doc.setFont('helvetica', 'normal');
   monthData.workflows.forEach(wf => {
-    doc.text(`#${wf.id} ${wf.name}`, 20, y);
+    const tag = wf.estimated ? ' (est)' : '';
+    doc.text(`#${wf.id} ${wf.name}${tag}`, 20, y);
     y += 6;
     doc.text(
-      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${wf.cost.toFixed(2)}`,
+      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${wf.usageCost.toFixed(2)}`,
       20,
       y
     );
@@ -251,7 +306,8 @@ function generateStatementPDF(monthData: MonthlyData) {
 }
 
 export default function BillingPage() {
-  const { user } = useUser();
+  const { user, isLoaded: userLoaded } = useUser();
+  const { organization, isLoaded: orgLoaded } = useOrganization();
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(
     new Set()
@@ -261,18 +317,26 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Private page - mediar only for now
   const isMediarAdmin = user?.emailAddresses?.some(e =>
     e.emailAddress.toLowerCase().endsWith('@mediar.ai')
   );
 
   useEffect(() => {
-    if (!isMediarAdmin) return;
+    // Wait for both user and org to load before deciding what to fetch
+    if (!userLoaded || !orgLoaded) return;
+    // Need either an active org or mediar admin status to see anything useful
+    if (!organization && !isMediarAdmin) {
+      setLoading(false);
+      return;
+    }
 
     async function fetchUsage() {
       try {
         const res = await fetch('/api/billing/usage');
-        if (!res.ok) throw new Error('Failed to fetch usage data');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error || `Failed to fetch usage data (${res.status})`);
+        }
         const data = await res.json();
         setUsageData(data);
       } catch (err) {
@@ -283,16 +347,18 @@ export default function BillingPage() {
     }
 
     fetchUsage();
-  }, [isMediarAdmin]);
+  }, [userLoaded, orgLoaded, organization, isMediarAdmin]);
 
-  if (!isMediarAdmin) {
+  if (userLoaded && orgLoaded && !organization && !isMediarAdmin) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <h2 className="text-xl font-mono font-bold">BILLING</h2>
-            <p className="text-gray-600 mt-2">Coming soon</p>
+            <p className="text-gray-600 mt-2">
+              Activate an organization to view billing.
+            </p>
           </div>
         </div>
       </DashboardLayout>
@@ -318,33 +384,50 @@ export default function BillingPage() {
   };
 
   // Generate invoices from usage data
+  const rate = usageData?.ratePerMinute ?? RATE_PER_MINUTE;
+  const minPerWf = usageData?.minPerWorkflow ?? MIN_PER_WORKFLOW;
   const invoices: Invoice[] =
-    usageData?.months.map((month, idx) => ({
-      id: `INV-${month.key}-${String(idx + 1).padStart(3, '0')}`,
-      period: month.name,
-      status: idx === 0 ? 'pending' : 'paid',
-      dueDate: new Date(
-        parseInt(month.key.split('-')[0]),
-        parseInt(month.key.split('-')[1]),
-        15
-      ).toISOString(),
-      paidDate:
-        idx > 0
-          ? new Date(
-              parseInt(month.key.split('-')[0]),
-              parseInt(month.key.split('-')[1]),
-              10
-            ).toISOString()
-          : undefined,
-      items: [
+    usageData?.months.map((month, idx) => {
+      const items: Invoice['items'] = [
         {
-          description: 'Workflow Execution Time',
+          description: month.estimated
+            ? 'Workflow Execution Time (estimated)'
+            : 'Workflow Execution Time',
           quantity: Math.round(month.totalMinutes),
           unit: 'minutes',
-          rate: RATE_PER_MINUTE,
+          rate,
         },
-      ],
-    })) || [];
+      ];
+      // If the minimum charge applies, add a top-up line to make subtotal == totalCost
+      if (month.minimumApplied) {
+        const topUp = month.minimumCharge - month.usageCost;
+        items.push({
+          description: `Minimum charge (${month.workflowCount} deployed workflow${month.workflowCount > 1 ? 's' : ''})`,
+          quantity: 1,
+          unit: 'adjustment',
+          rate: Math.round(topUp * 100) / 100,
+        });
+      }
+      return {
+        id: `INV-${month.key}-${String(idx + 1).padStart(3, '0')}`,
+        period: month.name,
+        status: idx === 0 ? 'pending' : 'paid',
+        dueDate: new Date(
+          parseInt(month.key.split('-')[0]),
+          parseInt(month.key.split('-')[1]),
+          15
+        ).toISOString(),
+        paidDate:
+          idx > 0
+            ? new Date(
+                parseInt(month.key.split('-')[0]),
+                parseInt(month.key.split('-')[1]),
+                10
+              ).toISOString()
+            : undefined,
+        items,
+      };
+    }) || [];
 
   return (
     <DashboardLayout>
@@ -391,9 +474,14 @@ export default function BillingPage() {
               <div className="bg-black text-white p-4">
                 <h2 className="font-mono font-bold">Imperial Treasure</h2>
               </div>
-              <div className="p-4">
+              <div className="p-4 space-y-1">
                 <div className="font-mono text-sm text-gray-600">
-                  Last 12 months of execution data (prod workflows only)
+                  Successful executions only, billed since pilot start (
+                  {usageData?.pilotStartDate || '2025-10-02'}).
+                </div>
+                <div className="font-mono text-xs text-gray-500">
+                  Rate: ${rate.toFixed(2)}/minute &middot; Minimum: $
+                  {minPerWf.toFixed(0)}/month per deployed workflow
                 </div>
               </div>
             </div>
@@ -407,17 +495,55 @@ export default function BillingPage() {
                     className="bg-gray-50 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-100"
                     onClick={() => toggleMonth(month.key)}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4" />
                       ) : (
                         <ChevronRight className="w-4 h-4" />
                       )}
                       <span className="font-mono font-bold">{month.name}</span>
+                      {month.estimated && (
+                        <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-dashed border-gray-400 text-gray-600">
+                          estimated
+                        </span>
+                      )}
+                      {month.partiallyEstimated && (
+                        <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-dashed border-gray-400 text-gray-600">
+                          partial est
+                        </span>
+                      )}
+                      {month.minimumApplied && (
+                        <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-black text-black">
+                          min applied
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-black text-black">
+                        {month.workflowCount} wf
+                      </span>
+                      {month.frozen ? (
+                        <span
+                          className="px-2 py-0.5 text-[10px] font-mono uppercase bg-black text-white"
+                          title={`Frozen on ${month.frozenAt ? new Date(month.frozenAt).toLocaleDateString() : 'unknown'}`}
+                        >
+                          frozen
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-dashed border-gray-400 text-gray-600">
+                          live
+                        </span>
+                      )}
                     </div>
-                    <div className="font-mono text-sm text-gray-600">
-                      {month.workflows.reduce((s, w) => s + w.executions, 0)}{' '}
-                      executions &middot; {month.totalMinutes.toFixed(1)} min
+                    <div className="font-mono text-sm text-gray-600 text-right">
+                      <div>
+                        {month.workflows.reduce(
+                          (s, w) => s + w.executions,
+                          0
+                        )}{' '}
+                        executions &middot; {month.totalMinutes.toFixed(1)} min
+                      </div>
+                      <div className="font-bold text-black">
+                        ${month.totalCost.toFixed(2)}
+                      </div>
                     </div>
                   </div>
 
@@ -431,45 +557,82 @@ export default function BillingPage() {
                         <div className="text-right">Status</div>
                       </div>
 
-                      {month.workflows.map(wf => (
-                        <div
-                          key={wf.id}
-                          className="grid grid-cols-5 gap-4 px-4 py-3 border-t border-gray-200"
-                        >
-                          <div className="font-mono text-sm">
-                            <span className="text-gray-500">#{wf.id}</span>{' '}
-                            {wf.name}
+                      {month.workflows.map(wf => {
+                        const isPlaceholder = wf.id === -1;
+                        return (
+                          <div
+                            key={wf.id}
+                            className="grid grid-cols-5 gap-4 px-4 py-3 border-t border-gray-200"
+                          >
+                            <div className="font-mono text-sm">
+                              {!isPlaceholder && (
+                                <span className="text-gray-500">#{wf.id}</span>
+                              )}{' '}
+                              {wf.name}
+                            </div>
+                            <div className="text-right font-mono text-sm">
+                              {wf.executions}
+                            </div>
+                            <div className="text-right font-mono text-sm">
+                              {wf.totalMinutes.toFixed(1)}
+                            </div>
+                            <div className="text-right font-mono text-sm">
+                              <div>${wf.billedCost.toFixed(2)}</div>
+                              {wf.minimumApplied && (
+                                <div className="text-[10px] text-gray-500">
+                                  usage ${wf.usageCost.toFixed(2)} (min)
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase border-2 ${
+                                  isPlaceholder || wf.estimated
+                                    ? 'bg-gray-50 border-dashed border-gray-400 text-gray-600'
+                                    : 'bg-white border-black'
+                                }`}
+                              >
+                                {isPlaceholder
+                                  ? 'no runs'
+                                  : wf.estimated
+                                    ? 'estimated'
+                                    : 'actual'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right font-mono text-sm">
-                            {wf.executions}
-                          </div>
-                          <div className="text-right font-mono text-sm">
-                            {wf.totalMinutes.toFixed(1)}
-                          </div>
-                          <div className="text-right font-mono text-sm">
-                            ${wf.cost.toFixed(2)}
-                          </div>
-                          <div className="text-right">
-                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase bg-white border-2 border-black">
-                              active
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
 
-                      <div className="border-t border-gray-200 px-4 py-3 flex justify-between items-center bg-gray-50">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            generateStatementPDF(month);
-                          }}
-                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                        >
-                          <Download className="w-3 h-3" />
-                          STATEMENT PDF
-                        </button>
-                        <div className="font-mono text-sm font-bold">
-                          Total: ${month.totalCost.toFixed(2)}
+                      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 space-y-1">
+                        <div className="flex justify-between font-mono text-xs text-gray-600">
+                          <span>Usage subtotal</span>
+                          <span>${month.usageCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between font-mono text-xs text-gray-600">
+                          <span>
+                            Minimum ({month.workflowCount} x ${minPerWf})
+                          </span>
+                          <span>${month.minimumCharge.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              generateStatementPDF(month);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                          >
+                            <Download className="w-3 h-3" />
+                            STATEMENT PDF
+                          </button>
+                          <div className="font-mono text-sm font-bold">
+                            Total: ${month.totalCost.toFixed(2)}
+                            {month.minimumApplied && (
+                              <span className="ml-2 text-xs font-normal text-gray-500">
+                                (min)
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -486,8 +649,18 @@ export default function BillingPage() {
               </div>
             )}
 
-            <div className="mt-4 text-xs font-mono text-gray-500">
-              Rate: ${RATE_PER_MINUTE}/minute of execution time
+            <div className="mt-4 text-xs font-mono text-gray-500 space-y-1">
+              <div>
+                Rate: ${rate.toFixed(2)}/minute of completed execution time.
+              </div>
+              <div>
+                Minimum: ${minPerWf}/month per deployed workflow (whichever is
+                higher).
+              </div>
+              <div>
+                Pre-2026-01-18 usage estimated from aggregate counters
+                (workflow_executions table was pruned mid-Jan 2026).
+              </div>
             </div>
           </div>
         )}
