@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cron/freeze-billing-month",
-      "schedule": "0 4 2 * *"
+      "schedule": "24 18 * * *"
     }
   ]
 } 
