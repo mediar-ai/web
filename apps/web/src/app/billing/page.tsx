@@ -41,6 +41,11 @@ const BILL_TO = {
   email: 'client@example.com',
 };
 
+// Per the [contract reference]: Customer paid a $20,000 Pilot Fee which converted
+// to a 20,000-credit prepaid package (1 credit = $1 of billable cost). Each
+// monthly invoice draws down from this balance until exhausted.
+const PREPAID_CREDIT_BALANCE_USD = 20000;
+
 // Compute current month key once at module load. Used to hide the in-progress
 // month from the billing page until it's frozen on the 2nd of next month.
 const CURRENT_MONTH_KEY = (() => {
@@ -101,19 +106,44 @@ const fmtCurrency = (n: number) =>
 const fmtDateISO = (d: Date) =>
   `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 
-// Render a properly-formatted invoice PDF for a single billing month.
-// One invoice per month, addressed from Mediar.ai, Inc. to ExampleClient.
-function generateInvoicePDF(
+// Compute prepaid credit application for a single month, given all closed
+// months ordered chronologically (oldest first). Returns the amount of credit
+// applied to this month, the remaining balance carried forward, and the cash
+// amount actually due (subtotal minus credit applied).
+function computeCreditFor(
+  monthKey: string,
+  monthsAsc: MonthlyData[]
+): { openingBalance: number; charged: number; creditApplied: number; closingBalance: number; cashDue: number } {
+  let balance = PREPAID_CREDIT_BALANCE_USD;
+  for (const m of monthsAsc) {
+    const opening = balance;
+    const charged = m.totalCost;
+    const creditApplied = Math.min(opening, charged);
+    const cashDue = charged - creditApplied;
+    const closing = opening - creditApplied;
+    if (m.key === monthKey) {
+      return { openingBalance: opening, charged, creditApplied, closingBalance: closing, cashDue };
+    }
+    balance = closing;
+  }
+  return { openingBalance: 0, charged: 0, creditApplied: 0, closingBalance: 0, cashDue: 0 };
+}
+
+// Render a properly-formatted invoice for one month into an existing jsPDF doc
+// at the current page. Used by both single-month export and the combined
+// "Download all invoices" export.
+function renderInvoiceOnPage(
+  doc: jsPDF,
   monthData: MonthlyData,
-  action: 'download' | 'view'
+  monthsAsc: MonthlyData[]
 ) {
-  const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginL = 20;
   const marginR = pageWidth - 20;
 
   const invoiceNumber = invoiceNumberFor(monthData.key);
   const { issued, due } = invoiceDatesFor(monthData.key);
+  const credit = computeCreditFor(monthData.key, monthsAsc);
 
   // ===== Header =====
   doc.setFont('helvetica', 'bold');
@@ -221,7 +251,7 @@ function generateInvoicePDF(
     }
   });
 
-  // ===== Totals =====
+  // ===== Totals + prepaid credit application =====
   y += 5;
   doc.setLineWidth(0.4);
   doc.line(marginL + 90, y, marginR, y);
@@ -229,21 +259,53 @@ function generateInvoicePDF(
 
   doc.setFontSize(9);
   doc.text('Subtotal', marginL + 90, y);
-  doc.text(fmtCurrency(monthData.totalCost), marginR, y, { align: 'right' });
+  doc.text(fmtCurrency(credit.charged), marginR, y, { align: 'right' });
   y += 6;
 
   doc.text('Tax (0%, services exported to Singapore)', marginL + 90, y);
   doc.text('$0.00', marginR, y, { align: 'right' });
+  y += 6;
+
+  doc.text('Less: prepaid credit balance applied', marginL + 90, y);
+  doc.text(`-${fmtCurrency(credit.creditApplied)}`, marginR, y, { align: 'right' });
   y += 8;
 
   doc.line(marginL + 90, y - 2, marginR, y - 2);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.text('TOTAL DUE (USD)', marginL + 90, y + 4);
-  doc.text(fmtCurrency(monthData.totalCost), marginR, y + 4, { align: 'right' });
+  doc.text(fmtCurrency(credit.cashDue), marginR, y + 4, { align: 'right' });
+  y += 14;
+
+  // ===== Account credit ledger =====
+  doc.setLineWidth(0.4);
+  doc.line(marginL, y, marginR, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('PREPAID CREDIT BALANCE', marginL, y);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(
+    `Initial credit package per [contract reference]: ${fmtCurrency(PREPAID_CREDIT_BALANCE_USD)}`,
+    marginL,
+    y
+  );
+  y += 5;
+  doc.text(`Opening balance this period:`, marginL, y);
+  doc.text(fmtCurrency(credit.openingBalance), marginR, y, { align: 'right' });
+  y += 5;
+  doc.text(`Applied to this invoice:`, marginL, y);
+  doc.text(`-${fmtCurrency(credit.creditApplied)}`, marginR, y, { align: 'right' });
+  y += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Closing balance carried forward:`, marginL, y);
+  doc.text(fmtCurrency(credit.closingBalance), marginR, y, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
 
   // ===== Footer =====
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(80);
   doc.text(
@@ -262,20 +324,38 @@ function generateInvoicePDF(
     273
   );
   doc.setTextColor(0);
+}
 
-  const filename = `${invoiceNumber}.pdf`;
+// Single-month invoice export (view in new tab or save).
+function generateInvoicePDF(
+  monthData: MonthlyData,
+  monthsAsc: MonthlyData[],
+  action: 'download' | 'view'
+) {
+  const doc = new jsPDF();
+  renderInvoiceOnPage(doc, monthData, monthsAsc);
+  const filename = `${invoiceNumberFor(monthData.key)}.pdf`;
   if (action === 'download') doc.save(filename);
   else window.open(doc.output('bloburl'), '_blank');
+}
+
+// Combined export: every closed month in one PDF (oldest → newest, one per page).
+function generateAllInvoicesPDF(monthsAsc: MonthlyData[]) {
+  if (monthsAsc.length === 0) return;
+  const doc = new jsPDF();
+  monthsAsc.forEach((m, idx) => {
+    if (idx > 0) doc.addPage();
+    renderInvoiceOnPage(doc, m, monthsAsc);
+  });
+  const first = monthsAsc[0].key;
+  const last = monthsAsc[monthsAsc.length - 1].key;
+  doc.save(`Invoices-ExampleClient-${first}-to-${last}.pdf`);
 }
 
 export default function BillingPage() {
   const { user, isLoaded: userLoaded } = useUser();
   const { organization, isLoaded: orgLoaded } = useOrganization();
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-  const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(
-    new Set()
-  );
-  const [activeTab, setActiveTab] = useState<'usage' | 'invoices'>('usage');
   const [usageData, setUsageData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -337,49 +417,34 @@ export default function BillingPage() {
     });
   };
 
-  const toggleInvoice = (id: string) => {
-    setExpandedInvoices(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const rate = usageData?.ratePerMinute ?? RATE_PER_MINUTE;
-  const minPerWf = usageData?.minPerWorkflow ?? MIN_PER_WORKFLOW;
-
   // Hide the in-progress month from billing — only finished months are
   // invoiceable. The freeze cron runs on the 2nd of next month, after which
   // the previous month's snapshot becomes immutable and shows up here.
+  // closedMonths comes from the API sorted desc (newest first); monthsAsc is
+  // the same list reversed for credit-balance computation.
   const closedMonths: MonthlyData[] = (usageData?.months || []).filter(
     m => m.key !== CURRENT_MONTH_KEY
   );
+  const monthsAsc: MonthlyData[] = [...closedMonths].reverse();
 
   return (
     <DashboardLayout>
       <div className="p-6 max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <FileText className="w-6 h-6" />
-          <h1 className="text-2xl font-mono font-bold">BILLING</h1>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b-2 border-black mb-6">
-          {(['usage', 'invoices'] as const).map(tab => (
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <FileText className="w-6 h-6" />
+            <h1 className="text-2xl font-mono font-bold">BILLING</h1>
+          </div>
+          {closedMonths.length > 0 && (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 font-mono text-sm uppercase transition-colors ${
-                activeTab === tab
-                  ? 'bg-black text-white'
-                  : 'bg-white text-black hover:bg-gray-100'
-              }`}
+              onClick={() => generateAllInvoicesPDF(monthsAsc)}
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white text-xs font-mono uppercase hover:bg-gray-800"
             >
-              {tab}
+              <Download className="w-3 h-3" />
+              Download All Invoices
             </button>
-          ))}
+          )}
         </div>
 
         {loading && (
@@ -394,21 +459,17 @@ export default function BillingPage() {
           </div>
         )}
 
-        {!loading && !error && activeTab === 'usage' && (
+        {!loading && !error && (
           <div>
             {/* Customer Header */}
             <div className="border-2 border-black mb-6">
               <div className="bg-black text-white p-4">
                 <h2 className="font-mono font-bold">ExampleClient</h2>
               </div>
-              <div className="p-4 space-y-1">
+              <div className="p-4">
                 <div className="font-mono text-sm text-gray-600">
                   Successful executions only, billed since pilot start (
                   {usageData?.pilotStartDate || '2025-10-02'}).
-                </div>
-                <div className="font-mono text-xs text-gray-500">
-                  Rate: ${rate.toFixed(2)}/minute &middot; Minimum: $
-                  {minPerWf.toFixed(0)}/month per deployed workflow
                 </div>
               </div>
             </div>
@@ -416,121 +477,71 @@ export default function BillingPage() {
             {/* Monthly Usage — only finished months are shown */}
             {closedMonths.map(month => {
               const isExpanded = expandedMonths.has(month.key);
+              const totalExec = month.workflows.reduce((s, w) => s + w.executions, 0);
               return (
                 <div key={month.key} className="border-2 border-black mb-4">
-                  <div
-                    className="bg-gray-50 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-100"
-                    onClick={() => toggleMonth(month.key)}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
+                  <div className="bg-gray-50 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                    <div
+                      className="flex items-center gap-2 flex-wrap cursor-pointer hover:opacity-70"
+                      onClick={() => toggleMonth(month.key)}
+                    >
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4" />
                       ) : (
                         <ChevronRight className="w-4 h-4" />
                       )}
                       <span className="font-mono font-bold">{month.name}</span>
-                      {month.minimumApplied && (
-                        <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-black text-black">
-                          min applied
-                        </span>
-                      )}
                       <span className="px-2 py-0.5 text-[10px] font-mono uppercase border border-black text-black">
                         {month.workflowCount} wf
                       </span>
                     </div>
-                    <div className="font-mono text-sm text-gray-600 text-right">
-                      <div>
-                        {month.workflows.reduce(
-                          (s, w) => s + w.executions,
-                          0
-                        )}{' '}
-                        executions &middot; {month.totalMinutes.toFixed(1)} min
+                    <div className="flex items-center gap-4">
+                      <div className="font-mono text-sm text-gray-600 text-right">
+                        {totalExec.toLocaleString()} executions &middot;{' '}
+                        {month.totalMinutes.toFixed(1)} min
                       </div>
-                      <div className="font-bold text-black">
-                        ${month.totalCost.toFixed(2)}
-                      </div>
+                      <button
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'view')}
+                        className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                      >
+                        <FileText className="w-3 h-3" />
+                        VIEW INVOICE
+                      </button>
+                      <button
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'download')}
+                        className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                      >
+                        <Download className="w-3 h-3" />
+                        DOWNLOAD
+                      </button>
                     </div>
                   </div>
 
                   {isExpanded && (
                     <div>
-                      <div className="bg-white px-4 py-2 border-t border-gray-200 grid grid-cols-4 gap-4 font-mono text-xs text-gray-600 uppercase">
+                      <div className="bg-white px-4 py-2 border-t border-gray-200 grid grid-cols-3 gap-4 font-mono text-xs text-gray-600 uppercase">
                         <div>Workflow</div>
                         <div className="text-right">Executions</div>
                         <div className="text-right">Minutes</div>
-                        <div className="text-right">Cost</div>
                       </div>
 
                       {month.workflows.map(wf => (
                         <div
                           key={wf.id}
-                          className="grid grid-cols-4 gap-4 px-4 py-3 border-t border-gray-200"
+                          className="grid grid-cols-3 gap-4 px-4 py-3 border-t border-gray-200"
                         >
                           <div className="font-mono text-sm">
                             <span className="text-gray-500">#{wf.id}</span>{' '}
                             {wf.name}
                           </div>
                           <div className="text-right font-mono text-sm">
-                            {wf.executions}
+                            {wf.executions.toLocaleString()}
                           </div>
                           <div className="text-right font-mono text-sm">
                             {wf.totalMinutes.toFixed(1)}
                           </div>
-                          <div className="text-right font-mono text-sm">
-                            <div>${wf.billedCost.toFixed(2)}</div>
-                            {wf.minimumApplied && (
-                              <div className="text-[10px] text-gray-500">
-                                usage ${wf.usageCost.toFixed(2)} (min)
-                              </div>
-                            )}
-                          </div>
                         </div>
                       ))}
-
-                      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 space-y-1">
-                        <div className="flex justify-between font-mono text-xs text-gray-600">
-                          <span>Usage subtotal</span>
-                          <span>${month.usageCost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between font-mono text-xs text-gray-600">
-                          <span>
-                            Minimum ({month.workflowCount} x ${minPerWf})
-                          </span>
-                          <span>${month.minimumCharge.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-300 gap-2">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                generateInvoicePDF(month, 'view');
-                              }}
-                              className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                            >
-                              <FileText className="w-3 h-3" />
-                              VIEW INVOICE
-                            </button>
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                generateInvoicePDF(month, 'download');
-                              }}
-                              className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                            >
-                              <Download className="w-3 h-3" />
-                              DOWNLOAD INVOICE
-                            </button>
-                          </div>
-                          <div className="font-mono text-sm font-bold">
-                            Total: ${month.totalCost.toFixed(2)}
-                            {month.minimumApplied && (
-                              <span className="ml-2 text-xs font-normal text-gray-500">
-                                (min)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -546,113 +557,9 @@ export default function BillingPage() {
               </div>
             )}
 
-            <div className="mt-4 text-xs font-mono text-gray-500 space-y-1">
-              <div>
-                Rate: ${rate.toFixed(2)}/minute of completed execution time.
-              </div>
-              <div>
-                Minimum: ${minPerWf}/month per deployed workflow (whichever is
-                higher).
-              </div>
-              <div>
-                The current month is excluded until it ends; finished months
-                appear here on the 2nd of the following month.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && activeTab === 'invoices' && (
-          <div>
-            <div className="border-2 border-black mb-4">
-              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 grid grid-cols-12 gap-4 font-mono text-xs text-gray-600 uppercase">
-                <div className="col-span-3">Invoice</div>
-                <div className="col-span-3">Period</div>
-                <div className="col-span-2">Issued</div>
-                <div className="col-span-2">Due</div>
-                <div className="col-span-2 text-right">Total</div>
-              </div>
-
-              {closedMonths.map(month => {
-                const id = invoiceNumberFor(month.key);
-                const { issued, due } = invoiceDatesFor(month.key);
-                const isExpanded = expandedInvoices.has(id);
-
-                return (
-                  <div
-                    key={id}
-                    className="border-b border-gray-200 last:border-b-0"
-                  >
-                    <div
-                      className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer items-center"
-                      onClick={() => toggleInvoice(id)}
-                    >
-                      <div className="col-span-3 flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <span className="font-mono text-sm">{id}</span>
-                      </div>
-                      <div className="col-span-3 font-mono text-sm text-gray-600">
-                        {month.name}
-                      </div>
-                      <div className="col-span-2 font-mono text-sm text-gray-600">
-                        {fmtDateISO(issued)}
-                      </div>
-                      <div className="col-span-2 font-mono text-sm text-gray-600">
-                        {fmtDateISO(due)}
-                      </div>
-                      <div className="col-span-2 text-right font-mono text-sm font-bold">
-                        ${month.totalCost.toFixed(2)}
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="bg-gray-50 border-t border-gray-200 p-4 flex gap-2">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            generateInvoicePDF(month, 'view');
-                          }}
-                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                        >
-                          <FileText className="w-3 h-3" />
-                          VIEW INVOICE
-                        </button>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            generateInvoicePDF(month, 'download');
-                          }}
-                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                        >
-                          <Download className="w-3 h-3" />
-                          DOWNLOAD
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {closedMonths.length === 0 && (
-                <div className="p-8 text-center">
-                  <p className="font-mono text-gray-600">No invoices yet</p>
-                </div>
-              )}
-            </div>
-
-            <div className="text-xs font-mono text-gray-500 space-y-1">
-              <div>
-                Issued by {BILL_FROM.legalName}, {BILL_FROM.addressLine1},{' '}
-                {BILL_FROM.addressLine2}, {BILL_FROM.country} (EIN {BILL_FROM.ein}).
-              </div>
-              <div>
-                Per the Aug 31 2025 [contract reference] (assigned to{' '}
-                {BILL_FROM.legalName} on Mar 14 2026). NET 30, USD.
-              </div>
+            <div className="mt-4 text-xs font-mono text-gray-500">
+              The current month is excluded until it ends; finished months
+              appear here on the 2nd of the following month.
             </div>
           </div>
         )}
