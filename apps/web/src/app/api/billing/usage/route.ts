@@ -22,23 +22,24 @@ const PILOT_START_DATE = '2025-10-02';
 // Workflows that had zero executions still incur the $500 per-workflow minimum.
 //
 // Oct 2025 → Mar 2026: only workflow 71 (SAP Journal Entry).
-// Apr 2026 onward: workflow 71 + workflow 72 (placeholder for the 2nd prod workflow).
-//
-// The 2nd workflow ID is currently a placeholder. Update this once the actual
-// 2nd production workflow ID is confirmed. See `deployed_workflows` table.
-function getBillableWorkflowIds(monthKey: string, allProdIds: number[]): number[] {
+// Apr 2026 onward: workflow 71 + workflow 271 (Web Outgoing Payments).
+const IT_WORKFLOW_SAP_JOURNAL = 71;
+const IT_WORKFLOW_WEB_OUTGOING_PAYMENTS = 271;
+
+function getBillableWorkflowIds(monthKey: string, _allProdIds: number[]): number[] {
   if (monthKey >= '2026-04') {
-    // From April onward, all prod-tagged workflows are billable.
-    // Fall back to a synthetic 2-workflow set if only 1 is tagged prod.
-    if (allProdIds.length >= 2) return allProdIds.slice(0, 2);
-    if (allProdIds.length === 1) return [allProdIds[0], -1]; // -1 = placeholder
-    return [];
+    return [IT_WORKFLOW_SAP_JOURNAL, IT_WORKFLOW_WEB_OUTGOING_PAYMENTS];
   }
-  return allProdIds.slice(0, 1);
+  return [IT_WORKFLOW_SAP_JOURNAL];
 }
 
-// Display name for the placeholder 2nd workflow until its real ID is known.
-const PLACEHOLDER_WORKFLOW_NAME = 'Deployed Workflow #2';
+// Hardcoded display names for billable workflows. The DB name is used when the
+// workflow appears in prodList (i.e. it's tagged 'prod'); these are fallbacks
+// for the case where the workflow exists but isn't prod-tagged yet.
+const HARDCODED_WORKFLOW_NAMES: Record<number, string> = {
+  [IT_WORKFLOW_SAP_JOURNAL]: 'SAP Journal Entry',
+  [IT_WORKFLOW_WEB_OUTGOING_PAYMENTS]: 'Web Outgoing Payments',
+};
 
 // Frozen monthly billing snapshots.
 // Once a month ends, its numbers are captured in a static JSON file and never
@@ -49,8 +50,6 @@ type FrozenMonth = {
   key: string;
   name: string;
   frozenAt: string;
-  estimated: boolean;
-  partiallyEstimated: boolean;
   workflowCount: number;
   minimumCharge: number;
   minimumApplied: boolean;
@@ -62,7 +61,6 @@ type FrozenMonth = {
     usageCost: number;
     billedCost: number;
     minimumApplied: boolean;
-    estimated: boolean;
   }>;
   totalMinutes: number;
   usageCost: number;
@@ -227,12 +225,9 @@ export async function GET(request: Request) {
       name: string;
       executions: number;
       totalMinutes: number;
-      estimated: boolean;
     };
     type MonthData = {
       workflows: Record<number, WorkflowMonthData>;
-      hasActual: boolean;
-      hasEstimated: boolean;
     };
     const monthlyData: Record<string, MonthData> = {};
 
@@ -247,20 +242,14 @@ export async function GET(request: Request) {
       const durationMin = (exec.execution_duration_seconds || 0) / 60;
 
       if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = {
-          workflows: {},
-          hasActual: true,
-          hasEstimated: false,
-        };
+        monthlyData[monthKey] = { workflows: {} };
       }
-      monthlyData[monthKey].hasActual = true;
 
       if (!monthlyData[monthKey].workflows[wfId]) {
         monthlyData[monthKey].workflows[wfId] = {
-          name: workflowNames[wfId] || 'Unknown',
+          name: workflowNames[wfId] || HARDCODED_WORKFLOW_NAMES[wfId] || 'Unknown',
           executions: 0,
           totalMinutes: 0,
-          estimated: false,
         };
       }
       monthlyData[monthKey].workflows[wfId].executions += 1;
@@ -339,24 +328,15 @@ export async function GET(request: Request) {
 
         if (monthRuns > 0 || monthMinutes > 0) {
           if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = {
-              workflows: {},
-              hasActual: false,
-              hasEstimated: true,
-            };
+            monthlyData[monthKey] = { workflows: {} };
           }
-          monthlyData[monthKey].hasEstimated = true;
 
           if (!monthlyData[monthKey].workflows[wf.id]) {
             monthlyData[monthKey].workflows[wf.id] = {
-              name: workflowNames[wf.id] || 'Unknown',
+              name: workflowNames[wf.id] || HARDCODED_WORKFLOW_NAMES[wf.id] || 'Unknown',
               executions: 0,
               totalMinutes: 0,
-              estimated: true,
             };
-          } else {
-            // Mixed: actual + estimated in same month-workflow bucket
-            monthlyData[monthKey].workflows[wf.id].estimated = true;
           }
 
           monthlyData[monthKey].workflows[wf.id].executions += monthRuns;
@@ -400,14 +380,11 @@ export async function GET(request: Request) {
               usageCost,
               billedCost: Math.round(billedCost * 100) / 100,
               minimumApplied: billedCost > usageCost + 0.01,
-              estimated: wf.estimated,
             };
           }
-          // Zero-usage placeholder for a deployed workflow with no runs that month.
+          // Zero-usage entry for a deployed workflow with no runs that month.
           const name =
-            id === -1
-              ? PLACEHOLDER_WORKFLOW_NAME
-              : workflowNames[id] || PLACEHOLDER_WORKFLOW_NAME;
+            workflowNames[id] || HARDCODED_WORKFLOW_NAMES[id] || `Workflow #${id}`;
           return {
             id,
             name,
@@ -416,7 +393,6 @@ export async function GET(request: Request) {
             usageCost: 0,
             billedCost: MIN_CHARGE_PER_WORKFLOW,
             minimumApplied: true,
-            estimated: false,
           };
         });
 
@@ -431,8 +407,6 @@ export async function GET(request: Request) {
         return {
           key: monthKey,
           name: monthName,
-          estimated: data.hasEstimated && !data.hasActual,
-          partiallyEstimated: data.hasEstimated && data.hasActual,
           workflowCount: billableWorkflowCount,
           minimumCharge,
           minimumApplied,
