@@ -15,7 +15,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 // Pricing (must match /api/billing/usage/route.ts).
 const RATE_PER_MINUTE = 0.15;
 const MIN_CHARGE_PER_WORKFLOW = 500;
-const PLACEHOLDER_WORKFLOW_NAME = 'Deployed Workflow #2';
+
+// Imperial Treasure billable workflows.
+const IT_WORKFLOW_SAP_JOURNAL = 71;
+const IT_WORKFLOW_WEB_OUTGOING_PAYMENTS = 271;
+
+const HARDCODED_WORKFLOW_NAMES: Record<number, string> = {
+  [IT_WORKFLOW_SAP_JOURNAL]: 'SAP Journal Entry',
+  [IT_WORKFLOW_WEB_OUTGOING_PAYMENTS]: 'Web Outgoing Payments',
+};
 
 // Customers to freeze. Add new orgs here as they sign on.
 const CUSTOMERS = [
@@ -29,18 +37,16 @@ const CUSTOMERS = [
 function getBillableWorkflowIdsForOrg(
   orgId: string,
   monthKey: string,
-  allProdIds: number[]
+  _allProdIds: number[]
 ): number[] {
   if (orgId === 'org_33DH72nPyAInVAh5t8TyIKVdYNw') {
     if (monthKey >= '2026-04') {
-      if (allProdIds.length >= 2) return allProdIds.slice(0, 2);
-      if (allProdIds.length === 1) return [allProdIds[0], -1];
-      return [];
+      return [IT_WORKFLOW_SAP_JOURNAL, IT_WORKFLOW_WEB_OUTGOING_PAYMENTS];
     }
-    return allProdIds.slice(0, 1);
+    return [IT_WORKFLOW_SAP_JOURNAL];
   }
   // Default: all prod workflows are billable every month.
-  return allProdIds;
+  return _allProdIds;
 }
 
 function previousMonthKey(now: Date): string {
@@ -154,19 +160,17 @@ async function freezeMonthForOrg(
       const billedCost = Math.max(usageCost, MIN_CHARGE_PER_WORKFLOW);
       return {
         id,
-        name: workflowNames[id] || 'Unknown',
+        name:
+          workflowNames[id] || HARDCODED_WORKFLOW_NAMES[id] || `Workflow #${id}`,
         executions: usage.executions,
         totalMinutes: Math.round(usage.totalMinutes * 10) / 10,
         usageCost,
         billedCost: Math.round(billedCost * 100) / 100,
         minimumApplied: billedCost > usageCost + 0.01,
-        estimated: false,
       };
     }
     const name =
-      id === -1
-        ? PLACEHOLDER_WORKFLOW_NAME
-        : workflowNames[id] || PLACEHOLDER_WORKFLOW_NAME;
+      workflowNames[id] || HARDCODED_WORKFLOW_NAMES[id] || `Workflow #${id}`;
     return {
       id,
       name,
@@ -175,7 +179,6 @@ async function freezeMonthForOrg(
       usageCost: 0,
       billedCost: MIN_CHARGE_PER_WORKFLOW,
       minimumApplied: true,
-      estimated: false,
     };
   });
 
@@ -187,8 +190,6 @@ async function freezeMonthForOrg(
   const monthData = {
     key: monthKey,
     name: monthDisplayName(monthKey),
-    estimated: false,
-    partiallyEstimated: false,
     workflowCount: billableIds.length,
     minimumCharge: billableIds.length * MIN_CHARGE_PER_WORKFLOW,
     minimumApplied,
