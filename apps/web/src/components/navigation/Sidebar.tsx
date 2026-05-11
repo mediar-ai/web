@@ -93,6 +93,7 @@ export function Sidebar() {
       { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
       { label: 'Sandboxes', href: '/my-machines', icon: Monitor },
       { label: 'Alerts', href: '/notifications', icon: Bell },
+      { label: 'Billing', href: '/billing', icon: DollarSign },
       {
         label: 'Settings',
         href: '/settings',

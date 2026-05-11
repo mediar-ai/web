@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/reactivation-emails",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/freeze-billing-month",
+      "schedule": "0 4 2 * *"
     }
   ]
 } 
