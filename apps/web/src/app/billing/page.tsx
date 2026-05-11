@@ -9,7 +9,6 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
-  Calendar,
   Loader2,
 } from 'lucide-react';
 
@@ -17,6 +16,37 @@ import {
 // These are display-only fallbacks; the API is authoritative.
 const RATE_PER_MINUTE = 0.15;
 const MIN_PER_WORKFLOW = 500;
+
+// Bill-from (NEW Mediar entity, post-March 2026 corporate transition).
+// Old entity "Mediar, Inc." has been superseded by "Mediar.ai, Inc." per the
+// Assignment and Assumption Agreement. All new invoices issue from Mediar.ai, Inc.
+const BILL_FROM = {
+  legalName: 'Mediar.ai, Inc.',
+  addressLine1: '2 Marina Boulevard',
+  addressLine2: 'San Francisco, CA 94123',
+  country: 'United States',
+  ein: '41-4867072',
+  email: 'billing@mediar.ai',
+};
+
+// Bill-to per the Aug 31 2025 Product Order Form between Mediar (now assigned
+// to Mediar.ai, Inc.) and Imperial Treasure Restaurant Group Pte Ltd.
+const BILL_TO = {
+  legalName: 'Imperial Treasure Restaurant Group Pte Ltd',
+  addressLine1: '36 Sin Ming Lane',
+  addressLine2: 'Midview City',
+  country: 'Singapore',
+  attn: 'Chai Leong Choi',
+  attnTitle: 'IT Asst. Manager',
+  email: 'leongchoi.chai@imperialtreasure.com',
+};
+
+// Compute current month key once at module load. Used to hide the in-progress
+// month from the billing page until it's frozen on the 2nd of next month.
+const CURRENT_MONTH_KEY = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+})();
 
 interface WorkflowUsage {
   id: number;
@@ -49,244 +79,193 @@ interface UsageData {
   months: MonthlyData[];
 }
 
-interface Invoice {
-  id: string;
-  period: string;
-  status: 'paid' | 'pending';
-  dueDate: string;
-  paidDate?: string;
-  items: {
-    description: string;
-    quantity: number;
-    unit: string;
-    rate: number;
-  }[];
+// Build a deterministic invoice number for a given billing month.
+// Format: INV-YYYY-MM-IT (one invoice per customer per month).
+function invoiceNumberFor(monthKey: string): string {
+  return `INV-${monthKey}-IT`;
 }
 
-function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-
-  // Header
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('MEDIAR', 20, 25);
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Mediar AI Pte. Ltd.', 20, 35);
-  doc.text('Singapore', 20, 40);
-
-  // Invoice details
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text('INVOICE', pageWidth - 20, 25, { align: 'right' });
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(invoice.id, pageWidth - 20, 35, { align: 'right' });
-  doc.text(`Period: ${invoice.period}`, pageWidth - 20, 42, { align: 'right' });
-  doc.text(
-    `Due: ${new Date(invoice.dueDate).toLocaleDateString()}`,
-    pageWidth - 20,
-    49,
-    { align: 'right' }
-  );
-
-  // Bill To
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('BILL TO', 20, 65);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Imperial Treasure', 20, 72);
-
-  // Line
-  doc.setLineWidth(0.5);
-  doc.line(20, 82, pageWidth - 20, 82);
-
-  // Table header
-  let y = 92;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Description', 20, y);
-  doc.text('Qty', 90, y);
-  doc.text('Unit', 115, y);
-  doc.text('Rate', 140, y);
-  doc.text('Amount', pageWidth - 20, y, { align: 'right' });
-
-  doc.line(20, y + 3, pageWidth - 20, y + 3);
-
-  // Items
-  doc.setFont('helvetica', 'normal');
-  let subtotal = 0;
-  invoice.items.forEach(item => {
-    y += 10;
-    const amount = item.quantity * item.rate;
-    subtotal += amount;
-    doc.text(item.description, 20, y);
-    doc.text(item.quantity.toLocaleString(), 90, y);
-    doc.text(item.unit, 115, y);
-    const rateLabel =
-      item.unit === 'workflow' ? `$${item.rate.toFixed(2)}/wf` : `$${item.rate.toFixed(2)}/min`;
-    doc.text(rateLabel, 140, y);
-    doc.text(
-      `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      pageWidth - 20,
-      y,
-      { align: 'right' }
-    );
-  });
-
-  // Totals
-  const formatCurrency = (n: number) =>
-    `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  y += 20;
-  doc.line(120, y - 5, pageWidth - 20, y - 5);
-  doc.text('Subtotal:', 140, y);
-  doc.text(formatCurrency(subtotal), pageWidth - 20, y, { align: 'right' });
-
-  y += 8;
-  doc.text('Tax (0%):', 140, y);
-  doc.text('$0.00', pageWidth - 20, y, { align: 'right' });
-
-  y += 10;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total:', 140, y);
-  doc.text(formatCurrency(subtotal), pageWidth - 20, y, { align: 'right' });
-
-  // Status
-  y += 20;
-  doc.setFont('helvetica', 'normal');
-  if (invoice.status === 'paid' && invoice.paidDate) {
-    doc.text(
-      `Payment received: ${new Date(invoice.paidDate).toLocaleDateString()}`,
-      20,
-      y
-    );
-  } else {
-    doc.text(`Status: ${invoice.status.toUpperCase()}`, 20, y);
-  }
-
-  // Footer
-  doc.setFontSize(8);
-  doc.text('Thank you for your business.', 20, 270);
-  doc.text('Questions? Contact billing@mediar.ai', 20, 275);
-
-  if (action === 'download') {
-    doc.save(`${invoice.id}.pdf`);
-  } else {
-    window.open(doc.output('bloburl'), '_blank');
-  }
+// Issue date = 1st of the month following the billing period (i.e. May 1 for
+// the April invoice). Due date = NET 30 from issue date.
+function invoiceDatesFor(monthKey: string): { issued: Date; due: Date } {
+  const [y, m] = monthKey.split('-').map(Number);
+  const issued = new Date(Date.UTC(y, m, 1)); // 1st of next month
+  const due = new Date(issued);
+  due.setUTCDate(due.getUTCDate() + 30);
+  return { issued, due };
 }
 
-function generateStatementPDF(monthData: MonthlyData) {
+const fmtCurrency = (n: number) =>
+  `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const fmtDateISO = (d: Date) =>
+  `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+
+// Render a properly-formatted invoice PDF for a single billing month.
+// One invoice per month, addressed from Mediar.ai, Inc. to Imperial Treasure.
+function generateInvoicePDF(
+  monthData: MonthlyData,
+  action: 'download' | 'view'
+) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
+  const marginL = 20;
+  const marginR = pageWidth - 20;
 
-  // Header
-  doc.setFontSize(24);
+  const invoiceNumber = invoiceNumberFor(monthData.key);
+  const { issued, due } = invoiceDatesFor(monthData.key);
+
+  // ===== Header =====
   doc.setFont('helvetica', 'bold');
-  doc.text('MEDIAR', 20, 25);
+  doc.setFontSize(22);
+  doc.text(BILL_FROM.legalName.toUpperCase(), marginL, 24);
 
-  doc.setFontSize(20);
-  doc.text('STATEMENT', pageWidth - 20, 25, { align: 'right' });
+  doc.setFontSize(28);
+  doc.text('INVOICE', marginR, 24, { align: 'right' });
 
-  doc.setFontSize(12);
+  // ===== From / Invoice meta =====
   doc.setFont('helvetica', 'normal');
-  doc.text(monthData.name, pageWidth - 20, 35, { align: 'right' });
+  doc.setFontSize(9);
+  doc.text(BILL_FROM.addressLine1, marginL, 32);
+  doc.text(BILL_FROM.addressLine2, marginL, 37);
+  doc.text(BILL_FROM.country, marginL, 42);
+  doc.text(`EIN: ${BILL_FROM.ein}`, marginL, 47);
 
-  // Customer
   doc.setFontSize(10);
+  doc.text(invoiceNumber, marginR, 32, { align: 'right' });
+  doc.setFontSize(9);
+  doc.text(`Issued: ${fmtDateISO(issued)}`, marginR, 38, { align: 'right' });
+  doc.text(`Due: ${fmtDateISO(due)} (NET 30)`, marginR, 43, { align: 'right' });
+  doc.text(`Billing period: ${monthData.name}`, marginR, 48, { align: 'right' });
+
+  // Divider
+  doc.setLineWidth(0.4);
+  doc.line(marginL, 55, marginR, 55);
+
+  // ===== Bill To =====
+  let y = 65;
   doc.setFont('helvetica', 'bold');
-  doc.text('ACCOUNT', 20, 50);
+  doc.setFontSize(9);
+  doc.text('BILL TO', marginL, y);
+  y += 6;
   doc.setFont('helvetica', 'normal');
-  doc.text('Imperial Treasure', 20, 57);
+  doc.setFontSize(10);
+  doc.text(BILL_TO.legalName, marginL, y); y += 5;
+  doc.setFontSize(9);
+  doc.text(BILL_TO.addressLine1, marginL, y); y += 5;
+  doc.text(BILL_TO.addressLine2, marginL, y); y += 5;
+  doc.text(BILL_TO.country, marginL, y); y += 5;
+  doc.text(`Attn: ${BILL_TO.attn}, ${BILL_TO.attnTitle}`, marginL, y); y += 5;
+  doc.text(BILL_TO.email, marginL, y); y += 5;
 
-  // Summary
-  doc.line(20, 67, pageWidth - 20, 67);
+  // ===== Line items table =====
+  y = Math.max(y + 10, 110);
+  doc.setLineWidth(0.4);
+  doc.line(marginL, y, marginR, y);
+  y += 6;
 
-  let y = 80;
   doc.setFont('helvetica', 'bold');
-  doc.text('Activity Summary', 20, y);
+  doc.setFontSize(9);
+  doc.text('DESCRIPTION', marginL, y);
+  doc.text('EXECUTIONS', marginL + 110, y, { align: 'right' });
+  doc.text('MINUTES', marginL + 138, y, { align: 'right' });
+  doc.text('AMOUNT', marginR, y, { align: 'right' });
 
-  y += 12;
+  y += 3;
+  doc.line(marginL, y, marginR, y);
+  y += 7;
+
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
 
-  const totalExecutions = monthData.workflows.reduce(
-    (sum, wf) => sum + wf.executions,
-    0
-  );
-  doc.text('Total Workflow Executions:', 20, y);
-  doc.text(totalExecutions.toString(), pageWidth - 20, y, { align: 'right' });
-
-  y += 8;
-  const hours = monthData.totalMinutes / 60;
-  doc.text('Total Execution Time:', 20, y);
-  doc.text(`${hours.toFixed(1)}h`, pageWidth - 20, y, { align: 'right' });
-
-  y += 8;
-  doc.text('Deployed Workflows:', 20, y);
-  doc.text(monthData.workflowCount.toString(), pageWidth - 20, y, {
-    align: 'right',
-  });
-
-  y += 8;
-  doc.text('Usage Cost:', 20, y);
-  doc.text(`$${monthData.usageCost.toFixed(2)}`, pageWidth - 20, y, {
-    align: 'right',
-  });
-
-  y += 8;
-  doc.text(
-    `Minimum (${monthData.workflowCount} x $${MIN_PER_WORKFLOW}):`,
-    20,
-    y
-  );
-  doc.text(
-    `$${monthData.minimumCharge.toFixed(2)}`,
-    pageWidth - 20,
-    y,
-    { align: 'right' }
-  );
-
-  y += 10;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total Cost:', 20, y);
-  doc.text(`$${monthData.totalCost.toFixed(2)}`, pageWidth - 20, y, {
-    align: 'right',
-  });
-  doc.setFont('helvetica', 'normal');
-
-  if (monthData.minimumApplied) {
-    y += 6;
-    doc.setFontSize(8);
-    doc.text('(Minimum charge applied)', 20, y);
-    doc.setFontSize(10);
-  }
-
-  // Workflow breakdown
-  y += 20;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Workflow Breakdown', 20, y);
-
-  y += 10;
-  doc.setFont('helvetica', 'normal');
+  // One row per workflow
   monthData.workflows.forEach(wf => {
-    doc.text(`#${wf.id} ${wf.name}`, 20, y);
-    y += 6;
+    doc.text(`Workflow execution: ${wf.name}`, marginL, y);
+    doc.text(wf.executions.toLocaleString(), marginL + 110, y, { align: 'right' });
+    doc.text(wf.totalMinutes.toFixed(1), marginL + 138, y, { align: 'right' });
+    doc.text(fmtCurrency(wf.usageCost), marginR, y, { align: 'right' });
+    y += 5;
+    doc.setTextColor(120);
+    doc.setFontSize(8);
     doc.text(
-      `  ${wf.executions} executions, ${wf.totalMinutes.toFixed(1)} min, $${wf.usageCost.toFixed(2)}`,
-      20,
+      `  Workflow #${wf.id} at ${fmtCurrency(RATE_PER_MINUTE)}/minute (completed runs only)`,
+      marginL,
       y
     );
-    y += 8;
+    doc.setFontSize(9);
+    doc.setTextColor(0);
+    y += 7;
+
+    // Per-workflow minimum top-up line
+    if (wf.minimumApplied) {
+      const topUp = MIN_PER_WORKFLOW - wf.usageCost;
+      doc.text(
+        `Minimum monthly charge top-up: ${wf.name}`,
+        marginL,
+        y
+      );
+      doc.text('—', marginL + 110, y, { align: 'right' });
+      doc.text('—', marginL + 138, y, { align: 'right' });
+      doc.text(fmtCurrency(topUp), marginR, y, { align: 'right' });
+      y += 5;
+      doc.setTextColor(120);
+      doc.setFontSize(8);
+      doc.text(
+        `  Pilot terms: ${fmtCurrency(MIN_PER_WORKFLOW)} minimum per deployed workflow per month`,
+        marginL,
+        y
+      );
+      doc.setFontSize(9);
+      doc.setTextColor(0);
+      y += 7;
+    }
   });
 
-  // Footer
-  doc.setFontSize(8);
-  doc.text('Generated by Mediar AI', 20, 275);
+  // ===== Totals =====
+  y += 5;
+  doc.setLineWidth(0.4);
+  doc.line(marginL + 90, y, marginR, y);
+  y += 7;
 
-  doc.save(`Statement-${monthData.name.replace(' ', '-')}.pdf`);
+  doc.setFontSize(9);
+  doc.text('Subtotal', marginL + 90, y);
+  doc.text(fmtCurrency(monthData.totalCost), marginR, y, { align: 'right' });
+  y += 6;
+
+  doc.text('Tax (0%, services exported to Singapore)', marginL + 90, y);
+  doc.text('$0.00', marginR, y, { align: 'right' });
+  y += 8;
+
+  doc.line(marginL + 90, y - 2, marginR, y - 2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL DUE (USD)', marginL + 90, y + 4);
+  doc.text(fmtCurrency(monthData.totalCost), marginR, y + 4, { align: 'right' });
+
+  // ===== Footer =====
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(80);
+  doc.text(
+    'Reference the Product Order Form dated August 31, 2025 (Imperial Treasure × Mediar). All rights and obligations',
+    marginL,
+    260
+  );
+  doc.text(
+    `assigned to ${BILL_FROM.legalName} per the Assignment and Assumption Agreement effective March 14, 2026.`,
+    marginL,
+    265
+  );
+  doc.text(
+    `Payment in USD, NET 30. Questions: ${BILL_FROM.email}.`,
+    marginL,
+    273
+  );
+  doc.setTextColor(0);
+
+  const filename = `${invoiceNumber}.pdf`;
+  if (action === 'download') doc.save(filename);
+  else window.open(doc.output('bloburl'), '_blank');
 }
 
 export default function BillingPage() {
@@ -367,49 +346,15 @@ export default function BillingPage() {
     });
   };
 
-  // Generate invoices from usage data
   const rate = usageData?.ratePerMinute ?? RATE_PER_MINUTE;
   const minPerWf = usageData?.minPerWorkflow ?? MIN_PER_WORKFLOW;
-  const invoices: Invoice[] =
-    usageData?.months.map((month, idx) => {
-      const items: Invoice['items'] = [
-        {
-          description: 'Workflow Execution Time',
-          quantity: Math.round(month.totalMinutes),
-          unit: 'minutes',
-          rate,
-        },
-      ];
-      // If the minimum charge applies, add a top-up line to make subtotal == totalCost
-      if (month.minimumApplied) {
-        const topUp = month.minimumCharge - month.usageCost;
-        items.push({
-          description: `Minimum charge (${month.workflowCount} deployed workflow${month.workflowCount > 1 ? 's' : ''})`,
-          quantity: 1,
-          unit: 'adjustment',
-          rate: Math.round(topUp * 100) / 100,
-        });
-      }
-      return {
-        id: `INV-${month.key}-${String(idx + 1).padStart(3, '0')}`,
-        period: month.name,
-        status: idx === 0 ? 'pending' : 'paid',
-        dueDate: new Date(
-          parseInt(month.key.split('-')[0]),
-          parseInt(month.key.split('-')[1]),
-          15
-        ).toISOString(),
-        paidDate:
-          idx > 0
-            ? new Date(
-                parseInt(month.key.split('-')[0]),
-                parseInt(month.key.split('-')[1]),
-                10
-              ).toISOString()
-            : undefined,
-        items,
-      };
-    }) || [];
+
+  // Hide the in-progress month from billing — only finished months are
+  // invoiceable. The freeze cron runs on the 2nd of next month, after which
+  // the previous month's snapshot becomes immutable and shows up here.
+  const closedMonths: MonthlyData[] = (usageData?.months || []).filter(
+    m => m.key !== CURRENT_MONTH_KEY
+  );
 
   return (
     <DashboardLayout>
@@ -468,8 +413,8 @@ export default function BillingPage() {
               </div>
             </div>
 
-            {/* Monthly Usage */}
-            {usageData?.months.map(month => {
+            {/* Monthly Usage — only finished months are shown */}
+            {closedMonths.map(month => {
               const isExpanded = expandedMonths.has(month.key);
               return (
                 <div key={month.key} className="border-2 border-black mb-4">
@@ -553,17 +498,29 @@ export default function BillingPage() {
                           </span>
                           <span>${month.minimumCharge.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              generateStatementPDF(month);
-                            }}
-                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                          >
-                            <Download className="w-3 h-3" />
-                            STATEMENT PDF
-                          </button>
+                        <div className="flex justify-between items-center pt-2 border-t border-gray-300 gap-2">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                generateInvoicePDF(month, 'view');
+                              }}
+                              className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                            >
+                              <FileText className="w-3 h-3" />
+                              VIEW INVOICE
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                generateInvoicePDF(month, 'download');
+                              }}
+                              className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                            >
+                              <Download className="w-3 h-3" />
+                              DOWNLOAD INVOICE
+                            </button>
+                          </div>
                           <div className="font-mono text-sm font-bold">
                             Total: ${month.totalCost.toFixed(2)}
                             {month.minimumApplied && (
@@ -580,10 +537,11 @@ export default function BillingPage() {
               );
             })}
 
-            {usageData?.months.length === 0 && (
+            {closedMonths.length === 0 && (
               <div className="border-2 border-black p-8 text-center">
                 <p className="font-mono text-gray-600">
-                  No execution data found
+                  No completed billing months yet. The current month appears
+                  here once it ends.
                 </p>
               </div>
             )}
@@ -596,124 +554,106 @@ export default function BillingPage() {
                 Minimum: ${minPerWf}/month per deployed workflow (whichever is
                 higher).
               </div>
+              <div>
+                The current month is excluded until it ends; finished months
+                appear here on the 2nd of the following month.
+              </div>
             </div>
           </div>
         )}
 
         {!loading && !error && activeTab === 'invoices' && (
           <div>
-            <div className="border-2 border-black">
-              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 grid grid-cols-4 gap-4 font-mono text-xs text-gray-600 uppercase">
-                <div>Invoice</div>
-                <div>Period</div>
-                <div>Due Date</div>
-                <div>Status</div>
+            <div className="border-2 border-black mb-4">
+              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 grid grid-cols-12 gap-4 font-mono text-xs text-gray-600 uppercase">
+                <div className="col-span-3">Invoice</div>
+                <div className="col-span-3">Period</div>
+                <div className="col-span-2">Issued</div>
+                <div className="col-span-2">Due</div>
+                <div className="col-span-2 text-right">Total</div>
               </div>
 
-              {invoices.map(invoice => {
-                const isExpanded = expandedInvoices.has(invoice.id);
+              {closedMonths.map(month => {
+                const id = invoiceNumberFor(month.key);
+                const { issued, due } = invoiceDatesFor(month.key);
+                const isExpanded = expandedInvoices.has(id);
 
                 return (
                   <div
-                    key={invoice.id}
+                    key={id}
                     className="border-b border-gray-200 last:border-b-0"
                   >
                     <div
-                      className="grid grid-cols-4 gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer items-center"
-                      onClick={() => toggleInvoice(invoice.id)}
+                      className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer items-center"
+                      onClick={() => toggleInvoice(id)}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="col-span-3 flex items-center gap-2">
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4" />
                         ) : (
                           <ChevronRight className="w-4 h-4" />
                         )}
-                        <span className="font-mono text-sm">{invoice.id}</span>
+                        <span className="font-mono text-sm">{id}</span>
                       </div>
-                      <div className="font-mono text-sm text-gray-600">
-                        {invoice.period}
+                      <div className="col-span-3 font-mono text-sm text-gray-600">
+                        {month.name}
                       </div>
-                      <div className="font-mono text-sm text-gray-600">
-                        {new Date(invoice.dueDate).toLocaleDateString()}
+                      <div className="col-span-2 font-mono text-sm text-gray-600">
+                        {fmtDateISO(issued)}
                       </div>
-                      <div>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 text-xs font-mono uppercase ${
-                            invoice.status === 'paid'
-                              ? 'bg-white border-2 border-black'
-                              : 'bg-gray-100 border-2 border-dashed border-gray-400'
-                          }`}
-                        >
-                          {invoice.status}
-                        </span>
+                      <div className="col-span-2 font-mono text-sm text-gray-600">
+                        {fmtDateISO(due)}
+                      </div>
+                      <div className="col-span-2 text-right font-mono text-sm font-bold">
+                        ${month.totalCost.toFixed(2)}
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="bg-gray-50 border-t border-gray-200 p-4">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              generateInvoicePDF(invoice, 'view');
-                            }}
-                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                          >
-                            <FileText className="w-3 h-3" />
-                            VIEW PDF
-                          </button>
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              generateInvoicePDF(invoice, 'download');
-                            }}
-                            className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                          >
-                            <Download className="w-3 h-3" />
-                            DOWNLOAD
-                          </button>
-                        </div>
+                      <div className="bg-gray-50 border-t border-gray-200 p-4 flex gap-2">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            generateInvoicePDF(month, 'view');
+                          }}
+                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                        >
+                          <FileText className="w-3 h-3" />
+                          VIEW INVOICE
+                        </button>
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            generateInvoicePDF(month, 'download');
+                          }}
+                          className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
+                        >
+                          <Download className="w-3 h-3" />
+                          DOWNLOAD
+                        </button>
                       </div>
                     )}
                   </div>
                 );
               })}
 
-              {invoices.length === 0 && (
+              {closedMonths.length === 0 && (
                 <div className="p-8 text-center">
                   <p className="font-mono text-gray-600">No invoices yet</p>
                 </div>
               )}
             </div>
 
-            {/* Statements */}
-            {usageData && usageData.months.length > 0 && (
-              <div className="mt-6 border-2 border-black">
-                <div className="bg-black text-white p-4">
-                  <h2 className="font-mono font-bold text-sm">STATEMENTS</h2>
-                </div>
-                <div className="divide-y divide-gray-200">
-                  {usageData.months.map(month => (
-                    <div
-                      key={month.key}
-                      className="flex items-center justify-between p-4 hover:bg-gray-50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="font-mono text-sm">{month.name}</span>
-                      </div>
-                      <button
-                        onClick={() => generateStatementPDF(month)}
-                        className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
-                      >
-                        <Download className="w-3 h-3" />
-                        PDF
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            <div className="text-xs font-mono text-gray-500 space-y-1">
+              <div>
+                Issued by {BILL_FROM.legalName}, {BILL_FROM.addressLine1},{' '}
+                {BILL_FROM.addressLine2}, {BILL_FROM.country} (EIN {BILL_FROM.ein}).
               </div>
-            )}
+              <div>
+                Per the Aug 31 2025 Product Order Form (assigned to{' '}
+                {BILL_FROM.legalName} on Mar 14 2026). NET 30, USD.
+              </div>
+            </div>
           </div>
         )}
       </div>
