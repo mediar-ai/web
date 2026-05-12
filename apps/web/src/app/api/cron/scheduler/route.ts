@@ -332,7 +332,13 @@ export async function POST(_request: NextRequest) {
             parameters: {}, // Changed from execution_params to parameters
             client_id: 'cron-scheduler',
             ...(assignedMachineId && { machine_id: assignedMachineId }), // Include assigned machine if found
-            executor_type: workflow.cron_executor_type || 'python', // Pass the executor type from cron config
+            // Only pass executor_type when explicitly configured on the cron job.
+            // If unset, let the execute route auto-route based on preferred_format
+            // (typescript -> rust, otherwise python). Forcing 'python' here would
+            // break TS workflows that customers schedule via cron.
+            ...(workflow.cron_executor_type && {
+              executor_type: workflow.cron_executor_type,
+            }),
           }),
         });
 
