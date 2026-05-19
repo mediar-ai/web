@@ -303,21 +303,27 @@ export async function POST(
     const client_id = body.client_id || `web-${Date.now()}`;
     const execution_mode = body.execution_mode || 'async';
     const include_cache = body.include_cache === true; // New cache parameter
-    const executor_type = body.executor_type || 'python'; // Default to Python executor for backwards compatibility
 
     console.log('[SUCCESS] Extracted execution_params:', execution_params);
     console.log(`[FIX] Cache enabled: ${include_cache}`);
     console.log(
       `🔍 Full detailed response requested: ${full_detailed_response}`
     );
-    console.log(`🚀 Executor type: ${executor_type}`);
 
     // STEP 2: Check if workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
-      .select('name, status, automation_sequence, version, created_by')
+      .select('name, status, automation_sequence, version, created_by, preferred_format')
       .eq('id', workflowIdNum)
       .single();
+
+    // Auto-route executor based on workflow format when caller didn't specify.
+    // TypeScript workflows must hit the Rust executor; legacy YAML/jsonb stay on Python (Modal).
+    // Explicit body.executor_type still wins (admin override / batch dialog).
+    const executor_type =
+      body.executor_type ||
+      (workflow?.preferred_format === 'typescript' ? 'rust' : 'python');
+    console.log(`🚀 Executor type: ${executor_type} (preferred_format=${workflow?.preferred_format ?? 'unknown'}, explicit=${body.executor_type ? 'yes' : 'no'})`);
 
     // Set version_number: use provided version or fallback to workflow's current version
     const version_number = body.version_number || workflow?.version;

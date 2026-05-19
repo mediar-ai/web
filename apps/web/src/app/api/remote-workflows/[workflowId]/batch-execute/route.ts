@@ -363,13 +363,16 @@ export async function POST(
       dynamic_parameters = {},
       machine_id,
       version_number,
-      executor_type = 'python', // Default to Python executor
+      executor_type: explicit_executor_type,
       // Partial execution parameters
       start_from_step,
       end_at_step,
       follow_fallback,
       execute_jumps_at_end,
     } = body;
+    // Auto-routed below once we've loaded the workflow (preferred_format check).
+    // Keep a placeholder that gets overwritten before any use.
+    let executor_type: 'rust' | 'python' = explicit_executor_type || 'python';
 
     console.log('🚀 BATCH EXECUTE: Starting batch execution');
     console.log(
@@ -484,7 +487,7 @@ export async function POST(
     // STEP 2: Check workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows')
-      .select('id, name, status, created_by, organization_id')
+      .select('id, name, status, created_by, organization_id, preferred_format')
       .eq('id', workflowIdNum)
       .single();
 
@@ -494,6 +497,14 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // Auto-route executor based on workflow format when caller didn't specify.
+    // TypeScript workflows must hit the Rust executor; legacy YAML/jsonb stay on Python (Modal).
+    // Explicit body.executor_type still wins (admin override / batch dialog).
+    if (!explicit_executor_type) {
+      executor_type = workflow.preferred_format === 'typescript' ? 'rust' : 'python';
+    }
+    console.log(`🚀 BATCH EXECUTOR: ${executor_type} (preferred_format=${workflow.preferred_format ?? 'unknown'}, explicit=${explicit_executor_type ? 'yes' : 'no'})`);
 
     // Import auth helper to check for Mediar org/admin status
     const { getEffectiveOrgId } = await import('@/lib/mediarAuth');
