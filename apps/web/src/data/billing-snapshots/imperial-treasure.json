@@ -136,37 +136,6 @@
       "totalMinutes": 3978,
       "usageCost": 596.7,
       "totalCost": 596.7
-    },
-    "2026-04": {
-      "key": "2026-04",
-      "name": "April 2026",
-      "frozenAt": "2026-05-10T00:00:00Z",
-      "workflowCount": 2,
-      "minimumCharge": 1000,
-      "minimumApplied": true,
-      "workflows": [
-        {
-          "id": 71,
-          "name": "SAP Journal Entry",
-          "executions": 741,
-          "totalMinutes": 4440,
-          "usageCost": 666.0,
-          "billedCost": 666.0,
-          "minimumApplied": false
-        },
-        {
-          "id": 271,
-          "name": "Web Outgoing Payments",
-          "executions": 0,
-          "totalMinutes": 0,
-          "usageCost": 0.0,
-          "billedCost": 500.0,
-          "minimumApplied": true
-        }
-      ],
-      "totalMinutes": 4440,
-      "usageCost": 666.0,
-      "totalCost": 1166.0
     }
   }
 }
