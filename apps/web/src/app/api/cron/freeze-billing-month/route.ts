@@ -33,14 +33,24 @@ const CUSTOMERS = [
   },
 ];
 
-// Per-org workflow billing rules. Mirrors getBillableWorkflowIds in the usage route.
+// Per-org workflow billing rules.
+//
+// ExampleClient:
+//   Oct 2025 -> Apr 2026: SAP Journal Entry only.
+//   May 2026 onward:      SAP Journal Entry + Web Outgoing Payments.
+//
+// Apr 2026 was originally included for both, but the Web Outgoing Payments
+// $500 floor was waived per customer dispute on 2026-05-18 (workflow had 0
+// runs that month). The April snapshot in `billing_snapshots` reflects the
+// corrected total ($666, SAP only); the cutoff below ensures a re-fire of
+// the freeze cron for April cannot reintroduce the disputed line item.
 function getBillableWorkflowIdsForOrg(
   orgId: string,
   monthKey: string,
   _allProdIds: number[]
 ): number[] {
   if (orgId === 'org_REDACTED') {
-    if (monthKey >= '2026-04') {
+    if (monthKey >= '2026-05') {
       return [IT_WORKFLOW_SAP_JOURNAL, IT_WORKFLOW_WEB_OUTGOING_PAYMENTS];
     }
     return [IT_WORKFLOW_SAP_JOURNAL];
