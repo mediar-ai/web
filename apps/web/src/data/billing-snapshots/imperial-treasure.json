@@ -136,6 +136,28 @@
       "totalMinutes": 3978,
       "usageCost": 596.7,
       "totalCost": 596.7
+    },
+    "2026-04": {
+      "key": "2026-04",
+      "name": "April 2026",
+      "frozenAt": "2026-05-10T00:00:00+00:00",
+      "totalCost": 666.0,
+      "usageCost": 666.0,
+      "workflows": [
+        {
+          "id": 71,
+          "name": "SAP Journal Entry",
+          "usageCost": 666.0,
+          "billedCost": 666.0,
+          "executions": 741,
+          "totalMinutes": 4440,
+          "minimumApplied": false
+        }
+      ],
+      "totalMinutes": 4440,
+      "minimumCharge": 500,
+      "workflowCount": 1,
+      "minimumApplied": false
     }
   }
 }
