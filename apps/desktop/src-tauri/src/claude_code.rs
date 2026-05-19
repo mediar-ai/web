@@ -29,6 +29,7 @@ use std::sync::Mutex as StdMutex;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -233,12 +234,59 @@ async fn fetch_cumulative_cost(desktop_token: &str) -> std::result::Result<f64, 
 
 const ACP_RUNTIME_STAMP_FILE: &str = ".source-stamp";
 
+// Embedded ACP resources baked into the binary as a safety net for
+// production installs where bundle.resources didn't ship the files
+// (NSIS perMachine + Tauri updater issue seen in 1.4.3).
+const EMBEDDED_ACP_PATCHED_ENTRY: &[u8] =
+    include_bytes!("../acp-resources/patched-acp-entry.mjs");
+const EMBEDDED_ACP_PACKAGE_JSON: &[u8] = include_bytes!("../acp-resources/package.json");
+
 fn dev_acp_resources_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("acp-resources")
 }
 
 fn acp_resource_file_names() -> [&'static str; 2] {
     ["package.json", "patched-acp-entry.mjs"]
+}
+
+fn embedded_acp_bytes(file_name: &str) -> Option<&'static [u8]> {
+    match file_name {
+        "package.json" => Some(EMBEDDED_ACP_PACKAGE_JSON),
+        "patched-acp-entry.mjs" => Some(EMBEDDED_ACP_PATCHED_ENTRY),
+        _ => None,
+    }
+}
+
+/// Write the embedded ACP resources to a writable cache dir and return it.
+/// Used as a last-resort fallback when bundle.resources didn't ship.
+fn materialize_embedded_acp_resources(
+    app_handle: &AppHandle,
+) -> std::result::Result<PathBuf, String> {
+    let cache_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("Failed to resolve app local data dir for embedded ACP: {e}"))?
+        .join("acp-resources-embedded");
+
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create embedded ACP dir {:?}: {}", cache_dir, e))?;
+
+    for file_name in acp_resource_file_names() {
+        let bytes = embedded_acp_bytes(file_name)
+            .ok_or_else(|| format!("No embedded bytes for {file_name}"))?;
+        let target = cache_dir.join(file_name);
+        let needs_write = match fs::read(&target) {
+            Ok(existing) => existing != bytes,
+            Err(_) => true,
+        };
+        if needs_write {
+            fs::write(&target, bytes).map_err(|e| {
+                format!("Failed to write embedded ACP file {:?}: {}", target, e)
+            })?;
+        }
+    }
+
+    Ok(cache_dir)
 }
 
 fn has_required_acp_files(dir: &Path) -> bool {
@@ -291,7 +339,21 @@ fn resolve_acp_source_dir(app_handle: &AppHandle) -> std::result::Result<PathBuf
         return Ok(dev_path);
     }
 
-    Err("ACP resources not found in bundled resources or dev source".to_string())
+    // Last resort: materialize the embedded resources baked into the binary.
+    // This recovers production installs where bundle.resources didn't ship
+    // (observed in 1.4.3: NSIS perMachine + Tauri updater leaves no acp-resources/).
+    match materialize_embedded_acp_resources(app_handle) {
+        Ok(embedded_dir) => {
+            log::warn!(
+                "[claude_code] acp-resources embedded fallback active (1.4.4): wrote bytes to {:?}",
+                embedded_dir
+            );
+            Ok(embedded_dir)
+        }
+        Err(e) => Err(format!(
+            "ACP resources not found in bundled resources or dev source, and embedded fallback failed: {e}"
+        )),
+    }
 }
 
 fn compute_acp_source_stamp(source_dir: &Path) -> std::result::Result<String, String> {
@@ -1131,7 +1193,7 @@ impl AcpWorker {
         .env_remove("GOOGLE_APPLICATION_CREDENTIALS")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
 
         // Only set ANTHROPIC_API_KEY for Builtin mode (shared key).
@@ -1163,6 +1225,30 @@ impl AcpWorker {
             .stdout
             .take()
             .ok_or("Failed to get stdout from claude-code-acp")?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or("Failed to get stderr from claude-code-acp")?;
+
+        // Pump claude-code-acp stderr (patched-acp console.error lines) into the Rust log.
+        // Without this, Anthropic API errors / rate limits / subprocess panics from
+        // inside the ACP runtime are silently dropped to the parent process stderr.
+        tokio::task::spawn_local(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => log::warn!("[patched-acp stderr] {}", line),
+                    Ok(None) => {
+                        log::info!("[claude_code] patched-acp stderr stream ended");
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("[claude_code] patched-acp stderr read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
 
         // Create ACP connection with session-aware client
         let client = ClaudeCodeClient {
