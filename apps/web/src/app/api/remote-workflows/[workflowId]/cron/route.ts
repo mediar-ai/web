@@ -330,9 +330,9 @@ export async function PUT(
     }
     if (cron_retry_count !== undefined) {
       updateData.cron_retry_count = cron_retry_count;
+    }
     if (cron_executor_type !== undefined) {
       updateData.cron_executor_type = cron_executor_type;
-    }
     }
 
     // STEP 4: Clear auto-pause flags when re-enabling (matching PATCH behavior)

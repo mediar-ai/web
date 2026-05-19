@@ -1157,30 +1157,28 @@ export function UnifiedWorkflowDialog({
                       showAdvanced={true}
                     />
 
-                    {/* Executor Type Selection (Superadmin only) */}
-                    {isMediarTeam && (
-                      <div className="p-4 border-2 border-black rounded-lg bg-yellow-50">
-                        <label className="block font-mono text-xs uppercase text-gray-600 mb-2">
-                          Executor Type (Superadmin)
-                        </label>
-                        <select
-                          value={cronConfig.executorType || 'python'}
-                          onChange={e =>
-                            setCronConfig({
-                              ...cronConfig,
-                              executorType: e.target.value as 'python' | 'rust',
-                            })
-                          }
-                          className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
-                        >
-                          <option value="python">Python (Legacy Modal)</option>
-                          <option value="rust">Rust (Azure ACI)</option>
-                        </select>
-                        <p className="text-xs text-gray-600 mt-2 font-mono">
-                          Select which executor runs this scheduled workflow
-                        </p>
-                      </div>
-                    )}
+                    {/* Executor Type Selection (available to all users) */}
+                    <div className="p-4 border-2 border-black rounded-lg bg-yellow-50">
+                      <label className="block font-mono text-xs uppercase text-gray-600 mb-2">
+                        Executor Type
+                      </label>
+                      <select
+                        value={cronConfig.executorType || 'python'}
+                        onChange={e =>
+                          setCronConfig({
+                            ...cronConfig,
+                            executorType: e.target.value as 'python' | 'rust',
+                          })
+                        }
+                        className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
+                      >
+                        <option value="python">Python (Legacy Modal)</option>
+                        <option value="rust">Rust (Azure ACI)</option>
+                      </select>
+                      <p className="text-xs text-gray-600 mt-2 font-mono">
+                        Select which executor runs this scheduled workflow
+                      </p>
+                    </div>
                     {/* Machine Assignment Indicator */}
                     <div className="p-4 border-2 border-black rounded-lg bg-gray-50">
                       <div className="flex items-center justify-between mb-2">

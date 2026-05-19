@@ -992,43 +992,41 @@ export function BatchTestDialog({
                 )}
               </div>
 
-              {/* Executor Type Selection (Mediar Team Only) */}
-              {isMediarTeam && (
-                <div className="col-span-2 space-y-1.5 mt-2 pt-2 border-t border-gray-200">
-                  <Label
-                    htmlFor="executor-select"
-                    className="font-mono text-xs uppercase"
+              {/* Executor Type Selection (available to all users) */}
+              <div className="col-span-2 space-y-1.5 mt-2 pt-2 border-t border-gray-200">
+                <Label
+                  htmlFor="executor-select"
+                  className="font-mono text-xs uppercase"
+                >
+                  Executor Type
+                </Label>
+                <Select
+                  value={executorType}
+                  onValueChange={value =>
+                    setExecutorType(value as 'python' | 'rust')
+                  }
+                >
+                  <SelectTrigger
+                    id="executor-select"
+                    className="h-7 text-xs px-2"
                   >
-                    Executor Type
-                  </Label>
-                  <Select
-                    value={executorType}
-                    onValueChange={value =>
-                      setExecutorType(value as 'python' | 'rust')
-                    }
-                  >
-                    <SelectTrigger
-                      id="executor-select"
-                      className="h-7 text-xs px-2"
-                    >
-                      <SelectValue placeholder="Select executor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="python" className="text-xs py-1">
-                        Python Executor (Default)
-                      </SelectItem>
-                      <SelectItem value="rust" className="text-xs py-1">
-                        Rust Executor (Experimental)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="text-xs text-muted-foreground">
-                    {executorType === 'python'
-                      ? 'Using stable Python-based workflow executor (Modal)'
-                      : 'Using experimental Rust-based executor (Azure Container Instances - faster, limited features)'}
-                  </div>
+                    <SelectValue placeholder="Select executor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="python" className="text-xs py-1">
+                      Python Executor (Default)
+                    </SelectItem>
+                    <SelectItem value="rust" className="text-xs py-1">
+                      Rust Executor (Experimental)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="text-xs text-muted-foreground">
+                  {executorType === 'python'
+                    ? 'Using stable Python-based workflow executor (Modal)'
+                    : 'Using experimental Rust-based executor (Azure Container Instances, faster, limited features)'}
                 </div>
-              )}
+              </div>
 
               {/* Partial Execution (Debug Mode) */}
               <div className="col-span-2 space-y-2 mt-2 pt-2 border-t border-gray-200">
