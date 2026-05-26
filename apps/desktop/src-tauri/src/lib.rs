@@ -2390,8 +2390,12 @@ pub fn run() {
             }
         }));
 
-    // Add updater plugin in release builds only
-    let builder = if cfg!(not(debug_assertions)) {
+    // Add updater plugin in release builds on Windows only.
+    // macOS is not a supported target for this app: we don't publish signed
+    // Mac builds to the CrabNebula update endpoint, so the endpoint returns
+    // HTTP 400 ("Unknown update platform") for every Mac request. Registering
+    // the plugin on Mac would just produce repeated 10-min retry failures.
+    let builder = if cfg!(not(debug_assertions)) && cfg!(target_os = "windows") {
         builder.plugin(tauri_plugin_updater::Builder::new().build())
     } else {
         builder
@@ -2484,6 +2488,16 @@ pub fn run() {
                     if sentry::Hub::current().client().is_some() {
                         // Filter out noisy Tao event loop warnings
                         if record.target() == "tao::platform_impl::platform::event_loop::runner" {
+                            return;
+                        }
+
+                        // Update endpoint failures are expected & non-actionable per-event:
+                        // the auto-updater retries every 10 min, so a single offline user (or
+                        // a temporarily broken CDN) generates ~144 events/day. We drop these
+                        // from Sentry entirely (not even as breadcrumbs) so they can't flood
+                        // the quota. If the updater itself crashes hard, that surfaces via a
+                        // panic, which we still capture.
+                        if record.target().starts_with("tauri_plugin_updater") {
                             return;
                         }
 
@@ -2899,8 +2913,9 @@ pub fn run() {
             let update_manager = update_manager::UpdateManager::new();
             app.manage(update_manager);
 
-            // Start non-aggressive background update checker (only in release builds)
-            if cfg!(not(debug_assertions)) {
+            // Start non-aggressive background update checker (Windows release builds only;
+            // macOS is not a supported target, so we don't run the auto-updater there).
+            if cfg!(not(debug_assertions)) && cfg!(target_os = "windows") {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     update_manager::start_background_update_checker(app_handle).await;
