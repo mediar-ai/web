@@ -1994,7 +1994,12 @@ async def execute_mcp_workflow(
                 # =============================================================================
                 # Handle Unexpected Response Format
                 # =============================================================================
-                else:
+                # Only fire when result_data has neither "error" nor "result". Without this
+                # guard, any MCP error response (e.g. -32603 "Workflow execution cancelled
+                # by stop_execution") gets its workflow_result overwritten here because
+                # mcp_content is None in the error branch, and this else is paired with
+                # `if mcp_content:` above rather than the result_data branch.
+                elif not (isinstance(result_data, dict) and ("error" in result_data or "result" in result_data)):
                     # result_data doesn't have "error" or "result" - unexpected format
                     logger.error(f"❌ Unexpected MCP response format. Keys: {list(result_data.keys()) if isinstance(result_data, dict) else 'not a dict'}")
 
