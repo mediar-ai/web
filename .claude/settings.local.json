@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Skill(supabase)"
+      "Skill(supabase)",
+      "Bash(pkill -f \"user-data-dir=/Users/matthewdi/.claude/browser-profiles/logged-in-browser\")",
+      "Bash(pkill -9 -f \"user-data-dir=/Users/matthewdi/.claude/browser-profiles/logged-in-browser\")"
     ],
     "deny": [],
     "ask": []
