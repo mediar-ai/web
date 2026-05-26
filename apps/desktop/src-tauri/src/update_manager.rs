@@ -55,6 +55,14 @@ impl Default for UpdateManager {
 #[tauri::command]
 #[specta::specta]
 pub async fn check_for_updates(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    // macOS is not a supported target for this app. The updater plugin is not
+    // registered on non-Windows, so `app.updater()` would fail and we'd log an
+    // `error!` (which goes to Sentry). Short-circuit here with a clean no-op.
+    if !cfg!(target_os = "windows") {
+        info!("🚫 Updater not available on this platform (Windows-only)");
+        return Ok(None);
+    }
+
     info!("🔍 Manually checking for updates...");
 
     match app.updater() {
@@ -100,6 +108,11 @@ pub async fn check_for_updates(app: AppHandle) -> Result<Option<UpdateInfo>, Str
 #[tauri::command]
 #[specta::specta]
 pub async fn download_update(app: AppHandle) -> Result<(), String> {
+    if !cfg!(target_os = "windows") {
+        info!("🚫 Updater not available on this platform (Windows-only)");
+        return Ok(());
+    }
+
     info!("⬇️ Downloading update...");
 
     // Spawn the download in a separate task to avoid lifetime issues with app.state()
@@ -207,6 +220,11 @@ async fn do_download_update(app: AppHandle, manager: UpdateManager) -> Result<()
 #[tauri::command]
 #[specta::specta]
 pub async fn install_update_and_restart(_app: AppHandle) -> Result<(), String> {
+    if !cfg!(target_os = "windows") {
+        info!("🚫 Updater not available on this platform (Windows-only)");
+        return Ok(());
+    }
+
     info!("🔄 Installing update and restarting app...");
 
     // The app will restart automatically after installation
@@ -352,6 +370,11 @@ pub async fn get_update_status(app: AppHandle) -> Result<UpdateStatus, String> {
 
 /// Start background update checker (non-aggressive, emits events only)
 pub async fn start_background_update_checker(app_handle: AppHandle) {
+    if !cfg!(target_os = "windows") {
+        info!("🚫 Background updater disabled on this platform (Windows-only)");
+        return;
+    }
+
     info!("🔄 Starting background update checker...");
 
     tokio::spawn(async move {
@@ -406,12 +429,19 @@ pub async fn start_background_update_checker(app_handle: AppHandle) {
                             info!("✅ Background: No updates available");
                         }
                         Err(e) => {
-                            error!("❌ Background: Failed to check for updates: {}", e);
+                            // Background updater runs every 10 min and the endpoint may be
+                            // offline, returning non-2xx, or the user is offline. Logging this
+                            // as `error!` produced ~9k Sentry events/month from a dead CDN
+                            // (cdn.crabnebula.app → HTTP 400). Use `warn!` so it's still
+                            // visible in local logs but doesn't flood Sentry.
+                            warn!("⚠️ Background: Failed to check for updates: {}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    error!("❌ Background: Failed to get updater instance: {}", e);
+                    // Same reasoning as above: instance failures here are not actionable
+                    // per-event and the background loop will retry on its own.
+                    warn!("⚠️ Background: Failed to get updater instance: {}", e);
                 }
             }
 
