@@ -142,6 +142,12 @@ mcp.json
 /test-workflow-processed.yml
 /*.zip
 
+# Local DB snapshots / backup dumps
+scripts/imperial_treasure_*_snapshot_backup.json
+
+# Per-machine Claude Code project settings
+.claude/settings.local.json
+
 # Test/debug scripts in scripts/ and modal_apps/ (cleanup)
 scripts/test*.py
 scripts/test*.js
