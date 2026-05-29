@@ -1,6 +1,6 @@
 [package]
 name = "mediar"
-version = "1.4.4"
+version = "1.4.5"
 description = "A workflow recording and automation tool."
 authors = ["you"]
 edition = "2021"
