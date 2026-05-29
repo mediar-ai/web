@@ -1,4 +1,3 @@
-# 1.4.4
+# 1.4.5
 
-- Fixed Claude Code chat silently failing for production users whose 1.4.3 install was missing the bundled ACP resource files. The runtime now embeds those files in the binary and materializes them on first launch as a fallback, so chat works even when bundle.resources didn't ship correctly.
-- Pipe ACP subprocess stderr into the desktop log. Anthropic API errors, rate limits, and Claude Agent SDK warnings from inside the ACP runtime now appear in support logs instead of being silently dropped.
+- The auto-updater now runs only on Windows. Background update-check failures are logged quietly instead of surfacing as errors, which removes false error noise for users and in support/Sentry logs.
