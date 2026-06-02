@@ -31,8 +31,18 @@ jobs:
           cache-workspaces: crates/executor
 
       - name: Run Tests
-        working-directory: crates/executor
-        run: cargo test --lib --tests --verbose --package workflow-executor
+        run: |
+          # The executor is deployed as a standalone crate: the Docker image copies
+          # only crates/executor (Cargo.toml, Cargo.lock, src) and builds it without
+          # the parent workspace. Mirror that here. Running `cargo test` inside the
+          # workspace pulls in apps/desktop/src-tauri, whose `terminator-rs >=0.24`
+          # requirement is unpublished on crates.io and aborts dependency resolution
+          # before any executor test runs.
+          ISO="$(mktemp -d)"
+          cp crates/executor/Cargo.toml crates/executor/Cargo.lock "$ISO"/
+          cp -R crates/executor/src "$ISO"/
+          cd "$ISO"
+          cargo test --lib --tests --verbose
 
   # Build and deploy
   deploy:
