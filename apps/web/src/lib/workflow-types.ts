@@ -31,6 +31,7 @@ export type ErrorHandlingRule = {
 
 export interface Workflow {
   id: number;
+  uuid?: string; // Stable workflow UUID (deployed_workflows.uuid); matches the desktop app's copyable ID
   name: string;
   description: string;
   version: string;
