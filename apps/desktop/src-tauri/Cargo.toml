@@ -65,8 +65,8 @@ dirs = "5.0"
 # Workflow recording dependencies
 # Always reference crates.io versions here
 # For local development, use src-tauri/.cargo/config.toml to patch with local sources
-terminator-workflow-recorder = ">=0.24"
-terminator-rs = ">=0.24"
+terminator-workflow-recorder = ">=0.23"
+terminator-rs = ">=0.23"
 
 
 chrono = { version = "0.4", features = ["serde"] }
