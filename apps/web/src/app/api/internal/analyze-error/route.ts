@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getVertexGenAI } from '@/lib/vertexai';
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { trackLLMUsageAsync } from '@/lib/llm-tracking';
+import { requireInternalApiKey } from '@/lib/auth/requireInternalApiKey';
 
 const MAX_RETRIES = 3;
 const MAX_TOKEN_SIZE = 100000; // Approximate character limit
@@ -153,17 +154,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check authentication - allow internal service calls
-    const isInternalCall = req.headers.get('x-internal-service') === 'monitor';
-
-    if (!isInternalCall) {
-      // For non-internal calls, verify the request has proper authorization
-      // Since we're using service key, we'll check for a valid authorization header instead
-      const authHeader = req.headers.get('authorization');
-      if (!authHeader) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+    // Require the internal API key. This route triggers LLM (Vertex AI) calls,
+    // so it must not be callable by unauthenticated clients.
+    const denied = requireInternalApiKey(req);
+    if (denied) return denied;
 
     const body: ErrorAnalysisRequest = await req.json();
 

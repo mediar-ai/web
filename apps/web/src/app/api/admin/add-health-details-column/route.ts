@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@clickhouse/client';
+import { requireMediarAdmin } from '@/lib/auth/requireMediarAdmin';
 
 const clickhouse = createClient({
   url: process.env.NEXT_PUBLIC_CLICKHOUSE_URL || 'https://g2g4mz36xc.us-east-1.aws.clickhouse.cloud:8443',
@@ -10,6 +11,9 @@ const clickhouse = createClient({
 
 export async function GET() {
   try {
+    const denied = await requireMediarAdmin();
+    if (denied) return denied;
+
     // Add health_details column if it doesn't exist
     const query = `
       ALTER TABLE remote_machines

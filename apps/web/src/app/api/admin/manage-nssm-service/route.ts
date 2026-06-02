@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { requireMediarAdmin } from '@/lib/auth/requireMediarAdmin';
 
 const execAsync = promisify(exec);
 
@@ -283,6 +284,9 @@ const ServiceOperations = {
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = await requireMediarAdmin();
+    if (denied) return denied;
+
     const { action, force = false } = await req.json();
     
     if (!action) {
@@ -386,6 +390,9 @@ export async function POST(req: NextRequest) {
 // GET endpoint to check service status without making changes
 export async function GET() {
   try {
+    const denied = await requireMediarAdmin();
+    if (denied) return denied;
+
     console.log('🔍 Checking NSSM service status...');
     
     const connectivity = await checkVMConnectivity();

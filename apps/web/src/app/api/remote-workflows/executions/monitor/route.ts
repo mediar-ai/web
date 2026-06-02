@@ -91,8 +91,7 @@ export async function POST(request: NextRequest) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              // Add internal service auth if needed
-              'x-internal-service': 'monitor',
+              Authorization: `Bearer ${process.env.INTERNAL_API_KEY}`,
             },
             body: JSON.stringify(analysisPayload),
           });

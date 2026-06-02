@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireMediarAdmin } from '@/lib/auth/requireMediarAdmin';
 
 const WORKING_VM_IP = '172.171.215.84';
 
 export async function POST() {
   try {
+    const denied = await requireMediarAdmin();
+    if (denied) return denied;
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
