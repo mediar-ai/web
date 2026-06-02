@@ -21,6 +21,7 @@ import {
   Share2,
   AlertCircle,
   Trash2,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -313,6 +314,20 @@ export function WorkflowCardEnhanced({
                     <span className="text-[11px] font-mono text-gray-400 flex-shrink-0">
                       #{workflow.id}
                     </span>
+                    {workflow.uuid && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(workflow.uuid!);
+                          toast.success('Workflow UUID copied to clipboard');
+                        }}
+                        title={`Copy UUID: ${workflow.uuid}`}
+                        className="flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
                     {workflow.version_info?.current_version && (
                       <span className="text-[11px] font-mono text-gray-500 flex-shrink-0">
                         v{workflow.version_info.current_version}
@@ -327,6 +342,11 @@ export function WorkflowCardEnhanced({
                     {workflow.version_info?.current_version &&
                       ` • Version ${workflow.version_info.current_version}`}
                   </p>
+                  {workflow.uuid && (
+                    <p className="font-mono text-[11px] text-gray-400 mt-1">
+                      UUID: {workflow.uuid}
+                    </p>
+                  )}
                   {workflow.tags && workflow.tags.length > 0 && (
                     <div className="flex items-center gap-1 mt-1">
                       <span className="text-[10px] text-gray-400">Tags:</span>
