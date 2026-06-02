@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { requireMediarAdmin } from '@/lib/auth/requireMediarAdmin';
 
 /**
  * Admin endpoint to apply database migrations
@@ -8,6 +9,9 @@ import path from 'path';
  */
 export async function POST(request: Request) {
   try {
+    const denied = await requireMediarAdmin();
+    if (denied) return denied;
+
     const body = await request.json();
     const { migration_file } = body;
 
