@@ -22,7 +22,12 @@ impl WorkflowQueries {
                 dw.github_folder,
                 dw.github_ref,
                 dw.organization_id,
-                dw.preferred_format,
+                -- Prefer the ACTIVE version's format (authoritative, written alongside
+                -- automation_sequence). The parent dw.preferred_format is stale for
+                -- TypeScript workflows: publish-typescript only writes the flag to the
+                -- version row, never the parent, so dw.preferred_format stays null and
+                -- TS workflows wrongly route to the structured-step executor.
+                COALESCE(dwv.preferred_format, dw.preferred_format) as preferred_format,
                 dwv.automation_sequence,
                 dwv.automation_sequence_yaml,
                 dw.skip_next_cancellation_check,
