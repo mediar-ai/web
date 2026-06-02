@@ -10,6 +10,7 @@ import {
   History,
   ArrowDownToLine,
   Clock,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,9 @@ export interface CloudActionsButtonProps {
   onCloneWorkflow?: (id: string | number) => Promise<void>;
   onSetWorkflowVisibility?: (id: string | number, isPublic: boolean) => Promise<{ success: boolean; error?: string }>;
   handleDashboard: () => void;
+  // Prod tag props
+  tags?: string[];
+  onToggleProd?: (markProd: boolean) => Promise<{ success: boolean; error?: string }>;
   // Version history props
   workflowPath?: string;
   saveVersion?: (message?: string, authorType?: string) => Promise<unknown>;
@@ -41,6 +45,8 @@ export function CloudActionsButton({
   onCloneWorkflow,
   onSetWorkflowVisibility,
   handleDashboard,
+  tags,
+  onToggleProd,
   workflowPath,
   saveVersion,
   onOpenVersionHistory,
@@ -49,6 +55,8 @@ export function CloudActionsButton({
   const [isOpen, setIsOpen] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isTogglingProd, setIsTogglingProd] = useState(false);
+  const isProd = (tags ?? []).map(t => t.toLowerCase()).includes("prod");
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -138,7 +146,27 @@ export function CloudActionsButton({
               )}
             </button>
           )}
-          {/* Deploy */}
+          {/* Mark as Prod */}
+          {onToggleProd && hasSteps && (
+            <button
+              onClick={async () => {
+                setIsOpen(false);
+                setIsTogglingProd(true);
+                try {
+                  await onToggleProd(!isProd);
+                } finally {
+                  setIsTogglingProd(false);
+                }
+              }}
+              disabled={isTogglingProd}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-gray-100 disabled:opacity-50"
+            >
+              {isTogglingProd ? <Loader2 className="w-3 h-3 animate-spin" /> : <Tag className="w-3 h-3" />}
+              <span>{isProd ? "Unmark Prod" : "Mark as Prod"}</span>
+              {isProd && <span className="ml-auto text-[10px] bg-gray-100 text-gray-600 px-1 rounded">prod</span>}
+            </button>
+          )}
+          {/* View on Dashboard */}
           {hasSteps && (
             <button
               onClick={() => {
@@ -148,7 +176,7 @@ export function CloudActionsButton({
               className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-gray-100"
             >
               <ExternalLink className="w-3 h-3" />
-              <span>Deploy to Dashboard</span>
+              <span>View on Dashboard</span>
             </button>
           )}
           <div className="my-1 h-px bg-gray-200" />

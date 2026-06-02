@@ -2147,6 +2147,38 @@ export default function App() {
     }
   }, []);
 
+  // Toggle the "prod" tag on the current workflow. "prod" is the standard tag
+  // the dashboard filters on by default and the billing cron bills against.
+  const handleToggleProd = useCallback(
+    async (markProd: boolean): Promise<{ success: boolean; error?: string }> => {
+      const folderId = currentWorkflow?.id;
+      if (!folderId) return { success: false, error: "No workflow selected" };
+      try {
+        const cloudWorkflows = await invoke<Array<{ id: number; github_folder?: string; uuid?: string }>>(
+          "list_saved_workflows"
+        );
+        const cloudWorkflow = cloudWorkflows.find(
+          cw => cw.github_folder === folderId || cw.uuid === folderId
+        );
+        if (!cloudWorkflow) {
+          return { success: false, error: "Cloud workflow not found" };
+        }
+        const existing = (currentWorkflow?.tags ?? []).map(t => t.trim().toLowerCase()).filter(Boolean);
+        const withoutProd = existing.filter(t => t !== "prod");
+        const newTags = markProd ? [...withoutProd, "prod"] : withoutProd;
+        await invoke("update_workflow_tags", { workflowId: cloudWorkflow.id, tags: newTags });
+        await loadWorkflows();
+        toast.success(markProd ? "Marked as prod" : "Unmarked prod");
+        return { success: true };
+      } catch (err) {
+        console.error("Failed to toggle prod tag:", err);
+        toast.error("Failed to update prod tag");
+        return { success: false, error: String(err) };
+      }
+    },
+    [currentWorkflow?.id, currentWorkflow?.tags, loadWorkflows]
+  );
+
   // Track which pool step is currently executing
   const [executingPoolStepId, setExecutingPoolStepId] = useState<string | null>(null);
 
@@ -4813,6 +4845,8 @@ export default function App() {
                             onCloneWorkflow={handleCloneWorkflow}
                             onSetWorkflowVisibility={handleSetWorkflowVisibility}
                             handleDashboard={handleDashboard}
+                            tags={currentWorkflow.tags}
+                            onToggleProd={handleToggleProd}
                             workflowPath={currentWorkflow.localPath}
                             saveVersion={saveVersion}
                             onOpenVersionHistory={() => setVersionHistoryOpen(true)}
