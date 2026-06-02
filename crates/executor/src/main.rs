@@ -259,9 +259,19 @@ async fn run_workflow_directly(machine: String, workflow: String) -> Result<()> 
         .await?
         .ok_or_else(|| anyhow::anyhow!("Workflow not found: {workflow_id_int}"))?;
 
-    // Check if this is a TypeScript workflow
-    if workflow.preferred_format.as_deref() == Some("typescript") {
-        info!("Detected TypeScript workflow - executing via execute_sequence MCP tool");
+    // Check if this is a TypeScript workflow.
+    // Do NOT depend on a single flag: preferred_format can be stale/null (e.g. the
+    // publish-typescript path only writes it to the active version row, and the query
+    // now COALESCEs that in). A present github_release_url is a TS-only signal (only
+    // the TS publish + release webhook ever set it), so treat it as authoritative too.
+    let is_typescript = workflow.preferred_format.as_deref() == Some("typescript")
+        || workflow.github_release_url.is_some();
+    if is_typescript {
+        info!(
+            preferred_format = ?workflow.preferred_format,
+            has_release_url = workflow.github_release_url.is_some(),
+            "Detected TypeScript workflow - executing via execute_sequence MCP tool"
+        );
         eprintln!("📦 TypeScript workflow detected");
 
         // Create MCP client for both download and execution
