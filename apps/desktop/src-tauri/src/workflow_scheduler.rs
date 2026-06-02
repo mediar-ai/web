@@ -918,6 +918,21 @@ pub async fn initialize_scheduler(app_handle: tauri::AppHandle, mcp_port: u16) {
                 } = workflow.trigger
                 {
                     if WorkflowScheduler::should_execute_cron(schedule, workflow.last_executed) {
+                        // Re-read enabled_override from disk as the source of truth.
+                        // The in-memory `enabled` flag is only reconciled with
+                        // triggers.json at app startup, so a UI toggle to "off" that
+                        // wrote the file but didn't update this cached entry would
+                        // otherwise keep firing until the app restarts.
+                        if read_enabled_override(&workflow.workflow_path) == Some(false) {
+                            info!(
+                                "[SCHEDULER] Workflow '{}' is disabled on disk, skipping and syncing in-memory state",
+                                workflow.workflow_name
+                            );
+                            let mut scheduler = WORKFLOW_SCHEDULER.write().await;
+                            scheduler.set_workflow_enabled(&workflow.workflow_id, false);
+                            continue;
+                        }
+
                         // Skip if this workflow is already executing (prevents overlap)
                         {
                             let scheduler = WORKFLOW_SCHEDULER.read().await;
@@ -1171,6 +1186,19 @@ fn parse_trigger_from_typescript(terminator_ts_content: &str) -> Option<(Trigger
 
 /// Load scheduled workflows from the workflows directory
 /// Reads trigger config from TypeScript code, runtime state from triggers.json
+/// Read the `enabled_override` flag straight from a workflow's
+/// `.mediar/triggers.json`, bypassing the in-memory cache. Returns `None` when
+/// the file is missing or has no override set.
+fn read_enabled_override(workflow_path: &str) -> Option<bool> {
+    let triggers_path = std::path::Path::new(workflow_path)
+        .join(".mediar")
+        .join("triggers.json");
+    let content = std::fs::read_to_string(&triggers_path).ok()?;
+    serde_json::from_str::<WorkflowRuntimeState>(&content)
+        .ok()
+        .and_then(|s| s.enabled_override)
+}
+
 async fn load_scheduled_workflows() -> Result<(), String> {
     let workflows_dir = get_workflows_dir();
 
