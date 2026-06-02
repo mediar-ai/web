@@ -294,8 +294,14 @@ mod tests {
             }
         });
 
-        assert_eq!(extract_workflow_status(Some(&mcp_data), true), "success");
-        assert_eq!(extract_workflow_status(Some(&mcp_data), false), "failed");
+        assert_eq!(
+            extract_workflow_status(Some(&mcp_data), true),
+            "executed_without_error"
+        );
+        assert_eq!(
+            extract_workflow_status(Some(&mcp_data), false),
+            "executed_with_error"
+        );
     }
 
     #[test]
@@ -503,7 +509,7 @@ mod tests {
         // When MCP execution itself fails (no workflow data)
         let output = format_execution_output(false, None, Some("Connection refused"));
 
-        assert_eq!(output.status, "failed");
+        assert_eq!(output.status, "executed_with_error");
         assert!(output.error.is_some());
 
         let error = output.error.unwrap();
