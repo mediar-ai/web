@@ -68,6 +68,14 @@ Logger.init()
 const urlParams = new URLSearchParams(window.location.search);
 const windowType = urlParams.get("window");
 
+// Overlay bar windows are transparent Tauri windows that only show a floating
+// pill. Without this, the body's frosted backdrop paints a translucent
+// rectangle across the whole window around the pill.
+const OVERLAY_WINDOWS = ["recording-bar", "execution-bar", "ai-thinking-bar", "action-review"];
+if (windowType && OVERLAY_WINDOWS.includes(windowType)) {
+  document.documentElement.classList.add("overlay-window");
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 
 if (windowType === "recording-bar") {
