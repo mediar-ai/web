@@ -214,7 +214,10 @@ export async function POST(request: NextRequest) {
 
         const emailResponse = await fetch(`${baseUrl}/api/internal/send-notification-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.INTERNAL_API_KEY}`,
+          },
           body: JSON.stringify({
             to: recipients,
             subject: `[${alert.severity?.toUpperCase() || 'ALERT'}] ${alert.title}`,

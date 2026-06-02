@@ -108,7 +108,10 @@ export async function POST(request: NextRequest) {
 
             await fetch(`${baseUrl}/api/internal/send-notification-email`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${process.env.INTERNAL_API_KEY}`,
+              },
               body: JSON.stringify({
                 to: config.email_recipients,
                 subject: `[AUTO-PAUSED] Workflow ${workflow_name}`,
