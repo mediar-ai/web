@@ -238,6 +238,15 @@
     -webkit-backdrop-filter: none;
   }
 
+  /* Overlay bar windows: keep the window fully transparent so only the
+     opaque floating pill is visible, with no frosted rectangle around it. */
+  .overlay-window,
+  .overlay-window body {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
   /* Override transparent backgrounds in solid mode */
   .solid-background .bg-white\/5,
   .solid-background .bg-black\/5,
