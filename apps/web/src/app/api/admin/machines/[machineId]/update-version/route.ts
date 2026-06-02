@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ComputeManagementClient } from '@azure/arm-compute';
 import { DefaultAzureCredential } from '@azure/identity';
+import { requireMediarAdmin } from '@/lib/auth/requireMediarAdmin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -208,6 +209,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ machineId: string }> }
 ) {
+  const denied = await requireMediarAdmin();
+  if (denied) return denied;
+
   if (!supabase) {
     return NextResponse.json(
       { error: 'Supabase client not initialized' },

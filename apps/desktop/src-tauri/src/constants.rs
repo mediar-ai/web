@@ -1,5 +1,4 @@
 // API Configuration constants
-pub const GEMINI_API_KEY: &str = "***REMOVED***";
 pub const GEMINI_MODEL: &str = "gemini-pro-latest";
 pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -37,10 +36,6 @@ mod tests {
     #[test]
     fn test_api_constants() {
         // Verify API configuration constants are not empty
-        assert!(
-            !GEMINI_API_KEY.is_empty(),
-            "Gemini API key should not be empty"
-        );
         assert!(!GEMINI_MODEL.is_empty(), "Gemini model should not be empty");
         assert!(
             !GEMINI_BASE_URL.is_empty(),
