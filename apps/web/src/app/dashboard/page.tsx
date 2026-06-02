@@ -170,11 +170,29 @@ function DashboardContent() {
   const [selectedWorkflowTags, setSelectedWorkflowTags] = useState<string[]>(
     []
   );
+  // Ensure the "prod" default is applied at most once per org load,
+  // so a user who switches to "All Tags" isn't forced back to prod.
+  const prodDefaultAppliedRef = useRef(false);
 
   // Reset tag filter when org changes
   useEffect(() => {
     setSelectedWorkflowTags([]);
+    prodDefaultAppliedRef.current = false;
   }, [organization?.id, viewOrgId]);
+
+  // Default to showing only "prod" workflows when the org has any.
+  // Applied once after workflows load; users can pick "All Tags" afterward.
+  useEffect(() => {
+    if (prodDefaultAppliedRef.current) return;
+    if (!workflows || workflows.length === 0) return;
+    prodDefaultAppliedRef.current = true;
+    const hasProd = workflows.some(
+      w => Array.isArray(w.tags) && w.tags.some(t => t?.toLowerCase() === 'prod')
+    );
+    if (hasProd) {
+      setSelectedWorkflowTags(['prod']);
+    }
+  }, [workflows]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
