@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Tests
         working-directory: crates/executor
-        run: cargo test --lib --tests --verbose
+        run: cargo test --lib --tests --verbose --package workflow-executor
 
   # Build and deploy
   deploy:
