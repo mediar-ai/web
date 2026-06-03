@@ -313,17 +313,34 @@ export async function POST(
     // STEP 2: Check if workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
-      .select('name, status, automation_sequence, version, created_by, preferred_format')
+      .select('name, status, automation_sequence, version, created_by')
       .eq('id', workflowIdNum)
       .single();
 
+    // Determine the workflow format authoritatively. The
+    // deployed_workflows_with_sequence view has NO preferred_format column, so we
+    // read it from the base table (cheap PK lookup) instead of getting `undefined`.
+    const { data: fmtRow } = await supabase
+      .from('deployed_workflows')
+      .select('preferred_format')
+      .eq('id', workflowIdNum)
+      .single();
+    const isTypeScript = fmtRow?.preferred_format === 'typescript';
+
     // Auto-route executor based on workflow format when caller didn't specify.
     // TypeScript workflows must hit the Rust executor; legacy YAML/jsonb stay on Python (Modal).
-    // Explicit body.executor_type still wins (admin override / batch dialog).
-    const executor_type =
-      body.executor_type ||
-      (workflow?.preferred_format === 'typescript' ? 'rust' : 'python');
-    console.log(`🚀 Executor type: ${executor_type} (preferred_format=${workflow?.preferred_format ?? 'unknown'}, explicit=${body.executor_type ? 'yes' : 'no'})`);
+    let executor_type =
+      body.executor_type || (isTypeScript ? 'rust' : 'python');
+    // Safety net: a TypeScript workflow CANNOT run on the Python/Modal executor —
+    // it crashes parsing the TS structure ("list indices must be integers or
+    // slices, not str"). Force rust even if a stale client explicitly sent python.
+    if (isTypeScript && executor_type === 'python') {
+      console.warn(
+        `⚠️ Forcing rust executor for TypeScript workflow ${workflowIdNum} (client requested python)`
+      );
+      executor_type = 'rust';
+    }
+    console.log(`🚀 Executor type: ${executor_type} (preferred_format=${fmtRow?.preferred_format ?? 'unknown'}, isTypeScript=${isTypeScript}, explicit=${body.executor_type ? 'yes' : 'no'})`);
 
     // Set version_number: use provided version or fallback to workflow's current version
     const version_number = body.version_number || workflow?.version;
