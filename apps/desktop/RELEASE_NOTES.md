@@ -1,3 +1,6 @@
-# 1.4.5
+# 1.4.6
 
-- The auto-updater now runs only on Windows. Background update-check failures are logged quietly instead of surfacing as errors, which removes false error noise for users and in support/Sentry logs.
+- Fixed the main window appearing off-screen: it now recenters automatically when restored from an off-screen position.
+- TypeScript workflows now route correctly to the Rust executor, with the executor format detected from the active workflow version for reliable execution.
+- Disabled workflows are no longer executed — enabled/disabled state is now read directly from disk.
+- Scheduled (cloud cron) runs now receive their per-schedule inputs correctly.
