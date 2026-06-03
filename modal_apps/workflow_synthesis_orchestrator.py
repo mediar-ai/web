@@ -289,7 +289,7 @@ def orchestrate_workflow_synthesis(
 def trigger_workflow_synthesis_test():
     """Test function to trigger workflow synthesis orchestration"""
     result = orchestrate_workflow_synthesis.remote(
-        user_id="9e6bd605-d56f-8e96-9e6b-d605d56f8e96",
+        user_id=os.environ.get("TEST_USER_ID", "00000000-0000-0000-0000-000000000000"),
         model="gemini-2.5-pro", 
         start_date="2025-01-30T00:00:00Z",
         end_date="2025-01-31T23:59:59Z",
