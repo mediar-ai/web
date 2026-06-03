@@ -6,27 +6,32 @@
  * with production database data.
  */
 
-// Environment-specific organization ID mappings
-// Dev Clerk ID -> Production Database ID
-const getOrgIdMapping = () => {
-  return {
-    [process.env.MEDIAR_DEV_ORG_ID || 'org_2yydAO45WOB4RaCE4F4BNUPtw9c']: 
-      process.env.MEDIAR_PROD_ORG_ID || 'org_2yynzGa53bNM1GTPLp5mc2lYRyD',
-    [process.env.STOKE_DEV_ORG_ID || 'org_2yycYh2ig5m8LwgONhJfZGYhkm9']: 
-      process.env.STOKE_PROD_ORG_ID || 'org_2yyo35c5YVUqjJ86qen45VfwwxD',
-  };
+// Environment-specific organization ID mappings.
+// Values come from env vars only (no committed fallbacks). An entry is added
+// only when both the dev and prod IDs are configured.
+const buildPairs = (
+  pairs: Array<[string | undefined, string | undefined]>
+): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [from, to] of pairs) {
+    if (from && to) out[from] = to;
+  }
+  return out;
 };
 
-// Reverse mapping for display purposes
+// Dev Clerk ID -> Production Database ID
+const getOrgIdMapping = () =>
+  buildPairs([
+    [process.env.MEDIAR_DEV_ORG_ID, process.env.MEDIAR_PROD_ORG_ID],
+    [process.env.STOKE_DEV_ORG_ID, process.env.STOKE_PROD_ORG_ID],
+  ]);
+
 // Production Database ID -> Dev Clerk ID
-const getReverseOrgIdMapping = () => {
-  return {
-    [process.env.MEDIAR_PROD_ORG_ID || 'org_2yynzGa53bNM1GTPLp5mc2lYRyD']: 
-      process.env.MEDIAR_DEV_ORG_ID || 'org_2yydAO45WOB4RaCE4F4BNUPtw9c',
-    [process.env.STOKE_PROD_ORG_ID || 'org_2yyo35c5YVUqjJ86qen45VfwwxD']: 
-      process.env.STOKE_DEV_ORG_ID || 'org_2yycYh2ig5m8LwgONhJfZGYhkm9',
-  };
-};
+const getReverseOrgIdMapping = () =>
+  buildPairs([
+    [process.env.MEDIAR_PROD_ORG_ID, process.env.MEDIAR_DEV_ORG_ID],
+    [process.env.STOKE_PROD_ORG_ID, process.env.STOKE_DEV_ORG_ID],
+  ]);
 
 /**
  * Converts Clerk dev org ID to database production org ID.
@@ -94,22 +99,13 @@ export function debugOrgIdMapping() {
 
 // Environment-specific user ID mappings
 // Dev Clerk User ID -> Production Database User ID
-const getUserIdMapping = () => {
-  return {
-    // Matt's dev user -> prod user
-    [process.env.MEDIAR_DEV_USER_ID || 'user_2yydIYhbpBpCzfgOIiNhOPFFhc4']:
-      process.env.MEDIAR_PROD_USER_ID || 'user_2yynnCT0NQKgSvqMlHJHzBNg3Yo',
-  };
-};
+const getUserIdMapping = () =>
+  buildPairs([[process.env.MEDIAR_DEV_USER_ID, process.env.MEDIAR_PROD_USER_ID]]);
 
 // Reverse mapping for display purposes
 // Production Database User ID -> Dev Clerk User ID
-const getReverseUserIdMapping = () => {
-  return {
-    [process.env.MEDIAR_PROD_USER_ID || 'user_2yynnCT0NQKgSvqMlHJHzBNg3Yo']:
-      process.env.MEDIAR_DEV_USER_ID || 'user_2yydIYhbpBpCzfgOIiNhOPFFhc4',
-  };
-};
+const getReverseUserIdMapping = () =>
+  buildPairs([[process.env.MEDIAR_PROD_USER_ID, process.env.MEDIAR_DEV_USER_ID]]);
 
 /**
  * Converts Clerk dev user ID to database production user ID.

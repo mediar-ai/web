@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isMediarAdmin } from '@/lib/mediarAuth';
 import { createClient } from '@supabase/supabase-js';
+import { MEDIAR_ORG_IDS, isLegacyOrg } from '@/lib/client-config';
 
 export async function GET() {
   try {
@@ -47,15 +48,12 @@ export async function GET() {
       let name = 'Unknown Organization';
       let type = 'customer';
 
-      if (orgId === 'org_2yynzGa53bNM1GTPLp5mc2lYRyD') {
-        name = 'Mediar (Production)';
-        type = 'mediar';
-      } else if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+      if (isLegacyOrg(orgId)) {
         name = 'Mediar (Legacy/Dev)';
         type = 'mediar';
-      } else if (orgId === 'org_33FWULYMf3TkkVeQ32D8KI0VSUJ') {
-        name = 'test123';
-        type = 'test';
+      } else if (MEDIAR_ORG_IDS.includes(orgId)) {
+        name = 'Mediar (Production)';
+        type = 'mediar';
       }
 
       return {

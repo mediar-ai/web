@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { clerkClient } from '@clerk/nextjs/server';
+import { isLegacyOrg } from '@/lib/client-config';
 
 export interface NotificationConfig {
   id: number;
@@ -348,8 +349,8 @@ export class NotificationService {
   // Fetch organization members using Clerk SDK directly
   private async getOrganizationMembers(orgId: string): Promise<string[]> {
     try {
-      // Handle legacy Imperial Treasure org
-      if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+      // Handle legacy Mediar org (members not in Clerk; fall back to staff).
+      if (isLegacyOrg(orgId)) {
         return ['louis@mediar.ai', 'matt@mediar.ai'];
       }
 

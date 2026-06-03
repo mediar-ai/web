@@ -4,6 +4,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 import { clerkClient } from '@clerk/nextjs/server';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { isLegacyOrg } from '@/lib/client-config';
 
 const notificationService = NotificationService.getInstance();
 
@@ -18,8 +19,8 @@ async function getOrganizationMembers(orgId: string): Promise<string[]> {
       return [];
     }
 
-    // Handle legacy Imperial Treasure org
-    if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+    // Handle legacy Mediar org (members not in Clerk; fall back to staff).
+    if (isLegacyOrg(orgId)) {
       return ['louis@mediar.ai', 'matt@mediar.ai'];
     }
 

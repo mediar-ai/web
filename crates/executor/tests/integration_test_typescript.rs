@@ -115,12 +115,12 @@ fn test_real_typescript_workflow_with_file_mounting() {
     // Create a real TypeScript workflow matching DB record #164
     let workflow = Workflow {
         id: 164,
-        name: "Imperial Treasure SAP Journal Entry".to_string(),
+        name: "Sample SAP Journal Entry".to_string(),
         version: 1,
         description: Some("TypeScript workflow for SAP integration".to_string()),
         status: "active".to_string(),
         category: Some("automation".to_string()),
-        github_folder: Some("imperial_treasure_1_typescript".to_string()),
+        github_folder: Some("sample_workflow_1_typescript".to_string()),
         uuid: None,
         github_release_url: None,
         github_release_checksum: None,
@@ -160,7 +160,7 @@ const inputSchema = z.object({
 });
 
 const workflow = createWorkflow({
-    name: "Imperial Treasure SAP Journal Entry",
+    name: "Sample SAP Journal Entry",
     version: "1.0.0",
     input: inputSchema,
     steps: [],

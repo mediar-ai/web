@@ -1,5 +1,6 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { isLegacyOrg } from '@/lib/client-config';
 
 // Fetch pending invitations for an organization
 // Accessible by org admins and owners
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const clerk = await clerkClient();
 
     // Handle legacy org
-    if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+    if (isLegacyOrg(orgId)) {
       return NextResponse.json({
         invitations: [],
         message: 'Legacy organization - no invitations in Clerk'

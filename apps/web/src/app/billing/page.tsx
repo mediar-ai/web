@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// Pricing (Imperial Treasure pilot terms): $0.15/min, $500/min charge per deployed workflow.
+// Pricing (pilot terms): $0.15/min, $500/min charge per deployed workflow.
 // These are display-only fallbacks; the API is authoritative.
 const RATE_PER_MINUTE = 0.15;
 const MIN_PER_WORKFLOW = 500;
@@ -29,22 +29,35 @@ const BILL_FROM = {
   email: 'billing@mediar.ai',
 };
 
-// Bill-to per the Aug 31 2025 Product Order Form between Mediar (now assigned
-// to Mediar.ai, Inc.) and Imperial Treasure Restaurant Group Pte Ltd.
-const BILL_TO = {
-  legalName: 'Imperial Treasure Restaurant Group Pte Ltd',
-  addressLine1: '36 Sin Ming Lane',
-  addressLine2: 'Midview City',
-  country: 'Singapore',
-  attn: 'Chai Leong Choi',
-  attnTitle: 'IT Asst. Manager',
-  email: 'leongchoi.chai@imperialtreasure.com',
-};
+// Customer billing identity. Supplied by the `/api/billing/usage` response
+// (sourced from server env), never hardcoded here, so no customer-identifying
+// data lives in this repository. The prepaid credit package (converted from the
+// pilot fee, 1 credit = $1 of billable cost) draws down per monthly invoice.
+interface ClientIdentity {
+  name: string;
+  legalName: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  country: string;
+  attn: string;
+  attnTitle: string;
+  contractRef: string;
+  prepaidCreditUsd: number;
+}
 
-// Per the Product Order Form: Customer paid a $20,000 Pilot Fee which converted
-// to a 20,000-credit prepaid package (1 credit = $1 of billable cost). Each
-// monthly invoice draws down from this balance until exhausted.
-const PREPAID_CREDIT_BALANCE_USD = 20000;
+const EMPTY_CLIENT: ClientIdentity = {
+  name: '',
+  legalName: '',
+  email: '',
+  addressLine1: '',
+  addressLine2: '',
+  country: '',
+  attn: '',
+  attnTitle: '',
+  contractRef: '',
+  prepaidCreditUsd: 0,
+};
 
 // Compute current month key once at module load. Used to hide the in-progress
 // month from the billing page until it's frozen on the 2nd of next month.
@@ -81,13 +94,25 @@ interface UsageData {
   ratePerMinute: number;
   minPerWorkflow: number;
   pilotStartDate: string;
+  client?: ClientIdentity;
   months: MonthlyData[];
 }
 
+// Short alphanumeric code derived from the customer name, used as an invoice
+// suffix (e.g. "Acme Corp" -> "AC"). Falls back to "INV" when no name.
+function clientCode(client: ClientIdentity): string {
+  const initials = client.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => w[0]?.toUpperCase() || '')
+    .join('');
+  return initials || 'INV';
+}
+
 // Build a deterministic invoice number for a given billing month.
-// Format: INV-YYYY-MM-IT (one invoice per customer per month).
-function invoiceNumberFor(monthKey: string): string {
-  return `INV-${monthKey}-IT`;
+// Format: INV-YYYY-MM-<code> (one invoice per customer per month).
+function invoiceNumberFor(monthKey: string, client: ClientIdentity): string {
+  return `INV-${monthKey}-${clientCode(client)}`;
 }
 
 // Issue date = 1st of the month following the billing period (i.e. May 1 for
@@ -112,9 +137,10 @@ const fmtDateISO = (d: Date) =>
 // amount actually due (subtotal minus credit applied).
 function computeCreditFor(
   monthKey: string,
-  monthsAsc: MonthlyData[]
+  monthsAsc: MonthlyData[],
+  prepaidCreditUsd: number
 ): { openingBalance: number; charged: number; creditApplied: number; closingBalance: number; cashDue: number } {
-  let balance = PREPAID_CREDIT_BALANCE_USD;
+  let balance = prepaidCreditUsd;
   for (const m of monthsAsc) {
     const opening = balance;
     const charged = m.totalCost;
@@ -135,15 +161,16 @@ function computeCreditFor(
 function renderInvoiceOnPage(
   doc: jsPDF,
   monthData: MonthlyData,
-  monthsAsc: MonthlyData[]
+  monthsAsc: MonthlyData[],
+  client: ClientIdentity
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginL = 20;
   const marginR = pageWidth - 20;
 
-  const invoiceNumber = invoiceNumberFor(monthData.key);
+  const invoiceNumber = invoiceNumberFor(monthData.key, client);
   const { issued, due } = invoiceDatesFor(monthData.key);
-  const credit = computeCreditFor(monthData.key, monthsAsc);
+  const credit = computeCreditFor(monthData.key, monthsAsc, client.prepaidCreditUsd);
 
   // ===== Header =====
   doc.setFont('helvetica', 'bold');
@@ -180,13 +207,13 @@ function renderInvoiceOnPage(
   y += 6;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(BILL_TO.legalName, marginL, y); y += 5;
+  doc.text(client.legalName || client.name, marginL, y); y += 5;
   doc.setFontSize(9);
-  doc.text(BILL_TO.addressLine1, marginL, y); y += 5;
-  doc.text(BILL_TO.addressLine2, marginL, y); y += 5;
-  doc.text(BILL_TO.country, marginL, y); y += 5;
-  doc.text(`Attn: ${BILL_TO.attn}, ${BILL_TO.attnTitle}`, marginL, y); y += 5;
-  doc.text(BILL_TO.email, marginL, y); y += 5;
+  if (client.addressLine1) { doc.text(client.addressLine1, marginL, y); y += 5; }
+  if (client.addressLine2) { doc.text(client.addressLine2, marginL, y); y += 5; }
+  if (client.country) { doc.text(client.country, marginL, y); y += 5; }
+  if (client.attn) { doc.text(`Attn: ${client.attn}${client.attnTitle ? `, ${client.attnTitle}` : ''}`, marginL, y); y += 5; }
+  if (client.email) { doc.text(client.email, marginL, y); y += 5; }
 
   // ===== Line items table =====
   y = Math.max(y + 10, 110);
@@ -289,7 +316,7 @@ function renderInvoiceOnPage(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(
-    `Initial credit package per Product Order Form: ${fmtCurrency(PREPAID_CREDIT_BALANCE_USD)}`,
+    `Initial credit package per Product Order Form: ${fmtCurrency(client.prepaidCreditUsd)}`,
     marginL,
     y
   );
@@ -308,16 +335,14 @@ function renderInvoiceOnPage(
   // ===== Footer =====
   doc.setFontSize(8);
   doc.setTextColor(80);
-  doc.text(
-    'Reference the Product Order Form dated August 31, 2025 (Imperial Treasure × Mediar). All rights and obligations',
-    marginL,
-    260
-  );
-  doc.text(
-    `assigned to ${BILL_FROM.legalName} per the Assignment and Assumption Agreement effective March 14, 2026.`,
-    marginL,
-    265
-  );
+  if (client.contractRef) {
+    doc.text(client.contractRef, marginL, 260);
+    doc.text(
+      `Assigned to ${BILL_FROM.legalName} per the Assignment and Assumption Agreement.`,
+      marginL,
+      265
+    );
+  }
   doc.text(
     `Payment in USD, NET 30. Questions: ${BILL_FROM.email}.`,
     marginL,
@@ -330,26 +355,28 @@ function renderInvoiceOnPage(
 function generateInvoicePDF(
   monthData: MonthlyData,
   monthsAsc: MonthlyData[],
-  action: 'download' | 'view'
+  action: 'download' | 'view',
+  client: ClientIdentity
 ) {
   const doc = new jsPDF();
-  renderInvoiceOnPage(doc, monthData, monthsAsc);
-  const filename = `${invoiceNumberFor(monthData.key)}.pdf`;
+  renderInvoiceOnPage(doc, monthData, monthsAsc, client);
+  const filename = `${invoiceNumberFor(monthData.key, client)}.pdf`;
   if (action === 'download') doc.save(filename);
   else window.open(doc.output('bloburl'), '_blank');
 }
 
 // Combined export: every closed month in one PDF (oldest → newest, one per page).
-function generateAllInvoicesPDF(monthsAsc: MonthlyData[]) {
+function generateAllInvoicesPDF(monthsAsc: MonthlyData[], client: ClientIdentity) {
   if (monthsAsc.length === 0) return;
   const doc = new jsPDF();
   monthsAsc.forEach((m, idx) => {
     if (idx > 0) doc.addPage();
-    renderInvoiceOnPage(doc, m, monthsAsc);
+    renderInvoiceOnPage(doc, m, monthsAsc, client);
   });
   const first = monthsAsc[0].key;
   const last = monthsAsc[monthsAsc.length - 1].key;
-  doc.save(`Invoices-Imperial-Treasure-${first}-to-${last}.pdf`);
+  const slug = (client.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  doc.save(`Invoices-${slug}-${first}-to-${last}.pdf`);
 }
 
 export default function BillingPage() {
@@ -426,6 +453,7 @@ export default function BillingPage() {
     m => m.key !== CURRENT_MONTH_KEY
   );
   const monthsAsc: MonthlyData[] = [...closedMonths].reverse();
+  const client: ClientIdentity = usageData?.client || EMPTY_CLIENT;
 
   return (
     <DashboardLayout>
@@ -438,7 +466,7 @@ export default function BillingPage() {
           </div>
           {closedMonths.length > 0 && (
             <button
-              onClick={() => generateAllInvoicesPDF(monthsAsc)}
+              onClick={() => generateAllInvoicesPDF(monthsAsc, client)}
               className="flex items-center gap-2 px-4 py-2 bg-black text-white text-xs font-mono uppercase hover:bg-gray-800"
             >
               <Download className="w-3 h-3" />
@@ -464,7 +492,7 @@ export default function BillingPage() {
             {/* Customer Header */}
             <div className="border-2 border-black mb-6">
               <div className="bg-black text-white p-4">
-                <h2 className="font-mono font-bold">Imperial Treasure</h2>
+                <h2 className="font-mono font-bold">{client.name}</h2>
               </div>
               <div className="p-4">
                 <div className="font-mono text-sm text-gray-600">
@@ -501,14 +529,14 @@ export default function BillingPage() {
                         {month.totalMinutes.toFixed(1)} min
                       </div>
                       <button
-                        onClick={() => generateInvoicePDF(month, monthsAsc, 'view')}
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'view', client)}
                         className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                       >
                         <FileText className="w-3 h-3" />
                         VIEW INVOICE
                       </button>
                       <button
-                        onClick={() => generateInvoicePDF(month, monthsAsc, 'download')}
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'download', client)}
                         className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                       >
                         <Download className="w-3 h-3" />
