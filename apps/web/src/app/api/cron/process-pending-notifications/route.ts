@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/lib/notification-service';
 import { supabase } from '@/lib/supabase';
 import { clerkClient } from '@clerk/nextjs/server';
+import { isLegacyOrg } from '@/lib/client-config';
 
 const notificationService = NotificationService.getInstance();
 
 // Helper function to fetch organization members using Clerk SDK
 async function getOrganizationMembers(orgId: string): Promise<string[]> {
   try {
-    // Handle legacy Imperial Treasure org
-    if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+    // Handle legacy Mediar org (members not in Clerk; fall back to staff).
+    if (isLegacyOrg(orgId)) {
       return ['louis@mediar.ai', 'matt@mediar.ai'];
     }
 
