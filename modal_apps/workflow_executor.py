@@ -1152,6 +1152,24 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
             result["skipped"] = is_skipped
             result["exception"] = is_exception
 
+            # Some workflows nest their business result under `data`
+            # (e.g. {data: {status: "success", message: "..."}}) instead of
+            # emitting a top-level `success` boolean. Capture it for fallback.
+            nested_data = (
+                parsed_output.get("data")
+                if isinstance(parsed_output.get("data"), dict)
+                else {}
+            )
+
+            # Execution statuses we treat as successful (mirrors the no-parser path below).
+            success_states = {
+                "success",
+                "executed_without_error",
+                "completed_with_errors",
+                "partial_success",
+                "executed_with_partial_errors",
+            }
+
             # Determine state based on priority: exception > skipped > success/failure
             if is_exception:
                 result["success"] = False
@@ -1162,10 +1180,30 @@ def parse_workflow_result(mcp_response: Dict[str, Any]) -> Dict[str, Any]:
                 result["state"] = "skipped"
                 logger.info("⏭ Workflow was SKIPPED")
             else:
-                result["success"] = bool(parsed_output.get("success", False))
+                # Prefer an explicit `success` boolean (top-level, then nested
+                # under `data`). If neither exists, fall back to a "status" string
+                # signal so results shaped like {data:{status:"success"}} aren't
+                # mislabeled as FAILED. Only POSITIVE signals count as success -
+                # anything unknown stays a failure, so we never mask a real failure.
+                explicit_success = parsed_output.get("success")
+                if explicit_success is None:
+                    explicit_success = nested_data.get("success")
+                if explicit_success is not None:
+                    result["success"] = bool(explicit_success)
+                else:
+                    status_signal = parsed_output.get("status") or nested_data.get("status")
+                    result["success"] = (
+                        isinstance(status_signal, str)
+                        and status_signal.lower() in success_states
+                    )
                 result["state"] = "success" if result["success"] else "failure"
 
-            result["message"] = parsed_output.get("message", "No message from parser")
+            # Message: prefer the top-level parser message, then nested data.message
+            result["message"] = (
+                parsed_output.get("message")
+                or nested_data.get("message")
+                or "No message from parser"
+            )
             # Store the entire parser output to preserve all workflow-specific fields
             # This allows dashboards to access error_summary, failure_details, etc.
             result["data"] = parsed_output  # Changed from parsed_output.get("data") to preserve full structure
