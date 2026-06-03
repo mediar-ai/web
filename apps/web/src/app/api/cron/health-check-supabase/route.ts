@@ -124,7 +124,7 @@ export async function GET(request: Request) {
             signal: controller.signal,
             headers: {
               'Accept': 'application/json',
-              'Authorization': 'Bearer ***REMOVED***'
+              'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}`
             }
           });
 
@@ -322,7 +322,7 @@ export async function GET(request: Request) {
                       signal: retryController.signal,
                       headers: {
                         'Accept': 'application/json',
-                        'Authorization': 'Bearer ***REMOVED***'
+                        'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}`
                       }
                     });
                     clearTimeout(retryTimeout);
