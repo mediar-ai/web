@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { githubWorkflowManager } from '@/lib/github-workflow-manager';
 import { WorkflowFileManager, WorkflowFile } from '@/lib/workflow-file-manager';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { GITHUB_SYNC_USER_ID } from '@/lib/client-config';
 import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { Octokit } from '@octokit/rest';
@@ -354,7 +355,7 @@ export async function POST(request: NextRequest) {
                 preferred_format: 'typescript',
                 automation_sequence: {}, // Empty object for TypeScript workflows
                 organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
-                created_by: 'user_REDACTED', // Louis's Clerk ID - GitHub-synced workflows
+                created_by: GITHUB_SYNC_USER_ID, // GitHub-synced workflows are attributed to the sync bot user
               })
               .select()
               .single();
@@ -848,7 +849,7 @@ export async function POST(request: NextRequest) {
               total_versions: 1,
               // Default to primary Mediar organization for all workflows created from GitHub
               organization_id: orgPrefix || MEDIAR_ORG_IDS[0],
-              created_by: 'user_REDACTED', // Louis's Clerk ID - GitHub-synced workflows
+              created_by: GITHUB_SYNC_USER_ID, // GitHub-synced workflows are attributed to the sync bot user
             })
             .select()
             .single();
