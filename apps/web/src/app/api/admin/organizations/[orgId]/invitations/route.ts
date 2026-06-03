@@ -1,6 +1,7 @@
 import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { isLegacyOrg } from '@/lib/client-config';
 
 // Get invitations for an organization
 export async function GET(
@@ -32,7 +33,7 @@ export async function GET(
     const clerk = await clerkClient();
 
     // Handle legacy Mediar org that might not exist in Clerk
-    if (targetOrgId === 'org_REDACTED') {
+    if (isLegacyOrg(targetOrgId)) {
       // Return empty invitations for legacy org
       return NextResponse.json({
         invitations: [],
