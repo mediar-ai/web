@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 
-// Mediar organization IDs (both old and new)
-const _MEDIAR_ORG_IDS = [
-  'org_REDACTED', // Current Mediar organization
-  'org_REDACTED', // Legacy Mediar organization (has existing workflows)
-];
-
 export async function POST(request: NextRequest) {
   try {
     const { userId, orgId, orgRole } = await auth();

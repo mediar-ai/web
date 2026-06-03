@@ -498,7 +498,7 @@ export async function GET(
       const fs = await import('fs/promises');
       const yaml = await import('js-yaml');
 
-      const localYamlPath = 'C:\\Users\\screenpipe-windows\\workflows\\ExampleClient_1\\terminator.yaml';
+      const localYamlPath = 'C:\\Users\\screenpipe-windows\\workflows\\sample_workflow_1\\terminator.yaml';
 
       try {
         const yamlContent = await fs.readFile(localYamlPath, 'utf-8');
@@ -509,7 +509,7 @@ export async function GET(
         // Create a mock workflow object with the YAML data
         workflow = {
           id: workflowIdNum,
-          name: 'Local Test Workflow (ExampleClient_1)',
+          name: 'Local Test Workflow (sample_workflow_1)',
           description: 'Testing value_schema with local YAML file',
           version: 999,
           status: 'deployed',

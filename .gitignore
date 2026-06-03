@@ -143,7 +143,7 @@ mcp.json
 /*.zip
 
 # Local DB snapshots / backup dumps
-scripts/ExampleClient_*_snapshot_backup.json
+scripts/*_snapshot_backup.json
 
 # Per-machine Claude Code project settings
 .claude/settings.local.json

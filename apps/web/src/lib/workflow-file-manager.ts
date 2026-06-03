@@ -50,7 +50,7 @@ export class WorkflowFileManager {
       if (workflowError || !workflowData?.organization_id) {
         throw new Error(`Failed to get organization for workflow ${workflowId}: ${workflowError?.message || 'No organization_id'}`);  
       }
-      // organization_id column stores clerk_organization_id directly (e.g., "org_REDACTED")
+      // organization_id column stores the clerk_organization_id directly (e.g., "org_...")
       const clerkOrgId = workflowData.organization_id;
       console.log(`[WorkflowFileManager] Using org: ${clerkOrgId} for workflow ${workflowId}`);
 

@@ -1,12 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-// Mediar organization IDs (both old and new)
-const MEDIAR_ORG_IDS = [
-  'org_REDACTED', // Current Mediar organization
-  'org_REDACTED', // Legacy Mediar organization (has existing workflows)
-];
+import { MEDIAR_ORG_IDS } from '@/lib/client-config';
 
 export async function GET() {
   try {

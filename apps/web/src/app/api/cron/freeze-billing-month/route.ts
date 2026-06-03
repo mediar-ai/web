@@ -16,47 +16,67 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 const RATE_PER_MINUTE = 0.15;
 const MIN_CHARGE_PER_WORKFLOW = 500;
 
-// ExampleClient billable workflows.
-const IT_WORKFLOW_SAP_JOURNAL = 71;
-const IT_WORKFLOW_WEB_OUTGOING_PAYMENTS = 271;
-
-const HARDCODED_WORKFLOW_NAMES: Record<number, string> = {
-  [IT_WORKFLOW_SAP_JOURNAL]: 'SAP Journal Entry',
-  [IT_WORKFLOW_WEB_OUTGOING_PAYMENTS]: 'Web Outgoing Payments',
+// Per-customer billing rules live in the `billing_config` Supabase table, NOT
+// in this (public) repository. Each row is one customer:
+//
+//   organization_id  TEXT   the org to freeze
+//   name             TEXT   display name for logs
+//   rules            JSONB  {
+//                             workflowNameOverrides?: { [id]: string },
+//                             billableRules?: Array<{ minMonth: string|null, workflowIds: number[] }>
+//                           }
+//
+// `billableRules` is evaluated newest-first: the first rule whose `minMonth`
+// is null OR <= the target month wins, and its `workflowIds` are billed. When
+// a customer has no `billableRules`, all prod workflows are billable every
+// month (the default). This keeps customer-specific workflow IDs, internal
+// workflow names, and any billing-dispute cutoffs out of source control.
+type BillableRule = { minMonth: string | null; workflowIds: number[] };
+type BillingRules = {
+  workflowNameOverrides?: Record<string, string>;
+  billableRules?: BillableRule[];
+};
+type CustomerConfig = {
+  orgId: string;
+  name: string;
+  rules: BillingRules;
 };
 
-// Customers to freeze. Add new orgs here as they sign on.
-const CUSTOMERS = [
-  {
-    orgId: 'org_REDACTED',
-    name: 'ExampleClient',
-  },
-];
+async function getCustomers(): Promise<CustomerConfig[]> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from('billing_config')
+    .select('organization_id, name, rules');
 
-// Per-org workflow billing rules.
-//
-// ExampleClient:
-//   Oct 2025 -> Apr 2026: SAP Journal Entry only.
-//   May 2026 onward:      SAP Journal Entry + Web Outgoing Payments.
-//
-// Apr 2026 was originally included for both, but the Web Outgoing Payments
-// $500 floor was waived per customer dispute on 2026-05-18 (workflow had 0
-// runs that month). The April snapshot in `billing_snapshots` reflects the
-// corrected total ($666, SAP only); the cutoff below ensures a re-fire of
-// the freeze cron for April cannot reintroduce the disputed line item.
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map(row => ({
+    orgId: row.organization_id as string,
+    name: (row.name as string) || (row.organization_id as string),
+    rules: (row.rules as BillingRules) || {},
+  }));
+}
+
 function getBillableWorkflowIdsForOrg(
-  orgId: string,
+  rules: BillingRules,
   monthKey: string,
-  _allProdIds: number[]
+  allProdIds: number[]
 ): number[] {
-  if (orgId === 'org_REDACTED') {
-    if (monthKey >= '2026-05') {
-      return [IT_WORKFLOW_SAP_JOURNAL, IT_WORKFLOW_WEB_OUTGOING_PAYMENTS];
+  const billableRules = rules.billableRules;
+  if (billableRules && billableRules.length > 0) {
+    const sorted = [...billableRules].sort((a, b) =>
+      (b.minMonth || '').localeCompare(a.minMonth || '')
+    );
+    for (const rule of sorted) {
+      if (rule.minMonth === null || rule.minMonth === undefined || monthKey >= rule.minMonth) {
+        return rule.workflowIds;
+      }
     }
-    return [IT_WORKFLOW_SAP_JOURNAL];
   }
   // Default: all prod workflows are billable every month.
-  return _allProdIds;
+  return allProdIds;
 }
 
 function previousMonthKey(now: Date): string {
@@ -89,9 +109,11 @@ type FreezeResult = {
 
 async function freezeMonthForOrg(
   orgId: string,
-  monthKey: string
+  monthKey: string,
+  rules: BillingRules
 ): Promise<FreezeResult> {
   const admin = getSupabaseAdmin();
+  const nameOverrides = rules.workflowNameOverrides || {};
 
   // Idempotency: skip if already frozen.
   const { data: existing } = await admin
@@ -161,7 +183,7 @@ async function freezeMonthForOrg(
   }
 
   // 3. Apply per-workflow $500 floor + bill rules.
-  const billableIds = getBillableWorkflowIdsForOrg(orgId, monthKey, prodIds);
+  const billableIds = getBillableWorkflowIdsForOrg(rules, monthKey, prodIds);
   const workflows = billableIds.map(id => {
     const usage = monthlyByWf[id];
     if (usage) {
@@ -171,7 +193,7 @@ async function freezeMonthForOrg(
       return {
         id,
         name:
-          workflowNames[id] || HARDCODED_WORKFLOW_NAMES[id] || `Workflow #${id}`,
+          workflowNames[id] || nameOverrides[String(id)] || `Workflow #${id}`,
         executions: usage.executions,
         totalMinutes: Math.round(usage.totalMinutes * 10) / 10,
         usageCost,
@@ -180,7 +202,7 @@ async function freezeMonthForOrg(
       };
     }
     const name =
-      workflowNames[id] || HARDCODED_WORKFLOW_NAMES[id] || `Workflow #${id}`;
+      workflowNames[id] || nameOverrides[String(id)] || `Workflow #${id}`;
     return {
       id,
       name,
@@ -256,10 +278,23 @@ async function handle(request: NextRequest) {
 
   console.log(`[freeze-billing-month] Target month: ${targetMonth}`);
 
+  let customers: CustomerConfig[];
+  try {
+    customers = await getCustomers();
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error: 'Failed to load billing_config',
+        detail: e instanceof Error ? e.message : String(e),
+      },
+      { status: 500 }
+    );
+  }
+
   const results: FreezeResult[] = [];
-  for (const customer of CUSTOMERS) {
+  for (const customer of customers) {
     try {
-      const r = await freezeMonthForOrg(customer.orgId, targetMonth);
+      const r = await freezeMonthForOrg(customer.orgId, targetMonth, customer.rules);
       results.push(r);
       console.log(
         `[freeze-billing-month] ${customer.name} ${targetMonth}: ${r.status}${
