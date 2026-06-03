@@ -195,6 +195,39 @@ export async function POST(_request: NextRequest) {
       }
     }
 
+    // 2b. Load per-schedule default inputs for the workflows we're about to run.
+    // These are passed as execution `parameters` so scheduled runs use the inputs
+    // configured in the Schedule tab (e.g. environment=LIVE) instead of always
+    // falling back to the workflow version's built-in defaults.
+    // NOTE: cron_default_inputs is NOT on the deployed_workflows_with_sequence view,
+    // so we read it directly from the base table.
+    const cronInputsById = new Map<number, Record<string, unknown>>();
+    if (workflowsToExecute.length > 0) {
+      const { data: inputRows, error: inputErr } = await supabase
+        .from('deployed_workflows')
+        .select('id, cron_default_inputs')
+        .in(
+          'id',
+          workflowsToExecute.map(w => w.id)
+        );
+      if (inputErr) {
+        console.error(
+          '⚠️  Failed to load cron_default_inputs; scheduled runs will use empty params:',
+          inputErr
+        );
+      } else {
+        for (const row of inputRows || []) {
+          const inputs = row.cron_default_inputs;
+          if (inputs && typeof inputs === 'object' && !Array.isArray(inputs)) {
+            cronInputsById.set(row.id, inputs as Record<string, unknown>);
+          }
+        }
+      }
+      console.log(
+        `📥 Loaded cron default inputs for ${cronInputsById.size}/${workflowsToExecute.length} workflow(s)`
+      );
+    }
+
     // 3. Execute workflows
     const executionResults: ExecutionResult[] = [];
 
@@ -329,7 +362,9 @@ export async function POST(_request: NextRequest) {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            parameters: {}, // Changed from execution_params to parameters
+            // Pass the schedule's configured default inputs (set in the Schedule tab).
+            // Falls back to {} so the workflow uses its own input defaults.
+            parameters: cronInputsById.get(workflow.id) ?? {},
             client_id: 'cron-scheduler',
             ...(assignedMachineId && { machine_id: assignedMachineId }), // Include assigned machine if found
             // Only pass executor_type when explicitly configured on the cron job.

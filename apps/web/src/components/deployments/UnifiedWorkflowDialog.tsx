@@ -86,6 +86,25 @@ interface UnifiedWorkflowDialogProps {
   isMediarTeam?: boolean; // Show executor selection for superadmins
 }
 
+// Subset of the /schema input_parameters shape we render in the Schedule tab.
+type ScheduleInputParam = {
+  type?: string;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  options?: Array<{ value: string; label: string }> | string[];
+};
+
+// Normalize options to {value,label}[] (the /schema route may return string[] or {value,label}[]).
+function normalizeScheduleOptions(
+  options?: Array<{ value: string; label: string }> | string[]
+): Array<{ value: string; label: string }> {
+  if (!Array.isArray(options)) return [];
+  return options.map(opt =>
+    typeof opt === 'string' ? { value: opt, label: opt } : opt
+  );
+}
+
 export function UnifiedWorkflowDialog({
   workflow,
   open,
@@ -143,6 +162,16 @@ export function UnifiedWorkflowDialog({
   });
   const [loadingCron, setLoadingCron] = useState(false);
   const [savingCron, setSavingCron] = useState(false);
+
+  // Per-schedule input values passed to cron runs (e.g. environment=LIVE),
+  // plus the workflow's input schema used to render the editor fields.
+  const [scheduleInputs, setScheduleInputs] = useState<Record<string, unknown>>(
+    {}
+  );
+  const [inputSchema, setInputSchema] = useState<
+    Record<string, ScheduleInputParam>
+  >({});
+  const [loadingInputSchema, setLoadingInputSchema] = useState(false);
 
   // Load YAML for a specific version (defined before loadVersions to avoid circular dependency)
   const loadVersionYaml = useCallback(
@@ -331,9 +360,16 @@ export function UnifiedWorkflowDialog({
             retryCount: data.cron_config.cron_retry_count || 3,
             executorType: data.cron_config.cron_executor_type || 'python',
           });
+          setScheduleInputs(
+            (data.cron_config.cron_default_inputs as Record<
+              string,
+              unknown
+            >) || {}
+          );
           console.log('✅ Loaded cron config from database');
         } else {
           // No cron config exists yet, use defaults
+          setScheduleInputs({});
           setCronConfig({
             expression: '',
             timezone: 'UTC',
@@ -371,6 +407,45 @@ export function UnifiedWorkflowDialog({
     }
   }, [workflow]);
 
+  // Load the workflow's input schema so scheduled-run inputs can be edited.
+  // NOTE: we request the active version explicitly (?version=...) because the
+  // deployed_workflows_with_sequence view can carry a stale/empty parent schema
+  // for TypeScript workflows (the real inputs live on the active version row).
+  const loadInputSchema = useCallback(async () => {
+    if (!workflow) return;
+    setLoadingInputSchema(true);
+    try {
+      const versionQuery = workflow.version
+        ? `?version=${encodeURIComponent(workflow.version)}`
+        : '';
+      const response = await fetch(
+        `/api/remote-workflows/${workflow.id}/schema${versionQuery}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const params = (data?.schema?.input_parameters || {}) as Record<
+          string,
+          ScheduleInputParam
+        >;
+        setInputSchema(params);
+        console.log(
+          `🧩 Loaded ${Object.keys(params).length} input param(s) for schedule editor`
+        );
+      } else {
+        console.warn(
+          '[SchedulerInputs] Failed to load schema:',
+          response.status
+        );
+        setInputSchema({});
+      }
+    } catch (error) {
+      console.error('Error loading input schema for schedule:', error);
+      setInputSchema({});
+    } finally {
+      setLoadingInputSchema(false);
+    }
+  }, [workflow]);
+
   // Save cron configuration
   const saveCronConfig = useCallback(async () => {
     if (!workflow || !cronConfig.expression) return;
@@ -386,6 +461,14 @@ export function UnifiedWorkflowDialog({
         enabled: cronConfig.enabled,
       });
 
+      // Only persist inputs the user actually set. Blank ('' / undefined) means
+      // "use the workflow's own default" so we drop those keys from the payload.
+      const cleanedInputs = Object.fromEntries(
+        Object.entries(scheduleInputs).filter(
+          ([, v]) => v !== undefined && v !== ''
+        )
+      );
+
       // Update workflow-level cron config in database (single source of truth)
       const cronDbResponse = await fetch(
         `/api/remote-workflows/${workflow.id}/cron`,
@@ -400,6 +483,7 @@ export function UnifiedWorkflowDialog({
             cron_retry_on_failure: cronConfig.retryOnFailure,
             cron_executor_type: cronConfig.executorType || 'python',
             cron_retry_count: cronConfig.retryCount,
+            cron_default_inputs: cleanedInputs,
           }),
         }
       );
@@ -423,7 +507,7 @@ export function UnifiedWorkflowDialog({
     } finally {
       setSavingCron(false);
     }
-  }, [workflow, cronConfig, onSettingsUpdated]);
+  }, [workflow, cronConfig, scheduleInputs, onSettingsUpdated]);
 
   // Load data when modal opens
   useEffect(() => {
@@ -433,6 +517,7 @@ export function UnifiedWorkflowDialog({
       loadMachineAssignments();
       // Don't call loadWorkflowYaml() here - it would overwrite the active version YAML with latest
       loadCronConfig();
+      loadInputSchema();
       setEditedName(workflow.name || '');
       setEditedDescription(workflow.description || '');
       setTags(workflow.tags || []);
@@ -444,6 +529,7 @@ export function UnifiedWorkflowDialog({
     loadMachineAssignments,
     loadMachines,
     loadCronConfig,
+    loadInputSchema,
   ]);
 
   // Clear messages after 3 seconds
@@ -1156,6 +1242,112 @@ export function UnifiedWorkflowDialog({
                       }
                       showAdvanced={true}
                     />
+
+                    {/* Workflow inputs used for scheduled runs (sent as parameters on each cron run) */}
+                    <div className="p-4 border-2 border-black rounded-lg">
+                      <label className="block font-mono text-xs uppercase text-gray-600 mb-2">
+                        Workflow Inputs (used for scheduled runs)
+                      </label>
+                      {loadingInputSchema ? (
+                        <div className="flex items-center text-sm text-gray-600 font-mono">
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Loading inputs...
+                        </div>
+                      ) : Object.keys(inputSchema).length === 0 ? (
+                        <p className="text-xs text-gray-600 font-mono">
+                          This workflow has no configurable inputs.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-xs text-gray-600 font-mono">
+                            These values are sent on every scheduled run. Leave
+                            blank to use the workflow&apos;s own default.
+                          </p>
+                          {Object.entries(inputSchema).map(([name, schema]) => {
+                            const value = scheduleInputs[name];
+                            const setVal = (v: unknown) =>
+                              setScheduleInputs(prev => ({
+                                ...prev,
+                                [name]: v,
+                              }));
+                            const options = normalizeScheduleOptions(
+                              schema.options
+                            );
+                            return (
+                              <div key={name} className="space-y-1">
+                                <label className="block font-mono text-xs text-gray-800">
+                                  {name}
+                                  {schema.required && (
+                                    <span className="text-red-500 ml-1">*</span>
+                                  )}
+                                </label>
+                                {schema.type === 'boolean' ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      value === undefined
+                                        ? Boolean(schema.default)
+                                        : Boolean(value)
+                                    }
+                                    onChange={e => setVal(e.target.checked)}
+                                    className="w-4 h-4 border-2 border-black"
+                                  />
+                                ) : options.length > 0 ? (
+                                  <select
+                                    value={
+                                      (value ??
+                                        schema.default ??
+                                        '') as string
+                                    }
+                                    onChange={e => setVal(e.target.value)}
+                                    className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
+                                  >
+                                    <option value="">
+                                      (use workflow default)
+                                    </option>
+                                    {options.map(opt => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type={
+                                      schema.type === 'number'
+                                        ? 'number'
+                                        : 'text'
+                                    }
+                                    value={(value ?? '') as string | number}
+                                    placeholder={
+                                      schema.default !== undefined &&
+                                      schema.default !== ''
+                                        ? `default: ${String(schema.default)}`
+                                        : ''
+                                    }
+                                    onChange={e =>
+                                      setVal(
+                                        schema.type === 'number'
+                                          ? e.target.value === ''
+                                            ? ''
+                                            : Number(e.target.value)
+                                          : e.target.value
+                                      )
+                                    }
+                                    className="w-full px-3 py-2 border-2 border-black rounded font-mono text-sm"
+                                  />
+                                )}
+                                {schema.description && (
+                                  <p className="text-[11px] text-gray-500">
+                                    {schema.description}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Executor Type Selection (available to all users) */}
                     <div className="p-4 border-2 border-black rounded-lg bg-yellow-50">
