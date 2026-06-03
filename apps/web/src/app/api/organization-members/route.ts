@@ -1,6 +1,7 @@
 import { clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { isLegacyOrg } from '@/lib/client-config';
 
 // Fetch organization members by organization ID
 // This is an internal API used by the notification service
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 
       for (const currentOrgId of orgIds) {
         // Handle legacy org
-        if (currentOrgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+        if (isLegacyOrg(currentOrgId)) {
           allMembers.push(
             { userId: 'legacy-1', email: 'louis@mediar.ai', firstName: 'Louis', lastName: 'Beaumont', role: 'org:admin' },
             { userId: 'legacy-2', email: 'matt@mediar.ai', firstName: 'Matt', lastName: '', role: 'org:admin' }
@@ -92,8 +93,8 @@ export async function GET(request: NextRequest) {
 
     const clerk = await clerkClient();
 
-    // Handle legacy Imperial Treasure org
-    if (orgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+    // Handle legacy Mediar org
+    if (isLegacyOrg(orgId)) {
       return NextResponse.json({
         members: [
           {
