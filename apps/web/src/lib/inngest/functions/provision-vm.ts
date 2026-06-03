@@ -399,7 +399,7 @@ export const provisionVmFunction = inngest.createFunction(
 
         $mcpProcess = Get-Process -Name 'terminator-mcp-agent' -ErrorAction SilentlyContinue
         if (-not $mcpProcess) {
-          Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList '-t http --host 0.0.0.0 -p 8080 --auth-token cargorunmediar123' -WindowStyle Hidden
+          Start-Process -FilePath 'C:\\MCP\\terminator-mcp-agent.exe' -ArgumentList '-t http --host 0.0.0.0 -p 8080 --auth-token ${process.env.MCP_AUTH_TOKEN}' -WindowStyle Hidden
           Start-Sleep -Seconds 3
         }
 
