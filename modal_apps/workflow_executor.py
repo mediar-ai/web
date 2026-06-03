@@ -250,7 +250,17 @@ secrets = [
     modal.Secret.from_name("secrets-encryption-key"),
     modal.Secret.from_name("mediar-service-api-key"),
     modal.Secret.from_name("gcp-credentials"),
+    modal.Secret.from_name("mcp-auth-token"),
 ]
+
+
+def _mcp_auth_header() -> str:
+    """Authorization header for the terminator-mcp-agent running on each VM.
+
+    Value comes from the MCP_AUTH_TOKEN env var, injected at runtime via the
+    "mcp-auth-token" Modal secret. Never hardcode the token in source.
+    """
+    return f"Bearer {os.environ.get('MCP_AUTH_TOKEN', '')}"
 
 
 # Configuration for auto-cancellation
@@ -1629,7 +1639,7 @@ async def execute_mcp_workflow(
                 init_request,
                 {
                     "Accept": "application/json, text/event-stream",
-                    "Authorization": "Bearer cargorunmediar123"
+                    "Authorization": _mcp_auth_header()
                 },
             )
             return client, resp
@@ -1731,7 +1741,7 @@ async def execute_mcp_workflow(
                 headers={
                     "Accept": "application/json, text/event-stream",
                     "Mcp-Session-Id": session_id,
-                    "Authorization": "Bearer cargorunmediar123"
+                    "Authorization": _mcp_auth_header()
                 },
             )
             logger.info("[DEBUG] _post_with_session: POST returned, status=%s", resp.status_code)
@@ -1753,7 +1763,7 @@ async def execute_mcp_workflow(
                     headers={
                         "Accept": "application/json, text/event-stream",
                         "Mcp-Session-Id": session_id,
-                        "Authorization": "Bearer cargorunmediar123"
+                        "Authorization": _mcp_auth_header()
                     },
                 )
                 logger.info("[DEBUG] _post_with_session: Retry POST returned, status=%s", resp.status_code)
