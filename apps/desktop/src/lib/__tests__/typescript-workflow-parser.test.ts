@@ -1215,7 +1215,7 @@ export default createWorkflow({
       expect(result.steps[0].stateWrites).toContain("last_error");
     });
 
-    it("should parse complex Imperial Treasure-style step", () => {
+    it("should parse complex SAP-style step", () => {
       const code = `
 import { createWorkflow, createStep, z, WorkflowError, success } from "@mediar-ai/workflow";
 
