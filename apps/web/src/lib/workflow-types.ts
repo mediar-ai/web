@@ -40,6 +40,8 @@ export interface Workflow {
   parent_workflow_id?: number | null;
   display_order: number;
   automation_sequence: any; // Keeping as 'any' for now
+  preferred_format?: string; // 'typescript' | 'yaml' | 'jsonb' - used for executor routing
+  typescript_metadata?: any; // Compiled TS workflow (name/steps/inputs/...) for TS workflows
   input_parameters: Record<string, InputParameter>;
   expected_outputs: Record<string, unknown>;
   sample_inputs: Record<string, unknown>;
