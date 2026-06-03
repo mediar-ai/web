@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// Pricing (ExampleClient pilot terms): $0.15/min, $500/min charge per deployed workflow.
+// Pricing (pilot terms): $0.15/min, $500/min charge per deployed workflow.
 // These are display-only fallbacks; the API is authoritative.
 const RATE_PER_MINUTE = 0.15;
 const MIN_PER_WORKFLOW = 500;
@@ -29,22 +29,35 @@ const BILL_FROM = {
   email: 'billing@mediar.ai',
 };
 
-// Bill-to per the Aug 31 2025 [contract reference] between Mediar (now assigned
-// to Mediar.ai, Inc.) and Example Client Inc.
-const BILL_TO = {
-  legalName: 'Example Client Inc',
-  addressLine1: '36 Sin Ming Lane',
-  addressLine2: 'Midview City',
-  country: 'Singapore',
-  attn: 'Chai Leong Choi',
-  attnTitle: 'IT Asst. Manager',
-  email: 'client@example.com',
-};
+// Customer billing identity. Supplied by the `/api/billing/usage` response
+// (sourced from server env), never hardcoded here, so no customer-identifying
+// data lives in this repository. The prepaid credit package (converted from the
+// pilot fee, 1 credit = $1 of billable cost) draws down per monthly invoice.
+interface ClientIdentity {
+  name: string;
+  legalName: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  country: string;
+  attn: string;
+  attnTitle: string;
+  contractRef: string;
+  prepaidCreditUsd: number;
+}
 
-// Per the [contract reference]: Customer paid a $20,000 Pilot Fee which converted
-// to a 20,000-credit prepaid package (1 credit = $1 of billable cost). Each
-// monthly invoice draws down from this balance until exhausted.
-const PREPAID_CREDIT_BALANCE_USD = 20000;
+const EMPTY_CLIENT: ClientIdentity = {
+  name: '',
+  legalName: '',
+  email: '',
+  addressLine1: '',
+  addressLine2: '',
+  country: '',
+  attn: '',
+  attnTitle: '',
+  contractRef: '',
+  prepaidCreditUsd: 0,
+};
 
 // Compute current month key once at module load. Used to hide the in-progress
 // month from the billing page until it's frozen on the 2nd of next month.
@@ -81,13 +94,25 @@ interface UsageData {
   ratePerMinute: number;
   minPerWorkflow: number;
   pilotStartDate: string;
+  client?: ClientIdentity;
   months: MonthlyData[];
 }
 
+// Short alphanumeric code derived from the customer name, used as an invoice
+// suffix (e.g. "ExampleClient" -> "IT"). Falls back to "INV" when no name.
+function clientCode(client: ClientIdentity): string {
+  const initials = client.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => w[0]?.toUpperCase() || '')
+    .join('');
+  return initials || 'INV';
+}
+
 // Build a deterministic invoice number for a given billing month.
-// Format: INV-YYYY-MM-IT (one invoice per customer per month).
-function invoiceNumberFor(monthKey: string): string {
-  return `INV-${monthKey}-IT`;
+// Format: INV-YYYY-MM-<code> (one invoice per customer per month).
+function invoiceNumberFor(monthKey: string, client: ClientIdentity): string {
+  return `INV-${monthKey}-${clientCode(client)}`;
 }
 
 // Issue date = 1st of the month following the billing period (i.e. May 1 for
@@ -112,9 +137,10 @@ const fmtDateISO = (d: Date) =>
 // amount actually due (subtotal minus credit applied).
 function computeCreditFor(
   monthKey: string,
-  monthsAsc: MonthlyData[]
+  monthsAsc: MonthlyData[],
+  prepaidCreditUsd: number
 ): { openingBalance: number; charged: number; creditApplied: number; closingBalance: number; cashDue: number } {
-  let balance = PREPAID_CREDIT_BALANCE_USD;
+  let balance = prepaidCreditUsd;
   for (const m of monthsAsc) {
     const opening = balance;
     const charged = m.totalCost;
@@ -135,15 +161,16 @@ function computeCreditFor(
 function renderInvoiceOnPage(
   doc: jsPDF,
   monthData: MonthlyData,
-  monthsAsc: MonthlyData[]
+  monthsAsc: MonthlyData[],
+  client: ClientIdentity
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginL = 20;
   const marginR = pageWidth - 20;
 
-  const invoiceNumber = invoiceNumberFor(monthData.key);
+  const invoiceNumber = invoiceNumberFor(monthData.key, client);
   const { issued, due } = invoiceDatesFor(monthData.key);
-  const credit = computeCreditFor(monthData.key, monthsAsc);
+  const credit = computeCreditFor(monthData.key, monthsAsc, client.prepaidCreditUsd);
 
   // ===== Header =====
   doc.setFont('helvetica', 'bold');
