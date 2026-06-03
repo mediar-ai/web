@@ -317,15 +317,21 @@ export async function POST(
       .eq('id', workflowIdNum)
       .single();
 
-    // Determine the workflow format authoritatively. The
-    // deployed_workflows_with_sequence view has NO preferred_format column, so we
-    // read it from the base table (cheap PK lookup) instead of getting `undefined`.
-    const { data: fmtRow } = await supabase
-      .from('deployed_workflows')
+    // Determine the workflow format from the ACTUAL version being executed, read
+    // from deployed_workflow_versions. This is immune to a stale parent
+    // deployed_workflows row: the parent's preferred_format is frozen at creation
+    // time and is NOT synced when a new version is activated, so reading the
+    // version row is the authoritative source for executor routing.
+    const fmtVersionNumber = body.version_number || workflow?.version;
+    let versionFmtQuery = supabase
+      .from('deployed_workflow_versions')
       .select('preferred_format')
-      .eq('id', workflowIdNum)
-      .single();
-    const isTypeScript = fmtRow?.preferred_format === 'typescript';
+      .eq('workflow_id', workflowIdNum);
+    versionFmtQuery = fmtVersionNumber
+      ? versionFmtQuery.eq('version_number', fmtVersionNumber)
+      : versionFmtQuery.eq('is_active', true);
+    const { data: verFmt } = await versionFmtQuery.maybeSingle();
+    const isTypeScript = verFmt?.preferred_format === 'typescript';
 
     // Auto-route executor based on workflow format when caller didn't specify.
     // TypeScript workflows must hit the Rust executor; legacy YAML/jsonb stay on Python (Modal).
@@ -340,7 +346,7 @@ export async function POST(
       );
       executor_type = 'rust';
     }
-    console.log(`🚀 Executor type: ${executor_type} (preferred_format=${fmtRow?.preferred_format ?? 'unknown'}, isTypeScript=${isTypeScript}, explicit=${body.executor_type ? 'yes' : 'no'})`);
+    console.log(`🚀 Executor type: ${executor_type} (version=${fmtVersionNumber ?? 'active'}, preferred_format=${verFmt?.preferred_format ?? 'unknown'}, isTypeScript=${isTypeScript}, explicit=${body.executor_type ? 'yes' : 'no'})`);
 
     // Set version_number: use provided version or fallback to workflow's current version
     const version_number = body.version_number || workflow?.version;
