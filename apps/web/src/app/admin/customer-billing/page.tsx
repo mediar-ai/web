@@ -440,7 +440,7 @@ export default function AdminCustomerBillingPage() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          generateStatementPDF(month);
+                          generateStatementPDF(month, customerName);
                         }}
                         className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                       >
@@ -526,7 +526,7 @@ export default function AdminCustomerBillingPage() {
                         <button
                           onClick={e => {
                             e.stopPropagation();
-                            generateInvoicePDF(invoice, 'view');
+                            generateInvoicePDF(invoice, 'view', customerName);
                           }}
                           className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                         >
@@ -536,7 +536,7 @@ export default function AdminCustomerBillingPage() {
                         <button
                           onClick={e => {
                             e.stopPropagation();
-                            generateInvoicePDF(invoice, 'download');
+                            generateInvoicePDF(invoice, 'download', customerName);
                           }}
                           className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                         >
@@ -574,7 +574,7 @@ export default function AdminCustomerBillingPage() {
                       <span className="font-mono text-sm">{month.name}</span>
                     </div>
                     <button
-                      onClick={() => generateStatementPDF(month)}
+                      onClick={() => generateStatementPDF(month, customerName)}
                       className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                     >
                       <Download className="w-3 h-3" />
