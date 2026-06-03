@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   const { error } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL ?? 'alerts@alerts.mediar.ai',
-    to: ['i@m13v.com'],
+    to: [process.env.SUPPORT_LOGS_EMAIL ?? 'support@mediar.ai'],
     subject: `Support Logs - Mediar Desktop - ${filename}`,
     text: systemInfo,
     attachments: [{ filename, content: zipBuffer }],
