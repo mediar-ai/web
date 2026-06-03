@@ -144,6 +144,11 @@ mod screenshot_tests {
 
         let client = Client::new();
 
+        let auth_header = format!(
+            "Bearer {}",
+            std::env::var("MCP_AUTH_TOKEN").unwrap_or_else(|_| "test-token".to_string())
+        );
+
         for endpoint in TEST_ENDPOINTS {
             println!("Testing endpoint: {endpoint}");
 
@@ -165,7 +170,7 @@ mod screenshot_tests {
             let init_response = client
                 .post(*endpoint)
                 .header("Accept", "application/json, text/event-stream")
-                .header("Authorization", "Bearer cargorunmediar123")
+                .header("Authorization", auth_header.as_str())
                 .json(&init_request)
                 .send()
                 .await?;
@@ -194,7 +199,7 @@ mod screenshot_tests {
             let mut request_builder = client
                 .post(*endpoint)
                 .header("Accept", "application/json, text/event-stream")
-                .header("Authorization", "Bearer cargorunmediar123")
+                .header("Authorization", auth_header.as_str())
                 .json(&tool_request);
 
             // Add session ID if available
