@@ -1,6 +1,7 @@
 import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { MEDIAR_ORG_IDS } from '@/lib/constants';
+import { isLegacyOrg } from '@/lib/client-config';
 
 export async function GET(
   request: Request,
@@ -31,7 +32,7 @@ export async function GET(
     const clerk = await clerkClient();
 
     // Handle legacy Mediar org that might not exist in Clerk
-    if (targetOrgId === 'org_2yydAO45WOB4RaCE4F4BNUPtw9c') {
+    if (isLegacyOrg(targetOrgId)) {
       // For legacy org, return Mediar staff members as placeholder
       return NextResponse.json({
         organization: {
