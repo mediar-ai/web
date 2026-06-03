@@ -99,7 +99,7 @@ interface UsageData {
 }
 
 // Short alphanumeric code derived from the customer name, used as an invoice
-// suffix (e.g. "Imperial Treasure" -> "IT"). Falls back to "INV" when no name.
+// suffix (e.g. "Acme Corp" -> "AC"). Falls back to "INV" when no name.
 function clientCode(client: ClientIdentity): string {
   const initials = client.name
     .split(/\s+/)
@@ -529,14 +529,14 @@ export default function BillingPage() {
                         {month.totalMinutes.toFixed(1)} min
                       </div>
                       <button
-                        onClick={() => generateInvoicePDF(month, monthsAsc, 'view')}
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'view', client)}
                         className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                       >
                         <FileText className="w-3 h-3" />
                         VIEW INVOICE
                       </button>
                       <button
-                        onClick={() => generateInvoicePDF(month, monthsAsc, 'download')}
+                        onClick={() => generateInvoicePDF(month, monthsAsc, 'download', client)}
                         className="flex items-center gap-1 px-3 py-1 border border-black text-xs font-mono hover:bg-black hover:text-white"
                       >
                         <Download className="w-3 h-3" />
