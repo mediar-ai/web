@@ -1202,7 +1202,7 @@ async function checkGitHubFolderForYamls(
  * More efficient than fetching all files in a folder
  */
 async function fetchChangedFiles(
-  changedFilePaths: string[], // e.g., ["ExampleClient_1/add_adjustments.js"]
+  changedFilePaths: string[], // e.g., ["sample_workflow_1/add_adjustments.js"]
   branch: string = 'main'
 ): Promise<WorkflowFile[]> {
   const jsFiles: WorkflowFile[] = [];
