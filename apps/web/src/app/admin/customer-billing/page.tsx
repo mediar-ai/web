@@ -33,6 +33,7 @@ interface MonthlyData {
 
 interface UsageData {
   ratePerMinute: number;
+  client?: { name?: string };
   months: MonthlyData[];
 }
 
@@ -50,7 +51,7 @@ interface Invoice {
   }[];
 }
 
-function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
+function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view', customerName: string) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -85,7 +86,7 @@ function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
   doc.setFont('helvetica', 'bold');
   doc.text('BILL TO', 20, 65);
   doc.setFont('helvetica', 'normal');
-  doc.text('Imperial Treasure', 20, 72);
+  doc.text(customerName, 20, 72);
 
   // Line
   doc.setLineWidth(0.5);
@@ -164,7 +165,7 @@ function generateInvoicePDF(invoice: Invoice, action: 'download' | 'view') {
   }
 }
 
-function generateStatementPDF(monthData: MonthlyData) {
+function generateStatementPDF(monthData: MonthlyData, customerName: string) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -185,7 +186,7 @@ function generateStatementPDF(monthData: MonthlyData) {
   doc.setFont('helvetica', 'bold');
   doc.text('ACCOUNT', 20, 50);
   doc.setFont('helvetica', 'normal');
-  doc.text('Imperial Treasure', 20, 57);
+  doc.text(customerName, 20, 57);
 
   // Summary
   doc.line(20, 67, pageWidth - 20, 67);
@@ -294,6 +295,8 @@ export default function AdminCustomerBillingPage() {
     });
   };
 
+  const customerName = usageData?.client?.name || '';
+
   // Generate invoices from usage data
   const invoices: Invoice[] =
     usageData?.months.map((month, idx) => ({
@@ -365,7 +368,7 @@ export default function AdminCustomerBillingPage() {
           {/* Customer Header */}
           <div className="border-2 border-black mb-6">
             <div className="bg-black text-white p-4">
-              <h2 className="font-mono font-bold">Imperial Treasure</h2>
+              <h2 className="font-mono font-bold">{customerName}</h2>
             </div>
             <div className="p-4">
               <div className="font-mono text-sm text-gray-600">
