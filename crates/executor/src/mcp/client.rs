@@ -210,9 +210,12 @@ impl McpClient {
             reqwest::header::ACCEPT,
             reqwest::header::HeaderValue::from_static("application/json, text/event-stream"),
         );
+        let auth_token = std::env::var("MCP_AUTH_TOKEN")
+            .map_err(|_| anyhow::anyhow!("MCP_AUTH_TOKEN environment variable not set"))?;
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_static("Bearer ***REMOVED***"),
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {auth_token}"))
+                .map_err(|e| anyhow::anyhow!("invalid MCP_AUTH_TOKEN value: {e}"))?,
         );
 
         // Add W3C Trace Context header (traceparent) for distributed tracing
