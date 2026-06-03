@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
             console.log(`[VM Recordings API] Doing reverse DNS for ${hostname}`);
             const hostnames = await dns.reverse(hostname);
             if (hostnames && hostnames.length > 0) {
-              // e.g. mcp-imperial-1.internal -> mcp-imperial-1
+              // e.g. mcp-example-1.internal -> mcp-example-1
               mcpName = hostnames[0].split('.')[0];
               console.log(`[VM Recordings API] Resolved ${hostname} to ${mcpName}`);
             }

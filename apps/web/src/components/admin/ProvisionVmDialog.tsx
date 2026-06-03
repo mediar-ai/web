@@ -479,7 +479,7 @@ export function ProvisionVmDialog({ isOpen, onClose, onSuccess }: ProvisionVmDia
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 border-2 border-black font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
-                  placeholder="e.g., vm3, imperial-vm1"
+                  placeholder="e.g., vm3, client-vm1"
                   pattern="[a-zA-Z0-9-]+"
                   required
                 />
