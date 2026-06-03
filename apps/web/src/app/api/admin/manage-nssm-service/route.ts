@@ -240,7 +240,7 @@ const ServiceOperations = {
         const mcpResponse = await fetch(`${VM_CONFIG.mcpEndpoint}/health`, {
           headers: {
             'ngrok-skip-browser-warning': 'true',
-            'Authorization': 'Bearer ***REMOVED***'
+            'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}`
           },
           signal: AbortSignal.timeout(5000)
         });
