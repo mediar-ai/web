@@ -202,3 +202,6 @@ apps/desktop/apps/vm-dashboard/public/*.zip
 
 # internal ops runbooks, not for public repo
 .claude/skills/
+
+# Local-only backups of deleted GitHub issues (may contain sensitive content)
+scripts/deleted-issues-backup/
