@@ -194,7 +194,7 @@
     "tsx": "^4.20.4",
     "turbo": "^2.6.3",
     "tw-animate-css": "^1.3.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "workspaces": [
     "apps/*",
