@@ -45,7 +45,6 @@ export async function GET(request: NextRequest) {
         // Handle legacy org
         if (isLegacyOrg(currentOrgId)) {
           allMembers.push(
-            { userId: 'legacy-1', email: 'louis@mediar.ai', firstName: 'Louis', lastName: 'Beaumont', role: 'org:admin' },
             { userId: 'legacy-2', email: 'matt@mediar.ai', firstName: 'Matt', lastName: '', role: 'org:admin' }
           );
           continue;
@@ -97,13 +96,6 @@ export async function GET(request: NextRequest) {
     if (isLegacyOrg(orgId)) {
       return NextResponse.json({
         members: [
-          {
-            userId: 'legacy-1',
-            email: 'louis@mediar.ai',
-            firstName: 'Louis',
-            lastName: 'Beaumont',
-            role: 'org:admin'
-          },
           {
             userId: 'legacy-2',
             email: 'matt@mediar.ai',
