@@ -7,7 +7,7 @@ const SETTINGS_KEY = 'cost_alerts_config';
 
 const DEFAULT_SETTINGS: CostAlertSettings = {
   thresholds: { warning: 500, critical: 800, maximum: 1000 },
-  emailRecipients: ['matt@mediar.ai', 'louis@mediar.ai'],
+  emailRecipients: ['matt@mediar.ai'],
   enabled: true,
 };
 
@@ -118,7 +118,7 @@ async function sendAlertEmail(
 
   const { error } = await resend.emails.send({
     from: `Mediar Alerts <${fromEmail}>`,
-    replyTo: ['matt@mediar.ai', 'louis@mediar.ai'],
+    replyTo: ['matt@mediar.ai'],
     to: recipients,
     subject: `${config.emoji} Cloud Cost Alert: ${level.toUpperCase()} - $${amount.toLocaleString()}/month`,
     html: `
