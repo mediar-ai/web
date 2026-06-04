@@ -503,7 +503,7 @@ export const provisionVmFunction = inngest.createFunction(
 
         const { data, error } = await resend.emails.send({
           from: `Mediar.ai <${fromEmail}>`,
-          replyTo: ['matt@mediar.ai', 'louis@mediar.ai'],
+          replyTo: ['matt@mediar.ai'],
           to: email,
           subject: `🖥️ Your sandbox "${vmName}" is ready!`,
           html: `
