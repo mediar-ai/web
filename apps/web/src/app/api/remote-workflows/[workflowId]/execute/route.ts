@@ -313,17 +313,43 @@ export async function POST(
     // STEP 2: Check if workflow exists and verify authorization
     const { data: workflow, error: workflowError } = await supabase
       .from('deployed_workflows_with_sequence')
-      .select('name, status, automation_sequence, version, created_by, preferred_format')
+      .select('name, status, automation_sequence, version, created_by')
       .eq('id', workflowIdNum)
       .single();
 
+    // Determine the workflow format from the version that will actually run, read
+    // from deployed_workflow_versions. We use the ACTIVE version (is_active) by
+    // default, or an explicitly requested body.version_number.
+    //
+    // We deliberately do NOT fall back to the parent deployed_workflows row:
+    //  - its preferred_format is frozen at creation and not synced on activation
+    //  - its `version` column can drift from the active version (e.g. workflow
+    //    854: parent.version='1.0.11' [jsonb, inactive] while the active version
+    //    is 1.0.8 [typescript]). Keying off `version` there would mis-route.
+    let versionFmtQuery = supabase
+      .from('deployed_workflow_versions')
+      .select('preferred_format, version_number')
+      .eq('workflow_id', workflowIdNum);
+    versionFmtQuery = body.version_number
+      ? versionFmtQuery.eq('version_number', body.version_number)
+      : versionFmtQuery.eq('is_active', true);
+    const { data: verFmt } = await versionFmtQuery.maybeSingle();
+    const isTypeScript = verFmt?.preferred_format === 'typescript';
+
     // Auto-route executor based on workflow format when caller didn't specify.
     // TypeScript workflows must hit the Rust executor; legacy YAML/jsonb stay on Python (Modal).
-    // Explicit body.executor_type still wins (admin override / batch dialog).
-    const executor_type =
-      body.executor_type ||
-      (workflow?.preferred_format === 'typescript' ? 'rust' : 'python');
-    console.log(`🚀 Executor type: ${executor_type} (preferred_format=${workflow?.preferred_format ?? 'unknown'}, explicit=${body.executor_type ? 'yes' : 'no'})`);
+    let executor_type =
+      body.executor_type || (isTypeScript ? 'rust' : 'python');
+    // Safety net: a TypeScript workflow CANNOT run on the Python/Modal executor —
+    // it crashes parsing the TS structure ("list indices must be integers or
+    // slices, not str"). Force rust even if a stale client explicitly sent python.
+    if (isTypeScript && executor_type === 'python') {
+      console.warn(
+        `⚠️ Forcing rust executor for TypeScript workflow ${workflowIdNum} (client requested python)`
+      );
+      executor_type = 'rust';
+    }
+    console.log(`🚀 Executor type: ${executor_type} (version=${verFmt?.version_number ?? (body.version_number || 'active?')}, preferred_format=${verFmt?.preferred_format ?? 'unknown'}, isTypeScript=${isTypeScript}, explicit=${body.executor_type ? 'yes' : 'no'})`);
 
     // Set version_number: use provided version or fallback to workflow's current version
     const version_number = body.version_number || workflow?.version;

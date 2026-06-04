@@ -68,7 +68,43 @@ pub fn extract_workflow_success(mcp_data: Option<&Value>) -> Option<bool> {
                     .and_then(|data| data.get("success"))
                     .and_then(|s| s.as_bool())
             })
+            // Fallback to a "status" string signal when no explicit `success`
+            // boolean is present, so workflows that report success via
+            // {data:{status:"success"}} (instead of a success bool) aren't
+            // mislabeled as failed. Only POSITIVE statuses force success; unknown
+            // or failure statuses return None so the caller falls back to the MCP
+            // execution result — this never masks a real failure.
+            .or_else(|| {
+                let status = d
+                    .get("data")
+                    .and_then(|data| data.get("status"))
+                    .and_then(|s| s.as_str())
+                    .or_else(|| {
+                        d.get("parsed_output")
+                            .and_then(|p| p.get("data"))
+                            .and_then(|data| data.get("status"))
+                            .and_then(|s| s.as_str())
+                    });
+                match status {
+                    Some(s) if is_success_status(s) => Some(true),
+                    _ => None,
+                }
+            })
     })
+}
+
+/// Whether a workflow status string represents a successful execution.
+/// Mirrors the success set used by the Python result parser.
+fn is_success_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "success"
+            | "completed"
+            | "executed_without_error"
+            | "completed_with_errors"
+            | "partial_success"
+            | "executed_with_partial_errors"
+    )
 }
 
 /// Extract workflow status string from nested MCP agent result
@@ -271,6 +307,26 @@ mod tests {
             "message": "done"
         });
 
+        assert_eq!(extract_workflow_success(Some(&mcp_data)), None);
+    }
+
+    #[test]
+    fn test_extract_workflow_success_from_nested_status() {
+        // Real shape from SAP JE Posting: success signalled via data.status,
+        // with NO explicit `success` boolean. Must resolve to Some(true).
+        let mcp_data = json!({
+            "data": { "status": "success", "journal_posted": true,
+                      "message": "Journal entry posted successfully" },
+            "parsed_output": { "data": { "status": "success", "journal_posted": true } }
+        });
+        assert_eq!(extract_workflow_success(Some(&mcp_data)), Some(true));
+    }
+
+    #[test]
+    fn test_extract_workflow_success_status_failure_stays_none() {
+        // A non-success status with no `success` boolean must NOT be forced to
+        // true; returns None so the caller falls back to MCP execution result.
+        let mcp_data = json!({ "data": { "status": "running" } });
         assert_eq!(extract_workflow_success(Some(&mcp_data)), None);
     }
 

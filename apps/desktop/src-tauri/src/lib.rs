@@ -3406,6 +3406,35 @@ pub fn run() {
                 }
             }
 
+            // Validate main window is within visible monitor bounds after window-state plugin restores position.
+            // A disconnected monitor can leave y=2147 on a 1080px display — permanently off-screen.
+            if let Some(main_window) = app.get_webview_window("main") {
+                let monitors = app.available_monitors().unwrap_or_default();
+                let pos = main_window.outer_position().ok();
+                let size = main_window.outer_size().ok();
+                if let (Some(pos), Some(size)) = (pos, size) {
+                    let win_l = pos.x;
+                    let win_t = pos.y;
+                    let win_r = pos.x + size.width as i32;
+                    let win_b = pos.y + size.height as i32;
+                    let on_screen = !monitors.is_empty() && monitors.iter().any(|m| {
+                        let mp = m.position();
+                        let ms = m.size();
+                        let overlap_x = win_r.min(mp.x + ms.width as i32) - win_l.max(mp.x);
+                        let overlap_y = win_b.min(mp.y + ms.height as i32) - win_t.max(mp.y);
+                        overlap_x >= 100 && overlap_y >= 100
+                    });
+                    if !on_screen {
+                        warn!("[window] main window off-screen at ({},{}) {}x{} - centering", pos.x, pos.y, size.width, size.height);
+                        if let Err(e) = main_window.center() {
+                            error!("[window] failed to center main window: {}", e);
+                        } else {
+                            info!("[window] main window recentered onto visible monitor");
+                        }
+                    }
+                }
+            }
+
             info!("✅ Application setup completed - tray icon active, always recording, autostart enabled");
             Ok(())
         })

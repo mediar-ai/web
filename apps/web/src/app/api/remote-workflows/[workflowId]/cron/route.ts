@@ -223,6 +223,7 @@ export async function PUT(
       cron_max_concurrent,
       cron_retry_on_failure,
       cron_retry_count,
+      cron_default_inputs,
     } = body;
 
     // Validate required fields
@@ -334,6 +335,24 @@ export async function PUT(
     if (cron_executor_type !== undefined) {
       updateData.cron_executor_type = cron_executor_type;
     }
+    // Per-schedule input values passed to cron runs (see save-defaults vs. cron docs).
+    // Must be a plain JSON object; reject arrays/primitives to avoid corrupting the column.
+    if (cron_default_inputs !== undefined) {
+      if (
+        cron_default_inputs === null ||
+        typeof cron_default_inputs !== 'object' ||
+        Array.isArray(cron_default_inputs)
+      ) {
+        return NextResponse.json(
+          { success: false, error: 'cron_default_inputs must be a JSON object' },
+          { status: 400 }
+        );
+      }
+      console.log(
+        `[cron] Saving ${Object.keys(cron_default_inputs).length} default input(s) for scheduled runs`
+      );
+      updateData.cron_default_inputs = cron_default_inputs;
+    }
 
     // STEP 4: Clear auto-pause flags when re-enabling (matching PATCH behavior)
     // This ensures that when users re-enable a schedule via the UI, any auto-pause state is cleared
@@ -353,7 +372,7 @@ export async function PUT(
       .from('deployed_workflows')
       .update(updateData)
       .eq('id', workflowIdNum)
-      .select('id, name, cron_expression, cron_enabled, cron_executor_type, cron_timezone, cron_max_concurrent, cron_retry_on_failure, cron_retry_count')
+      .select('id, name, cron_expression, cron_enabled, cron_executor_type, cron_timezone, cron_max_concurrent, cron_retry_on_failure, cron_retry_count, cron_default_inputs')
       .single();
 
     if (error) {
@@ -430,7 +449,7 @@ export async function GET(
     const resolveResult = await resolveWorkflowId(
       supabase,
       workflowId,
-      'id, name, created_by, organization_id, cron_expression, cron_timezone, cron_enabled, cron_executor_type, last_scheduled_execution, next_scheduled_execution, cron_max_concurrent, cron_retry_on_failure, cron_retry_count'
+      'id, name, created_by, organization_id, cron_expression, cron_timezone, cron_enabled, cron_executor_type, last_scheduled_execution, next_scheduled_execution, cron_max_concurrent, cron_retry_on_failure, cron_retry_count, cron_default_inputs'
     );
 
     if (resolveResult.error || !resolveResult.workflow) {
