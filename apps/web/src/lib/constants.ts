@@ -22,7 +22,6 @@ export const MEDIAR_ORG_IDS = parseList(process.env.NEXT_PUBLIC_MEDIAR_ORG_IDS);
 // so non-Mediar addresses are not committed to the repo.
 export const EXCLUDED_EMAILS_FROM_STATS = [
   'matt@mediar.ai',
-  'louis@mediar.ai',
   'dev@mediar.ai',
   ...parseList(process.env.EXCLUDED_STATS_EMAILS),
 ];

@@ -25,7 +25,7 @@ async fn test_run_command_then_execute_workflow() {
     let mut check_args = Map::new();
     check_args.insert(
         "run".to_string(),
-        Value::String(r#"if (Test-Path 'C:\Users\louis\Documents\test-workflow') { 'exists' } else { 'missing' }"#.to_string()),
+        Value::String(r#"if (Test-Path 'C:\Users\testuser\Documents\test-workflow') { 'exists' } else { 'missing' }"#.to_string()),
     );
     check_args.insert("shell".to_string(), Value::String("powershell".to_string()));
 
@@ -56,7 +56,7 @@ async fn test_run_command_then_execute_workflow() {
     list_args.insert(
         "run".to_string(),
         Value::String(
-            r#"Get-ChildItem 'C:\Users\louis\Documents\test-workflow' | Select-Object Name"#
+            r#"Get-ChildItem 'C:\Users\testuser\Documents\test-workflow' | Select-Object Name"#
                 .to_string(),
         ),
     );
@@ -88,7 +88,7 @@ async fn test_run_command_then_execute_workflow() {
     let mut exec_args = Map::new();
     exec_args.insert(
         "url".to_string(),
-        Value::String("file://C:/Users/louis/Documents/test-workflow".to_string()),
+        Value::String("file://C:/Users/testuser/Documents/test-workflow".to_string()),
     );
     exec_args.insert("include_detailed_results".to_string(), Value::Bool(true));
     exec_args.insert("stop_on_error".to_string(), Value::Bool(true));
@@ -144,7 +144,7 @@ async fn test_execute_sequence_only() {
     let mut args = Map::new();
     args.insert(
         "url".to_string(),
-        Value::String("file://C:/Users/louis/Documents/test-workflow".to_string()),
+        Value::String("file://C:/Users/testuser/Documents/test-workflow".to_string()),
     );
     args.insert("include_detailed_results".to_string(), Value::Bool(true));
     args.insert("inputs".to_string(), json!({"testInput": "hello"}));

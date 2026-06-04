@@ -361,7 +361,6 @@ export async function POST(request: NextRequest) {
 
   // Check if user is Mediar team (bypass rate limits)
   const isMediarUser =
-    email === 'louis@mediar.ai' ||
     email === 'matt@mediar.ai' ||
     email?.endsWith('@mediar.ai');
 

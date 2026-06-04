@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         // Send email using Resend
         const { data, error } = await resend.emails.send({
           from: `Mediar.ai <${fromEmail}>`,
-          replyTo: ['matt@mediar.ai', 'louis@mediar.ai'],
+          replyTo: ['matt@mediar.ai'],
           to: Array.isArray(to) ? to : [to],
           subject: enhancedSubject,
           html: emailHtml,
@@ -476,7 +476,7 @@ function generateEmailHTML(alert: any, _config: any): string {
 
         <div class="footer">
           <p style="margin: 0 0 16px 0; font-size: 14px; color: #666;">
-            Need help? Contact us at <a href="mailto:matt@mediar.ai" style="color: #000;">matt@mediar.ai</a> or <a href="mailto:louis@mediar.ai" style="color: #000;">louis@mediar.ai</a>
+            Need help? Contact us at <a href="mailto:matt@mediar.ai" style="color: #000;">matt@mediar.ai</a>
           </p>
           <p style="margin: 0 0 8px 0; font-size: 12px;">
             <a href="${baseUrl}/dashboard" style="color: #666; text-decoration: none;">View Dashboard</a> •

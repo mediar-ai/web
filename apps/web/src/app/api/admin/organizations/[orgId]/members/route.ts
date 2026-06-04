@@ -38,18 +38,9 @@ export async function GET(
         organization: {
           id: targetOrgId,
           name: 'Mediar (Legacy/Dev)',
-          membersCount: 2
+          membersCount: 1
         },
         members: [
-          {
-            id: 'legacy-1',
-            userId: 'mediar-admin-1',
-            email: 'louis@mediar.ai',
-            firstName: 'Louis',
-            lastName: 'Beaumont',
-            role: 'org:admin',
-            createdAt: new Date().toISOString()
-          },
           {
             id: 'legacy-2',
             userId: 'mediar-admin-2',

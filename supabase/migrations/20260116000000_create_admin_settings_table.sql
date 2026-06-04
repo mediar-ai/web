@@ -24,7 +24,7 @@ VALUES (
       "critical": 800,
       "maximum": 1000
     },
-    "emailRecipients": ["matt@mediar.ai", "louis@mediar.ai"],
+    "emailRecipients": ["matt@mediar.ai"],
     "enabled": true
   }'::jsonb,
   NOW(),

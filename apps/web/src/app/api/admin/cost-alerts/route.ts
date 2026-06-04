@@ -61,7 +61,7 @@ export async function GET() {
   // Return existing settings or defaults
   const settings: CostAlertSettings = data?.value || {
     thresholds: DEFAULT_THRESHOLDS,
-    emailRecipients: ['matt@mediar.ai', 'louis@mediar.ai'],
+    emailRecipients: ['matt@mediar.ai'],
     enabled: true,
   };
 

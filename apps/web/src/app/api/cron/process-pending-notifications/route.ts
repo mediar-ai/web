@@ -11,7 +11,7 @@ async function getOrganizationMembers(orgId: string): Promise<string[]> {
   try {
     // Handle legacy Mediar org (members not in Clerk; fall back to staff).
     if (isLegacyOrg(orgId)) {
-      return ['louis@mediar.ai', 'matt@mediar.ai'];
+      return ['matt@mediar.ai'];
     }
 
     const clerk = await clerkClient();
