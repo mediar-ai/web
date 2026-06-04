@@ -45,10 +45,12 @@ if (!DEV_AUTH_TOKEN) {
   }
 }
 
-// Fallback to hardcoded token if file read fails
+// Require the token to be provided via .env.local; no hardcoded fallback
 if (!DEV_AUTH_TOKEN) {
-  DEV_AUTH_TOKEN = "ac12c88f-60b0-4b50-82ec-3679b1044f44";
-  console.log("Using fallback DEV_AUTH_TOKEN");
+  console.error(
+    "DEV_AUTH_TOKEN not found. Set it in apps/desktop/.env.local or the web-app workspace .env.local before running this script."
+  );
+  process.exit(1);
 }
 
 console.log("=".repeat(80));

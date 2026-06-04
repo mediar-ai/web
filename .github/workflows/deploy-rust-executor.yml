@@ -122,6 +122,7 @@ jobs:
             --set-env-vars "APP_URL=${{ secrets.APP_URL }}" \
             --set-env-vars "MEDIAR_SERVICE_API_KEY=${{ secrets.MEDIAR_SERVICE_API_KEY }}" \
             --set-env-vars "MCP_SERVICE_TOKEN=${{ secrets.MCP_SERVICE_TOKEN }}" \
+            --set-env-vars "MCP_AUTH_TOKEN=${{ secrets.MCP_AUTH_TOKEN }}" \
             --set-env-vars "SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}" \
             --set-env-vars "GCP_PROJECT=${{ env.GCP_PROJECT }}" \
             --set-env-vars "GCP_REGION=${{ env.GCP_REGION }}"

@@ -199,3 +199,6 @@ apps/desktop/apps/vm-dashboard/public/*.zip
 /page-snapshot
 /web-page-state
 /web-recording-state
+
+# internal ops runbooks, not for public repo
+.claude/skills/

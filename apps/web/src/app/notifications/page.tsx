@@ -434,19 +434,21 @@ export default function NotificationsPage() {
       } else {
         // Check for domain verification issue
         if (data.error?.includes('domain is not verified')) {
-          // Try with your verified email
+          // Try with the configured verified fallback email
+          const verifiedFallbackEmail =
+            process.env.NEXT_PUBLIC_VERIFIED_FALLBACK_EMAIL ?? '';
           const fallbackResponse = await fetch('/api/internal/test-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              to: 'louis.beaumont@gmail.com', // Your verified email
+              to: verifiedFallbackEmail,
               subject: `Test Alert - ${selectedConfig.name}`,
             }),
           });
 
           if (fallbackResponse.ok) {
             setToast({
-              message: 'Test sent to louis.beaumont@gmail.com (domain verification pending)',
+              message: `Test sent to ${verifiedFallbackEmail} (domain verification pending)`,
               type: 'warning'
             });
           } else {

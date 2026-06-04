@@ -4,7 +4,7 @@ import { isMediarAdmin } from '@/lib/mediarAuth';
 const AZURE_TENANT_ID = process.env.AZURE_TENANT_ID;
 const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID;
 const AZURE_CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
-const AZURE_SUBSCRIPTION_ID = '5c0a60d0-92cf-47ca-9430-b462bc2fe194';
+const AZURE_SUBSCRIPTION_ID = process.env.AZURE_SUBSCRIPTION_ID;
 
 // Azure pricing estimates (USD/hour) - East US 2 region
 // Source: https://azure.microsoft.com/en-us/pricing/
