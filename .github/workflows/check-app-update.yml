@@ -29,7 +29,7 @@ jobs:
 
       - name: Restore cached version
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .desktop-app-version
           key: desktop-app-version
@@ -64,7 +64,7 @@ jobs:
 
       - name: Update cache
         if: steps.check.outputs.needs_update == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .desktop-app-version
           key: desktop-app-version-${{ steps.current.outputs.asset_id }}
