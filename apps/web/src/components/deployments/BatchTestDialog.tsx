@@ -141,8 +141,15 @@ export function BatchTestDialog({
     useState(false); // Default to active version
   const [loadingVersions, setLoadingVersions] = useState(false);
 
-  // Executor selection state
-  const [executorType, setExecutorType] = useState<'python' | 'rust'>('python');
+  // Executor selection state.
+  // TypeScript workflows MUST run on the Rust executor — the Python/Modal executor
+  // crashes parsing the TS structure ("list indices must be integers or slices").
+  // Default the selector to rust for TS workflows instead of always python.
+  const isTypeScriptWorkflow =
+    !!workflow?.typescript_metadata || workflow?.preferred_format === 'typescript';
+  const [executorType, setExecutorType] = useState<'python' | 'rust'>(
+    isTypeScriptWorkflow ? 'rust' : 'python'
+  );
 
   // Partial execution state
   const [showPartialExecution, setShowPartialExecution] = useState(false);
@@ -177,7 +184,7 @@ export function BatchTestDialog({
       setVersionValidation(null);
       setSelectedMachineId('');
       setAvailableMachines([]);
-      setExecutorType('python'); // Reset to Python executor
+      setExecutorType(isTypeScriptWorkflow ? 'rust' : 'python'); // TS -> rust, else python
       setShowPartialExecution(false);
       setStartFromStep('');
       setEndAtStep('');
@@ -210,7 +217,7 @@ export function BatchTestDialog({
         setVersionValidation(null);
         setSelectedMachineId('');
         setAvailableMachines([]);
-        setExecutorType('python'); // Reset to Python executor
+        setExecutorType(isTypeScriptWorkflow ? 'rust' : 'python'); // TS -> rust, else python
         setShowPartialExecution(false);
         setStartFromStep('');
         setEndAtStep('');
@@ -1014,17 +1021,19 @@ export function BatchTestDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="python" className="text-xs py-1">
-                      Python Executor (Default)
+                      Python Executor (Modal)
                     </SelectItem>
                     <SelectItem value="rust" className="text-xs py-1">
-                      Rust Executor (Experimental)
+                      Rust Executor{isTypeScriptWorkflow ? ' (required for TypeScript)' : ''}
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="text-xs text-muted-foreground">
-                  {executorType === 'python'
-                    ? 'Using stable Python-based workflow executor (Modal)'
-                    : 'Using experimental Rust-based executor (Azure Container Instances, faster, limited features)'}
+                  {isTypeScriptWorkflow && executorType === 'python'
+                    ? 'Warning: this is a TypeScript workflow and will fail on the Python executor. Use Rust.'
+                    : executorType === 'python'
+                      ? 'Using stable Python-based workflow executor (Modal)'
+                      : 'Using Rust-based executor (Azure Container Instances)'}
                 </div>
               </div>
 
