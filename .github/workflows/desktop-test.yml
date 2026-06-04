@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone terminator (required for unpublished crate versions)
         run: git clone --depth 1 https://github.com/mediar-ai/terminator.git ../terminator
@@ -87,7 +87,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -118,7 +118,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone terminator (required for unpublished crate versions)
         run: git clone --depth 1 https://github.com/mediar-ai/terminator.git ../terminator
