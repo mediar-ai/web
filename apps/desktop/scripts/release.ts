@@ -11,7 +11,7 @@
  * ============================================
  *
  * 1. SSL.com Credentials (~\SSL.com\.env)
- *    - Get the .env file from Louis or another team member
+ *    - Get the .env file from a team member
  *    - Place at: C:\Users\<you>\SSL.com\.env
  *    - Or set MEDIAR_SSL_DIR env var to custom location
  *    - Required variables:
