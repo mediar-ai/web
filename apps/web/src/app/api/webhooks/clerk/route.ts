@@ -8,7 +8,7 @@ import { encryptSecret } from '@/lib/crypto';
 import { randomBytes } from 'crypto';
 import { MEDIAR_ORG_IDS } from '@/lib/client-config';
 
-const MEDIAR_ADMINS = ['louis@mediar.ai', 'matt@mediar.ai'];
+const MEDIAR_ADMINS = ['matt@mediar.ai'];
 const ORG_TOKEN_EXPIRY_DAYS = 365; // 1 year expiry for org tokens
 
 /**
