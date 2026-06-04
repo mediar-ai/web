@@ -45,7 +45,7 @@
     "@azure/arm-network": "^36.0.0",
     "@azure/arm-resources": "^7.0.0",
     "@azure/identity": "^4.13.0",
-    "@clerk/nextjs": "^7.0.1",
+    "@clerk/nextjs": "^6.36.1",
     "@clickhouse/client": "^1.14.0",
     "@daytonaio/sdk": "^0.149.0",
     "@google-cloud/aiplatform": "^6.5.0",
