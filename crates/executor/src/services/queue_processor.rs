@@ -163,11 +163,14 @@ impl QueueProcessor {
                 warn!(execution_id = %execution.id, error = %e, "Failed to store trace_id");
             }
 
-            // Only apply auto-cancellation for cron-triggered executions
-            // Manual/web executions should not be blocked by consecutive failures
-            let is_cron_execution = execution.client_id.as_deref() == Some("cron-scheduler");
+            // Apply auto-cancellation to all triggers (cron and web/dashboard alike).
+            // Production workflows are triggered from the web dashboard with a
+            // client_id of "web-<ts>", so a cron-only gate let consecutive identical
+            // failures stack forever without ever pausing the workflow. The
+            // skip_next_cancellation_check flag remains the manual override for an
+            // intentional re-run after a paused workflow is resumed.
             let should_skip = workflow.skip_next_cancellation_check.unwrap_or(false);
-            if is_cron_execution && !should_skip && WorkflowQueries::check_failure_patterns(db_pool, workflow.id).await? {
+            if !should_skip && WorkflowQueries::check_failure_patterns(db_pool, workflow.id).await? {
                 cancellation_registry.complete(execution.id).await;
                 handler.handle_auto_cancelled(&execution, &workflow, &trace_id).await?;
                 return Ok(Some((execution.id, trace_id)));
