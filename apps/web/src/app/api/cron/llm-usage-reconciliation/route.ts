@@ -7,6 +7,35 @@ export const maxDuration = 60;
 
 const PROJECT_ID = 'mediar-394022';
 const DISCREPANCY_THRESHOLD_PERCENT = 10; // Alert if difference > 10%
+// Absolute floor: below this token gap the percentage is dominated by low-volume noise
+// (countTokens estimates vs actual billed tokens, day-boundary timing, single-request days).
+// Vertex traffic is now a low-volume tail (~10-15K tokens/day), so a strict percentage alone
+// would page on a harmless 2K difference. Require BOTH the percentage AND a meaningful gap.
+const MIN_ABS_TOKEN_GAP = 100_000;
+
+// Google Cloud Monitoring's `aiplatform.googleapis.com/publisher/online_serving/token_count`
+// metric ONLY sees traffic that actually runs on Vertex AI publisher models. Our
+// mediar_llm_traces table also stores traffic that never touches Vertex: Fazm chat and
+// observer run on the Gemini Developer API (generativelanguage.googleapis.com) via
+// gemini-cli, and the built-in Claude path runs through ACP. Reconciling the Vertex
+// metric against the whole table therefore compares two different populations and always
+// reports a huge false discrepancy (e.g. Vertex 0.1M vs traced 362M). We must sum only the
+// trace sources whose inference genuinely runs on Vertex so the comparison is like-for-like.
+// Keep this list in sync with the routes that call aiplatform.googleapis.com / getVertexGenAI:
+//   web_ai            -> api/ai/route.ts (publishers/google models)
+//   execution_qa      -> api/ai/execution-qa/route.ts (vertexai: true)
+//   activity_analysis -> lib/analysis.ts (getVertexGenAI)
+//   error_analysis    -> api/internal/analyze-error/route.ts (getVertexGenAI)
+//   vision_parse      -> api/vision/parse/route.ts (vertexai: true)
+//   vertex_chat       -> legacy Vertex chat source
+const VERTEX_SOURCES = [
+  'web_ai',
+  'execution_qa',
+  'activity_analysis',
+  'error_analysis',
+  'vision_parse',
+  'vertex_chat',
+];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -111,13 +140,15 @@ async function sendDiscrepancyAlert(details: {
   const recipients = ['matt@mediar.ai'];
   const subject = `LLM Token Discrepancy: API ${(details.googleTokens/1e6).toFixed(1)}M vs Traced ${(details.dbTokens/1e6).toFixed(1)}M (${details.discrepancyPercent.toFixed(1)}% diff)`;
   const body = `
-LLM token usage reconciliation detected a significant discrepancy:
+LLM token usage reconciliation detected a significant discrepancy (Vertex AI traffic only):
 
 **Period:** Last ${details.periodHours} hour(s)
 
-**Google Cloud Monitoring:** ${details.googleTokens.toLocaleString()} tokens
-**Our Database (mediar_llm_traces):** ${details.dbTokens.toLocaleString()} tokens
+**Google Cloud Monitoring (Vertex publisher):** ${details.googleTokens.toLocaleString()} tokens
+**Our Database (mediar_llm_traces, Vertex sources only):** ${details.dbTokens.toLocaleString()} tokens
 **Discrepancy:** ${details.discrepancyPercent.toFixed(2)}%
+
+Note: this check covers only Vertex AI traffic. Gemini Developer API traffic (Fazm chat/observer) and ACP Claude traffic are not part of this reconciliation because Cloud Monitoring's Vertex metric cannot measure them.
 
 ${details.googleTokens > details.dbTokens
   ? '⚠️ We are UNDER-COUNTING tokens (missing some usage)'
@@ -196,12 +227,17 @@ export async function GET(request: Request) {
     const accessToken = await getGoogleAccessToken();
     const googleTokens = await queryGoogleTokens(accessToken, days);
 
-    // 2. Get tokens from our database (same UTC day boundaries)
+    // 2. Get tokens from our database (same UTC day boundaries), scoped to ONLY the
+    // sources whose inference actually runs on Vertex AI. Gemini Developer API traffic
+    // (fazm_chat_gemini, fazm_observer) and ACP Claude traffic (fazm_chat_builtin,
+    // claude_code) are intentionally excluded: the Vertex monitoring metric cannot see
+    // them, so including them guarantees a false discrepancy.
     const { data: dbRows, error: dbError } = await supabase
       .from('mediar_llm_traces')
       .select('input_tokens, output_tokens')
       .gte('created_at', startTime.toISOString())
-      .lt('created_at', endTime.toISOString());
+      .lt('created_at', endTime.toISOString())
+      .in('source', VERTEX_SOURCES);
 
     if (dbError) {
       throw new Error(`Database query failed: ${dbError.message}`);
@@ -219,8 +255,13 @@ export async function GET(request: Request) {
 
     console.log(`[Reconciliation] Google: ${googleTokens}, DB: ${dbTokens}, Discrepancy: ${discrepancyPercent.toFixed(2)}%`);
 
-    // 4. Send alert if discrepancy exceeds threshold
-    if (discrepancyPercent > DISCREPANCY_THRESHOLD_PERCENT && (googleTokens > 1000 || dbTokens > 1000)) {
+    // 4. Send alert only when the discrepancy is both proportionally large AND an
+    // absolute gap big enough to be actionable (avoids paging on low-volume noise).
+    const absTokenGap = Math.abs(googleTokens - dbTokens);
+    const shouldAlert =
+      discrepancyPercent > DISCREPANCY_THRESHOLD_PERCENT &&
+      absTokenGap > MIN_ABS_TOKEN_GAP;
+    if (shouldAlert) {
       await sendDiscrepancyAlert({
         googleTokens,
         dbTokens,
@@ -236,7 +277,7 @@ export async function GET(request: Request) {
         db_tokens: dbTokens,
         discrepancy_percent: discrepancyPercent,
         period_hours: periodHours,
-        alert_sent: discrepancyPercent > DISCREPANCY_THRESHOLD_PERCENT,
+        alert_sent: shouldAlert,
       });
     } catch {
       // Table may not exist yet
@@ -244,10 +285,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
+      scope: 'vertex_only',
+      vertexSources: VERTEX_SOURCES,
       googleTokens,
       dbTokens,
       discrepancyPercent: discrepancyPercent.toFixed(2),
-      alertSent: discrepancyPercent > DISCREPANCY_THRESHOLD_PERCENT,
+      alertSent: shouldAlert,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
